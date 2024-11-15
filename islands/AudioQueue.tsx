@@ -23,15 +23,15 @@ export default function AudioQueue(
         isProcessingQueue.value = true;
 
         while (playqueue.value.length > 0) {
-            logger.info("Processing queue");
+            logger.debug("Processing queue");
             const message = playqueue.value[0];
             if (!message) {
                 break;
             }
 
-            logger.info("Playing message");
+            logger.debug("Playing message");
             await playSound(message.data.wav);
-            logger.info("Removing message from queue");
+            logger.debug("Removing message from queue");
             playqueue.value = playqueue.value.slice(1);
         }
 
@@ -39,7 +39,7 @@ export default function AudioQueue(
     };
 
     const queueToPlay = (message: SayMessage) => {
-        logger.info("Enqueuing message");
+        logger.debug("Enqueuing message");
         playSound(message.data.wav).then(() => {
             serverRef.current?.send({
                 type: MessageType.Echo,
@@ -55,7 +55,7 @@ export default function AudioQueue(
     };
 
     const playSound = async (wav: string) => {
-        logger.info("Playing sound");
+        logger.debug("Playing sound");
         if (isPlaying.value) {
             return false;
         }
@@ -88,7 +88,7 @@ export default function AudioQueue(
                 isValidSayMessage,
                 MessageType.Say,
                 (message) => {
-                    logger.info("Received say message");
+                    logger.debug("Received say message");
                     queueToPlay(message);
                 },
             );

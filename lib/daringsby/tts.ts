@@ -27,7 +27,9 @@ export function sanitize(
                     },
                     abortController: new AbortController(),
                 };
-                const execution = processor.execute(task, "gemma2:27b");
+                const SANITIZER_MODEL = Deno.env.get("SANITIZER_MODEL") ||
+                    Deno.env.get("OLLAMA_MODEL") || "llama3.2";
+                const execution = processor.execute(task, SANITIZER_MODEL);
                 return execution.pipe(
                     stringify(),
                     toSentences(),

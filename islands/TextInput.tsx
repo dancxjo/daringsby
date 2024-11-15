@@ -11,15 +11,15 @@ export default function TextInput(props: TextInputProps) {
     const actual = useSignal("");
 
     useEffect(() => {
-        logger.info("TextInput mounted");
+        logger.debug("TextInput mounted");
         if (props.onChange) {
-            logger.info("TextInput onChange");
+            logger.debug("TextInput onChange");
             props.onChange(actual.value);
         }
     }, [actual.value]);
 
     const handleSubmit = () => {
-        logger.info("TextInput handleSubmit");
+        logger.debug("TextInput handleSubmit");
         actual.value = input.value;
         input.value = "";
     };

@@ -4,8 +4,6 @@ import { isValidSocketMessage, SocketMessage } from "./SocketMessage.ts";
 import { MessageHandler } from "./MessageHandler.ts";
 import { MessageType } from "./MessageType.ts";
 import { logger } from "../../../logger.ts";
-import { isValidTextMessage } from "./TextMessage.ts";
-import { isValidSeeMessage } from "./SeeMessage.ts";
 
 export class SocketConnection {
     protected messageHandlers = new Map<
@@ -54,7 +52,7 @@ export class SocketConnection {
             readyState: this.ws.readyState ?? 0,
             protocols: this.ws.protocol ?? "",
         });
-        logger.info("WebSocket connection established");
+        logger.debug("WebSocket connection established");
     }
 
     protected handleError(error: Event) {
@@ -115,7 +113,10 @@ export class SocketConnection {
     }
 
     send(message: SocketMessage) {
-        logger.debug("Sending message through WebSocket", message);
+        logger.debug("Sending message through WebSocket");
+        if (!message.at) {
+            message.at = new Date().toISOString();
+        }
         if (this.ws.readyState !== WebSocket.OPEN) {
             logger.error("WebSocket is not open");
             return;

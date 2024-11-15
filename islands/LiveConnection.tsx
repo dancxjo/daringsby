@@ -68,6 +68,7 @@ export default function LiveConnection() {
             serverRef.current?.send({
                 type: MessageType.Geolocate,
                 data: location,
+                at: new Date().toISOString(),
             });
         } catch (e) {
             logger.error(e);
@@ -93,13 +94,13 @@ export default function LiveConnection() {
         if (!text.trim()) {
             return;
         }
-        logger.info("Sending text");
+        logger.debug("Sending text");
         if (!serverRef.current) {
             logger.error("No server connection");
             return;
         }
         try {
-            logger.info("Sending text to server");
+            logger.debug("Sending text to server");
             serverRef.current?.send({
                 type: MessageType.Text,
                 data: text,
@@ -116,7 +117,7 @@ export default function LiveConnection() {
     return (
         <div class="flex flex-col md:flex-row gap-4 p-4">
             <div class="flex-1 bg-white shadow-md rounded-lg p-6">
-                <Webcam onSnap={sendSnapshot} interval={20000} />
+                <Webcam onSnap={sendSnapshot} interval={5000} />
                 <TextInput onChange={sendText} />
                 <Geolocator onChange={reportLocation} />
             </div>

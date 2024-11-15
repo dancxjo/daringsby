@@ -1,13 +1,13 @@
 import { MessageType } from "./MessageType.ts";
 import { SocketMessage } from "./SocketMessage.ts";
 
-interface TextMesage extends SocketMessage {
+interface TextMessage extends SocketMessage {
     type: MessageType.Text;
     data: string;
 }
 
 export function isValidTextMessage(
     message: SocketMessage,
-): message is TextMesage {
+): message is TextMessage {
     return message.type === MessageType.Text;
 }

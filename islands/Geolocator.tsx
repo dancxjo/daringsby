@@ -2,7 +2,9 @@ import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 
 interface GeolocatorProps {
-    onChange?: (location: { longitude: number; latitude: number }) => void;
+    onChange?: (
+        location: { longitude: number; latitude: number },
+    ) => void;
 }
 
 export default function Geolocator(props: GeolocatorProps) {

@@ -3,6 +3,7 @@ import { MessageType } from "./MessageType.ts";
 export interface SocketMessage {
     type: MessageType;
     data: Blob | string | Record<string, unknown>;
+    at?: string;
 }
 
 export function isValidSocketMessage(

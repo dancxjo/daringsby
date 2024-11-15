@@ -12,6 +12,7 @@ import {
 } from "npm:ollama";
 import { isAbortable, PossiblyAbortable } from "../../abortable.ts";
 import { Task } from "../../tasks.ts";
+import { logger } from "../../../../logger.ts";
 
 function isAsyncIterable<T>(
     value: unknown,
@@ -35,8 +36,13 @@ export class OllamaClient {
                 });
 
                 if (isAsyncIterable<T>(result)) {
-                    for await (const chunk of result) {
-                        subject.next(chunk);
+                    try {
+                        for await (const chunk of result) {
+                            subject.next(chunk);
+                        }
+                    } catch (error) {
+                        logger.error({ error }, "Probably aborted");
+                        // subject.error(error);
                     }
                 }
 

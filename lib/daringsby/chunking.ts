@@ -1,7 +1,6 @@
-import { from, Observable, OperatorFunction } from "npm:rxjs";
-import { filter, last, map, switchMap } from "npm:rxjs/operators";
+import { Observable, OperatorFunction } from "npm:rxjs";
+import { map, switchMap, toArray } from "npm:rxjs/operators";
 import { split } from "npm:sentence-splitter";
-import { logger } from "../../logger.ts";
 
 interface ResponseObject {
     response: string;
@@ -14,6 +13,14 @@ export function stringify<T extends ResponseObject>(): OperatorFunction<
     return (source: Observable<T>) =>
         source.pipe(
             map((obj: { response: string }) => obj.response),
+        );
+}
+
+export function wholeResponse(): OperatorFunction<string, string> {
+    return (source: Observable<string>) =>
+        source.pipe(
+            toArray(),
+            map((chunks) => chunks.join("")),
         );
 }
 
