@@ -9,18 +9,17 @@ import {
 } from "../../tasks.ts";
 import { lastValueFrom } from "npm:rxjs";
 import { stringify } from "../../chunking.ts";
-import { sanitize } from "../../tts.ts";
+import { sanitize, toEncodedWav } from "../../tts.ts";
 
 (async () => {
     const ollama1 = new Ollama({
-        host: "http://forebrain.local:11434",
+        host: "http://forebrain.lan:11434",
     });
     const ollama2 = new Ollama({
-        host: "http://victus.local:11434",
+        host: "http://victus.lan:11434",
     });
     const ollama3 = new Ollama();
-    const client = new OllamaClient(ollama1);
-    const processor1 = new OllamaProcessor(client);
+    const processor1 = new OllamaProcessor(new OllamaClient(ollama2));
     const processor2 = new OllamaProcessor(new OllamaClient(ollama1));
     const task: Task<GenerateRequest, GenerateResponse> = {
         method: Method.Generate,
@@ -34,8 +33,10 @@ import { sanitize } from "../../tts.ts";
     const model = "llama3.2";
     const chunks = processor1.generate(task, model);
 
-    chunks.pipe(stringify(), sanitize(processor2)).subscribe((clean) => {
-        console.log(clean);
-    });
+    chunks.pipe(stringify(), sanitize(processor2), toEncodedWav()).subscribe(
+        (encodedWav) => {
+            console.log(`Encoded`);
+        },
+    );
     await lastValueFrom(chunks);
 })();
