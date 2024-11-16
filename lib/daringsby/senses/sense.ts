@@ -3,6 +3,7 @@ import { logger } from "../../../logger.ts";
 import { stringify, wholeResponse } from "../chunking.ts";
 import { Processor } from "../processors.ts";
 import { GenerateTask, Method } from "../tasks.ts";
+import { ModelCharacteristic } from "../providers/Balancer.ts";
 
 export interface Stamped<T> {
     at: Date;
@@ -34,6 +35,9 @@ export function integrate(
 
                 const task: GenerateTask = {
                     method: Method.Generate,
+                    requiredCharacteristics: new Set([
+                        ModelCharacteristic.HighQuality,
+                    ]),
                     input: {
                         prompt:
                             `You are a part of an AI system. You are speaking on behalf of the overall system in the present tense and first person, as if you were not an LLM but the whole system. You're pretty smart and can make good inferences about the real world. These are the sensations and thoughts that you have felt over the past moment. These sensations are of the real world. You are in the real world via your senses. Please integrate them into a coherent narrative. Use the present tense and the first person where appropriate. Do not embellish. Use only the information from the description. Do not repeat the prompt. Tell the truth as a reflection of the real world as reflected in the data below. Pay close attention to the timestamps:\n${description}`,
@@ -50,7 +54,8 @@ export function integrate(
                     wholeResponse(),
                     map((response) => ({
                         at: new Date(
-                            sensations[sensations.length - 1].at.getTime(),
+                            sensations[sensations.length - 1]?.at.getTime() ??
+                                Date.now(),
                         ),
                         content: response,
                     } as Stamped<string>)),

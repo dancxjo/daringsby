@@ -11,6 +11,7 @@ import type {
     GenerateRequest,
     GenerateResponse,
 } from "npm:ollama";
+import { ModelCharacteristic } from "./providers/Balancer.ts";
 
 export type {
     ChatRequest,
@@ -37,11 +38,15 @@ export enum Method {
     Embeddings = "embeddings",
 }
 
-export interface Task<I, O> {
+export interface Task<I = unknown, O = unknown> {
     method: Method;
     input: Partial<I>; // might be missing model field, for instance
     stream?: Observable<O>;
     abortController: AbortController;
+    requiredModel?: Set<string>; // any of these models will work
+    forbiddenModels?: Set<string>;
+    requiredCharacteristics?: Set<ModelCharacteristic>; // All of these characteristics are required
+    forbiddenCharacteristics?: Set<ModelCharacteristic>; // No model with any of these can be used
 }
 
 export type GenerateTask = Task<GenerateRequest, GenerateResponse>;

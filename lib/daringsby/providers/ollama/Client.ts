@@ -22,7 +22,18 @@ function isAsyncIterable<T>(
 }
 
 export class OllamaClient {
-    constructor(private ollama: Ollama) {}
+    private models = new Subject<string[]>();
+    constructor(readonly name: string, private ollama: Ollama) {}
+
+    get models$(): Observable<string[]> {
+        this.ollama.list().then((response) => {
+            this.models.next(response.models.map((model) => model.name));
+            this.models.complete();
+        }).catch((error) => {
+            this.models.error(error);
+        });
+        return this.models.asObservable();
+    }
 
     private handleStream<T, U>(
         promise: Promise<PossiblyAbortable>,

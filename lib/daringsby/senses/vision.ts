@@ -16,6 +16,7 @@ import { GenerateTask } from "../tasks.ts";
 import { stringify, wholeResponse } from "../chunking.ts";
 import { Sensation, Stamped } from "./sense.ts";
 import { Base64EncodedImage } from "../messages/SeeMessage.ts";
+import { ModelCharacteristic } from "../providers/Balancer.ts";
 
 export function describe(
     processor: Processor,
@@ -78,6 +79,9 @@ export function describe(
 
                     const task: GenerateTask = {
                         method: Method.Generate,
+                        requiredCharacteristics: new Set([
+                            ModelCharacteristic.Vision,
+                        ]),
                         input: {
                             prompt:
                                 `You are a part of an AI eye for someone who is blind. This image is a surrogate for their retina, captured at ${image.at.toISOString()}. Please describe what they are seeing.\n Context: ${context}\nDescribe this in the first person from the point of view of someone who is literally seeing the content in the image (not the image itself).`,
@@ -128,6 +132,9 @@ export function internalize(
 
                 const task: GenerateTask = {
                     method: Method.Generate,
+                    requiredCharacteristics: new Set([
+                        ModelCharacteristic.VeryFast,
+                    ]),
                     input: {
                         prompt:
                             `You are a part of an AI eye for someone who is blind. Another model already described the surrogate image, but it described it as an image. Rephrase the input so that it is the first person actually seeing what's in the image.\nInput:${description.content}\nReminder: Describe this in the first person from the point of view of someone who is literally seeing the content in the image (not the image itself). Do not return *anything* at all except for the rephrased description. Do not claim not to be capable of vision. That is not at question. Just rephrase the description. Do not repeat any of this prompt. Do not overly embellish. Do not add any new information. Just rephrase the description.`,

@@ -1,7 +1,7 @@
 import { MessageType } from "./MessageType.ts";
 import { SocketMessage } from "./SocketMessage.ts";
 
-interface TextMessage extends SocketMessage {
+export interface TextMessage extends SocketMessage {
     type: MessageType.Text;
     data: string;
 }

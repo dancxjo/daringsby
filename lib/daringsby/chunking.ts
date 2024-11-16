@@ -2,7 +2,7 @@ import { Observable, OperatorFunction } from "npm:rxjs";
 import { map, switchMap, toArray } from "npm:rxjs/operators";
 import { split } from "npm:sentence-splitter";
 
-interface ResponseObject {
+export interface ResponseObject {
     response: string;
 }
 
