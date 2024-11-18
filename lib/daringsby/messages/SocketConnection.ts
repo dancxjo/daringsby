@@ -60,13 +60,17 @@ export class SocketConnection {
         logger.error("WebSocket error", error);
     }
 
+    readonly closings: ((event: CloseEvent) => void)[] = [];
+
     protected handleClose(event: CloseEvent) {
+        this.closings.forEach((closing) => closing(event));
         this.connectionStatusSubject.next("Disconnected");
+        logger.debug("WebSocket connection closed");
         logger.warn("WebSocket connection closed", event);
     }
 
     protected handleIncomingMessage(event: MessageEvent) {
-        logger.debug("WebSocket message received");
+        // logger.debug("WebSocket message received");
         try {
             const message = JSON.parse(event.data);
             if (!isValidSocketMessage(message)) {

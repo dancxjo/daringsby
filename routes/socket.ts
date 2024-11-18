@@ -1,91 +1,21 @@
 import { Handlers } from "$fresh/server.ts";
-import { Message, Ollama } from "npm:ollama";
-import { isValidEchoMessage } from "../lib/daringsby/messages/EchoMessage.ts";
+import { Message } from "npm:ollama";
 import { isValidGeolocateMessage } from "../lib/daringsby/messages/GeolocateMessage.ts";
-import { isValidMienMessage } from "../lib/daringsby/messages/MienMessage.ts";
-import {
-    isValidSeeMessage,
-    stamp,
-} from "../lib/daringsby/messages/SeeMessage.ts";
 import { SocketConnection } from "../lib/daringsby/messages/SocketConnection.ts";
 import {
     isValidTextMessage,
     TextMessage,
 } from "../lib/daringsby/messages/TextMessage.ts";
-import { isValidThoughtMessage } from "../lib/daringsby/messages/ThoughtMessage.ts";
-import { OllamaClient } from "../lib/daringsby/providers/ollama/Client.ts";
-import { OllamaProcessor } from "../lib/daringsby/providers/ollama/Processor.ts";
-import { describe, internalize } from "../lib/daringsby/senses/vision.ts";
+import {
+    EchoMessage,
+    isValidEchoMessage,
+} from "../lib/daringsby/messages/EchoMessage.ts";
 import { logger } from "../logger.ts";
-import {
-    BehaviorSubject,
-    from,
-    map,
-    merge,
-    mergeMap,
-    Observable,
-    OperatorFunction,
-    Subject,
-    Subscription,
-    switchMap,
-    takeUntil,
-    tap,
-    toArray,
-    windowTime,
-} from "npm:rxjs";
-import {
-    integrate,
-    Sensation,
-    Stamped,
-} from "../lib/daringsby/senses/sense.ts";
-import { MessageType } from "../lib/daringsby/messages/MessageType.ts";
-import {
-    Balancer,
-    ModelCharacteristic,
-} from "../lib/daringsby/providers/Balancer.ts";
-import { ChatTask, Method } from "../lib/daringsby/tasks.ts";
-import {
-    stringify,
-    toSentences,
-    wholeResponse,
-} from "../lib/daringsby/chunking.ts";
-import { Processor } from "../lib/daringsby/processors.ts";
-import { chitChat } from "../lib/daringsby/chat.ts";
-import { speak } from "../lib/daringsby/audio_processing.ts";
+import { BehaviorSubject, map, Observable, Subscription, tap } from "npm:rxjs";
+import { Heart, Session } from "../lib/daringsby/newts.ts";
 
-interface Session {
-    connection: SocketConnection;
-    conversation: BehaviorSubject<Message[]>;
-    subscriptions: Subscription[];
-}
-
-const sessions = new Map<WebSocket, Session>();
-const mainProcessor = new OllamaProcessor(
-    new OllamaClient(
-        "main",
-        new Ollama({
-            host: Deno.env.get("OLLAMA_URL") || "http://localhost:11434",
-        }),
-    ),
-);
-
-const backupProcessor = new OllamaProcessor(
-    new OllamaClient(
-        "backup",
-        new Ollama({
-            host: Deno.env.get("OLLAMA2_URL") || "http://localhost:11434",
-        }),
-    ),
-);
-
-const localProcessor = new OllamaProcessor(
-    new OllamaClient(
-        "local",
-        new Ollama(),
-    ),
-);
-
-const balancer = new Balancer([mainProcessor, backupProcessor, localProcessor]);
+const heart = new Heart();
+const sessions = heart.sessions;
 
 export const handler: Handlers = {
     GET(req, _ctx) {
@@ -105,10 +35,11 @@ export const handler: Handlers = {
             return response;
         }
 
+        // Manage sessions
         if (!sessions.has(socket)) {
             logger.debug("Creating new SocketToClient for WebSocket");
             const connection = new SocketConnection(socket);
-            const session = {
+            const session: Session = {
                 connection,
                 conversation: new BehaviorSubject<Message[]>([]),
                 subscriptions: [],
@@ -122,170 +53,112 @@ export const handler: Handlers = {
             logger.error("Failed to find a session for the WebSocket");
             return response;
         }
-        const { connection, conversation } = session;
 
-        // Senses
-        const geolocation$ = connection.incoming(isValidGeolocateMessage).pipe(
-            map((message) => {
-                logger.debug({ message }, "Received geolocation");
-                return {
-                    at: new Date(message.at ?? new Date()),
-                    content:
-                        `I am at ${message.data.latitude}, ${message.data.longitude}`,
-                };
-            }),
-        );
-
-        const incomingTextMessages$: Observable<TextMessage> = connection
-            .incoming(
-                isValidTextMessage,
-            );
-
-        const incomingText$ = incomingTextMessages$.pipe(
-            map((message) => ({
-                content: `I hear my interlocutor say: ${message.data}`,
-                at: new Date(message.at ?? new Date()),
-            } as Sensation)),
-            tap((message) => {
-                logger.debug({ message }, "Received text");
-            }),
-        );
-
-        connection.incoming(isValidMienMessage).pipe(map((message) => {
-            logger.debug({ message }, "Received mien");
-        }));
-
-        connection.incoming(isValidThoughtMessage).pipe(map((message) => {
-            logger.debug({ message }, "Received thought");
-        }));
-
-        const context$ = new BehaviorSubject(
-            "You are an artificial consciousness named Pete Daringsby.",
-        );
-
-        const vision$ = connection.incoming(isValidSeeMessage).pipe(
-            map(stamp),
-            describe(balancer, context$),
-            internalize(balancer),
-        );
-
-        const heartbeat$ = new Subject<Sensation>();
-
-        setInterval(() => {
-            heartbeat$.next({
-                content: "I feel my heart beat",
-                at: new Date(),
-            });
-        }, Math.random() * 1000);
-        const newSensation$ = new Subject<Sensation>();
-        const sensations$ = merge(
-            heartbeat$,
-            vision$,
-            incomingText$,
-            geolocation$,
-            newSensation$,
-        );
-
-        const instants$ = sensations$.pipe(
-            windowTime(15000),
-            mergeMap((window$) =>
-                window$.pipe(
-                    toArray(),
-                    tap((sensations) => {
-                        logger.debug(
-                            `Received ${sensations.length} sensations`,
-                        );
-                    }),
-                )
-            ),
-            integrate(backupProcessor),
-        );
-
-        const moments$ = instants$.pipe(
-            windowTime(60000),
-            mergeMap((window$) =>
-                window$.pipe(
-                    toArray(),
-                    tap((instants) => {
-                        logger.debug(
-                            `Received ${instants.length} instants`,
-                        );
-                    }),
-                )
-            ),
-            integrate(localProcessor),
-        );
-
-        const frames$ = moments$.pipe(
-            windowTime(300000),
-            mergeMap((window$) =>
-                window$.pipe(
-                    toArray(),
-                    tap((moments) => {
-                        logger.debug(
-                            `Received ${moments.length} moments`,
-                        );
-                    }),
-                )
-            ),
-            integrate(localProcessor),
-        );
-
-        merge(instants$, moments$, frames$).subscribe((moment) => {
-            logger.debug({ moment }, "Latest moment");
-            connection.send({
-                type: MessageType.Think,
-                data: moment.content,
-            });
+        handleGeolocation(session);
+        handleHearingVoices(session);
+        handleEchoMessages(session);
+        heart.consult().subscribe((sensations) => {
+            logger.info({ sensations }, "Consulted heart");
         });
-
-        // Conversation
-        const allTheThingsISaid = connection.incoming(isValidEchoMessage)
-            .subscribe(
-                (echoMessage) => {
-                    logger.debug({ echoMessage }, "Received echo");
-                    const messages: Message[] = [...conversation.value, {
-                        role: "assistant",
-                        content: echoMessage.data,
-                    }];
-                    conversation.next(messages);
-                },
-            );
-        session.subscriptions.push(allTheThingsISaid);
-
-        session.subscriptions.push(
-            incomingTextMessages$.subscribe((message) => {
-                conversation.next([...conversation.value, {
-                    role: "user",
-                    content: message.data,
-                }]);
-            }),
-        );
-
-        const everythingIPlanToSay = conversation.pipe(
-            chitChat(balancer, context$),
-        );
-
-        session.subscriptions.push(
-            everythingIPlanToSay.subscribe(async (intentionToSay) => {
-                logger.debug({ intentionToSay }, "Intention to say");
-                newSensation$.next({
-                    at: new Date(),
-                    content:
-                        `I'm starting to say this: ${intentionToSay.content}`,
-                });
-                const wav = await speak(intentionToSay.content);
-                connection.send({
-                    type: MessageType.Say,
-                    data: { words: intentionToSay.content, wav },
-                });
-            }),
-        );
-
-        // TODO: Clean up subscriptions
 
         logger.debug("Successfully upgraded to WebSocket");
 
         return response;
     },
 };
+
+function handleGeolocation(
+    session: Session,
+) {
+    const geolocation$ = session.connection.incoming(isValidGeolocateMessage)
+        .pipe(
+            map((message) => {
+                logger.debug({ message }, "Received geolocation");
+                return {
+                    when: new Date(message.at ?? new Date()),
+                    content: {
+                        explanation:
+                            `I am at ${message.data.latitude}, ${message.data.longitude}`,
+                        content: message.data,
+                    },
+                };
+            }),
+        );
+    session.subscriptions.push(geolocation$.subscribe((sensation) => {
+        // Send to the quick of the heart
+        heart.quick.next({
+            when: sensation.when,
+            content: {
+                explanation: sensation.content.explanation,
+                content: JSON.stringify(sensation.content.content),
+            },
+        });
+        logger.info({ sensation }, "Processed geolocation sensation");
+    }));
+}
+
+function handleHearingVoices(
+    session: Session,
+) {
+    const incomingTextMessages$: Observable<TextMessage> = session.connection
+        .incoming(
+            isValidTextMessage,
+        );
+
+    const incomingText$ = incomingTextMessages$.pipe(
+        map((message) => ({
+            when: new Date(message.at ?? new Date()),
+            content: {
+                explanation: `I hear my interlocutor say: ${message.data}`,
+                content: message.data,
+            },
+        })),
+        tap((sensation) => {
+            logger.debug({ sensation }, "Received text sensation");
+        }),
+    );
+
+    session.subscriptions.push(incomingText$.subscribe((sensation) => {
+        // Add to conversation
+        session.conversation.next([...session.conversation.value, {
+            role: "interlocutor",
+            content: sensation.content.content,
+        }]);
+        // Send to the quick of the heart
+        heart.quick.next(sensation);
+        logger.info({ sensation }, "Processed hearing sensation");
+    }));
+}
+
+function handleEchoMessages(
+    session: Session,
+) {
+    const incomingEchoMessages$: Observable<EchoMessage> = session.connection
+        .incoming(
+            isValidEchoMessage,
+        );
+
+    const incomingEcho$ = incomingEchoMessages$.pipe(
+        map((message) => ({
+            when: new Date(message.at ?? new Date()),
+            content: {
+                explanation: `I just heard myself say: ${message.data}`,
+                content: message.data,
+            },
+        })),
+        tap((sensation) => {
+            logger.debug({ sensation }, "Received echo sensation");
+        }),
+    );
+
+    session.subscriptions.push(incomingEcho$.subscribe((sensation) => {
+        // Add to conversation
+        session.conversation.next([...session.conversation.value, {
+            role: "self",
+            content: sensation.content.content,
+        }]);
+        // Send to the quick of the heart
+        heart.quick.next(sensation);
+        logger.info({ sensation }, "Processed echo sensation");
+    }));
+}

@@ -7,7 +7,7 @@ import {
     OperatorFunction,
 } from "npm:rxjs";
 import { GenerateTask, Method } from "./tasks.ts";
-import { stringify, toSentences } from "./chunking.ts";
+import { sentenceBySentence, stringify } from "./chunking.ts";
 import { Processor } from "./processors.ts";
 import { logger } from "../../logger.ts";
 import { speak } from "./audio_processing.ts";
@@ -18,7 +18,7 @@ export function sanitize(
 ): OperatorFunction<string, string> {
     return (source: Observable<string>) => {
         return source.pipe(
-            toSentences(),
+            sentenceBySentence(),
             mergeMap((sentence: string) => {
                 const task: GenerateTask = {
                     method: Method.Generate,
@@ -36,7 +36,7 @@ export function sanitize(
                 const execution = processor.execute(task, SANITIZER_MODEL);
                 return execution.pipe(
                     stringify(),
-                    toSentences(),
+                    sentenceBySentence(),
                     catchError((error) => {
                         logger.error("Error in execution:", error);
                         return of("");

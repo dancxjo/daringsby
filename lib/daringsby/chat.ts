@@ -1,7 +1,7 @@
 import { Message } from "npm:ollama";
 import { map, Observable, OperatorFunction, switchMap } from "npm:rxjs";
 import { logger } from "../../logger.ts";
-import { stringify, toSentences } from "./chunking.ts";
+import { sentenceBySentence, stringify } from "./chunking.ts";
 import { Processor } from "./processors.ts";
 import { ModelCharacteristic } from "./providers/Balancer.ts";
 import { Stamped } from "./senses/sense.ts";
@@ -46,7 +46,7 @@ export function chitChat(
                                 return { response: response.message.content };
                             }),
                             stringify(),
-                            toSentences(),
+                            sentenceBySentence(),
                             map((sentence) => ({
                                 at: new Date(),
                                 content: sentence,

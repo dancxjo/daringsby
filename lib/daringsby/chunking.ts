@@ -24,7 +24,7 @@ export function wholeResponse(): OperatorFunction<string, string> {
         );
 }
 
-export function toWords(): OperatorFunction<string, string> {
+export function verbatim(): OperatorFunction<string, string> {
     return (source: Observable<string>) => {
         let buffer = "";
         return source.pipe(
@@ -63,7 +63,7 @@ export function toWords(): OperatorFunction<string, string> {
     };
 }
 
-export function toSentences(): OperatorFunction<string, string> {
+export function sentenceBySentence(): OperatorFunction<string, string> {
     return (source: Observable<string>) => {
         let buffer = "";
         return new Observable<string>((observer) => {
