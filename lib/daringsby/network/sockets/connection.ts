@@ -1,9 +1,12 @@
 import { BehaviorSubject, Observable, Subject } from "npm:rxjs";
 import { filter } from "npm:rxjs/operators";
-import { isValidSocketMessage, SocketMessage } from "./SocketMessage.ts";
-import { MessageHandler } from "./MessageHandler.ts";
-import { MessageType } from "./MessageType.ts";
-import { logger } from "../../../logger.ts";
+import logger from "../../core/logger.ts";
+import { MessageHandler } from "../messages/MessageHandler.ts";
+import { MessageType } from "../messages/MessageType.ts";
+import {
+    isValidSocketMessage,
+    SocketMessage,
+} from "../messages/SocketMessage.ts";
 
 export class SocketConnection {
     protected messageHandlers = new Map<

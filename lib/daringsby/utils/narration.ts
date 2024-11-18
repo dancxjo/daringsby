@@ -1,7 +1,7 @@
 import { Observable, of } from "npm:rxjs";
 import { llamify } from "./llamification.ts";
 import { pino } from "npm:pino";
-import { sentenceBySentence } from "./chunking.ts";
+import { sentenceBySentence } from "../chunking.ts";
 
 const logger = pino({ level: "debug" });
 

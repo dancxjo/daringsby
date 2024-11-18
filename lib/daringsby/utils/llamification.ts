@@ -1,16 +1,5 @@
 import { Config, Ollama } from "npm:ollama";
-import {
-    concatMap,
-    mergeMap,
-    Observable,
-    OperatorFunction,
-    Subject,
-} from "npm:rxjs";
-import { logger } from "../../logger.ts";
-import {
-    sentenceBySentence as sentenceBySentence,
-    wholeResponse,
-} from "./chunking.ts";
+import { mergeMap, Observable, OperatorFunction } from "npm:rxjs";
 
 export function llamify(
     model: string = "llama3.2",

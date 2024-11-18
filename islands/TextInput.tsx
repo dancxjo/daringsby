@@ -18,7 +18,8 @@ export default function TextInput(props: TextInputProps) {
         }
     }, [actual.value]);
 
-    const handleSubmit = () => {
+    const handleSubmit = (e: Event) => {
+        e.preventDefault();
         logger.debug("TextInput handleSubmit");
         actual.value = input.value;
         input.value = "";
@@ -26,11 +27,11 @@ export default function TextInput(props: TextInputProps) {
 
     return (
         <form
-            onSubmit={(e) => e.preventDefault()}
-            class="flex items-center space-x-4"
+            onSubmit={handleSubmit}
+            class="input-group mb-3"
         >
             <input
-                class="flex-1 border border-gray-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="form-control"
                 type="text"
                 value={input.value}
                 onInput={(e) => {
@@ -39,9 +40,8 @@ export default function TextInput(props: TextInputProps) {
                 autoFocus
             />
             <button
-                class="bg-blue-500 text-white rounded-lg px-4 py-2 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                type="default"
-                onClick={handleSubmit}
+                class="btn btn-primary"
+                type="submit"
             >
                 Send
             </button>

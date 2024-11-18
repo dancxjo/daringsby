@@ -1,4 +1,3 @@
-import { initializeWebSocket, ws } from "../lib/daringsby/signals/ws.ts";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { IS_BROWSER } from "$fresh/runtime.ts";
@@ -8,12 +7,16 @@ import Mien from "./Mien.tsx";
 import ThoughtBubble from "./ThoughtBubble.tsx";
 import AudioQueue from "./AudioQueue.tsx";
 import TextInput from "./TextInput.tsx";
-import { MessageType } from "../lib/daringsby/messages/MessageType.ts";
-import { isValidMienMessage } from "../lib/daringsby/messages/MienMessage.ts";
-import { isValidSayMessage } from "../lib/daringsby/messages/SayMessage.ts";
-import { SocketConnection } from "../lib/daringsby/messages/SocketConnection.ts";
-import { isValidThoughtMessage } from "../lib/daringsby/messages/ThoughtMessage.ts";
 import { logger } from "../logger.ts";
+import { SocketConnection } from "../lib/daringsby/network/sockets/connection.ts";
+import {
+    initializeWebSocket,
+    ws,
+} from "../lib/daringsby/network/sockets/initializer.ts";
+import { MessageType } from "../lib/daringsby/network/messages/MessageType.ts";
+import { isValidMienMessage } from "../lib/daringsby/network/messages/MienMessage.ts";
+import { isValidSayMessage } from "../lib/daringsby/network/messages/SayMessage.ts";
+import { isValidThoughtMessage } from "../lib/daringsby/network/messages/ThoughtMessage.ts";
 
 export default function LiveConnection() {
     if (IS_BROWSER) {
@@ -115,17 +118,19 @@ export default function LiveConnection() {
     const words = useSignal("");
 
     return (
-        <div class="flex flex-col md:flex-row gap-4 p-4">
-            <div class="flex-1 bg-white shadow-md rounded-lg p-6">
-                <Webcam onSnap={sendSnapshot} interval={5000} />
-                <TextInput onChange={sendText} />
-                <Geolocator onChange={reportLocation} />
-            </div>
-            <div class="flex-1 bg-white shadow-md rounded-lg p-6">
-                <Mien mien={mien} />
-                <p class="spoken-words mt-4 text-gray-700">{words.value}</p>
-                <ThoughtBubble thought={thought} />
-                <AudioQueue serverRef={serverRef} />
+        <div class="container live-connection">
+            <div class="row">
+                <div class="col-12 col-md-6 mb-4 live-connection-inputs">
+                    <Webcam onSnap={sendSnapshot} interval={5000} />
+                    <TextInput onChange={sendText} />
+                    <Geolocator onChange={reportLocation} />
+                </div>
+                <div class="col-12 col-md-6 mb-4 live-connection-output">
+                    <Mien mien={mien} />
+                    <p class="spoken-words">{words.value}</p>
+                    <ThoughtBubble thought={thought} />
+                    <AudioQueue serverRef={serverRef} />
+                </div>
             </div>
         </div>
     );

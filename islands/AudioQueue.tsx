@@ -1,11 +1,11 @@
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { MessageType } from "../lib/daringsby/messages/MessageType.ts";
+import { MessageType } from "../lib/daringsby/network/messages/MessageType.ts";
 import {
     isValidSayMessage,
     SayMessage,
-} from "../lib/daringsby/messages/SayMessage.ts";
-import { SocketConnection } from "../lib/daringsby/messages/SocketConnection.ts";
+} from "../lib/daringsby/network/messages/SayMessage.ts";
+import { SocketConnection } from "../lib/daringsby/network/sockets/connection.ts";
 import { logger } from "../logger.ts";
 
 export default function AudioQueue(
