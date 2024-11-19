@@ -3,17 +3,6 @@ import { speak } from "../utils/audio_processing.ts";
 import { MessageType } from "../network/messages/MessageType.ts";
 import { SayMessage } from "../network/messages/SayMessage.ts";
 
-export function toEncodedWav(): OperatorFunction<string, string> {
-    return (source: Observable<string>) => {
-        return source.pipe(
-            mergeMap(async (sentence: string) => {
-                const spoken = await speak(sentence);
-                return spoken;
-            }),
-        );
-    };
-}
-
 export function toSayMessage(): OperatorFunction<string, SayMessage> {
     return (source: Observable<string>) => {
         return source.pipe(

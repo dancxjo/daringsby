@@ -11,87 +11,93 @@ import { logger } from "../logger.ts";
 export default function AudioQueue(
     { serverRef }: { serverRef: { current: SocketConnection | null } },
 ) {
-    const isPlaying = useSignal(false);
-    const isProcessingQueue = useSignal(false);
     const playqueue = useSignal<SayMessage[]>([]);
+    let isProcessingQueue = false; // Using a simple boolean to ensure synchronous behavior
 
     const processQueue = async () => {
-        if (isProcessingQueue.value) {
+        if (isProcessingQueue) {
             return; // Prevent multiple overlapping calls
         }
 
-        isProcessingQueue.value = true;
+        isProcessingQueue = true;
 
         while (playqueue.value.length > 0) {
-            logger.debug("Processing queue");
-            const message = playqueue.value[0];
+            const message = playqueue.value.shift(); // Remove the first item from the queue
             if (!message) {
                 break;
             }
 
-            logger.debug("Playing message");
-            await playSound(message.data.wav);
-            logger.debug("Removing message from queue");
-            playqueue.value = playqueue.value.slice(1);
+            logger.debug("Playing message:", message.at);
+            try {
+                await playSound(message.data.wav);
+                logger.debug("Finished playing message:", message.at);
+            } catch (error) {
+                logger.error({ error }, "Error playing sound");
+            }
         }
 
-        isProcessingQueue.value = false;
+        isProcessingQueue = false;
     };
 
     const queueToPlay = (message: SayMessage) => {
         logger.debug("Enqueuing message");
-        playSound(message.data.wav).then(() => {
-            serverRef.current?.send({
-                type: MessageType.Echo,
-                data: message.data.words,
-            });
-        });
-
-        return;
         playqueue.value = [...playqueue.value, message];
-        if (!isProcessingQueue.value) {
-            processQueue(); // Trigger the queue processing if not already processing
+
+        // Only start processing if not already processing
+        if (!isProcessingQueue) {
+            processQueue();
         }
     };
 
-    const playSound = async (wav: string) => {
-        logger.debug("Playing sound");
-        if (isPlaying.value) {
-            return false;
-        }
-        isPlaying.value = true;
+    const playSound = (wav: string) => {
+        return new Promise<void>((resolve, reject) => {
+            try {
+                const audioBlob = new Blob([
+                    new Uint8Array(
+                        atob(wav).split("").map((char) => char.charCodeAt(0)),
+                    ),
+                ], { type: "audio/wav" });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
 
-        try {
-            const audioBlob = new Blob([
-                new Uint8Array(
-                    atob(wav).split("").map((char) => char.charCodeAt(0)),
-                ),
-            ], { type: "audio/wav" });
-            const audio = new Audio(URL.createObjectURL(audioBlob));
-            await audio.play();
-            return true;
-        } catch (error) {
-            logger.error("Error playing sound", error);
-            return false;
-        } finally {
-            await new Promise((resolve) => setTimeout(resolve, 500)); // Ensure a slight delay before marking as not playing
-            isPlaying.value = false;
-        }
+                audio.onended = () => {
+                    logger.debug("Audio playback ended successfully");
+                    resolve();
+                };
 
-        return true;
+                audio.onerror = (e) => {
+                    logger.error({ e }, "Audio playback failed");
+                    reject(e);
+                };
+
+                // Start playback
+                audio.play().catch((e) => {
+                    logger.error({ e }, "Error attempting to play audio");
+                    reject(e);
+                });
+            } catch (error) {
+                logger.error({ error }, "Error preparing audio for playback");
+                reject(error);
+            }
+        });
     };
 
     useEffect(() => {
         const server = serverRef.current;
         if (server) {
-            server.onMessage(
-                isValidSayMessage,
-                MessageType.Say,
-                (message) => {
-                    logger.debug("Received say message");
-                    queueToPlay(message);
-                },
-            );
+            const handleMessage = (message: SayMessage) => {
+                logger.debug({
+                    message: message.at,
+                    data: message.data.words,
+                }, "Received say message");
+                queueToPlay(message);
+            };
+
+            server.onMessage(isValidSayMessage, MessageType.Say, handleMessage);
+
+            return () => {
+                server.offMessage(MessageType.Say, handleMessage);
+            };
         }
     }, [serverRef.current]);
 

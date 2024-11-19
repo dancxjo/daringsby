@@ -33,22 +33,12 @@ export class Session {
 
     constructor(
         readonly connection: SocketConnection,
-        readonly conversation: ReplaySubject<Message[]>,
         readonly subscriptions: Subscription[],
     ) {
         handleGeolocations(this);
         handleEchoes(this);
         handleIncomingTexts(this);
         setupHeartbeat(this);
-        conversation.subscribe((messages) => {
-            this.voice.feel({
-                when: new Date(),
-                content: {
-                    explanation: JSON.stringify(messages),
-                    content: "The conversation so far",
-                },
-            });
-        });
 
         setInterval(() => {
             this.tickWits();
@@ -103,7 +93,6 @@ export function addSession(
 ): Session {
     const session = new Session(
         connection,
-        new ReplaySubject<Message[]>(1),
         [],
     );
 

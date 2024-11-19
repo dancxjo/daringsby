@@ -113,6 +113,22 @@ export class SocketConnection {
         this.messageHandlers.set(type, handlers);
     }
 
+    offMessage<T extends SocketMessage>(
+        type: MessageType,
+        handler: MessageHandler<T>,
+    ) {
+        logger.debug(
+            `Removing handler for message type ${MessageType[type]}`,
+        );
+        const handlers = this.messageHandlers.get(type) || [];
+        // @ts-ignore: Today fix type specificity here
+        const index = handlers.indexOf(handler);
+        if (index !== -1) {
+            handlers.splice(index, 1);
+        }
+        this.messageHandlers.set(type, handlers);
+    }
+
     incoming<M extends SocketMessage>(
         validator: (msg: SocketMessage) => msg is M,
     ): Observable<M> {

@@ -121,7 +121,7 @@ export default function LiveConnection() {
         <div class="container live-connection">
             <div class="row">
                 <div class="col-12 col-md-6 mb-4 live-connection-inputs">
-                    <Webcam onSnap={sendSnapshot} interval={5000} />
+                    <Webcam onSnap={sendSnapshot} interval={120000} />
                     <TextInput onChange={sendText} />
                     <Geolocator onChange={reportLocation} />
                 </div>

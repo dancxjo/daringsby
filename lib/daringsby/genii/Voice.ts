@@ -1,8 +1,8 @@
-import { debounceTime, map, Observable, of, Subject, tap } from "npm:rxjs";
+import { map, Observable, of, Subject, tap } from "npm:rxjs";
 import logger from "../core/logger.ts";
 import { Genie } from "./Genie.ts";
 import { narrate } from "../utils/narration.ts";
-import { sentenceBySentence, wholeResponse } from "../utils/chunking.ts";
+import { wholeResponse } from "../utils/chunking.ts";
 import { chatify } from "../utils/llamification.ts";
 import { Session } from "../network/Sessions.ts";
 import * as cheerio from "npm:cheerio";
@@ -28,11 +28,16 @@ export class Voice extends Genie<string> {
             ).get();
 
         if (textToSpeak.length) {
+            logger.info({ textToSpeak }, "Voice: Text to speak");
             this.session.subscriptions.push(
                 of(textToSpeak.join("\n")).pipe(
                     // sentenceBySentence(),
                     toSayMessage(),
                 ).subscribe((message) => {
+                    logger.debug(
+                        { message: `${message.data.words}` },
+                        "Voice: Sending message",
+                    );
                     this.session.connection.send(message);
                 }),
             );
