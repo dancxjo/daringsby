@@ -1,32 +1,19 @@
+import { debounceTime, Observable, switchMap, toArray } from "npm:rxjs";
+import logger from "../core/logger.ts";
+import { Genie } from "./Genie.ts";
+import { narrate } from "../utils/narration.ts";
+
 export class Wit extends Genie<string> {
     constructor(
         name: string,
         description: string,
-        protected fondDuCoeur: FondDuCoeur,
     ) {
         super(
             name,
-            `${description}: Integrates input from Fond du Coeur and provides a refined perspective on Pete's experiences.`,
-            `Narrate the sensory data and refine its meaning in the context of ${name}.
-{{#sensations}}At {{when}}, {{explanation}}.
-{{/sensations}}
-`,
-            defaultNarration,
+            description,
+            `These are the most recent experiences Pete has had. Narrate them in the first person. Do not embellish or invent new details; just go by the details here. If there are no sensations, simply say you feel nothing. Sensations: {{#sensations}}\nAt {{when}}, {{content.explanation}}\n{{/sensations}}`,
+            narrate,
         );
         logger.info(`Wit: ${name} initialized`);
-        this.initializeQuickSubscription();
-    }
-
-    override consult(): Observable<string> {
-        logger.info(`Wit: ${this.name} consulting`);
-        return this.quick.pipe(
-            toArray(),
-            debounceTime(100),
-            switchMap((sensations) => {
-                logger.info(`Wit: ${this.name} received sensations`);
-                this.sensations = sensations;
-                return super.consult();
-            }),
-        );
     }
 }

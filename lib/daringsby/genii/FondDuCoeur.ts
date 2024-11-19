@@ -24,24 +24,6 @@ export class FondDuCoeur extends Genie<string> {
         ];
     }
 
-    override consult(): Observable<string> {
-        logger.info("Fond du Coeur: Consulting");
-        return combineLatest(this.wits.map((wit) => wit.consult())).pipe(
-            map((narrations) => narrations.join("\n")),
-            tap((combinedNarration) => {
-                logger.info("Fond du Coeur: Combined narration received");
-                this.quick.next({
-                    when: new Date(),
-                    content: {
-                        explanation: combinedNarration,
-                        content: combinedNarration,
-                    },
-                });
-            }),
-            switchMap(() => super.consult()),
-        );
-    }
-
     unshift(intervalMs: number): void {
         logger.info(`Fond du Coeur: Unshifting with interval ${intervalMs}ms`);
         this.subscriptionStack.push(

@@ -1,7 +1,7 @@
 import { Observable, of } from "npm:rxjs";
 import { llamify } from "./llamification.ts";
 import { pino } from "npm:pino";
-import { sentenceBySentence } from "../chunking.ts";
+import { sentenceBySentence, wholeResponse } from "./chunking.ts";
 
 const logger = pino({ level: "debug" });
 
@@ -15,6 +15,6 @@ export function narrate(circumstances: string): Observable<string> {
         llamify(Deno.env.get("OLLAMA_MODEL") || "gemma2:27b", {
             host: Deno.env.get("OLLAMA_URL") || "http://localhost:11434",
         }),
-        sentenceBySentence(),
+        wholeResponse(),
     );
 }
