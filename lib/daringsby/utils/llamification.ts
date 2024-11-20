@@ -15,6 +15,9 @@ export function llamify(
                         prompt,
                         model,
                         stream: true,
+                        options: {
+                            num_ctx: 2048,
+                        },
                     }).then((stream) => {
                         (async () => {
                             try {

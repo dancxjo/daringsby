@@ -21,6 +21,8 @@ import {
 } from "./sockets/handlers.ts";
 import { Voice } from "../genii/Voice.ts";
 import { MessageType } from "./messages/MessageType.ts";
+import * as yaml from "npm:yaml";
+
 import {
     establishMemory,
     memorize,
@@ -60,15 +62,14 @@ export class Session {
 
         this.tickWits();
         this.tock();
-        setInterval(() => this.tock(), 5000);
+        setInterval(() => this.tock(), 15000);
         this.latestInstants$.pipe(
-            // bufferTime(2000, 1000),
-
+            bufferTime(10000, 5000),
             tap((latest) => {
-                // latest.forEach((latest) => {
-                this.instants.push(latest);
-                this.combobulation.feel(latest);
-                // });
+                latest.forEach((latest) => {
+                    this.instants.push(latest);
+                    this.combobulation.feel(latest);
+                });
                 this.tickWits();
             }),
             bufferTime(60000, 30000),
@@ -76,16 +77,19 @@ export class Session {
             latest.forEach((latest) => {
                 subscriptions.push(
                     this.combobulation.consult().subscribe((narration) => {
+                        if (!narration) {
+                            return;
+                        }
                         this.tickWits();
-                        // latest.sort((a, b) =>
-                        //     b.when.getTime() - a.when.getTime()
-                        // );
-                        // const asOf = new Date(latest[latest.length - 1]?.when);
+                        latest.sort((a, b) =>
+                            b.when.getTime() - a.when.getTime()
+                        );
+                        const asOf = new Date(latest[latest.length - 1]?.when);
                         const newSituation = {
-                            when: latest.when,
+                            when: asOf,
                             content: {
                                 explanation:
-                                    `The situation as of ${latest.when.toLocaleString()} is as follows: ${narration}`,
+                                    `The situation as of ${asOf.toLocaleString()} is as follows: ${narration}`,
                                 content: JSON.stringify(narration),
                             },
                         };
@@ -96,10 +100,20 @@ export class Session {
                             type: MessageType.Think,
                             data: narration,
                         });
+                        let when = new Date().toISOString();
+                        try {
+                            when = new Date(newSituation.when).toISOString();
+                        } catch (error) {
+                            logger.error(
+                                { error },
+                                "Failed to memorize situation",
+                            );
+                        }
+
                         memorize({
                             metadata: {
                                 label: "Situation",
-                                when: newSituation.when.toISOString(),
+                                when,
                             },
                             data: {
                                 explanation: newSituation.content.explanation,
@@ -142,10 +156,13 @@ export class Session {
             const newSituation: Sensation<string> = {
                 when: new Date(),
                 content: {
-                    explanation: `From your memory: ` + JSON.stringify(context),
-                    content: JSON.stringify(context),
+                    explanation: `From your memory: \n` +
+                        yaml.stringify(context),
+                    content: yaml.stringify(context),
                 },
             };
+
+            logger.debug({ newSituation }, "New situation in YAML format");
             const glueSensation = { ...newSituation, embedding: undefined };
             logger.debug({ glueSensation }, "Gathered instant");
             this.integration.feel(glueSensation);
