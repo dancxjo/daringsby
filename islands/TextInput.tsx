@@ -1,6 +1,6 @@
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { logger } from "../logger.ts";
+import { logger } from "../lib/daringsby/core/logger.ts";
 
 interface TextInputProps {
     onChange?: (_newValue: string) => void;

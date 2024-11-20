@@ -1,9 +1,8 @@
 import { Observable, of } from "npm:rxjs";
 import { llamify } from "./llamification.ts";
-import { pino } from "npm:pino";
 import { sentenceBySentence, wholeResponse } from "./chunking.ts";
 
-import { logger } from "../../../logger.ts";
+import { logger } from "../core/logger.ts";
 
 // Phrase circumstances in the second person: You are ...
 export function narrate(circumstances: string): Observable<string> {

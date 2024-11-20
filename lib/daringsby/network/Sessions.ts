@@ -11,7 +11,7 @@ import {
 } from "npm:rxjs";
 import { Message } from "npm:ollama";
 import { Sensation } from "../core/interfaces.ts";
-import { logger } from "../../../logger.ts";
+import { logger } from "../core/logger.ts";
 import { Wits } from "../genii/Wit.ts";
 import {
     handleEchoes,
@@ -21,7 +21,12 @@ import {
 } from "./sockets/handlers.ts";
 import { Voice } from "../genii/Voice.ts";
 import { MessageType } from "./messages/MessageType.ts";
-import { establishMemory, queryMemory } from "../utils/memory.ts";
+import {
+    establishMemory,
+    memorize,
+    queryMemory,
+    recall,
+} from "../utils/memory.ts";
 
 export class Session {
     readonly integration = new Wits(
@@ -41,25 +46,29 @@ export class Session {
     protected instants: Sensation<string>[] = [];
     protected moments: Sensation<string>[] = [];
     protected context: string = `MERGE (n:Self) RETURN n`; // A Cypher query that represents the current situation
+    protected contextValue: string = ""; // The current situation as a string
 
     constructor(
         readonly connection: SocketConnection,
         readonly subscriptions: Subscription[],
     ) {
-        establishMemory();
+        // establishMemory();
         handleGeolocations(this);
         handleEchoes(this);
         handleIncomingTexts(this);
         setupHeartbeat(this);
 
         this.tickWits();
+        this.tock();
+        setInterval(() => this.tock(), 5000);
         this.latestInstants$.pipe(
-            bufferTime(2000, 1000),
+            // bufferTime(2000, 1000),
+
             tap((latest) => {
-                latest.forEach((latest) => {
-                    this.instants.push(latest);
-                    this.combobulation.feel(latest);
-                });
+                // latest.forEach((latest) => {
+                this.instants.push(latest);
+                this.combobulation.feel(latest);
+                // });
                 this.tickWits();
             }),
             bufferTime(60000, 30000),
@@ -67,15 +76,16 @@ export class Session {
             latest.forEach((latest) => {
                 subscriptions.push(
                     this.combobulation.consult().subscribe((narration) => {
-                        latest.sort((a, b) =>
-                            b.when.getTime() - a.when.getTime()
-                        );
-                        const asOf = new Date(latest[latest.length - 1]?.when);
+                        this.tickWits();
+                        // latest.sort((a, b) =>
+                        //     b.when.getTime() - a.when.getTime()
+                        // );
+                        // const asOf = new Date(latest[latest.length - 1]?.when);
                         const newSituation = {
-                            when: asOf,
+                            when: latest.when,
                             content: {
                                 explanation:
-                                    `The situation as of ${asOf.toLocaleString()} is as follows: ${narration}`,
+                                    `The situation as of ${latest.when.toLocaleString()} is as follows: ${narration}`,
                                 content: JSON.stringify(narration),
                             },
                         };
@@ -86,21 +96,49 @@ export class Session {
                             type: MessageType.Think,
                             data: narration,
                         });
+                        memorize({
+                            metadata: {
+                                label: "Situation",
+                                when: newSituation.when.toISOString(),
+                            },
+                            data: {
+                                explanation: newSituation.content.explanation,
+                                content: newSituation.content.content,
+                            },
+                        });
+                        recall(newSituation.content.explanation, 5)
+                            .then((memories) => {
+                                logger.debug({ memories }, "Recalled memories");
+                                this.feel({
+                                    when: new Date(),
+                                    content: {
+                                        explanation: `Recalled memories: ${
+                                            JSON.stringify(memories)
+                                        }`,
+                                        content: JSON.stringify(memories),
+                                    },
+                                });
+                            })
+                            .catch((error) => {
+                                logger.error(
+                                    { error },
+                                    "Failed to recall memories",
+                                );
+                            });
                     }),
                 );
             });
         });
     }
 
-    feel(sensation: Sensation<unknown>) {
-        logger.debug({ sensation }, "Feeling sensation");
-        this.integration.feel(sensation);
-    }
-
-    tickWits() {
-        logger.info({ context: this.context }, "Gathering instant");
+    tock() {
+        logger.debug({ context: this.context }, "Gathering instant");
         queryMemory(this.context).then((context) => {
-            logger.info({ context }, "Gathered instant");
+            logger.debug({ context }, "Gathered instant");
+            this.contextValue = JSON.stringify(context).replace(
+                /"embedding":\s*\[\.*](,|$|\n)/gm,
+                "",
+            );
             const newSituation: Sensation<string> = {
                 when: new Date(),
                 content: {
@@ -110,9 +148,16 @@ export class Session {
             };
             const glueSensation = { ...newSituation, embedding: undefined };
             logger.debug({ glueSensation }, "Gathered instant");
-            this.instants.push(glueSensation);
+            this.integration.feel(glueSensation);
         });
+    }
 
+    feel(sensation: Sensation<unknown>) {
+        logger.debug({ sensation }, "Feeling sensation");
+        this.integration.feel(sensation);
+    }
+
+    tickWits() {
         const startedAt = new Date();
         this.subscriptions.push(
             this.integration.consult().subscribe((instant) => {

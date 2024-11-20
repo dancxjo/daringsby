@@ -1,7 +1,7 @@
 import { Handlers } from "$fresh/server.ts";
 import { SocketConnection } from "../lib/daringsby/network/sockets/connection.ts";
 import { addSession, sessions } from "../lib/daringsby/network/Sessions.ts";
-import { logger } from "../logger.ts";
+import { logger } from "../lib/daringsby/core/logger.ts";
 
 export const handler: Handlers = {
     GET(req, _ctx) {

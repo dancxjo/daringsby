@@ -5,7 +5,7 @@ import {
     SayMessage,
 } from "../lib/daringsby/network/messages/SayMessage.ts";
 import { SocketConnection } from "../lib/daringsby/network/sockets/connection.ts";
-import { logger } from "../logger.ts";
+import { logger } from "../lib/daringsby/core/logger.ts";
 
 export default function AudioPlayer(
     { serverRef }: { serverRef: { current: SocketConnection | null } },

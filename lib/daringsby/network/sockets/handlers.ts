@@ -1,4 +1,4 @@
-import { logger } from "../../../../logger.ts";
+import { logger } from "../../core/logger.ts";
 import { Session } from "../Sessions.ts";
 import { isValidGeolocateMessage } from "../messages/GeolocateMessage.ts";
 import { map } from "npm:rxjs/operators";
@@ -16,7 +16,7 @@ export function setupHeartbeat(session: Session) {
                 content: now.toISOString(),
             },
         });
-    }, 10000);
+    }, 3000);
 }
 
 export function handleGeolocations(

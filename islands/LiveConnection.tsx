@@ -7,7 +7,7 @@ import Mien from "./Mien.tsx";
 import ThoughtBubble from "./ThoughtBubble.tsx";
 import AudioQueue from "./AudioQueue.tsx";
 import TextInput from "./TextInput.tsx";
-import { logger } from "../logger.ts";
+import { logger } from "../lib/daringsby/core/logger.ts";
 import { SocketConnection } from "../lib/daringsby/network/sockets/connection.ts";
 import {
     initializeWebSocket,
