@@ -1,3 +1,4 @@
+import { logger } from "../core/logger.ts";
 import neo4j from "npm:neo4j-driver";
 import { Config, EmbeddingsResponse, Ollama } from "npm:ollama";
 import { mergeMap, Observable, OperatorFunction } from "npm:rxjs";
@@ -10,6 +11,30 @@ function createSession() {
     return driver.session({ defaultAccessMode: neo4j.session.WRITE });
 }
 
+/**
+ * Reloads embeddings from the graph database.
+ */
+async function reloadEmbeddings(): Promise<void> {
+    const session = createSession();
+    try {
+        const result = await session.run(`
+            MATCH (doc)-[:HAS_EMBEDDING]->(embed:Embedding)
+            RETURN doc, embed.vector AS embedding
+        `);
+        const nodes = result.records.map((record) => ({
+            node: record.get("doc"),
+            embedding: record.get("embedding"),
+        }));
+        logger.info({ nodes }, "Reloaded nodes and embeddings");
+        // Index the loaded embeddings for nearest neighbor searches
+        indexEmbeddings(nodes);
+    } catch (error) {
+        console.error("Error reloading embeddings: ", error);
+    } finally {
+        await session.close();
+    }
+}
+
 interface Document<T = unknown> {
     metadata: {
         label: string;
@@ -19,6 +44,12 @@ interface Document<T = unknown> {
 }
 
 type Embedding = EmbeddingsResponse;
+
+let indexedEmbeddings: { node: any; embedding: number[] }[] = [];
+
+function indexEmbeddings(nodes: { node: any; embedding: number[] }[]): void {
+    indexedEmbeddings = nodes;
+}
 
 /**
  * Establishes the central node representing Pete Daringsby in the graph database.
@@ -90,6 +121,9 @@ export async function establishMemory(): Promise<void> {
         });
 
         await tx.commit();
+
+        // Reload embeddings
+        await reloadEmbeddings();
     } catch (error) {
         await tx.rollback();
         console.error("Error establishing memory: ", error);
@@ -118,15 +152,13 @@ export async function memorize<T = unknown>(
             model: "nomic-embed-text",
         });
 
-        // Create or merge the document node
-        const docQuery = `
-            MERGE (doc:${document.metadata.label} {
-                data: $dataString
-            })
-        `;
         const sessionInstance = createSession();
         const tx = sessionInstance.beginTransaction();
         try {
+            const docQuery = `
+                CREATE (doc:Document { data: $dataString })
+                RETURN doc
+            `;
             const docResult = await tx.run(docQuery, {
                 dataString: JSON.stringify(document.data),
             });
@@ -137,13 +169,13 @@ export async function memorize<T = unknown>(
             if (docNode) {
                 // Create the embedding node and link it to the document node
                 const embeddingQuery = `
-                    CREATE (embed:Embedding {
+                    MERGE (embed:Embedding {
                         vector: $embedding
                     })
                     WITH embed
                     MATCH (doc)
                     WHERE id(doc) = $docId
-                    CREATE (doc)-[:HAS_EMBEDDING]->(embed)
+                    MERGE (doc)-[:HAS_EMBEDDING]->(embed)
                 `;
                 await tx.run(embeddingQuery, {
                     embedding: embedding.embedding,
@@ -170,7 +202,13 @@ export async function queryMemory(context: string): Promise<any[]> {
     const session = createSession();
     try {
         const result = await session.run(context);
-        return result.records.map((record) => record.get("n"));
+        return result.records.map((record) => {
+            const node = record.toObject();
+            return {
+                labels: node.labels,
+                properties: node.properties,
+            };
+        });
     } finally {
         await session.close();
     }
@@ -183,6 +221,7 @@ export async function recall(prompt: string, k: number = 10): Promise<any[]> {
     if (!prompt) {
         return [];
     }
+    logger.info({ prompt }, "Recalling nodes");
     try {
         const ollama = new Ollama({
             host: Deno.env.get("OLLAMA_URL") || "http://localhost:11434",
@@ -191,24 +230,15 @@ export async function recall(prompt: string, k: number = 10): Promise<any[]> {
             prompt,
             model: "nomic-embed-text",
         });
-        const session = createSession();
-        const allEmbeddingsQuery = `
-            MATCH (doc)-[:HAS_EMBEDDING]->(embed:Embedding)
-            RETURN doc, embed.vector AS embedding
-        `;
-        const result = await session.run(allEmbeddingsQuery);
-        await session.close();
-
-        const nodes = result.records.map((record) => ({
-            node: record.get("doc"),
-            embedding: record.get("embedding"),
-        }));
+        logger.info("Got prompt embedding");
         const neighbors = findNearestNeighbors(
             promptEmbedding.embedding,
-            nodes.map((n) => n.embedding),
+            indexedEmbeddings.map((n) => n.embedding),
             k,
         );
-        return neighbors.map((neighbor) => nodes[neighbor.index].node);
+        return neighbors.map((neighbor) =>
+            indexedEmbeddings[neighbor.index].node
+        );
     } catch (error) {
         console.error("Error recalling nodes: ", error);
         return [];

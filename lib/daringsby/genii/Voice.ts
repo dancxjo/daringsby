@@ -76,7 +76,7 @@ export class Voice extends Genie<string> {
         super(
             name,
             `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. The voice has access to a running log of the conversation.`,
-            `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. Whatever the voice thinks is Pete's next thought. The voice can surround brief text with <function name='say'>...</function> to cause Pete to speak out loud. The voice can also change the currently displayed face of Pete by putting an emoji between <function name='emote'>...</function>. The voice has access to a running log of the conversation.\n\nCurrent context: {{context}}\n\nReminder: Keep up with the conversation. Don't speak too often or repeat yourself over and over. Pay attention to what you're in the process of saying. (You must use the correct syntax for the functions to work.) There is no tage called emote. You must use a function call.`,
+            `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. Whatever the voice thinks is Pete's next thought. The voice can surround brief text with <function name='say'>...</function> to cause Pete to speak out loud. The voice can also change the currently displayed face of Pete by putting an unicode emoji between <function name='emote'>...</function>. The voice has access to a running log of the conversation.\n\nCurrent context: {{context}}\n\nReminder: Keep up with the conversation. Don't speak too often or repeat yourself over and over. Pay attention to what you're in the process of saying. (You must use the correct syntax for the functions to work.) There is no tage called emote. You must use a function call.`,
             narrate,
         );
         logger.debug(`Voice: ${name} initialized`);
@@ -101,7 +101,7 @@ export class Voice extends Genie<string> {
         }, ...this.conversation.slice(-5)];
         return of(messages).pipe(
             tap((messages) =>
-                logger.info({ messages }, "Voice: Messages to narrate")
+                logger.debug({ messages }, "Voice: Messages to narrate")
             ),
             chatify(Deno.env.get("OLLAMA_MODEL") || "gemma2:27b", {
                 host: Deno.env.get("OLLAMA2_URL") ||
@@ -109,7 +109,7 @@ export class Voice extends Genie<string> {
             }),
             wholeResponse(),
             tap((narration) => {
-                logger.info({ narration }, "Voice: Narration received");
+                logger.debug({ narration }, "Voice: Narration received");
                 this.session.feel({
                     when: new Date(),
                     content: {

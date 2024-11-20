@@ -147,6 +147,18 @@ export class Session {
 
     tock() {
         logger.debug({ context: this.context }, "Gathering instant");
+        recall(this.context, 5).then((memories) => {
+            logger.info({ memories }, "Recalled memories");
+            this.feel({
+                when: new Date(),
+                content: {
+                    explanation: `Recalled memories: ${
+                        JSON.stringify(memories)
+                    }`,
+                    content: JSON.stringify(memories),
+                },
+            });
+        });
         queryMemory(this.context).then((context) => {
             logger.debug({ context }, "Gathered instant");
             this.contextValue = JSON.stringify(context).replace(
