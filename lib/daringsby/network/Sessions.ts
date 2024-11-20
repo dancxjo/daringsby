@@ -47,7 +47,13 @@ export class Session {
 
     protected instants: Sensation<string>[] = [];
     protected moments: Sensation<string>[] = [];
-    protected context: string = `MERGE (n:Self) RETURN n`; // A Cypher query that represents the current situation
+    public context: string = `
+        MATCH (me:Self)
+        OPTIONAL MATCH (latest:Situation)
+        RETURN me, latest
+        ORDER BY latest.timestamp DESC
+        LIMIT 2
+    `; // A Cypher query that represents the current situation
     protected contextValue: string = ""; // The current situation as a string
 
     constructor(
@@ -62,9 +68,12 @@ export class Session {
 
         this.tickWits();
         this.tock();
-        setInterval(() => this.tock(), 15000);
+        setInterval(() => {
+            this.tickWits();
+            this.tock();
+        }, 15000);
         this.latestInstants$.pipe(
-            bufferTime(10000, 5000),
+            bufferTime(60000, 30000),
             tap((latest) => {
                 latest.forEach((latest) => {
                     this.instants.push(latest);
@@ -72,7 +81,7 @@ export class Session {
                 });
                 this.tickWits();
             }),
-            bufferTime(60000, 30000),
+            bufferTime(60000 * 5, 60000 * 2),
         ).subscribe((latest) => {
             latest.forEach((latest) => {
                 subscriptions.push(
@@ -90,7 +99,7 @@ export class Session {
                             content: {
                                 explanation:
                                     `The situation as of ${asOf.toLocaleString()} is as follows: ${narration}`,
-                                content: JSON.stringify(narration),
+                                content: yaml.stringify(narration),
                             },
                         };
                         this.latestSituation$.next(newSituation);
@@ -127,9 +136,9 @@ export class Session {
                                     when: new Date(),
                                     content: {
                                         explanation: `Recalled memories: ${
-                                            JSON.stringify(memories)
+                                            yaml.stringify(memories)
                                         }`,
-                                        content: JSON.stringify(memories),
+                                        content: yaml.stringify(memories),
                                     },
                                 });
                             })
@@ -153,9 +162,9 @@ export class Session {
                 when: new Date(),
                 content: {
                     explanation: `Recalled memories: ${
-                        JSON.stringify(memories)
+                        yaml.stringify(memories)
                     }`,
-                    content: JSON.stringify(memories),
+                    content: yaml.stringify(memories),
                 },
             });
         });

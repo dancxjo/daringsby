@@ -1,5 +1,5 @@
 import { logger } from "../core/logger.ts";
-import neo4j from "npm:neo4j-driver";
+import neo4j, { RecordShape } from "npm:neo4j-driver";
 import { Config, EmbeddingsResponse, Ollama } from "npm:ollama";
 import { mergeMap, Observable, OperatorFunction } from "npm:rxjs";
 
@@ -128,6 +128,15 @@ export async function establishMemory(): Promise<void> {
         await tx.rollback();
         console.error("Error establishing memory: ", error);
         throw error;
+    } finally {
+        await session.close();
+    }
+}
+
+export async function runCypher(query: string): Promise<RecordShape> {
+    const session = createSession();
+    try {
+        return await session.run(query);
     } finally {
         await session.close();
     }

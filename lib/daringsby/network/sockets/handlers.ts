@@ -4,6 +4,7 @@ import { isValidGeolocateMessage } from "../messages/GeolocateMessage.ts";
 import { map } from "npm:rxjs/operators";
 import { isValidEchoMessage } from "../messages/EchoMessage.ts";
 import { isValidTextMessage } from "../messages/TextMessage.ts";
+import * as yaml from "npm:yaml";
 
 export function setupHeartbeat(session: Session) {
     setInterval(() => {
@@ -41,7 +42,7 @@ export function handleGeolocations(
             when: sensation.when,
             content: {
                 explanation: sensation.content.explanation,
-                content: JSON.stringify(sensation.content.content),
+                content: yaml.stringify(sensation.content.content),
             },
         });
         logger.debug({ sensation }, "Processed geolocation sensation");
