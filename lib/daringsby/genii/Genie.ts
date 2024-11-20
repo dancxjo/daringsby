@@ -12,7 +12,7 @@ export class Genie<I> implements Faculty<I, string> {
         protected instruction: string,
         protected narrate: (prompt: string) => Observable<string>,
     ) {
-        logger.info(`Initializing Genie: ${name}`);
+        logger.debug(`Initializing Genie: ${name}`);
         this.feel({
             when: new Date(),
             content: {
@@ -23,7 +23,7 @@ export class Genie<I> implements Faculty<I, string> {
     }
 
     feel(sensation: Sensation<I>) {
-        logger.info(`${this.name}: Feeling sensation`);
+        logger.debug(`${this.name}: Feeling sensation`);
         this.sensations.push(sensation);
     }
 
@@ -36,7 +36,7 @@ export class Genie<I> implements Faculty<I, string> {
     }
 
     consult(): Observable<string> {
-        logger.info(`${this.name}: Consulting`);
+        logger.debug(`${this.name}: Consulting`);
         const input = {
             name: this.name,
             description: this.description,
@@ -49,14 +49,16 @@ export class Genie<I> implements Faculty<I, string> {
             return of("");
         }
         this.sensations = [];
-        logger.info({ input }, `${this.name}: Input for template`);
+        logger.debug({ input }, `${this.name}: Input for template`);
         const prompt = this.generatePrompt(input);
 
         logger.debug({ prompt }, `${this.name}: Prompt generated`);
 
         const narration$ = this.narrate(prompt).pipe(
             tap((response) =>
-                logger.info(`${this.name}: LLM response received`, { response })
+                logger.debug(`${this.name}: LLM response received`, {
+                    response,
+                })
             ),
             catchError((err) => {
                 logger.error(`${this.name}: Error invoking LLM`, err);

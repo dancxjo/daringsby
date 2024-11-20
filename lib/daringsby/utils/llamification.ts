@@ -3,7 +3,7 @@ import { mergeMap, Observable, OperatorFunction } from "npm:rxjs";
 import { Message } from "npm:ollama";
 
 export function llamify(
-    model: string = "gemma2",
+    model: string = "llama3.2",
     config: Partial<Config> = {},
 ): OperatorFunction<string, string> {
     const ollama = new Ollama(config);
@@ -35,7 +35,7 @@ export function llamify(
 }
 
 export function chatify(
-    model: string = "gemma2",
+    model: string = "llama3.2",
     config: Partial<Config> = {},
 ): OperatorFunction<Message[], string> {
     const ollama = new Ollama(config);

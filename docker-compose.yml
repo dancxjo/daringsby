@@ -1,0 +1,111 @@
+services:
+  traefik:
+    image: traefik:v2.10
+    container_name: traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=tdreed@gmail.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./letsencrypt:/letsencrypt"
+    depends_on:
+      - deno_project
+
+  deno_project:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: deno_project
+    volumes:
+      - ./:/app
+    ports:
+      - "8000:8000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.deno_project.rule=Host(`localhost`)"
+      - "traefik.http.routers.deno_project.entrypoints=websecure"
+      - "traefik.http.routers.deno_project.tls.certresolver=myresolver"
+      - "traefik.http.services.deno_project.loadbalancer.server.port=8000"
+    environment:
+      - OLLAMA_URL=http://forebrain.lan:11434
+      - OLLAMA2_URL=http://victus.lan:11434
+      - COQUI_URL=http://tts:5002
+      - WHISPER_URL=http://whisper:9000
+      - NEO4J_URL=bolt://neo4j:7687
+      - OLLAMA_MODEL=llama3.2
+      - OLLAMA2_MODEL=gemma2:27b
+    depends_on:
+      - ollama
+      - neo4j
+      - tts
+      - whisper
+
+  neo4j:
+    image: neo4j:latest
+    container_name: neo4j
+    environment:
+      NEO4J_AUTH: neo4j/password
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_import:/var/lib/neo4j/import
+      - neo4j_plugins:/plugins
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+    volumes:
+      - /usr/share/ollama/.ollama:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_HOST=0.0.0.0
+
+  tts:
+    image: ghcr.io/coqui-ai/tts
+    ports:
+      - "5002:5002"
+    entrypoint: python3
+    command: [ "TTS/server/server.py", "--model_name", "tts_models/en/vctk/vits" ]
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - TTS_MODEL="tts_models/en/ljspeech/tacotron2-DDC"
+      - VOCODER_MODEL="vocoder_models/en/ljspeech/hifigan_v1"
+
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest-gpu
+    runtime: nvidia
+    ports:
+      - "9000:9000"
+    environment:
+      - ASR_MODEL=base
+      # - ASR_ENGINE=faster_whisper
+    restart: always
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_import:
+  neo4j_plugins:
+  ollama:
+  letsencrypt:

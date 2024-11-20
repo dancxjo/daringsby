@@ -6,17 +6,17 @@ import { isValidEchoMessage } from "../messages/EchoMessage.ts";
 import { isValidTextMessage } from "../messages/TextMessage.ts";
 
 export function setupHeartbeat(session: Session) {
-    // setInterval(() => {
-    //     const now = new Date();
-    //     session.feel({
-    //         when: now,
-    //         content: {
-    //             explanation:
-    //                 `${now.toISOString()} is the current time. I feel my heart beat.`,
-    //             content: now.toISOString(),
-    //         },
-    //     });
-    // }, Math.random() * 60000);
+    setInterval(() => {
+        const now = new Date();
+        session.feel({
+            when: now,
+            content: {
+                explanation:
+                    `${now.toISOString()} is the current time. I feel my heart beat.`,
+                content: now.toISOString(),
+            },
+        });
+    }, 10000);
 }
 
 export function handleGeolocations(
@@ -44,7 +44,7 @@ export function handleGeolocations(
                 content: JSON.stringify(sensation.content.content),
             },
         });
-        logger.info({ sensation }, "Processed geolocation sensation");
+        logger.debug({ sensation }, "Processed geolocation sensation");
     }));
 }
 
@@ -74,7 +74,7 @@ export function handleEchoes(
             },
         });
         session.voice.echo(sensation.content.content);
-        logger.info({ sensation }, "Processed echo sensation");
+        logger.debug({ sensation }, "Processed echo sensation");
     }));
 }
 
@@ -104,6 +104,6 @@ export function handleIncomingTexts(
             },
         });
         session.voice.hear(sensation.content.content);
-        logger.info({ sensation }, "Processed text sensation");
+        logger.debug({ sensation }, "Processed text sensation");
     }));
 }

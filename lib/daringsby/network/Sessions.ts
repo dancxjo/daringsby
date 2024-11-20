@@ -1,16 +1,18 @@
 import { SocketConnection } from "./sockets/connection.ts";
 import {
     BehaviorSubject,
+    bufferTime,
     map,
     of,
     ReplaySubject,
     Subject,
     Subscription,
+    tap,
 } from "npm:rxjs";
 import { Message } from "npm:ollama";
 import { Sensation } from "../core/interfaces.ts";
 import { logger } from "../../../logger.ts";
-import { Wit } from "../genii/Wit.ts";
+import { Wits } from "../genii/Wit.ts";
 import {
     handleEchoes,
     handleGeolocations,
@@ -18,31 +20,76 @@ import {
     setupHeartbeat,
 } from "./sockets/handlers.ts";
 import { Voice } from "../genii/Voice.ts";
+import { MessageType } from "./messages/MessageType.ts";
+import { establishMemory, queryMemory } from "../utils/memory.ts";
 
 export class Session {
-    readonly integration = new Wit(
+    readonly integration = new Wits(
         "Sensory Integration",
-        "This part of the mind receives low-level, fine-grained sensory input and uses it to produce a coherent understanding of the present instant",
+        "This part of the mind receives low-level, fine-grained sensory input and uses it to produce a coherent understanding of the present instant. Somewhat terse, rather 'just the facts, ma'am.'",
     );
-    protected latest$: ReplaySubject<string> = new ReplaySubject<string>(1);
-    readonly voice = new Voice("Voice", this.latest$, this);
+    readonly combobulation = new Wits(
+        "Combobulation",
+        "This part of the mind combines several instants together to produce a more coherent understanding of the present moment and current situation. The combobulator figures out what's up and what's what. The combobulator is very intuitive and makes good inferences based on the information it can access. It does not invent information, though. It sticks with the facts that it receives.",
+    );
+    protected latestInstants$: ReplaySubject<Sensation<string>> =
+        new ReplaySubject<Sensation<string>>(1);
+    protected latestSituation$: ReplaySubject<Sensation<string>> =
+        new ReplaySubject<Sensation<string>>(1);
+    readonly voice = new Voice("Voice", this.latestSituation$, this);
 
     protected instants: Sensation<string>[] = [];
     protected moments: Sensation<string>[] = [];
-    protected context: string = `MERGE (me:Self) return me`; // A Cypher query that represents the current situation
+    protected context: string = `MERGE (n:Self) RETURN n`; // A Cypher query that represents the current situation
 
     constructor(
         readonly connection: SocketConnection,
         readonly subscriptions: Subscription[],
     ) {
+        establishMemory();
         handleGeolocations(this);
         handleEchoes(this);
         handleIncomingTexts(this);
         setupHeartbeat(this);
 
-        setInterval(() => {
-            this.tickWits();
-        }, 10000);
+        this.tickWits();
+        this.latestInstants$.pipe(
+            bufferTime(2000, 1000),
+            tap((latest) => {
+                latest.forEach((latest) => {
+                    this.instants.push(latest);
+                    this.combobulation.feel(latest);
+                });
+                this.tickWits();
+            }),
+            bufferTime(60000, 30000),
+        ).subscribe((latest) => {
+            latest.forEach((latest) => {
+                subscriptions.push(
+                    this.combobulation.consult().subscribe((narration) => {
+                        latest.sort((a, b) =>
+                            b.when.getTime() - a.when.getTime()
+                        );
+                        const asOf = new Date(latest[latest.length - 1]?.when);
+                        const newSituation = {
+                            when: asOf,
+                            content: {
+                                explanation:
+                                    `The situation as of ${asOf.toLocaleString()} is as follows: ${narration}`,
+                                content: JSON.stringify(narration),
+                            },
+                        };
+                        this.latestSituation$.next(newSituation);
+                        this.moments.push(newSituation);
+                        this.combobulation.feel(newSituation);
+                        this.connection.send({
+                            type: MessageType.Think,
+                            data: narration,
+                        });
+                    }),
+                );
+            });
+        });
     }
 
     feel(sensation: Sensation<unknown>) {
@@ -51,29 +98,55 @@ export class Session {
     }
 
     tickWits() {
-        logger.info("Gathering instant");
+        logger.info({ context: this.context }, "Gathering instant");
+        queryMemory(this.context).then((context) => {
+            logger.info({ context }, "Gathered instant");
+            const newSituation: Sensation<string> = {
+                when: new Date(),
+                content: {
+                    explanation: `From your memory: ` + JSON.stringify(context),
+                    content: JSON.stringify(context),
+                },
+            };
+            const glueSensation = { ...newSituation, embedding: undefined };
+            logger.debug({ glueSensation }, "Gathered instant");
+            this.instants.push(glueSensation);
+        });
+
+        const startedAt = new Date();
         this.subscriptions.push(
             this.integration.consult().subscribe((instant) => {
-                logger.info({ instant }, "Received latest instant");
+                logger.debug({ instant }, "Received latest instant");
                 if (!instant) {
                     return;
                 }
-                this.instants.push({
-                    when: new Date(),
+                const newInstant: Sensation<string> = {
+                    when: startedAt,
                     content: {
-                        explanation: instant,
+                        explanation: `The current instant is: ${instant}`,
                         content: instant,
                     },
+                };
+                this.instants.push(newInstant);
+                this.instants.sort((a, b) =>
+                    b.when.getTime() - a.when.getTime()
+                );
+                this.instants.push(newInstant);
+                this.combobulation.feel(newInstant);
+
+                this.connection.send({
+                    type: MessageType.Think,
+                    data: instant,
                 });
-                this.latest$.next(instant);
+                this.latestInstants$.next(newInstant);
             }),
         );
 
-        logger.info("Thinking next thought");
+        logger.debug("Thinking next thought");
 
         this.subscriptions.push(
             this.voice.consult().subscribe((narration) => {
-                logger.info({ narration }, "Received narration");
+                logger.debug({ narration }, "Received narration");
             }),
         );
     }
