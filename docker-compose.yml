@@ -1,19 +1,15 @@
 services:
-  traefik:
-    image: traefik:v2.10
-    container_name: traefik
-    command:
-      - "--api.insecure=true"
-      - "--providers.docker"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--providers.file.filename=/certs/traefik.toml"
+  nginx:
+    image: nginx:latest
+    container_name: nginx
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "./certs:/certs"
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - deno_project
 
   deno_project:
     build:
@@ -25,12 +21,6 @@ services:
       - ./certs:/app/certs
     ports:
       - "8000:8000"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.deno_project.rule=Host(`daringsby.info`)"
-      - "traefik.http.routers.deno_project.entrypoints=websecure"
-      - "traefik.http.routers.deno_project.tls.certresolver=myresolver"
-      - "traefik.http.services.deno_project.loadbalancer.server.port=8000"
     environment:
       - OLLAMA_URL=http://forebrain.lan:11434
       - OLLAMA2_URL=http://victus.lan:11434
@@ -40,7 +30,6 @@ services:
       - OLLAMA_MODEL=llama3.2
       - OLLAMA2_MODEL=gemma2:27b
     depends_on:
-      - ollama
       - neo4j
       - tts
       - whisper
@@ -59,23 +48,23 @@ services:
       - neo4j_import:/var/lib/neo4j/import
       - neo4j_plugins:/plugins
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    ports:
-      - "11434:11434"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [ gpu ]
-    volumes:
-      - /usr/share/ollama/.ollama:/root/.ollama
-    environment:
-      - OLLAMA_KEEP_ALIVE=24h
-      - OLLAMA_HOST=0.0.0.0
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: ollama
+  #   ports:
+  #     - "11434:11434"
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: all
+  #             capabilities: [ gpu ]
+  #   volumes:
+  #     - /usr/share/ollama/.ollama:/root/.ollama
+  #   environment:
+  #     - OLLAMA_KEEP_ALIVE=24h
+  #     - OLLAMA_HOST=0.0.0.0
 
   tts:
     image: ghcr.io/coqui-ai/tts

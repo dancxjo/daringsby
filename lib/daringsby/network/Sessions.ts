@@ -106,6 +106,7 @@ export class Session {
                     latest.forEach((latest) => {
                         this.instants.push(latest);
                         this.combobulation.feel(latest);
+                        this.contextualizer.feel(latest);
                     });
                     this.tickWits();
                 }),

@@ -10,3 +10,5 @@ _fresh/
 # npm dependencies
 node_modules/
 letsencrypt/acme.json
+certs/server.crt
+certs/server.key

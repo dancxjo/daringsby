@@ -1,22 +1,19 @@
 FROM denoland/deno:latest
 
-# Install OpenSSL for certificate generation
+# Install OpenSSL
 USER root
 RUN apt-get update && apt-get install -y openssl && apt-get clean
 
-# Set working directory inside the container
+# Set working directory
 WORKDIR /app
 
-# Copy the local project files to the container
+# Copy project files and the script
 COPY . /app
-
-# Copy a script to generate certs
 COPY generate-certs.sh /app/generate-certs.sh
 RUN chmod +x /app/generate-certs.sh
 
-# Expose any ports your Deno app may need
+# Expose ports
 EXPOSE 8000
-EXPOSE 80
 
-# Run cert generation script before starting the app
+# Run the cert generation script, then start the Deno app
 CMD ["/bin/sh", "-c", "/app/generate-certs.sh && deno task start"]
