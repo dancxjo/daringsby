@@ -7,17 +7,13 @@ services:
       - "--providers.docker"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
-      - "--certificatesresolvers.myresolver.acme.email=tdreed@gmail.com"
-      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--providers.file.filename=/certs/traefik.toml"
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "./letsencrypt:/letsencrypt"
-    depends_on:
-      - deno_project
+      - "./certs:/certs"
 
   deno_project:
     build:
@@ -25,12 +21,13 @@ services:
       dockerfile: Dockerfile
     container_name: deno_project
     volumes:
-      - ./:/app
+      - .:/app
+      - ./certs:/app/certs
     ports:
       - "8000:8000"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.deno_project.rule=Host(`localhost`)"
+      - "traefik.http.routers.deno_project.rule=Host(`daringsby.info`)"
       - "traefik.http.routers.deno_project.entrypoints=websecure"
       - "traefik.http.routers.deno_project.tls.certresolver=myresolver"
       - "traefik.http.services.deno_project.loadbalancer.server.port=8000"

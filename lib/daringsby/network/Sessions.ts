@@ -9,6 +9,7 @@ import {
     Subscription,
     tap,
 } from "npm:rxjs";
+import * as cheerio from "npm:cheerio";
 import { Message } from "npm:ollama";
 import { Sensation } from "../core/interfaces.ts";
 import { logger } from "../core/logger.ts";
@@ -29,6 +30,8 @@ import {
     queryMemory,
     recall,
 } from "../utils/memory.ts";
+import { Contextualizer } from "../genii/Contextualizer.ts";
+import { narrate } from "../utils/narration.ts";
 
 export class Session {
     readonly integration = new Wits(
@@ -39,6 +42,8 @@ export class Session {
         "Combobulation",
         "This part of the mind combines several instants together to produce a more coherent understanding of the present moment and current situation. The combobulator figures out what's up and what's what. The combobulator is very intuitive and makes good inferences based on the information it can access. It does not invent information, though. It sticks with the facts that it receives.",
     );
+
+    readonly contextualizer = new Contextualizer(narrate);
     protected latestInstants$: ReplaySubject<Sensation<string>> =
         new ReplaySubject<Sensation<string>>(1);
     protected latestSituation$: ReplaySubject<Sensation<string>> =
@@ -68,90 +73,121 @@ export class Session {
 
         this.tickWits();
         this.tock();
+
         setInterval(() => {
             this.tickWits();
             this.tock();
         }, 15000);
-        this.latestInstants$.pipe(
-            bufferTime(60000, 30000),
-            tap((latest) => {
-                latest.forEach((latest) => {
-                    this.instants.push(latest);
-                    this.combobulation.feel(latest);
-                });
-                this.tickWits();
-            }),
-            bufferTime(60000 * 5, 60000 * 2),
-        ).subscribe((latest) => {
-            latest.forEach((latest) => {
-                subscriptions.push(
-                    this.combobulation.consult().subscribe((narration) => {
-                        if (!narration) {
-                            return;
-                        }
-                        this.tickWits();
-                        latest.sort((a, b) =>
-                            b.when.getTime() - a.when.getTime()
-                        );
-                        const asOf = new Date(latest[latest.length - 1]?.when);
-                        const newSituation = {
-                            when: asOf,
-                            content: {
-                                explanation:
-                                    `The situation as of ${asOf.toLocaleString()} is as follows: ${narration}`,
-                                content: yaml.stringify(narration),
-                            },
-                        };
-                        this.latestSituation$.next(newSituation);
-                        this.moments.push(newSituation);
-                        this.combobulation.feel(newSituation);
-                        this.connection.send({
-                            type: MessageType.Think,
-                            data: narration,
-                        });
-                        let when = new Date().toISOString();
-                        try {
-                            when = new Date(newSituation.when).toISOString();
-                        } catch (error) {
-                            logger.error(
-                                { error },
-                                "Failed to memorize situation",
-                            );
-                        }
 
-                        memorize({
-                            metadata: {
-                                label: "Situation",
-                                when,
-                            },
-                            data: {
-                                explanation: newSituation.content.explanation,
-                                content: newSituation.content.content,
-                            },
-                        });
-                        recall(newSituation.content.explanation, 5)
-                            .then((memories) => {
-                                logger.debug({ memories }, "Recalled memories");
-                                this.feel({
-                                    when: new Date(),
-                                    content: {
-                                        explanation: `Recalled memories: ${
-                                            yaml.stringify(memories)
-                                        }`,
-                                        content: yaml.stringify(memories),
-                                    },
-                                });
-                            })
-                            .catch((error) => {
+        this.subscriptions.push(this.latestSituation$.subscribe((sensation) => {
+            logger.debug({ sensation }, "Received latest situation");
+            this.contextualizer.feel(sensation);
+            this.contextualizer.consult().subscribe((narration) => {
+                if (!narration) {
+                    return;
+                }
+                this.connection.send({
+                    type: MessageType.Think,
+                    data: narration,
+                });
+
+                const $ = cheerio.load(narration);
+                const context = $("function[name='context']").text();
+                if (context) {
+                    this.context = context;
+                }
+            });
+        }));
+
+        this.subscriptions.push(
+            this.latestInstants$.pipe(
+                bufferTime(60000, 30000),
+                tap((latest) => {
+                    latest.forEach((latest) => {
+                        this.instants.push(latest);
+                        this.combobulation.feel(latest);
+                    });
+                    this.tickWits();
+                }),
+                bufferTime(60000 * 5, 60000 * 2),
+            ).subscribe((latest) => {
+                latest.forEach((latest) => {
+                    subscriptions.push(
+                        this.combobulation.consult().subscribe((narration) => {
+                            if (!narration) {
+                                return;
+                            }
+                            this.tickWits();
+                            latest.sort((a, b) =>
+                                b.when.getTime() - a.when.getTime()
+                            );
+                            const asOf = new Date(
+                                latest[latest.length - 1]?.when,
+                            );
+                            const newSituation = {
+                                when: asOf,
+                                content: {
+                                    explanation:
+                                        `The situation as of ${asOf.toLocaleString()} is as follows: ${narration}`,
+                                    content: yaml.stringify(narration),
+                                },
+                            };
+                            this.latestSituation$.next(newSituation);
+                            this.moments.push(newSituation);
+                            this.combobulation.feel(newSituation);
+                            this.connection.send({
+                                type: MessageType.Think,
+                                data: narration,
+                            });
+                            let when = new Date().toISOString();
+                            try {
+                                when = new Date(newSituation.when)
+                                    .toISOString();
+                            } catch (error) {
                                 logger.error(
                                     { error },
-                                    "Failed to recall memories",
+                                    "Failed to memorize situation",
                                 );
+                            }
+
+                            memorize({
+                                metadata: {
+                                    label: "Situation",
+                                    when,
+                                },
+                                data: {
+                                    explanation:
+                                        newSituation.content.explanation,
+                                    content: newSituation.content.content,
+                                },
                             });
-                    }),
-                );
-            });
-        });
+                            recall(newSituation.content.explanation, 5)
+                                .then((memories) => {
+                                    logger.debug(
+                                        { memories },
+                                        "Recalled memories",
+                                    );
+                                    this.feel({
+                                        when: new Date(),
+                                        content: {
+                                            explanation: `Recalled memories: ${
+                                                yaml.stringify(memories)
+                                            }`,
+                                            content: yaml.stringify(memories),
+                                        },
+                                    });
+                                })
+                                .catch((error) => {
+                                    logger.error(
+                                        { error },
+                                        "Failed to recall memories",
+                                    );
+                                });
+                        }),
+                    );
+                });
+            }),
+        );
     }
 
     tock() {
@@ -187,6 +223,16 @@ export class Session {
             const glueSensation = { ...newSituation, embedding: undefined };
             logger.debug({ glueSensation }, "Gathered instant");
             this.integration.feel(glueSensation);
+        }).catch((error) => {
+            logger.error({ error }, "Failed to gather context");
+            this.feel({
+                when: new Date(),
+                content: {
+                    explanation:
+                        `OUCH! That really smarts! I'd better be careful to craft my context query better. I'll consider what I did wrong. I failed to gather context: ${error.message}`,
+                    content: error.message,
+                },
+            });
         });
     }
 

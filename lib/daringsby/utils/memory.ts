@@ -230,7 +230,7 @@ export async function recall(prompt: string, k: number = 10): Promise<any[]> {
     if (!prompt) {
         return [];
     }
-    logger.info({ prompt }, "Recalling nodes");
+    logger.debug({ prompt }, "Recalling nodes");
     try {
         const ollama = new Ollama({
             host: Deno.env.get("OLLAMA_URL") || "http://localhost:11434",
@@ -239,7 +239,7 @@ export async function recall(prompt: string, k: number = 10): Promise<any[]> {
             prompt,
             model: "nomic-embed-text",
         });
-        logger.info("Got prompt embedding");
+        logger.debug("Got prompt embedding");
         const neighbors = findNearestNeighbors(
             promptEmbedding.embedding,
             indexedEmbeddings.map((n) => n.embedding),

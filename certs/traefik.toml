@@ -1,0 +1,6 @@
+[entryPoints]
+  [entryPoints.websecure]
+    address = ":443"
+      [entryPoints.websecure.tls]
+        certFile = "/certs/server.crt"
+        keyFile = "/certs/server.key"
