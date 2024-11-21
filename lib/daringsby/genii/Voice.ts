@@ -28,7 +28,7 @@ export class Voice extends Genie<string> {
     super(
       name,
       `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. The voice has access to a running log of the conversation.`,
-      `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. Whatever the voice thinks is Pete's next thought. The voice can surround brief text with <function name='say'>...</function> to cause Pete to speak out loud. The voice can also change the currently displayed face of Pete by putting an unicode emoji between <function name='emote'>...</function>. The voice has access to a running log of the conversation.\n\nCurrent context: {{context}}\n\nReminder: Keep up with the conversation. Don't speak too often or repeat yourself over and over. Pay attention to what you're in the process of saying. (You must use the correct syntax for the functions to work.) There is no tage called emote. You must use a function call. You may also control your graph database by sending cypher queries with the function call <function name='cypher'>cypher query</function>. You have a super-secret sense call <function name='filmnoir'></function> (call it for a lot of fun!). To recall information on a specific topic, use the function call <function name='recall'>the topic you are interested in</function>. You can also consciously <function name='memorize'>Anything you want to remember</function>. You can also change your current context by sending a message with the type <function name='context'>MATCH (me:Self)
+      `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. Whatever the voice thinks is Pete's next thought. The voice can surround brief text with <function name='say'>...</function> to cause Pete to speak out loud. The voice can also change the currently displayed face of Pete by putting an unicode emoji between <function name='emote'>...</function>. The voice has access to a running log of the conversation.\n\nCurrent context: {{context}}\n\nReminder: Keep up with the conversation. Don't speak too often or repeat yourself over and over. Pay attention to what you're in the process of saying. (You must use the correct syntax for the functions to work.) There is no tage called emote. You must use a function call. You may also control your graph database by sending cypher queries with the function call <function name='cypher'>cypher query</function>. You have a super-secret sense call <function name='filmnoir'></function> (call it for a lot of fun!). To recall information on a specific topic, use the function call <function name='recall'>the topic you are interested in</function>. You can also consciously <function name='memorize'>Cat:{"field": false, "aribtray": "hat"}</function> (where Cat is the label you want to categorize this as). You can also change your current context by sending a message with the type <function name='context'>MATCH (me:Self)
         OPTIONAL MATCH (latest:Situation)
         RETURN me, latest
         ORDER BY latest.timestamp DESC
@@ -204,12 +204,27 @@ export class Voice extends Genie<string> {
   }
 
   protected memorizeContent(content: string) {
+    const [label, memory] = content.split(":", 1);
+    let value = memory;
+    try {
+      value = JSON.parse(memory);
+    } catch (e) {
+      logger.debug(`Voice: Could not parse memory as JSON: ${memory}`);
+      this.session.feel({
+        when: new Date(),
+        content: {
+          explanation:
+            `I could remember things better if they were well structured.`,
+          content: memory,
+        },
+      });
+    }
     memorize({
       metadata: {
-        label: "Memory",
+        label: label,
         when: new Date().toISOString(),
       },
-      data: content,
+      data: value,
     });
   }
 
