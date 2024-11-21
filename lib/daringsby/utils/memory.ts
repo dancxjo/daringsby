@@ -165,11 +165,11 @@ export async function memorize<T = unknown>(
         const tx = sessionInstance.beginTransaction();
         try {
             const docQuery = `
-                CREATE (doc:Document { data: $dataString })
+                CREATE (doc:${document.metadata.label} { data: $dataString })
                 RETURN doc
             `;
             const docResult = await tx.run(docQuery, {
-                dataString: JSON.stringify(document.data),
+                dataString: document.data,
             });
             const docNode = docResult.records.length > 0
                 ? docResult.records[0].get("doc")
