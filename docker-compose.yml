@@ -27,9 +27,9 @@ services:
       - COQUI_URL=http://tts:5002
       - WHISPER_URL=http://whisper:9000
       - NEO4J_URL=bolt://neo4j:7687
-      - OLLAMA_MODEL=gemma2:27b
-      - OLLAMA2_MODEL=llam3.2-vision
-      - SPEAKER="Aaron Dreschner"
+      - OLLAMA_MODEL=llama3.2-vision
+      - OLLAMA2_MODEL=llama3.2-vision
+      - SPEAKER=Wulf Carlevaro
     depends_on:
       - neo4j
       - tts

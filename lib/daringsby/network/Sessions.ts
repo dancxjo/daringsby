@@ -63,7 +63,7 @@ export class Session {
   async spin() {
     // Start both the voice and integration processing independently
     this.processVoice();
-    // this.processIntegration();
+    this.processIntegration();
   }
 
   async processVoice() {

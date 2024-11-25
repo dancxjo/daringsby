@@ -85,7 +85,7 @@ export class Voice extends Genie<string> {
       tap((messages) =>
         logger.debug({ messages }, "Voice: Messages to narrate")
       ),
-      chatify(Deno.env.get("OLLAMA_MODEL") || "gemma2:27b", {
+      chatify(Deno.env.get("OLLAMA2_MODEL") || "gemma2:27b", {
         host: Deno.env.get("OLLAMA2_URL") ||
           "http://forebrain.lan:11434",
       }),
