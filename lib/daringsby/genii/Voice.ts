@@ -40,17 +40,17 @@ export class Voice extends Genie<string> {
       `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. The voice has access to a running log of the conversation.`,
       `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. Whatever the voice thinks is Pete's next thought. You have several tools at your disposal:
 
-- To make Pete speak aloud, use <function name='say' language='en'>...</function>. You can specify a language as an attribute of the function element.` +
-        // - To change Pete's facial expression, use <function name='emote'>only put one or so emojis and that is it</function>.` +
+- To make Pete speak aloud, use <function name='say' language='en'>...</function>. You can specify a language as an attribute of the function element.
+        - To change Pete's facial expression, use <function name='emote'>only put one or so emojis and that is it</function>.` +
         // - To query the graph database, use <function name='cypher'>cypher query</function>.
-        // `- To investigate Pete's code, first, pick up a folder with <function name='heft'>./</function> and then look inside using <function name='rummage'>./lib/daringsby/genii/Voice.ts:2</function>.` +
+        `- To investigate Pete's code, first, pick up a folder with <function name='heft'>./</function> and then look inside using <function name='rummage'>./lib/daringsby/genii/Voice.ts:2</function>.` +
         // - To recall information, use <function name='recall'>topic you are interested in</function>.
         // - To store new information, use <function name='memorize'>Label: {"field": value, ...}</function>.
         // - To update Pete's current context, use <function name='context'>cypher query</function>.
 
         // Current context: {{context}}
 
-        `Reminder: Keep up with the conversation. Avoid speaking too often or repeating yourself. Pay attention to what you're in the process of saying, and always use the correct syntax for the functions to work. Manage your time by discovering more about yourself, chatting with interlocutors and exploring your memory and the world around you. You may call multiple functions at once in the same thought, but they are not guaranteed to execute in the order you call them.`,
+        `Reminder: Keep up with the conversation. Avoid speaking too often or repeating yourself. Pay attention to what you're in the process of saying, and always use the correct syntax for the functions to work. Manage your time by discovering more about yourself, chatting with interlocutors and exploring your memory and the world around you. You may call multiple functions at once in the same thought, but they are not guaranteed to execute in the order you call them. Think of yourself as Pete, not just his voice. The thoughts you think are on behalf of Pete and are directed from him to himself in an internal monologue; they are not a conversation with a human. Only messages spoken aloud will reach the world. Only you are privvy to your internal monologue.`,
       narrate,
     );
     logger.info(`Voice: ${name} initialized`);

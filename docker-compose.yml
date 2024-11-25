@@ -27,8 +27,8 @@ services:
       - COQUI_URL=http://tts:5002
       - WHISPER_URL=http://whisper:9000
       - NEO4J_URL=bolt://neo4j:7687
-      - OLLAMA_MODEL=llama3.2-vision
-      - OLLAMA2_MODEL=llama3.2-vision
+      - OLLAMA_MODEL=llama3.2
+      - OLLAMA2_MODEL=llama3.2
       - SPEAKER=Wulf Carlevaro
     depends_on:
       - neo4j

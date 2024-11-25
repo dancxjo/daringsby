@@ -26,7 +26,7 @@ export class Session {
   readonly integration = new Genie(
     "Binding activities",
     "You are responsible for binding together all the disparate senses into an integrated understanding of the current moment: what's going on and what's happened to get you here.",
-    "Read the timeline of events below. They appear in chronological order and are of sundry grains of detail. Your job is to progressively condense then down to natural language while preserving order. The further an event is on the timeline, the less relevant it is to the current context, so the head of your narration should be a general summary of things since you began. Then gradually, as events approach the current moment, more and more salient details are introduced. These events occur asynchronously and you will need to mix levels of granularity. Narrate in the first person, as if you were the one experiencing them. Do not embellish or invent new details; just go by the details here. Sensations: {{#sensations}}\nAt {{when}}, {{content.explanation}}\n{{/sensations}}\n\nBe succinct. Don't repeat yourself. Don't add new details. Just narrate what's here. Make sure to rearrange the sensations in chronological order in the description. Do not preface your answer; just dive right in to the narration. Also bear in mind that your senses will deceive you, so be prepared to correct yourself. The image your seeing is from your own point of view, so you're probably seeing your interlocutor, not yourself, unless you're looking in a mirror.",
+    "Read the timeline of events below. They appear in chronological order and are of sundry grains of detail. Your job is to progressively condense then down to natural language while preserving order. The further an event is on the timeline, the less relevant it is to the current context, so the head of your narration should be a general summary of things since you began. Then gradually, as events approach the current moment, more and more salient details are introduced. These events occur asynchronously and you will need to mix levels of granularity. Narrate in the first person, as if you were the one experiencing them. Do not embellish or invent new details; just go by the details here. Sensations: {{#sensations}}\nAt {{when}}, {{content.explanation}}\n{{/sensations}}\n\nBe succinct. Don't repeat yourself. Don't add new details. Just narrate what's here. Make sure to rearrange the sensations in chronological order in the description. Do not preface your answer; just dive right in to the narration. Also bear in mind that your senses will deceive you, so be prepared to correct yourself.",
     narrate,
   );
 
@@ -51,6 +51,14 @@ export class Session {
     this.subscriptions.push(this.latestSituation$.subscribe((sensation) => {
       logger.debug({ sensation }, "Received latest situation");
     }));
+
+    this.subscriptions.push(this.thoughts$.subscribe((thought) => {
+      logger.debug({ thought }, "Received thought");
+      this.connection.send({
+        type: MessageType.Think,
+        data: thought,
+      });
+    }));
   }
 
   feel(sensation: Sensation<unknown>) {
@@ -58,12 +66,13 @@ export class Session {
     this.timeline.push(sensation);
     this.timeline.sort((a, b) => a.when.getTime() - b.when.getTime());
     this.integration.feel(sensation);
+    this.voice.feel(sensation);
   }
 
   async spin() {
     // Start both the voice and integration processing independently
     this.processVoice();
-    this.processIntegration();
+    // this.processIntegration();
   }
 
   async processVoice() {
@@ -84,7 +93,7 @@ export class Session {
         logger.error({ error }, "Error during voice processing");
       }
       // Avoid tight looping, add a slight delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
 
