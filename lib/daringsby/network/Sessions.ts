@@ -58,6 +58,13 @@ export class Session {
         type: MessageType.Think,
         data: thought,
       });
+      this.feel({
+        when: new Date(),
+        content: {
+          explanation: `I just thought something: ${thought}`,
+          content: thought,
+        },
+      });
     }));
   }
 
@@ -72,7 +79,7 @@ export class Session {
   async spin() {
     // Start both the voice and integration processing independently
     this.processVoice();
-    // this.processIntegration();
+    this.processIntegration();
   }
 
   async processVoice() {

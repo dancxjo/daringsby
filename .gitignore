@@ -12,5 +12,4 @@ node_modules/
 letsencrypt/acme.json
 certs/server.crt
 certs/server.key
-tts/tts/tts_models--multilingual--multi-dataset--xtts_v2/hash.md5
-tts/tts/tts_models--multilingual--multi-dataset--xtts_v2/model.pth
+tts/

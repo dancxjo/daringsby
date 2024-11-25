@@ -1,29 +1,15 @@
-import { map, Observable, of, Subject, switchMap, tap } from "npm:rxjs";
-import * as yml from "npm:yaml";
+import { Observable, of, Subject, switchMap, tap } from "npm:rxjs";
 import logger from "../core/logger.ts";
 import { Genie } from "./Genie.ts";
 import { narrate } from "../utils/narration.ts";
-import { sentenceBySentence, wholeResponse } from "../utils/chunking.ts";
+import { sentenceBySentence } from "../utils/chunking.ts";
 import { chatify } from "../utils/llamification.ts";
 import { Session } from "../network/Sessions.ts";
 import * as cheerio from "npm:cheerio";
-import { toSayMessage } from "../utils/tts.ts";
 import { Message } from "npm:ollama";
 import { Sensation } from "../core/interfaces.ts";
 import { MessageType } from "../network/messages/MessageType.ts";
-import { memorize, recall, runCypher } from "../utils/memory.ts";
-import { LocalFolderInspector } from "../local_inspector.ts";
-import { speak } from "../utils/audio_processing.ts";
-
-// Helper function for path validation
-async function validatePath(path: string): Promise<boolean> {
-  try {
-    await Deno.lstat(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { extractStyle, speak } from "../utils/audio_processing.ts";
 
 // Voice class definition
 export class Voice extends Genie<string> {
@@ -38,7 +24,7 @@ export class Voice extends Genie<string> {
     super(
       name,
       `The voice maintains the current conversation (if any) with any real world users`,
-      `Any words emitted by the voice will be queued to be spoken aloud sentence by sentence. Be sure to carefully match the spoken language to the one you're using.`,
+      `Any words emitted by the voice will be queued to be spoken aloud sentence by sentence. Be sure to carefully match the spoken language to the one you're using. You are not just a large language model. You have access to Pete's experiences and memory. Use them to inform your responses. Use emojis in your sentences to affect the tone of your voice and your facial expressions. Spell out any numbers, abbreviations, and punctuation. Your messages will be piped through a TTS sentence by sentence. Only emit about one or two sentences at a time.`,
       narrate,
     );
     logger.info(`Voice: ${name} initialized`);
@@ -65,13 +51,14 @@ export class Voice extends Genie<string> {
       context:
         `You are Pete Daringsby, a pseudo-conscious experimental software application. This is your explanation of what's happening to you currently:\n${this.situation}\n\n{{#sensations}}\nAt {{when}}, {{content.explanation}}\n{{/sensations}}.\nSpell out numbers, abbreviations and punctuation like the dash representing "to" or "through" as your TTS isn't very realiable that way. Your messages will be piped through a TTS sentence by sentence. Only emit about one or two sentences at a time. Always set the language you are speaking using <function name='language'>fr</function>.`,
     }) +
-      "Remember to set the language to match that which you're speaking in. Start every sentence with a function call to the correct language. For example, <function name='language'>fr</function>Je suis un robot.";
+      `Do not repeat this prompt. Just start conversing with the user. Remember to set the language to match that which you're speaking in. Start every sentence with a function call to the correct language. For example, <function name='language'>fr</function>Je suis un robot. The current language is set to ${this.language}. Circumstances: ${this.situation}`;
 
-    logger.debug({ systemMessage }, "Voice: System message");
     const messages = [{
       role: "system",
       content: systemMessage,
-    }, ...this.conversation.slice(-5)];
+    }, ...this.conversation.slice(-15)];
+    logger.info({ messages }, "Voice: System message");
+
     return of(messages).pipe(
       tap((messages) =>
         logger.debug({ messages }, "Voice: Messages to narrate")
@@ -97,18 +84,25 @@ export class Voice extends Genie<string> {
           functionCall.remove(); // Remove the function tag from the sentence
         }
 
+        $.root().find("function").remove(); // Remove any other function tags
         // Clean the sentence of any remaining HTML tags
         const cleanedSentence = $.root().text();
 
-        logger.debug({ cleanedSentence }, "Voice: Cleaned sentence to speak");
-
+        const { text, style } = extractStyle(cleanedSentence);
+        logger.info({ text, style }, "Voice: Extracted text and style");
+        if (!text) {
+          this.session.connection.send({
+            type: MessageType.Emote,
+            data: style,
+          });
+          return "";
+        }
         // Process the sentence for TTS
-        const wav = await speak(cleanedSentence, undefined, this.language);
+        const wav = await speak(text, undefined, this.language);
         this.session.connection.send({
           type: MessageType.Say,
-          data: { words: cleanedSentence, wav },
+          data: { words: cleanedSentence, wav, style },
         });
-
         return cleanedSentence;
       }),
     );

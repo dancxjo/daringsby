@@ -43,6 +43,7 @@ export default function LiveConnection() {
         MessageType.Say,
         (message) => {
           words.value = message.data.words;
+          if (message.data.style) mien.value = message.data.style;
         },
       );
 

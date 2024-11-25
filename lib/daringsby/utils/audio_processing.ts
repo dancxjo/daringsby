@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from "npm:uuid";
 import { join as pathJoin } from "jsr:@std/path";
 import { arrayBufferToBase64 } from "./buffer_transformations.ts";
 import { logger } from "../core/logger.ts";
-
+import emojiRegex from "npm:emoji-regex";
 /** Detects if an audio buffer is mostly silent based on a given threshold */
 export function detectSilence(
   audioBuffer: AudioBuffer,
@@ -126,16 +126,29 @@ export function toWav(audioBuffer: AudioBuffer): Uint8Array {
   return new Uint8Array(wavData);
 }
 
+export function extractStyle(rawText: string): { text: string; style: string } {
+  let style = "";
+  for (const match of rawText.matchAll(emojiRegex())) {
+    style += match[0];
+  }
+  const text = rawText.replace(emojiRegex(), "").replace("*", "");
+  return { text, style };
+}
+
 export async function speak(
-  text: string,
+  rawText: string,
   speakerId_: undefined | string = undefined, //"Kumar Dahl", //"p230",
   languageId = "en",
 ): Promise<string> {
+  const { text, style } = extractStyle(rawText);
+  if (!text) {
+    throw new Error("No text to speak");
+  }
   const speakerId = speakerId_ ?? Deno.env.get("SPEAKER") ?? "Kumar Dahl";
   const host = Deno.env.get("COQUI_URL") ?? "http://localhost:5002";
   const url = `${host}/api/tts?text=${
     encodeURIComponent(text)
-  }&speaker_id=${speakerId}&language_id=${languageId}`;
+  }&speaker_id=${speakerId}&language_id=${languageId}&style_wav=/root/.local/share/styles/o.m.g.wav`;
   logger.info({ url }, "Speaking text");
   const response = await fetch(
     url,
