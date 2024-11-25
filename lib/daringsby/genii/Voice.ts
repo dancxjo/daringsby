@@ -325,7 +325,7 @@ Reminder: Keep up with the conversation. Avoid speaking too often or repeating y
   }
 
   protected updateContext(content: string) {
-    this.session.context = content;
+    // this.session.context = content;
   }
 
   protected feelFileNotFound(files: string[], filename: string) {

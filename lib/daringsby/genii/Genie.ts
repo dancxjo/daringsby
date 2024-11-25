@@ -44,10 +44,10 @@ export class Genie<I> implements Faculty<I, string> {
       sensations: this.sensations,
     };
 
-    if (!this.sensations.length) {
-      logger.error(`${this.name}: No sensations to narrate`);
-      return of("");
-    }
+    // if (!this.sensations.length) {
+    //   logger.error(`${this.name}: No sensations to narrate`);
+    //   return of("");
+    // }
     this.sensations = [];
     logger.debug({ input }, `${this.name}: Input for template`);
     const prompt = this.generatePrompt(input);
