@@ -20,9 +20,9 @@ export function narrate(circumstances: string): Observable<string> {
     llamify(Deno.env.get("OLLAMA_MODEL") || "gemma2:27b", {
       host: Deno.env.get("OLLAMA_URL") || "http://localhost:11434",
     }, {
-      images: currentView
-        ? [currentView?.replace(/^data:image\/.*?;base64,/, "") ?? ""]
-        : [],
+      // images: currentView
+      //   ? [currentView?.replace(/^data:image\/.*?;base64,/, "") ?? ""]
+      //   : [],
     }),
     wholeResponse(),
   );

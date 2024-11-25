@@ -128,9 +128,10 @@ export function toWav(audioBuffer: AudioBuffer): Uint8Array {
 
 export async function speak(
   text: string,
-  speakerId = "Aaron Dreschner", //"p230",
+  speakerId_: undefined | string = "Wulf Carlevaro", //"Kumar Dahl", //"p230",
   languageId = "",
 ): Promise<string> {
+  const speakerId = speakerId_ ?? Deno.env.get("SPEAKER") ?? "Kumar Dahl";
   const host = Deno.env.get("COQUI_URL") ?? "http://localhost:5002";
   const url = `${host}/api/tts?text=${
     encodeURIComponent(text)

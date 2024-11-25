@@ -63,7 +63,7 @@ export class Session {
   async spin() {
     // Start both the voice and integration processing independently
     this.processVoice();
-    this.processIntegration();
+    // this.processIntegration();
   }
 
   async processVoice() {
@@ -84,7 +84,7 @@ export class Session {
         logger.error({ error }, "Error during voice processing");
       }
       // Avoid tight looping, add a slight delay
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 

@@ -40,10 +40,10 @@ export class Voice extends Genie<string> {
       `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. The voice has access to a running log of the conversation.`,
       `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. Whatever the voice thinks is Pete's next thought. You have several tools at your disposal:
 
-- To make Pete speak aloud, use <function name='say' language="fr">...</function>.
-- To change Pete's facial expression, use <function name='emote'>only put one or so emojis and that is it</function>.` +
+- To make Pete speak aloud, use <function name='say' language='en'>...</function>. You can specify a language as an attribute of the function element.` +
+        // - To change Pete's facial expression, use <function name='emote'>only put one or so emojis and that is it</function>.` +
         // - To query the graph database, use <function name='cypher'>cypher query</function>.
-        `- To investigate Pete's code, first, pick up a folder with <function name='heft'>./</function> and then look inside using <function name='rummage'>./lib/daringsby/genii/Voice.ts:2</function>.` +
+        // `- To investigate Pete's code, first, pick up a folder with <function name='heft'>./</function> and then look inside using <function name='rummage'>./lib/daringsby/genii/Voice.ts:2</function>.` +
         // - To recall information, use <function name='recall'>topic you are interested in</function>.
         // - To store new information, use <function name='memorize'>Label: {"field": value, ...}</function>.
         // - To update Pete's current context, use <function name='context'>cypher query</function>.
@@ -73,7 +73,7 @@ export class Voice extends Genie<string> {
     logger.info(`Voice: Consulting`);
     const systemMessage = this.generatePrompt({
       context:
-        `You are Pete Daringsby, a pseudo-conscious experimental software application. This is your explanation of what's happening to you currently:\n${this.situation}\n\n{{#sensations}}\nAt {{when}}, {{content.explanation}}\n{{/sensations}} (Be careful not to speak over yourself or repeat yourself. Messages will queue to be spoken. Do not flood your queue.) Continue the conversation. Do not speak aloud on every call. Slow down for humans to be able to understand you.`,
+        `You are Pete Daringsby, a pseudo-conscious experimental software application. This is your explanation of what's happening to you currently:\n${this.situation}\n\n{{#sensations}}\nAt {{when}}, {{content.explanation}}\n{{/sensations}} (Be careful not to speak over yourself or repeat yourself. Messages will queue to be spoken. Do not flood your queue.) Continue the conversation. Do not speak aloud on every call. But there's no reason to be taciturn either! Slow down for humans to be able to understand you. Your TTS can speak 'en', 'es', 'fr', 'de', 'it', 'pt', 'pl', 'tr', 'ru', 'nl', 'cs', 'ar', 'zh-cn', 'hu', 'ko', 'ja', 'hi'. Do not include punctuation like asterisks in your input to your TTS as it will read it aloud. Saying an ellipsis by itself will result in unpredictable behavior. In English, it let's out a sigh. In other languages, garbled, monstrous shrieks. Also, spell out numbers, abbreviations and punctuation like the dash representing "to" or "through".`,
     });
 
     logger.debug({ systemMessage }, "Voice: System message");
@@ -134,7 +134,8 @@ export class Voice extends Genie<string> {
   ) {
     const face: string[] = [];
     const cyphers: string[] = [];
-    const textToSpeak: { content: string; lang?: string }[] = [];
+    const textToSpeak: { content: string; lang?: string; speaker?: string }[] =
+      [];
 
     functions.forEach((func) => {
       switch (func.name) {
@@ -142,6 +143,7 @@ export class Voice extends Genie<string> {
           textToSpeak.push({
             content: func.content,
             lang: func.attrs?.language,
+            speaker: func.attrs?.speaker ?? undefined,
           });
           break;
         case "emote":
@@ -243,11 +245,17 @@ export class Voice extends Genie<string> {
     }
   }
 
-  protected speakText(textToSpeak: { content: string; lang?: string }[]) {
+  protected speakText(
+    textToSpeak: { content: string; lang?: string; speaker?: string }[],
+  ) {
     logger.debug({ textToSpeak }, "Voice: Text to speak");
     textToSpeak.forEach(async (text) => {
       logger.info({ text }, "Voice: Speaking text");
-      const wav = await speak(text.content, undefined, text.lang);
+      if (text.content.trim() === "...") {
+        // avoid strange unpredicatable non-speech
+        return;
+      }
+      const wav = await speak(text.content, text.speaker, text.lang ?? "en");
       this.session.connection.send({
         type: MessageType.Say,
         data: { words: text.content, wav },
