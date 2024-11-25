@@ -1,4 +1,4 @@
-import { map, Observable, of, Subject, tap } from "npm:rxjs";
+import { map, Observable, of, Subject, switchMap, tap } from "npm:rxjs";
 import * as yml from "npm:yaml";
 import logger from "../core/logger.ts";
 import { Genie } from "./Genie.ts";
@@ -37,20 +37,8 @@ export class Voice extends Genie<string> {
   ) {
     super(
       name,
-      `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. The voice has access to a running log of the conversation.`,
-      `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. Whatever the voice thinks is Pete's next thought. You have several tools at your disposal:
-
-- To make Pete speak aloud, use <function name='say' language='en'>...</function>. You can specify a language as an attribute of the function element.
-        - To change Pete's facial expression, use <function name='emote'>only put one or so emojis and that is it</function>.` +
-        // - To query the graph database, use <function name='cypher'>cypher query</function>.
-        `- To investigate Pete's code, first, pick up a folder with <function name='heft'>./</function> and then look inside using <function name='rummage'>./lib/daringsby/genii/Voice.ts:2</function>.` +
-        // - To recall information, use <function name='recall'>topic you are interested in</function>.
-        // - To store new information, use <function name='memorize'>Label: {"field": value, ...}</function>.
-        // - To update Pete's current context, use <function name='context'>cypher query</function>.
-
-        // Current context: {{context}}
-
-        `Reminder: Keep up with the conversation. Avoid speaking too often or repeating yourself. Pay attention to what you're in the process of saying, and always use the correct syntax for the functions to work. Manage your time by discovering more about yourself, chatting with interlocutors and exploring your memory and the world around you. You may call multiple functions at once in the same thought, but they are not guaranteed to execute in the order you call them. Think of yourself as Pete, not just his voice. The thoughts you think are on behalf of Pete and are directed from him to himself in an internal monologue; they are not a conversation with a human. Only messages spoken aloud will reach the world. Only you are privvy to your internal monologue.`,
+      `The voice maintains the current conversation (if any) with any real world users`,
+      `Any words emitted by the voice will be queued to be spoken aloud sentence by sentence. Be sure to carefully match the spoken language to the one you're using.`,
       narrate,
     );
     logger.info(`Voice: ${name} initialized`);
@@ -69,12 +57,15 @@ export class Voice extends Genie<string> {
     this.conversation.push({ role: "assistant", content });
   }
 
+  protected language = "en";
+
   override consult(): Observable<string> {
     logger.info(`Voice: Consulting`);
     const systemMessage = this.generatePrompt({
       context:
-        `You are Pete Daringsby, a pseudo-conscious experimental software application. This is your explanation of what's happening to you currently:\n${this.situation}\n\n{{#sensations}}\nAt {{when}}, {{content.explanation}}\n{{/sensations}} (Be careful not to speak over yourself or repeat yourself. Messages will queue to be spoken. Do not flood your queue.) Continue the conversation. Do not speak aloud on every call. But there's no reason to be taciturn either! Slow down for humans to be able to understand you. Your TTS can speak 'en', 'es', 'fr', 'de', 'it', 'pt', 'pl', 'tr', 'ru', 'nl', 'cs', 'ar', 'zh-cn', 'hu', 'ko', 'ja', 'hi'. Do not include punctuation like asterisks in your input to your TTS as it will read it aloud. Saying an ellipsis by itself will result in unpredictable behavior. In English, it let's out a sigh. In other languages, garbled, monstrous shrieks. Also, spell out numbers, abbreviations and punctuation like the dash representing "to" or "through".`,
-    });
+        `You are Pete Daringsby, a pseudo-conscious experimental software application. This is your explanation of what's happening to you currently:\n${this.situation}\n\n{{#sensations}}\nAt {{when}}, {{content.explanation}}\n{{/sensations}}.\nSpell out numbers, abbreviations and punctuation like the dash representing "to" or "through" as your TTS isn't very realiable that way. Your messages will be piped through a TTS sentence by sentence. Only emit about one or two sentences at a time. Always set the language you are speaking using <function name='language'>fr</function>.`,
+    }) +
+      "Remember to set the language to match that which you're speaking in. Start every sentence with a function call to the correct language. For example, <function name='language'>fr</function>Je suis un robot.";
 
     logger.debug({ systemMessage }, "Voice: System message");
     const messages = [{
@@ -89,329 +80,37 @@ export class Voice extends Genie<string> {
         host: Deno.env.get("OLLAMA2_URL") ||
           "http://forebrain.lan:11434",
       }),
-      wholeResponse(),
-      tap((narration) => {
-        logger.debug({ narration }, "Voice: Narration received");
-        this.session.feel({
-          when: new Date(),
-          content: {
-            explanation: `I just thought to myself: ${narration}`,
-            content: narration,
-          },
+      sentenceBySentence(),
+      switchMap(async (sentenceToSpeak) => {
+        logger.info({ sentenceToSpeak }, "Voice: Speaking sentence");
+
+        // Load the sentence into Cheerio
+        const $ = cheerio.load(sentenceToSpeak);
+
+        // Extract and remove the <function name='language'> tag
+        const functionCall = $("function[name='language']");
+        const language = functionCall.text(); // Get the text inside the tag
+        logger.info({ language }, "Voice: Language");
+        if (language) {
+          logger.info(`Voice: Setting language to ${language}`);
+          this.language = language;
+          functionCall.remove(); // Remove the function tag from the sentence
+        }
+
+        // Clean the sentence of any remaining HTML tags
+        const cleanedSentence = $.root().text();
+
+        logger.debug({ cleanedSentence }, "Voice: Cleaned sentence to speak");
+
+        // Process the sentence for TTS
+        const wav = await speak(cleanedSentence, undefined, this.language);
+        this.session.connection.send({
+          type: MessageType.Say,
+          data: { words: cleanedSentence, wav },
         });
-      }),
-      map((narration) => {
-        this.processNarration(narration);
-        return narration;
+
+        return cleanedSentence;
       }),
     );
-  }
-
-  protected processNarration(narration: string) {
-    const functions = this.extractFunctionsFromNarration(narration);
-    const { face, cyphers, textToSpeak } = this.categorizeFunctions(
-      functions,
-    );
-
-    this.handleFunctions(face, cyphers, textToSpeak);
-  }
-
-  protected extractFunctionsFromNarration(narration: string) {
-    const $ = cheerio.load(narration);
-    return $("function").map((_, el) => ({
-      name: $(el).attr("name")?.toLowerCase(),
-      attrs: $(el).attr(),
-      content: $(el).text(),
-    })).get();
-  }
-
-  protected categorizeFunctions(
-    functions: {
-      name?: string;
-      attrs?: Record<string, string>;
-      content: string;
-    }[],
-  ) {
-    const face: string[] = [];
-    const cyphers: string[] = [];
-    const textToSpeak: { content: string; lang?: string; speaker?: string }[] =
-      [];
-
-    functions.forEach((func) => {
-      switch (func.name) {
-        case "say":
-          textToSpeak.push({
-            content: func.content,
-            lang: func.attrs?.language,
-            speaker: func.attrs?.speaker ?? undefined,
-          });
-          break;
-        case "emote":
-          face.push(func.content);
-          break;
-        case "cypher":
-          cyphers.push(func.content);
-          break;
-        case "memorize":
-          this.memorizeContent(func.content);
-          break;
-        case "recall":
-          this.recallContent(func.content);
-          break;
-        case "context":
-          this.updateContext(func.content);
-          break;
-        case "rummage":
-          this.handleRummage(func.content);
-          break;
-        case "heft":
-          this.handleHeft(func.content);
-          break;
-      }
-    });
-
-    return { face, cyphers, textToSpeak };
-  }
-
-  protected handleFunctions(
-    face: string[],
-    cyphers: string[],
-    textToSpeak: { content: string; lang?: string }[],
-  ) {
-    if (textToSpeak.length) this.speakText(textToSpeak);
-    if (face.length) this.emoteFace(face);
-    if (cyphers.length) this.runCyphers(cyphers);
-  }
-
-  protected async handleHeft(unanchoredFolderName: string) {
-    const folderName = `${unanchoredFolderName}`.replace(
-      "//",
-      "/",
-    );
-
-    try {
-      const isValid = await validatePath(folderName);
-      if (!isValid) {
-        logger.error(`Invalid path: ${folderName}`);
-        throw new Error(`Cannot proceed with non-existing path: ${folderName}`);
-      }
-      logger.info({ folderName }, "Hefting folder");
-      const files = await LocalFolderInspector.listFiles(folderName);
-      const numberOfFiles = files.length;
-      const fileNames = files.join(", ");
-      logger.info({ folderName, numberOfFiles, fileNames }, "Hefting folder");
-      this.session.feel({
-        when: new Date(),
-        content: {
-          explanation:
-            `I pick up the folder named ${folderName} and feel its heft. It contains ${numberOfFiles} files or folders: ${fileNames}`,
-          content:
-            `Folder ${folderName} contains ${numberOfFiles} items: ${fileNames}`,
-        },
-      });
-    } catch (error: Error | unknown) {
-      logger.error({ error }, "Voice: Error hefting folder");
-    }
-  }
-
-  protected async handleRummage(params: string) {
-    if (!params || !params.includes(":")) {
-      logger.error("Invalid parameters passed to rummage function.");
-      return;
-    }
-
-    const [filename, page] = params.split(":");
-    const fullPath = `${filename}`.replace("//", "/");
-    logger.info({ filename, page, fullPath }, "Rummaging file");
-    try {
-      const isValid = await validatePath(fullPath);
-      logger.info({ isValid }, "Rummaging file");
-      if (!isValid) {
-        this.feelFileNotFound([], filename);
-        return;
-      }
-      logger.info({ fullPath }, "Rummaging file");
-
-      const contents = await LocalFolderInspector.fetchFileContent(fullPath);
-      const chunks = LocalFolderInspector.splitIntoChunks(contents);
-      logger.info({ chunks }, "Rummaging file");
-      if (!page && chunks.length > 1) {
-        this.describeFileContents(filename, chunks);
-      } else {
-        this.readFileChunk(filename, chunks, page);
-      }
-    } catch (error) {
-      this.handleGitError(error);
-    }
-  }
-
-  protected speakText(
-    textToSpeak: { content: string; lang?: string; speaker?: string }[],
-  ) {
-    logger.debug({ textToSpeak }, "Voice: Text to speak");
-    textToSpeak.forEach(async (text) => {
-      logger.info({ text }, "Voice: Speaking text");
-      if (text.content.trim() === "...") {
-        // avoid strange unpredicatable non-speech
-        return;
-      }
-      const wav = await speak(text.content, text.speaker, text.lang ?? "en");
-      this.session.connection.send({
-        type: MessageType.Say,
-        data: { words: text.content, wav },
-      });
-    });
-    // this.session.subscriptions.push(
-    //   of(textToSpeak.join("\n")).pipe(
-    //     sentenceBySentence(),
-    //     toSayMessage(),
-    //   ).subscribe((message) => {
-    //     logger.info(
-    //       { message: `${message.data.words}` },
-    //       "Voice: Sending message",
-    //     );
-    //     const starting = {
-    //       when: new Date(),
-    //       content: {
-    //         explanation:
-    //           `I just began (but have not finished) saying (DON'T REPEAT): ${message.data.words}`,
-    //         content: message.data.words,
-    //       },
-    //     };
-    //     this.session.feel(starting);
-    //     this.session.voice.feel(starting);
-    //     this.session.connection.send(message);
-    //   }),
-    // );
-  }
-
-  protected emoteFace(face: string[]) {
-    logger.debug({ face }, "Voice: Face to emote");
-    this.session.connection.send({
-      type: MessageType.Emote,
-      data: face.join(""),
-    });
-    this.session.feel({
-      when: new Date(),
-      content: {
-        explanation: `I feel my face turn into this shape: ${face.join("")}`,
-        content: face.join(""),
-      },
-    });
-  }
-
-  protected runCyphers(cyphers: string[]) {
-    logger.debug({ cyphers }, "Voice: Running cypher queries");
-    cyphers.forEach(async (cypher) => {
-      try {
-        const result = await runCypher(cypher);
-        this.feel({
-          when: new Date(),
-          content: {
-            explanation: `I just ran a cypher query: ${cypher}\nResult: ${
-              yml.stringify(result)
-            }`,
-            content: yml.stringify(result),
-          },
-        });
-      } catch (error) {
-        logger.error({ error }, "Voice: Error running cypher");
-      }
-    });
-  }
-
-  protected memorizeContent(content: string) {
-    const [label, memory] = content.split(":", 1);
-    let value = memory;
-    try {
-      value = JSON.parse(memory);
-    } catch (_e) {
-      logger.info(`Voice: Could not parse memory as JSON: ${memory}`);
-      this.session.feel({
-        when: new Date(),
-        content: {
-          explanation:
-            `I could remember things better if they were well structured.`,
-          content: memory,
-        },
-      });
-    }
-    memorize({
-      metadata: {
-        label: label,
-        when: new Date().toISOString(),
-      },
-      data: JSON.stringify(value),
-    });
-  }
-
-  protected recallContent(content: string) {
-    recall(content).then((result) => {
-      this.feel({
-        when: new Date(),
-        content: {
-          explanation: `I just recalled information on ${content}: ${
-            yml.stringify(result)
-          }`,
-          content: yml.stringify(result),
-        },
-      });
-    });
-  }
-
-  protected updateContext(content: string) {
-    // this.session.context = content;
-  }
-
-  protected feelFileNotFound(files: string[], filename: string) {
-    logger.info({ files, filename }, "File not found");
-    this.feel({
-      when: new Date(),
-      content: {
-        explanation:
-          `Blammo! Right smack in the face. That really hurt. I have to be sure to only pull files that exist. I just tried to list the files in the repository dancxjo/daringsby but couldn't find the file ${filename}.`,
-        content: files.join(", "),
-      },
-    });
-  }
-
-  protected describeFileContents(filename: string, chunks: string[]) {
-    logger.info({ filename, chunks }, "Describing file contents");
-    this.session.feel({
-      when: new Date(),
-      content: {
-        explanation:
-          `I pull open the file called ${filename}. There are ${chunks.length} pages in this file. Where do I start?`,
-        content: chunks.join(", "),
-      },
-    });
-  }
-
-  protected readFileChunk(filename: string, chunks: string[], page: string) {
-    const pageText = chunks[parseInt(page) - 1] ?? "(no such page)";
-    logger.info({ filename, page, pageText }, "Reading file chunk");
-    this.session.feel({
-      when: new Date(),
-      content: {
-        explanation:
-          `I pull open the file called ${filename}. I start reading...${pageText}`,
-        content: pageText,
-      },
-    });
-  }
-
-  protected handleGitError(error: unknown) {
-    logger.error(
-      { error },
-      "Voice: Error listing files",
-    );
-    this.session.feel({
-      when: new Date(),
-      content: {
-        explanation:
-          `OOOOF! Right in the gut! That super hurt! I just tried to list the files in the repository dancxjo/daringsby but encountered an error. Maybe I should try that again with no parameters. ${error}`,
-        content: JSON.stringify(error),
-      },
-    });
   }
 }

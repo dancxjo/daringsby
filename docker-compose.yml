@@ -28,8 +28,8 @@ services:
       - WHISPER_URL=http://whisper:9000
       - NEO4J_URL=bolt://neo4j:7687
       - OLLAMA_MODEL=llama3.2
-      - OLLAMA2_MODEL=llama3.2
-      - SPEAKER=Wulf Carlevaro
+      - OLLAMA2_MODEL=gemma2:27b
+      - SPEAKER=Royston Min
     depends_on:
       - neo4j
       - tts
