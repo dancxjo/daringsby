@@ -23,7 +23,7 @@ export class Genie<I> implements Faculty<I, string> {
   }
 
   feel(sensation: Sensation<I>) {
-    logger.info(`${this.name}: Feeling sensation`);
+    logger.debug(`${this.name}: Feeling sensation`);
     this.sensations.push(sensation);
   }
 

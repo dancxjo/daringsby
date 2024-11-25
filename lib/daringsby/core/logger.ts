@@ -5,7 +5,7 @@ import { Sensation } from "../core/interfaces.ts";
 
 const baseLogger = pino({
   name: "daringsby",
-  level: "debug",
+  level: "info",
   browser: IS_BROWSER ? { asObject: true } : undefined,
 });
 

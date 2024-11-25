@@ -69,14 +69,26 @@ services:
   tts:
     image: ghcr.io/coqui-ai/tts
     ports:
-      - "5002:5002"
-    entrypoint: python3
-    command: [ "TTS/server/server.py", "--model_name", "tts_models/en/vctk/vits" ]
-    runtime: nvidia
+      - 5002:5002
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - TTS_MODEL="tts_models/en/ljspeech/tacotron2-DDC"
-      - VOCODER_MODEL="vocoder_models/en/ljspeech/hifigan_v1"
+      - COQUI_TOS_AGREED=1
+    #entrypoint: ["python3", "TTS/server/server.py", "--model_name", "tts_models/multilingual/multi-dataset/xtts_v2", "--use_cuda", "true"]
+    entrypoint:
+      - "/bin/bash"
+      - "-c"
+      - "tts-server --model_path ~/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2 --config_path ~/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/config.json --speakers_file_path ~/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/speakers_xtts.pth --use_cuda true"
+    # entrypoint: 
+    #   - "/bin/bash"
+    #   - "-c"
+    #   - "tts --model_name tts_models/multilingual/multi-dataset/xtts_v2 --list_language_idx"
+    volumes:
+      - ./tts:/root/.local/share
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - count: all # alternatively, use `count: all` for all GPUs
+              capabilities: [gpu]
 
   whisper:
     image: onerahmet/openai-whisper-asr-webservice:latest-gpu

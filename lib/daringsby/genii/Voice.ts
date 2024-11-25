@@ -13,6 +13,7 @@ import { Sensation } from "../core/interfaces.ts";
 import { MessageType } from "../network/messages/MessageType.ts";
 import { memorize, recall, runCypher } from "../utils/memory.ts";
 import { LocalFolderInspector } from "../local_inspector.ts";
+import { speak } from "../utils/audio_processing.ts";
 
 // Helper function for path validation
 async function validatePath(path: string): Promise<boolean> {
@@ -39,17 +40,17 @@ export class Voice extends Genie<string> {
       `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. The voice has access to a running log of the conversation.`,
       `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. Whatever the voice thinks is Pete's next thought. You have several tools at your disposal:
 
-- To make Pete speak aloud, use <function name='say'>...</function>.
-- To change Pete's facial expression, use <function name='emote'>only put one or so emojis and that is it</function>.
-- To query the graph database, use <function name='cypher'>cypher query</function>.
-- To investigate Pete's code, first, pick up a folder with <function name='heft'>./</function> and then look inside using <function name='rummage'>./lib/daringsby/genii/Voice.ts:2</function>.
-- To recall information, use <function name='recall'>topic you are interested in</function>.
-- To store new information, use <function name='memorize'>Label: {"field": value, ...}</function>.
-- To update Pete's current context, use <function name='context'>cypher query</function>.
+- To make Pete speak aloud, use <function name='say' language="fr">...</function>.
+- To change Pete's facial expression, use <function name='emote'>only put one or so emojis and that is it</function>.` +
+        // - To query the graph database, use <function name='cypher'>cypher query</function>.
+        `- To investigate Pete's code, first, pick up a folder with <function name='heft'>./</function> and then look inside using <function name='rummage'>./lib/daringsby/genii/Voice.ts:2</function>.` +
+        // - To recall information, use <function name='recall'>topic you are interested in</function>.
+        // - To store new information, use <function name='memorize'>Label: {"field": value, ...}</function>.
+        // - To update Pete's current context, use <function name='context'>cypher query</function>.
 
-Current context: {{context}}
+        // Current context: {{context}}
 
-Reminder: Keep up with the conversation. Avoid speaking too often or repeating yourself. Pay attention to what you're in the process of saying, and always use the correct syntax for the functions to work. Manage your time by discovering more about yourself, chatting with interlocutors and exploring your memory and the world around you. You may call multiple functions at once in the same thought, but they are not guaranteed to execute in the order you call them.`,
+        `Reminder: Keep up with the conversation. Avoid speaking too often or repeating yourself. Pay attention to what you're in the process of saying, and always use the correct syntax for the functions to work. Manage your time by discovering more about yourself, chatting with interlocutors and exploring your memory and the world around you. You may call multiple functions at once in the same thought, but they are not guaranteed to execute in the order you call them.`,
       narrate,
     );
     logger.info(`Voice: ${name} initialized`);
@@ -119,21 +120,29 @@ Reminder: Keep up with the conversation. Avoid speaking too often or repeating y
     const $ = cheerio.load(narration);
     return $("function").map((_, el) => ({
       name: $(el).attr("name")?.toLowerCase(),
+      attrs: $(el).attr(),
       content: $(el).text(),
     })).get();
   }
 
   protected categorizeFunctions(
-    functions: { name?: string; content: string }[],
+    functions: {
+      name?: string;
+      attrs?: Record<string, string>;
+      content: string;
+    }[],
   ) {
     const face: string[] = [];
     const cyphers: string[] = [];
-    const textToSpeak: string[] = [];
+    const textToSpeak: { content: string; lang?: string }[] = [];
 
     functions.forEach((func) => {
       switch (func.name) {
         case "say":
-          textToSpeak.push(func.content);
+          textToSpeak.push({
+            content: func.content,
+            lang: func.attrs?.language,
+          });
           break;
         case "emote":
           face.push(func.content);
@@ -165,7 +174,7 @@ Reminder: Keep up with the conversation. Avoid speaking too often or repeating y
   protected handleFunctions(
     face: string[],
     cyphers: string[],
-    textToSpeak: string[],
+    textToSpeak: { content: string; lang?: string }[],
   ) {
     if (textToSpeak.length) this.speakText(textToSpeak);
     if (face.length) this.emoteFace(face);
@@ -234,30 +243,38 @@ Reminder: Keep up with the conversation. Avoid speaking too often or repeating y
     }
   }
 
-  protected speakText(textToSpeak: string[]) {
+  protected speakText(textToSpeak: { content: string; lang?: string }[]) {
     logger.debug({ textToSpeak }, "Voice: Text to speak");
-    this.session.subscriptions.push(
-      of(textToSpeak.join("\n")).pipe(
-        sentenceBySentence(),
-        toSayMessage(),
-      ).subscribe((message) => {
-        logger.info(
-          { message: `${message.data.words}` },
-          "Voice: Sending message",
-        );
-        const starting = {
-          when: new Date(),
-          content: {
-            explanation:
-              `I just began (but have not finished) saying (DON'T REPEAT): ${message.data.words}`,
-            content: message.data.words,
-          },
-        };
-        this.session.feel(starting);
-        this.session.voice.feel(starting);
-        this.session.connection.send(message);
-      }),
-    );
+    textToSpeak.forEach(async (text) => {
+      logger.info({ text }, "Voice: Speaking text");
+      const wav = await speak(text.content, undefined, text.lang);
+      this.session.connection.send({
+        type: MessageType.Say,
+        data: { words: text.content, wav },
+      });
+    });
+    // this.session.subscriptions.push(
+    //   of(textToSpeak.join("\n")).pipe(
+    //     sentenceBySentence(),
+    //     toSayMessage(),
+    //   ).subscribe((message) => {
+    //     logger.info(
+    //       { message: `${message.data.words}` },
+    //       "Voice: Sending message",
+    //     );
+    //     const starting = {
+    //       when: new Date(),
+    //       content: {
+    //         explanation:
+    //           `I just began (but have not finished) saying (DON'T REPEAT): ${message.data.words}`,
+    //         content: message.data.words,
+    //       },
+    //     };
+    //     this.session.feel(starting);
+    //     this.session.voice.feel(starting);
+    //     this.session.connection.send(message);
+    //   }),
+    // );
   }
 
   protected emoteFace(face: string[]) {

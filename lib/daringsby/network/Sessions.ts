@@ -84,7 +84,7 @@ export class Session {
         logger.error({ error }, "Error during voice processing");
       }
       // Avoid tight looping, add a slight delay
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 3000));
     }
   }
 

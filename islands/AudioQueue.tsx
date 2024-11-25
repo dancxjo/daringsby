@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "preact/hooks";
+import { useCallback, useEffect, useRef } from "preact/hooks";
 import { MessageType } from "../lib/daringsby/network/messages/MessageType.ts";
 import {
   isValidSayMessage,
@@ -77,24 +77,30 @@ export default function AudioPlayer(
     });
   };
 
-  let lastWordsFrom = new Date();
+  let lastWordsFrom = useRef(new Date());
+  let lastWordsSpoken = useRef("");
 
-  const handleMessage = async (message: SayMessage) => {
+  const handleMessage = useCallback(async (message: SayMessage) => {
     const theseWordsFrom = new Date(message.at ?? new Date());
-    if (theseWordsFrom < lastWordsFrom) {
+    if (theseWordsFrom < lastWordsFrom.current) {
       logger.debug(
         "Skipping obsolete message from the past:",
         message.at,
       );
       return;
     }
-    lastWordsFrom = theseWordsFrom;
+    lastWordsFrom.current = theseWordsFrom;
     logger.debug({
       message: message.at,
       data: message.data.words,
     }, "Received say message");
 
+    if (message.data.words === lastWordsSpoken.current) {
+      logger.debug("Skipping duplicate message");
+      return;
+    }
     try {
+      lastWordsSpoken.current = message.data.words;
       await playSound(message.data.wav);
       logger.debug("Finished playing message:", message.at);
       serverRef.current?.send({
@@ -104,20 +110,21 @@ export default function AudioPlayer(
     } catch (error) {
       logger.error({ error }, "Error playing sound");
     }
-  };
+  }, [serverRef]);
 
   useEffect(() => {
     const server = serverRef.current;
     if (server && !listenerAttached.current) {
+      listenerAttached.current = true; // Mark as attached before attaching
+
       server.onMessage(isValidSayMessage, MessageType.Say, handleMessage);
-      listenerAttached.current = true;
 
       return () => {
         server.offMessage(MessageType.Say, handleMessage);
-        listenerAttached.current = false;
+        listenerAttached.current = false; // Proper cleanup
       };
     }
-  }, [serverRef.current]);
+  }, [serverRef, handleMessage]);
 
   return null;
 }
