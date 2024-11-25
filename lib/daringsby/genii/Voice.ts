@@ -72,7 +72,7 @@ Reminder: Keep up with the conversation. Avoid speaking too often or repeating y
     logger.info(`Voice: Consulting`);
     const systemMessage = this.generatePrompt({
       context:
-        `You are Pete Daringsby, a pseudo-conscious experimental software application. This is your explanation of what's happening to you currently:\n${this.situation}\n\nContinue the conversation. Do not speak aloud on every call. Slow down for humans to be able to understand you.`,
+        `You are Pete Daringsby, a pseudo-conscious experimental software application. This is your explanation of what's happening to you currently:\n${this.situation}\n\n{{#sensations}}\nAt {{when}}, {{content.explanation}}\n{{/sensations}} (Be careful not to speak over yourself or repeat yourself. Messages will queue to be spoken. Do not flood your queue.) Continue the conversation. Do not speak aloud on every call. Slow down for humans to be able to understand you.`,
     });
 
     logger.debug({ systemMessage }, "Voice: System message");
@@ -245,6 +245,16 @@ Reminder: Keep up with the conversation. Avoid speaking too often or repeating y
           { message: `${message.data.words}` },
           "Voice: Sending message",
         );
+        const starting = {
+          when: new Date(),
+          content: {
+            explanation:
+              `I just began (but have not finished) saying (DON'T REPEAT): ${message.data.words}`,
+            content: message.data.words,
+          },
+        };
+        this.session.feel(starting);
+        this.session.voice.feel(starting);
         this.session.connection.send(message);
       }),
     );
