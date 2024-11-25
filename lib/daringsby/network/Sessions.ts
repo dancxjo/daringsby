@@ -56,6 +56,8 @@ export class Session {
   feel(sensation: Sensation<unknown>) {
     logger.debug({ sensation }, "Feeling sensation");
     this.timeline.push(sensation);
+    this.timeline.sort((a, b) => a.when.getTime() - b.when.getTime());
+    this.integration.feel(sensation);
   }
 
   async spin() {
