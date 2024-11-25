@@ -1,23 +1,14 @@
 import { SocketConnection } from "./sockets/connection.ts";
-import {
-  BehaviorSubject,
-  bufferTime,
-  map,
-  of,
-  ReplaySubject,
-  Subject,
-  Subscription,
-  tap,
-} from "npm:rxjs";
+import { bufferTime, ReplaySubject, Subscription, tap } from "npm:rxjs";
 import * as cheerio from "npm:cheerio";
-import { Message } from "npm:ollama";
 import { Sensation } from "../core/interfaces.ts";
-import { errorSubject, logger, trapLog } from "../core/logger.ts";
+import { errorSubject, logger } from "../core/logger.ts";
 import { Wits } from "../genii/Wit.ts";
 import {
   handleEchoes,
   handleGeolocations,
   handleIncomingTexts,
+  handleVision,
   setupHeartbeat,
 } from "./sockets/handlers.ts";
 import { Voice } from "../genii/Voice.ts";
@@ -73,6 +64,7 @@ export class Session {
     // Add this subscription to the list so it can be managed properly
     this.subscriptions.push(errorSubscription);
     establishMemory();
+    handleVision(this);
     handleGeolocations(this);
     handleEchoes(this);
     handleIncomingTexts(this);
@@ -198,7 +190,7 @@ export class Session {
   tock() {
     logger.debug({ context: this.context }, "Gathering instant");
     recall(this.context, 5).then((memories) => {
-      logger.info({ memories }, "Recalled memories");
+      logger.debug({ memories }, "Recalled memories");
       this.feel({
         when: new Date(),
         content: {
@@ -209,10 +201,7 @@ export class Session {
     });
     queryMemory(this.context).then((context) => {
       logger.debug({ context }, "Gathered instant");
-      this.contextValue = JSON.stringify(context).replace(
-        /"embedding":\s*\[\.*](,|$|\n)/gm,
-        "",
-      );
+
       const newSituation: Sensation<string> = {
         when: new Date(),
         content: {
@@ -272,7 +261,7 @@ export class Session {
       }),
     );
 
-    logger.debug("Thinking next thought");
+    logger.info("Thinking next thought");
 
     this.subscriptions.push(
       this.voice.consult().subscribe((narration) => {

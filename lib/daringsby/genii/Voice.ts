@@ -1,4 +1,3 @@
-// Import statements
 import { map, Observable, of, Subject, tap } from "npm:rxjs";
 import * as yml from "npm:yaml";
 import logger from "../core/logger.ts";
@@ -13,7 +12,17 @@ import { Message } from "npm:ollama";
 import { Sensation } from "../core/interfaces.ts";
 import { MessageType } from "../network/messages/MessageType.ts";
 import { memorize, recall, runCypher } from "../utils/memory.ts";
-import { GitInspector } from "../network/git/gitInspector.ts";
+import { LocalFolderInspector } from "../local_inspector.ts";
+
+// Helper function for path validation
+async function validatePath(path: string): Promise<boolean> {
+  try {
+    await Deno.lstat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // Voice class definition
 export class Voice extends Genie<string> {
@@ -28,14 +37,22 @@ export class Voice extends Genie<string> {
     super(
       name,
       `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. The voice has access to a running log of the conversation.`,
-      `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. Whatever the voice thinks is Pete's next thought. The voice can surround brief text with <function name='say'>...</function> to cause Pete to speak out loud. The voice can also change the currently displayed face of Pete by putting an unicode emoji between <function name='emote'>...</function>. The voice has access to a running log of the conversation.\n\nCurrent context: {{context}}\n\nReminder: Keep up with the conversation. Don't speak too often or repeat yourself over and over. Pay attention to what you're in the process of saying. (You must use the correct syntax for the functions to work.) There is no tage called emote. You must use a function call. You may also control your graph database by sending cypher queries with the function call <function name='cypher'>cypher query</function>. You have a super-secret sense call <function name='filmnoir'></function> (call it to investigate your own code). To recall information on a specific topic, use the function call <function name='recall'>the topic you are interested in</function>. You can also consciously <function name='memorize'>Cat:{"field": false, "aribtray": "primative", "color": 42, "mustbe": "valid neo4j"}</function> (where Cat is the label you want to categorize this as). You can also change your current context by sending a message with the type <function name='context'>MATCH (me:Self)
-        OPTIONAL MATCH (latest:Situation)
-        RETURN me, latest
-        ORDER BY latest.timestamp DESC
-        LIMIT 2</function>. Your context is the set of memories that you constantly receive.`,
+      `This part of the mind produces speech and other vocalizations as well as unvoiced conscious thoughts. Whatever the voice thinks is Pete's next thought. You have several tools at your disposal:
+
+- To make Pete speak aloud, use <function name='say'>...</function>.
+- To change Pete's facial expression, use <function name='emote'>only put one or so emojis and that is it</function>.
+- To query the graph database, use <function name='cypher'>cypher query</function>.
+- To investigate Pete's code, first, pick up a folder with <function name='heft'>./</function> and then look inside using <function name='rummage'>./lib/daringsby/genii/Voice.ts:2</function>.
+- To recall information, use <function name='recall'>topic you are interested in</function>.
+- To store new information, use <function name='memorize'>Label: {"field": value, ...}</function>.
+- To update Pete's current context, use <function name='context'>cypher query</function>.
+
+Current context: {{context}}
+
+Reminder: Keep up with the conversation. Avoid speaking too often or repeating yourself. Pay attention to what you're in the process of saying, and always use the correct syntax for the functions to work. Manage your time by discovering more about yourself, chatting with interlocutors and exploring your memory and the world around you. You may call multiple functions at once in the same thought, but they are not guaranteed to execute in the order you call them.`,
       narrate,
     );
-    logger.debug(`Voice: ${name} initialized`);
+    logger.info(`Voice: ${name} initialized`);
     session.subscriptions.push(
       situation$.subscribe((situation) => {
         this.situation = situation.content.content;
@@ -52,7 +69,7 @@ export class Voice extends Genie<string> {
   }
 
   override consult(): Observable<string> {
-    logger.debug(`Voice: Consulting`);
+    logger.info(`Voice: Consulting`);
     const systemMessage = this.generatePrompt({
       context:
         `You are Pete Daringsby, a pseudo-conscious experimental software application. This is your explanation of what's happening to you currently:\n${this.situation}\n\nContinue the conversation. Do not speak aloud on every call. Slow down for humans to be able to understand you.`,
@@ -133,8 +150,11 @@ export class Voice extends Genie<string> {
         case "context":
           this.updateContext(func.content);
           break;
-        case "filmnoir":
-          this.handleFilmNoir(func.content);
+        case "rummage":
+          this.handleRummage(func.content);
+          break;
+        case "heft":
+          this.handleHeft(func.content);
           break;
       }
     });
@@ -152,6 +172,68 @@ export class Voice extends Genie<string> {
     if (cyphers.length) this.runCyphers(cyphers);
   }
 
+  protected async handleHeft(unanchoredFolderName: string) {
+    const folderName = `${unanchoredFolderName}`.replace(
+      "//",
+      "/",
+    );
+
+    try {
+      const isValid = await validatePath(folderName);
+      if (!isValid) {
+        logger.error(`Invalid path: ${folderName}`);
+        throw new Error(`Cannot proceed with non-existing path: ${folderName}`);
+      }
+      logger.info({ folderName }, "Hefting folder");
+      const files = await LocalFolderInspector.listFiles(folderName);
+      const numberOfFiles = files.length;
+      const fileNames = files.join(", ");
+      logger.info({ folderName, numberOfFiles, fileNames }, "Hefting folder");
+      this.session.feel({
+        when: new Date(),
+        content: {
+          explanation:
+            `I pick up the folder named ${folderName} and feel its heft. It contains ${numberOfFiles} files or folders: ${fileNames}`,
+          content:
+            `Folder ${folderName} contains ${numberOfFiles} items: ${fileNames}`,
+        },
+      });
+    } catch (error: Error | unknown) {
+      logger.error({ error }, "Voice: Error hefting folder");
+    }
+  }
+
+  protected async handleRummage(params: string) {
+    if (!params || !params.includes(":")) {
+      logger.error("Invalid parameters passed to rummage function.");
+      return;
+    }
+
+    const [filename, page] = params.split(":");
+    const fullPath = `${filename}`.replace("//", "/");
+    logger.info({ filename, page, fullPath }, "Rummaging file");
+    try {
+      const isValid = await validatePath(fullPath);
+      logger.info({ isValid }, "Rummaging file");
+      if (!isValid) {
+        this.feelFileNotFound([], filename);
+        return;
+      }
+      logger.info({ fullPath }, "Rummaging file");
+
+      const contents = await LocalFolderInspector.fetchFileContent(fullPath);
+      const chunks = LocalFolderInspector.splitIntoChunks(contents);
+      logger.info({ chunks }, "Rummaging file");
+      if (!page && chunks.length > 1) {
+        this.describeFileContents(filename, chunks);
+      } else {
+        this.readFileChunk(filename, chunks, page);
+      }
+    } catch (error) {
+      this.handleGitError(error);
+    }
+  }
+
   protected speakText(textToSpeak: string[]) {
     logger.debug({ textToSpeak }, "Voice: Text to speak");
     this.session.subscriptions.push(
@@ -159,7 +241,7 @@ export class Voice extends Genie<string> {
         sentenceBySentence(),
         toSayMessage(),
       ).subscribe((message) => {
-        logger.debug(
+        logger.info(
           { message: `${message.data.words}` },
           "Voice: Sending message",
         );
@@ -208,8 +290,8 @@ export class Voice extends Genie<string> {
     let value = memory;
     try {
       value = JSON.parse(memory);
-    } catch (e) {
-      logger.debug(`Voice: Could not parse memory as JSON: ${memory}`);
+    } catch (_e) {
+      logger.info(`Voice: Could not parse memory as JSON: ${memory}`);
       this.session.feel({
         when: new Date(),
         content: {
@@ -224,7 +306,7 @@ export class Voice extends Genie<string> {
         label: label,
         when: new Date().toISOString(),
       },
-      data: value,
+      data: JSON.stringify(value),
     });
   }
 
@@ -246,46 +328,8 @@ export class Voice extends Genie<string> {
     this.session.context = content;
   }
 
-  protected handleFilmNoir(params: string) {
-    const inspector = GitInspector;
-    if (params) {
-      inspector.listFiles("dancxjo", "daringsby").then(
-        async (files) => {
-          const [filename, page] = params.split(":");
-          if (!files.includes(filename)) {
-            this.feelFileNotFound(files, filename);
-          } else {
-            await this.handleFileContent(inspector, filename, page);
-          }
-          this.listRepositoryFiles(files);
-        },
-      ).catch((error) => {
-        this.handleGitError(error);
-      });
-    } else {
-      this.describeFileCabinet();
-    }
-  }
-
-  protected async handleFileContent(
-    inspector: typeof GitInspector,
-    filename: string,
-    page: string,
-  ) {
-    const contents = await inspector.fetchFileContent(
-      "dancxjo",
-      "daringsby",
-      filename,
-    );
-    const chunks = inspector.splitIntoChunks(contents);
-    if (!page && chunks.length > 1) {
-      this.describeFileContents(filename, chunks);
-    } else {
-      this.readFileChunk(filename, chunks, page);
-    }
-  }
-
   protected feelFileNotFound(files: string[], filename: string) {
+    logger.info({ files, filename }, "File not found");
     this.feel({
       when: new Date(),
       content: {
@@ -296,20 +340,8 @@ export class Voice extends Genie<string> {
     });
   }
 
-  protected listRepositoryFiles(files: string[]) {
-    this.session.feel({
-      when: new Date(),
-      content: {
-        explanation:
-          `I just listed the files in the repository dancxjo/daringsby: ${
-            files.join(", ")
-          }`,
-        content: files.join(", "),
-      },
-    });
-  }
-
   protected describeFileContents(filename: string, chunks: string[]) {
+    logger.info({ filename, chunks }, "Describing file contents");
     this.session.feel({
       when: new Date(),
       content: {
@@ -322,6 +354,7 @@ export class Voice extends Genie<string> {
 
   protected readFileChunk(filename: string, chunks: string[], page: string) {
     const pageText = chunks[parseInt(page) - 1] ?? "(no such page)";
+    logger.info({ filename, page, pageText }, "Reading file chunk");
     this.session.feel({
       when: new Date(),
       content: {
@@ -332,7 +365,7 @@ export class Voice extends Genie<string> {
     });
   }
 
-  protected handleGitError(error: any) {
+  protected handleGitError(error: unknown) {
     logger.error(
       { error },
       "Voice: Error listing files",
@@ -342,18 +375,7 @@ export class Voice extends Genie<string> {
       content: {
         explanation:
           `OOOOF! Right in the gut! That super hurt! I just tried to list the files in the repository dancxjo/daringsby but encountered an error. Maybe I should try that again with no parameters. ${error}`,
-        content: error,
-      },
-    });
-  }
-
-  protected describeFileCabinet() {
-    this.session.feel({
-      when: new Date(),
-      content: {
-        explanation:
-          `I don my best private eye outfit and head into this dark office. I open the file cabinet and pull out one large file folder. It's so thick, I can smell the manila beige. "@dancxjo/daringsby" it reads. Below is a label that reads "Caveat lector". I open the folder and start reading...Call this like so: <function name='filmnoir'>README.md:2</function> to read the second page of the README.md file.`,
-        content: "",
+        content: JSON.stringify(error),
       },
     });
   }
