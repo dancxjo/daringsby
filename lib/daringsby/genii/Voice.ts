@@ -201,8 +201,9 @@ Spell out numbers, abbreviations, and punctuation like the dash representing "to
         this.session.feel({
           when: new Date(),
           content: {
-            explanation:
-              `Recalled information for keyword: ${content}\n${recallText}`,
+            explanation: `Recalled information for keyword: ${content}\n${
+              JSON.stringify(recallText)
+            }`,
             content: recallText,
           },
         });

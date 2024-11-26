@@ -31,6 +31,7 @@ export class Session {
       connectionToSelf.send({
         type: MessageType.Echo,
         data: echo.data.words,
+        thought: true,
       });
       Session.thoughts$.next(echo.data.words);
       logger.info("Thoughts: " + echo.data.words);

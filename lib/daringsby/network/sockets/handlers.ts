@@ -7,6 +7,7 @@ import { isValidTextMessage } from "../messages/TextMessage.ts";
 import * as yaml from "npm:yaml";
 import { see } from "../../utils/narration.ts";
 import { isValidSeeMessage } from "../messages/SeeMessage.ts";
+import { memorize } from "../../utils/memory.ts";
 
 export function setupHeartbeat(session: Session) {
   setInterval(() => {
@@ -77,10 +78,13 @@ export function handleEchoes(
     .pipe(
       map((message) => {
         logger.debug({ message }, "Received echo");
+        const exp = message.thought
+          ? "I just thought to myself"
+          : "I just heard myself finishing saying";
         return {
           when: new Date(message.at ?? new Date()),
           content: {
-            explanation: `I just heard myself finish saying: ${message.data}`,
+            explanation: `${exp}: ${message.data}`,
             content: message.data,
           },
         };
@@ -94,7 +98,21 @@ export function handleEchoes(
         content: sensation.content.content,
       },
     });
-    session.voice.echo(sensation.content.content);
+
+    if (!sensation.content.explanation.startsWith("I just thought")) {
+      session.voice.echo(sensation.content.content);
+    } else {
+      memorize({
+        metadata: {
+          label: "Thought",
+        },
+        data: {
+          when: sensation.when.toISOString(),
+          content: sensation.content.content,
+        },
+      });
+      logger.info(sensation.content.explanation);
+    }
     logger.info({ sensation }, "Processed echo sensation");
   }));
 }
