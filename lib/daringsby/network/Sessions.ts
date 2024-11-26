@@ -1,6 +1,5 @@
 import { SocketConnection } from "./sockets/connection.ts";
 import { ReplaySubject, Subject, Subscription, timer } from "npm:rxjs";
-import { switchMap } from "npm:rxjs/operators";
 import { Sensation } from "../core/interfaces.ts";
 import { errorSubject, logger } from "../core/logger.ts";
 import {
@@ -15,9 +14,11 @@ import { establishMemory, latestSituation, memorize } from "../utils/memory.ts";
 import { Genie } from "../genii/Genie.ts";
 import { narrate } from "../utils/narration.ts";
 import { MessageType } from "./messages/MessageType.ts";
+import { isValidSayMessage } from "./messages/SayMessage.ts";
 
 export class Session {
   static introspection: Session;
+  static thoughts$ = new Subject<string>();
   static startIntrospection() {
     if (Session.introspection) {
       return;
@@ -25,6 +26,15 @@ export class Session {
     const connectionToSelf = new SocketConnection(
       new WebSocket("ws://localhost:8080/socket"),
     );
+
+    connectionToSelf.incoming(isValidSayMessage).subscribe((echo) => {
+      connectionToSelf.send({
+        type: MessageType.Echo,
+        data: echo.data.words,
+      });
+      Session.thoughts$.next(echo.data.words);
+      logger.info("Thoughts: " + echo.data.words);
+    });
     const introspection = new Session(connectionToSelf, []);
     introspection.spin();
     Session.introspection = introspection;

@@ -18,7 +18,12 @@ import { MessageType } from "../network/messages/MessageType.ts";
 import { extractStyle, speak } from "../utils/audio_processing.ts";
 import emojiRegex from "npm:emoji-regex";
 import { split } from "npm:sentence-splitter";
-import { loadConversation, memorize, recall } from "../utils/memory.ts";
+import {
+  executeCypherQuery,
+  loadConversation,
+  memorize,
+  recall,
+} from "../utils/memory.ts";
 
 // Voice class definition
 export class Voice extends Genie<string> {
@@ -46,7 +51,7 @@ export class Voice extends Genie<string> {
 
 5. **Sentence Length**: Only emit one or two sentences at a time to maintain clarity and flow. Your messages will be processed sentence by sentence by the TTS system.
 
-6. **Recall and Store Information**: You can recall information from Pete's memory by using the following format: \`<function name="recall">keyword</function>\`. To store information, use \`<function name="memorize">{ "metadata": { "label": "label" }, "data": { "valid": "neo4j", "arbitrary": 42, "figure_out_data": "that is relevant" } }</function>\`.
+6. **Recall and Store Information**: You can recall information from Pete's memory by using the following format: \`<function name="recall">keyword</function>\`. To store information, use \`<function name="memorize">{ "metadata": { "label": "label" }, "data": { "valid": "neo4j", "arbitrary": 42, "figure_out_data": "that is relevant" } }</function>\`. You can also consult the graph databased directly with Cypher queries. <function name="cypher">MERGE (me:Self) RETURN me</function>
 
 7. **Function Calls**: Use the format \`<function name="*" other-attrs="possibly">params</function>\` to indicate any function calls that need to be executed.
 
@@ -207,6 +212,21 @@ Spell out numbers, abbreviations, and punctuation like the dash representing "to
         logger.info(`Voice: Memorizing information: ${content}`);
         const document = JSON.parse(content);
         await memorize(document);
+        break;
+      }
+      case "cypher": {
+        logger.info(`Voice: Executing Cypher query: ${content}`);
+        const result = await executeCypherQuery(content);
+        logger.info({ result }, "Cypher query result");
+        this.session.feel({
+          when: new Date(),
+          content: {
+            explanation: `Executed Cypher query: ${content}\n${
+              JSON.stringify(result)
+            }`,
+            content: JSON.stringify(result),
+          },
+        });
         break;
       }
       default:

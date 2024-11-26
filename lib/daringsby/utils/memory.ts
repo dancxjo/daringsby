@@ -90,6 +90,26 @@ export async function memorize<
 }
 
 /**
+ * Returns the results of a cypher query.
+ */
+export async function executeCypherQuery(query: string) {
+  const sessionInstance = createSession();
+  const tx = sessionInstance.beginTransaction();
+  try {
+    await tx.run(query);
+    const result = await tx.run(query);
+    await tx.commit();
+    return result.records;
+  } catch (error) {
+    await tx.rollback();
+    logger.error({ error }, "Error executing Cypher query:");
+    throw error;
+  } finally {
+    await sessionInstance.close();
+  }
+}
+
+/**
  * Stores the document in Neo4j without embedding data and returns the node ID.
  */
 async function storeDocumentInNeo4j<T>(
