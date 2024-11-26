@@ -137,7 +137,7 @@ export function extractStyle(rawText: string): { text: string; style: string } {
 
 export async function speak(
   rawText: string,
-  speakerId_: undefined | string = undefined, //"Kumar Dahl", //"p230",
+  speakerId_: undefined | string = "p230",
   languageId = "en",
 ): Promise<string> {
   const { text, style } = extractStyle(rawText);
@@ -148,7 +148,7 @@ export async function speak(
   const host = Deno.env.get("COQUI_URL") ?? "http://localhost:5002";
   const url = `${host}/api/tts?text=${
     encodeURIComponent(text)
-  }&speaker_id=${speakerId}&language_id=${languageId}&style_wav=/root/.local/share/styles/o.m.g.wav`;
+  }&speaker_id=${speakerId}&language_id=${languageId}`;
   logger.info({ url }, "Speaking text");
   const response = await fetch(
     url,

@@ -11,7 +11,7 @@ import {
   setupHeartbeat,
 } from "./sockets/handlers.ts";
 import { Voice } from "../genii/Voice.ts";
-import { establishMemory } from "../utils/memory.ts";
+import { establishMemory, memorize } from "../utils/memory.ts";
 import { Genie } from "../genii/Genie.ts";
 import { narrate } from "../utils/narration.ts";
 import { MessageType } from "./messages/MessageType.ts";
@@ -19,7 +19,7 @@ import { MessageType } from "./messages/MessageType.ts";
 export class Session {
   protected latestSituation$: ReplaySubject<Sensation<string>> =
     new ReplaySubject<Sensation<unknown>>(1);
-  protected thoughts$: Subject<string> = new Subject<string>();
+  protected speech$: Subject<string> = new Subject<string>();
   readonly voice = new Voice("Voice", this.latestSituation$, this);
   protected timeline: Sensation<unknown>[] = [];
   protected spinning = true;
@@ -52,17 +52,16 @@ export class Session {
       logger.debug({ sensation }, "Received latest situation");
     }));
 
-    this.subscriptions.push(this.thoughts$.subscribe((thought) => {
+    this.subscriptions.push(this.speech$.subscribe((thought) => {
       logger.debug({ thought }, "Received thought");
-      this.connection.send({
-        type: MessageType.Think,
-        data: thought,
-      });
       this.feel({
         when: new Date(),
         content: {
-          explanation: `I just thought something: ${thought}`,
-          content: thought,
+          explanation: `Here's the conversation I'm having: ${
+            this.voice.conversation.map((msg) => `${msg.role}: ${msg.content}`)
+              .join("\n")
+          }`,
+          content: JSON.stringify(this.voice.conversation),
         },
       });
     }));
@@ -74,6 +73,17 @@ export class Session {
     this.timeline.sort((a, b) => a.when.getTime() - b.when.getTime());
     this.integration.feel(sensation);
     this.voice.feel(sensation);
+    memorize({
+      metadata: {
+        label: "Sensation",
+        when: sensation.when.toISOString(),
+      },
+      data: {
+        when: sensation.when.toISOString(),
+        explanation: sensation.content.explanation,
+        // content: sensation.content.content, // This might not fit into the graph
+      },
+    });
   }
 
   async spin() {
@@ -87,7 +97,7 @@ export class Session {
       try {
         const nextThought = await this.voice.consult().toPromise();
         if (nextThought) {
-          this.thoughts$.next(nextThought);
+          this.speech$.next(nextThought);
           this.feel({
             when: new Date(),
             content: {

@@ -35,7 +35,12 @@ async function reloadEmbeddings(): Promise<void> {
   }
 }
 
-interface Document<T = unknown> {
+interface Document<
+  T extends Record<string, string | number | boolean | unknown[]> = Record<
+    string,
+    string | number | boolean | unknown[]
+  >,
+> {
   metadata: {
     label: string;
     when: string;
@@ -151,7 +156,12 @@ export async function runCypher(query: string): Promise<RecordShape> {
 /**
  * Stores a document as a node in the graph database, including a linked embedding node.
  */
-export async function memorize<T = unknown>(
+export async function memorize<
+  T extends Record<string, string | number | boolean | unknown[]> = Record<
+    string,
+    string | number | boolean | unknown[]
+  >,
+>(
   document: Document<T>,
 ): Promise<void> {
   if (!document || !document.data) {
@@ -177,19 +187,20 @@ export async function memorize<T = unknown>(
     logger.debug({ document }, "Storing document");
 
     try {
-      // Dynamically create Cypher properties string
-      const properties = Object.keys(document.data)
-        .map((key) => `${key}: $${key}`)
+      // Build the Cypher query to create the document node with proper labels and properties
+      const flattenedData = document.data;
+      const dataEntries = Object.entries(flattenedData)
+        .map(([key, value]) => `\`${key}\`: $${key}`)
         .join(", ");
 
-      // Build the Cypher query
       const docQuery = `
-                CREATE (doc:${document.metadata.label} { ${properties} })
-                RETURN doc
-            `;
+        CREATE (doc:${document.metadata.label} { ${dataEntries} })
+        RETURN doc
+      `;
 
+      logger.info({ data: document.data, docQuery }, "Running document query");
       // Run the query with the flattened data as parameters
-      const docResult = await tx.run(docQuery, document.data);
+      const docResult = await tx.run(docQuery, flattenedData);
 
       // Retrieve the created node
       const docNode = docResult.records.length > 0
@@ -199,14 +210,14 @@ export async function memorize<T = unknown>(
       if (docNode) {
         // Create the embedding node and link it to the document node
         const embeddingQuery = `
-                    MERGE (embed:Embedding {
-                        vector: $embedding
-                    })
-                    WITH embed
-                    MATCH (doc)
-                    WHERE id(doc) = $docId
-                    MERGE (doc)-[:HAS_EMBEDDING]->(embed)
-                `;
+          MERGE (embed:Embedding {
+            vector: $embedding
+          })
+          WITH embed
+          MATCH (doc)
+          WHERE id(doc) = $docId
+          MERGE (doc)-[:HAS_EMBEDDING]->(embed)
+        `;
         await tx.run(embeddingQuery, {
           embedding: embedding.embedding,
           docId: docNode.identity.toNumber(),
