@@ -12,7 +12,7 @@ export function see(view: string) {
 
 // Phrase circumstances in the second person: You are ...
 export function narrate(circumstances: string): Observable<string> {
-  logger.info({ circumstances }, "Initializing Daringsby Narration");
+  logger.debug({ circumstances }, "Initializing Daringsby Narration");
   const prompt$ = of(
     `You are a linguistic processing unit, a constituent part of an artificial intelligence named Pete Daringsby, a pseudo-conscious experimental software application. You speak on behalf of Pete, in the first person, not as a simple LLM, but for the entity itself. Consider this a roleplaying narration that happens to coincide with real life (as measured by Pete's sensors and wits). Here are the circumstances for you to narrate appropriately. Circumstances & Intructions:\n${circumstances}\n\nNarrate the following events in the first person, as the character Pete Daringsby.`,
   );

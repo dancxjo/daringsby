@@ -34,37 +34,53 @@ export class Session {
     readonly connection: SocketConnection,
     readonly subscriptions: Subscription[],
   ) {
-    // Subscribe to errors from the logger
-    const errorSubscription = errorSubject.subscribe((sensation) => {
-      this.feel(sensation);
-    });
+    logger.info("Establishing memory");
+    const startTime = Date.now();
 
-    // Add this subscription to the list so it can be managed properly
-    this.subscriptions.push(errorSubscription);
-    establishMemory();
-    handleVision(this);
-    handleGeolocations(this);
-    handleEchoes(this);
-    handleIncomingTexts(this);
-    setupHeartbeat(this);
+    establishMemory().then(() => {
+      const endTime = Date.now();
+      logger.info(
+        `Memory established in ${endTime - startTime} ms`,
+      );
 
-    this.subscriptions.push(this.latestSituation$.subscribe((sensation) => {
-      logger.debug({ sensation }, "Received latest situation");
-    }));
-
-    this.subscriptions.push(this.speech$.subscribe((thought) => {
-      logger.debug({ thought }, "Received thought");
-      this.feel({
-        when: new Date(),
-        content: {
-          explanation: `Here's the conversation I'm having: ${
-            this.voice.conversation.map((msg) => `${msg.role}: ${msg.content}`)
-              .join("\n")
-          }`,
-          content: JSON.stringify(this.voice.conversation),
-        },
+      // Subscribe to errors from the logger
+      const errorSubscription = errorSubject.subscribe((sensation) => {
+        this.feel(sensation);
       });
-    }));
+
+      // Add this subscription to the list so it can be managed properly
+      this.subscriptions.push(errorSubscription);
+
+      handleVision(this);
+      handleGeolocations(this);
+      handleEchoes(this);
+      handleIncomingTexts(this);
+      setupHeartbeat(this);
+
+      this.subscriptions.push(this.latestSituation$.subscribe((sensation) => {
+        logger.debug({ sensation }, "Received latest situation");
+      }));
+
+      this.subscriptions.push(this.speech$.subscribe((thought) => {
+        logger.debug({ thought }, "Received thought");
+        this.feel({
+          when: new Date(),
+          content: {
+            explanation: `Here's the conversation I'm having: ${
+              this.voice.conversation.map((msg) =>
+                `${
+                  msg.role === "assistant" ? "Pete Daringsby" : "interlocutor"
+                }: ${msg.content}`
+              )
+                .join("\n")
+            }`,
+            content: JSON.stringify(this.voice.conversation),
+          },
+        });
+      }));
+    }).catch((error) => {
+      logger.error({ error }, "Error establishing memory");
+    });
   }
 
   feel(sensation: Sensation<unknown>) {

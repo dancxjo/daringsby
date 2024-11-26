@@ -49,7 +49,8 @@ export class Voice extends Genie<string> {
 6. **Recall Information**: You can recall information from Pete's memory by using the following format: \`<function name="recall">keyword</function>\`.
 
 7. **Function Calls**: Use the format \`<function name="*" other-attrs="possibly">params</function>\` to indicate any function calls that need to be executed.
-`,
+
+8. **Language Switching**: Use the format \`<function name="language">fr</function>\` to switch the language of the TTS system.`,
       narrate,
     );
     logger.info(`Voice: ${name} initialized`);
@@ -87,7 +88,7 @@ Spell out numbers, abbreviations, and punctuation like the dash representing "to
       role: "system",
       content: systemMessage,
     }, ...this.conversation.slice(-15)];
-    logger.info({ messages }, "Voice: System message");
+    logger.debug({ messages }, "Voice: System message");
 
     let buffer = "";
     let emojiBuffer = "";
@@ -162,21 +163,22 @@ Spell out numbers, abbreviations, and punctuation like the dash representing "to
           data: { value: content },
         });
         break;
-      case "recall":
+      case "recall": {
         logger.info(`Voice: Recalling information for keyword: ${content}`);
         const recalledData = await recall(content);
         const recallText = recalledData.map((data) => data.toString()).join(
           ", ",
         );
-        this.session.connection.send({
-          type: MessageType.Say,
-          data: {
-            words: `Recalled information: ${recallText}`,
-            wav: null,
-            style: null,
+        this.session.feel({
+          when: new Date(),
+          content: {
+            explanation:
+              `Recalled information for keyword: ${content}\n${recallText}`,
+            content: recallText,
           },
         });
         break;
+      }
       default:
         logger.warn(`Voice: Unknown function ${functionName}`);
     }

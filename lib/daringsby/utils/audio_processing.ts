@@ -137,7 +137,7 @@ export function extractStyle(rawText: string): { text: string; style: string } {
 
 export async function speak(
   rawText: string,
-  speakerId_: undefined | string = "p230",
+  speakerId_: undefined | string = "Filip Traverse", //"p230",
   languageId = "en",
 ): Promise<string> {
   const { text, style } = extractStyle(rawText);
