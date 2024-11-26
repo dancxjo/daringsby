@@ -171,3 +171,28 @@ export async function establishMemory() {
     await initializeQdrantCollection();
   }
 }
+
+export async function loadConversation() {
+  // Load conversation from Neo4j
+  const session = createSession();
+  const result = await session.run(`
+    MATCH (n:ChatMessage) RETURN n ORDER BY n.when DESC LIMIT 10
+  `);
+  const messages = result.records.map((record) => {
+    const { role, content } = record.get("n").properties;
+    return { role, content };
+  });
+  return messages;
+}
+
+export async function latestSituation() {
+  const session = createSession();
+  const result = await session.run(`
+    MATCH (n:Situation) RETURN n ORDER BY n.when DESC LIMIT 1
+  `);
+  if (result.records.length === 0) {
+    return null;
+  }
+  const n = result.records[0].get("n").properties;
+  return n;
+}

@@ -59,10 +59,14 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - VOCODER_MODEL="vocoder_models/en/ljspeech/hifigan_v1"
       - COQUI_TOS_AGREED=1
-    entrypoint:
-      - "/bin/bash"
-      - "-c"
-      - "tts-server --model_path ~/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2 --config_path ~/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/config.json --speakers_file_path ~/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/speakers_xtts.pth --use_cuda true"
+      - TTS_MODEL="tts_models/en/ljspeech/tacotron2-DDC"
+    # entrypoint:
+    #   - "/bin/bash"
+    #   - "-c"
+    #   - "tts-server --model_path ~/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2 --config_path ~/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/config.json --speakers_file_path ~/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/speakers_xtts.pth --use_cuda true"
+    entrypoint: python3
+    command: [ "TTS/server/server.py", "--model_name", "tts_models/en/vctk/vits" ]
+    runtime: nvidia
     volumes:
       - ./tts:/root/.local/share
     deploy:

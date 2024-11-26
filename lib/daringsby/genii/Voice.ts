@@ -18,7 +18,7 @@ import { MessageType } from "../network/messages/MessageType.ts";
 import { extractStyle, speak } from "../utils/audio_processing.ts";
 import emojiRegex from "npm:emoji-regex";
 import { split } from "npm:sentence-splitter";
-import { recall } from "../utils/memory.ts";
+import { loadConversation, memorize, recall } from "../utils/memory.ts";
 
 // Voice class definition
 export class Voice extends Genie<string> {
@@ -46,7 +46,7 @@ export class Voice extends Genie<string> {
 
 5. **Sentence Length**: Only emit one or two sentences at a time to maintain clarity and flow. Your messages will be processed sentence by sentence by the TTS system.
 
-6. **Recall Information**: You can recall information from Pete's memory by using the following format: \`<function name="recall">keyword</function>\`.
+6. **Recall and Store Information**: You can recall information from Pete's memory by using the following format: \`<function name="recall">keyword</function>\`. To store information, use \`<function name="memorize">{ "metadata": { "label": "label" }, "data": { "valid": "neo4j", "arbitrary": 42, "figure_out_data": "that is relevant" } }</function>\`.
 
 7. **Function Calls**: Use the format \`<function name="*" other-attrs="possibly">params</function>\` to indicate any function calls that need to be executed.
 
@@ -54,19 +54,43 @@ export class Voice extends Genie<string> {
       narrate,
     );
     logger.info(`Voice: ${name} initialized`);
-    session.subscriptions.push(
-      situation$.subscribe((situation) => {
-        this.situation = situation.content.content;
-      }),
-    );
+    loadConversation().then((conversation) => {
+      this.conversation.push(...conversation);
+
+      session.subscriptions.push(
+        situation$.subscribe((situation) => {
+          this.situation = situation.content.content;
+        }),
+      );
+    });
   }
 
   hear(content: string) {
-    this.conversation.push({ role: "user", content });
+    const message = { role: "user", content };
+    this.conversation.push(message);
+    memorize({
+      metadata: {
+        label: "ChatMessage",
+      },
+      data: {
+        ...message,
+        when: new Date().toISOString(),
+      },
+    });
   }
 
   echo(content: string) {
-    this.conversation.push({ role: "assistant", content });
+    const message = { role: "assistant", content };
+    this.conversation.push(message);
+    memorize({
+      metadata: {
+        label: "ChatMessage",
+      },
+      data: {
+        ...message,
+        when: new Date().toISOString(),
+      },
+    });
   }
 
   protected language = "en";
@@ -177,6 +201,12 @@ Spell out numbers, abbreviations, and punctuation like the dash representing "to
             content: recallText,
           },
         });
+        break;
+      }
+      case "memorize": {
+        logger.info(`Voice: Memorizing information: ${content}`);
+        const document = JSON.parse(content);
+        await memorize(document);
         break;
       }
       default:

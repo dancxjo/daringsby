@@ -11,12 +11,25 @@ import {
   setupHeartbeat,
 } from "./sockets/handlers.ts";
 import { Voice } from "../genii/Voice.ts";
-import { establishMemory, memorize } from "../utils/memory.ts";
+import { establishMemory, latestSituation, memorize } from "../utils/memory.ts";
 import { Genie } from "../genii/Genie.ts";
 import { narrate } from "../utils/narration.ts";
 import { MessageType } from "./messages/MessageType.ts";
 
 export class Session {
+  static introspection: Session;
+  static startIntrospection() {
+    if (Session.introspection) {
+      return;
+    }
+    const connectionToSelf = new SocketConnection(
+      new WebSocket("ws://localhost:8080/socket"),
+    );
+    const introspection = new Session(connectionToSelf, []);
+    introspection.spin();
+    Session.introspection = introspection;
+  }
+
   protected latestSituation$: ReplaySubject<Sensation<string>> =
     new ReplaySubject<Sensation<unknown>>(1);
   protected speech$: Subject<string> = new Subject<string>();
@@ -51,6 +64,16 @@ export class Session {
       // Add this subscription to the list so it can be managed properly
       this.subscriptions.push(errorSubscription);
 
+      latestSituation().then((situation) => {
+        logger.info({ situation }, "Received latest situation");
+        this.latestSituation$.next({
+          when: new Date(situation.when),
+          content: {
+            explanation: situation.content,
+            content: situation.content,
+          },
+        });
+      });
       handleVision(this);
       handleGeolocations(this);
       handleEchoes(this);
@@ -59,6 +82,15 @@ export class Session {
 
       this.subscriptions.push(this.latestSituation$.subscribe((sensation) => {
         logger.debug({ sensation }, "Received latest situation");
+        memorize({
+          metadata: {
+            label: "Situation",
+          },
+          data: {
+            when: sensation.when.toISOString(),
+            content: sensation.content.content,
+          },
+        });
       }));
 
       this.subscriptions.push(this.speech$.subscribe((thought) => {
@@ -92,7 +124,6 @@ export class Session {
     memorize({
       metadata: {
         label: "Sensation",
-        when: sensation.when.toISOString(),
       },
       data: {
         when: sensation.when.toISOString(),
@@ -191,3 +222,5 @@ export function removeSession(socket: WebSocket) {
     sessions.delete(socket);
   }
 }
+
+Session.startIntrospection();

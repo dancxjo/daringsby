@@ -95,7 +95,7 @@ export function handleEchoes(
       },
     });
     session.voice.echo(sensation.content.content);
-    logger.debug({ sensation }, "Processed echo sensation");
+    logger.info({ sensation }, "Processed echo sensation");
   }));
 }
 
