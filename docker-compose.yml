@@ -28,7 +28,7 @@ services:
       - WHISPER_URL=http://whisper:9000
       - NEO4J_URL=bolt://neo4j:7687
       - QDRANT_URL=http://qdrant:6333
-      - OLLAMA_MODEL=mistral
+      - OLLAMA_MODEL=llama3
       - OLLAMA2_MODEL=gemma2:27b
       - SPEAKER=Royston Min
     depends_on:
