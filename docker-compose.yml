@@ -1,0 +1,104 @@
+services:
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - deno_project
+
+  deno_project:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: deno_project
+    volumes:
+      - .:/app
+      - ./certs:/app/certs
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_URL=http://192.168.0.97:11434
+      - OLLAMA2_URL=http://192.168.0.19:11434
+      - COQUI_URL=http://tts:5002
+      - WHISPER_URL=http://whisper:9000
+      - NEO4J_URL=bolt://neo4j:7687
+      - QDRANT_URL=http://qdrant:6333
+      - OLLAMA_MODEL=llama3
+      - OLLAMA2_MODEL=gemma2:27b
+      - SPEAKER=Royston Min
+    depends_on:
+      - neo4j
+      - tts
+      - whisper
+      - qdrant
+
+  neo4j:
+    image: neo4j:latest
+    container_name: neo4j
+    environment:
+      NEO4J_AUTH: neo4j/password
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_import:/var/lib/neo4j/import
+      - neo4j_plugins:/plugins
+
+  tts:
+    image: ghcr.io/coqui-ai/tts
+    ports:
+      - 5002:5002
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - VOCODER_MODEL="vocoder_models/en/ljspeech/hifigan_v1"
+      - COQUI_TOS_AGREED=1
+      - TTS_MODEL="tts_models/en/ljspeech/tacotron2-DDC"
+    # entrypoint:
+    #   - "/bin/bash"
+    #   - "-c"
+    #   - "tts-server --model_path ~/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2 --config_path ~/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/config.json --speakers_file_path ~/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/speakers_xtts.pth --use_cuda true"
+    entrypoint: python3
+    command: [ "TTS/server/server.py", "--model_name", "tts_models/en/vctk/vits" ]
+    runtime: nvidia
+    volumes:
+      - ./tts:/root/.local/share
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - count: all
+              capabilities: [gpu]
+
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest-gpu
+    runtime: nvidia
+    ports:
+      - "9000:9000"
+    environment:
+      - ASR_MODEL=base
+    restart: always
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_import:
+  neo4j_plugins:
+  ollama:
+  letsencrypt:
+  qdrant_data:
