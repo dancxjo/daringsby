@@ -1,4 +1,4 @@
-import { LinguisticProcessor } from "./linguisticProcessor.ts";
+import { LinguisticProcessor } from "./lingproc.ts";
 import { Ollama } from "npm:ollama";
 import logger from "./logger.ts";
 

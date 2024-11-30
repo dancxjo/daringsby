@@ -1,6 +1,8 @@
 import { Message, Ollama } from "npm:ollama";
 import { ReplaySubject } from "npm:rxjs";
-import logger from "./logger.ts";
+import { newLog } from "./logger.ts";
+
+const logger = newLog(import.meta.url, "debug");
 
 export enum Characteristics {
   Fast = "Fast",
@@ -22,28 +24,15 @@ export interface Profile {
 }
 
 export const characteristics: Record<string, Characteristics[]> = {
-  "tinyllama": [Fast, Chat, Generate], // 637 MB
+  // "tinyllama": [Fast, Chat, Generate], // 637 MB
   "nomic-embed-text": [Embed, Fast], // 274 MB
-  // "mxbai-embed-large": [Embed, Fast], // 669 MB
-  "moondream": [Vision, Fast], // 1.7 GB
-  "smollm2": [Fast, Chat, Generate], // 1.8 GB
   "llama3.2": [Fast, Chat, Generate], // 2.0 GB
-  "orca-mini": [Fast, Chat, Generate], // 2.0 GB
-  "phi3.5": [Fast, Chat, Generate], // 2.2 GB
-  "nemotron-mini": [Fast, Chat, Generate], // 2.7 GB
-  "llama3.2:3b-text-fp16": [Chat, Generate], // 6.4 GB
+  // "nemotron-mini": [Fast, Chat, Generate], // 2.7 GB
   "llama3.2-vision": [Vision, Chat, Generate], // 7.9 GB
-  "llava:13b": [Vision], // 8.0 GB
+  // "llava:13b": [Vision], // 8.0 GB
   "gemma2": [Chat, Generate], // 5.4 GB
   "gemma2:27b": [Smart, Chat, Generate], // 15 GB
-  "mistral-small": [Fast, Chat, Generate], // 12 GB
-  "mistral": [Fast, Chat, Generate], // 4.1 GB
-  "openchat": [Fast, Chat, Generate], // 4.1 GB
-  "llama3": [Fast, Chat, Generate], // 4.7 GB
-  "llama3:instruct": [Fast, Chat, Generate], // 4.7 GB
-  "bakllava": [Fast, Vision, Chat, Generate], // 4.7 GB
-  "mistral-nemo": [Smart, Chat, Generate], // 7.1 GB
-  "llama3.1:70b-instruct-q2_K": [Smart, Huge, Chat, Generate], // 26 GB
+  // "mistral-nemo": [Smart, Chat, Generate], // 7.1 GB
 };
 
 export interface GenerationParams {
@@ -68,6 +57,7 @@ export interface Task<T = unknown, P = unknown> {
   required: Characteristics[];
   onError: (error: Error) => Promise<void>;
   onComplete: (response: T) => Promise<void>;
+  enqueuedAt?: number;
 }
 
 export interface GenerationTask extends Task<string, GenerationParams> {
@@ -113,6 +103,7 @@ export class LinguisticProcessor {
     if (this.taskQueues[task.priority] === undefined) {
       this.taskQueues[task.priority] = [];
     }
+    task.enqueuedAt = Date.now();
     this.taskQueues[task.priority].push(task);
     this.processAllTasks();
   }
@@ -121,8 +112,22 @@ export class LinguisticProcessor {
   private async findOptimalInstance(
     required: Characteristics[],
   ): Promise<{ instance: Ollama; model: string } | undefined> {
-    for (const instance of this.instances) {
+    // Sort instances by busyness (load in ascending order) and affinity score
+    const sortedInstances = this.instances.sort((a, b) => {
+      const loadA = this.instanceLoadMap.get(a) ?? 0;
+      const loadB = this.instanceLoadMap.get(b) ?? 0;
+
+      // Prioritize instances with lower load, but also consider previous successful completions
+      const affinityA = this.getInstanceAffinityScore(a, required);
+      const affinityB = this.getInstanceAffinityScore(b, required);
+
+      return loadA + affinityA - (loadB + affinityB);
+    });
+
+    // Iterate through sorted instances and try to find a model that meets requirements
+    for (const instance of sortedInstances) {
       try {
+        // Fetch models from the current instance with a timeout of 5 seconds
         const modelResponse = await Promise.race([
           instance.list(),
           new Promise((_, reject) =>
@@ -130,112 +135,155 @@ export class LinguisticProcessor {
           ),
         ]);
         logger.debug({ instance, modelResponse }, "Instance list response");
+
+        // If no models are available, continue to the next instance
         if (!modelResponse) {
           continue;
         }
+
         const response = modelResponse as { models: { name: string }[] };
         const availableModels = response.models.map((model) => model.name);
-        availableModels.sort((a, b) => {
-          if (Math.random() > 0.5) return -1;
-          return 1;
-        });
+
+        // Check each model in the list to see if it meets the requirements
         for (const [modelName, charList] of Object.entries(characteristics)) {
           if (
             (availableModels.includes(modelName) ||
               availableModels.includes(modelName + ":latest")) &&
             required.every((reqChar) => charList.includes(reqChar))
           ) {
-            logger.info({ modelName, charList }, "Model available");
+            logger.debug(
+              { modelName, charList },
+              "Model available on current instance",
+            );
+            // Return the instance and model as soon as a suitable match is found
             return { instance, model: modelName };
           } else {
-            logger.info({ modelName, charList }, "Model not available");
+            logger.debug(
+              { modelName, charList },
+              "Model not available on current instance",
+            );
           }
         }
       } catch (error) {
+        // Log any issues finding suitable models for an instance, but continue to the next one
         logger.warn(
           { instance, error },
           `Could not find suitable model for instance`,
         );
       }
     }
+
+    // If no suitable instance and model were found, log an error and return undefined
     logger.error("No suitable instance found for task");
     return undefined;
   }
 
-  // Processes all tasks in the queue
+  private getInstanceAffinityScore(
+    instance: Ollama,
+    required: Characteristics[],
+  ): number {
+    // Implement a scoring system that gives preference to instances that have handled similar tasks
+    // For now, just return 0, but this can be updated based on successful task completions
+    return 0;
+  }
+
+  // Processes all tasks in the queue with a round-robin mechanism
   public async processAllTasks(): Promise<void> {
     logger.debug("Starting to process all tasks");
-    for (const queue of this.taskQueues) {
-      if (!queue) {
-        continue;
-      }
-      for (const task of queue) {
-        try {
-          const response = await this.executeTask(task);
-          await task.onComplete(response);
-          logger.debug({ task }, "Task completed successfully");
-        } catch (e) {
-          let error = e;
-          if (!(e instanceof Error)) {
-            error = new Error(JSON.stringify(error));
+    let hasTasks = true;
+
+    while (hasTasks) {
+      hasTasks = false;
+
+      for (let priority = 0; priority < this.taskQueues.length; priority++) {
+        const queue = this.taskQueues[priority];
+        if (queue && queue.length > 0) {
+          hasTasks = true;
+          const task = queue.shift(); // Get the next task from the queue
+          if (task) {
+            try {
+              const response = await this.executeTask(task);
+              await task.onComplete(response);
+              logger.debug({ task }, "Task completed successfully");
+            } catch (e) {
+              let error = e;
+              if (!(e instanceof Error)) {
+                error = new Error(JSON.stringify(error));
+              }
+              await task.onError(error as Error);
+              logger.error({ task, error }, "Task execution failed");
+            }
           }
-          await task.onError(error as Error);
-          logger.error({ task, error }, "Task execution failed");
         }
       }
     }
+  }
+
+  // Adjusts task priorities to avoid starvation
+  private adjustTaskPriorities(): void {
+    for (let priority = 0; priority < this.taskQueues.length; priority++) {
+      const queue = this.taskQueues[priority];
+      if (queue) {
+        for (const task of queue) {
+          if (this.isTaskStarving(task)) {
+            // Move the task to a higher priority if it's been waiting too long
+            task.priority = Math.max(0, priority - 1);
+          }
+        }
+      }
+    }
+  }
+
+  private isTaskStarving(task: Task<unknown>): boolean {
+    // Define starvation logic, e.g., based on how long the task has been waiting
+    return Date.now() - (task.enqueuedAt ?? 0) > 10000; // Example: waiting for more than 10 seconds
   }
 
   // Executes a specific task based on its type
   private async executeTask<T>(task: Task<T>): Promise<T> {
     let error: Error | null = null;
 
-    for (const instance of this.instances) {
-      try {
-        const optimalInstance = await this.findOptimalInstance(task.required);
-        if (!optimalInstance) {
-          throw new Error("No suitable server or model found for task");
-        }
-
-        const { instance, model } = optimalInstance;
-        logger.debug({ task, model }, "Selected model for task");
-        logger.debug(
-          { model, instance },
-          "Executing task on selected instance",
-        );
-
-        const chunks = new ReplaySubject<string>();
-        return await this.wrapWithLoadManagement(instance, async () => {
-          if (isGenerationTask(task as Task<string, GenerationParams>)) {
-            return await this.executeGenerationTask(
-              instance,
-              task as GenerationTask,
-              model,
-              chunks,
-            ) as T;
-          } else if (isChatTask(task as Task<Message, ChatParams>)) {
-            return await this.executeChatTask(
-              instance,
-              task as ChatTask,
-              model,
-              chunks,
-            ) as T;
-          } else if (
-            isEmbeddingsTask(task as Task<number[], EmbeddingsParams>)
-          ) {
-            return await this.executeEmbeddingsTask(
-              instance,
-              task as EmbeddingsTask,
-              model,
-            ) as T;
-          } else {
-            throw new Error("Invalid task method");
-          }
-        });
-      } catch (e) {
-        error = e instanceof Error ? e : new Error(JSON.stringify(e));
-        logger.error({ error, task }, "Failed to execute task on instance");
+    try {
+      const optimalInstance = await this.findOptimalInstance(task.required);
+      if (!optimalInstance) {
+        throw new Error("No suitable server or model found for task");
       }
+
+      const { instance, model } = optimalInstance;
+      logger.debug({ model }, "Selected model for task");
+      logger.debug({ model }, "Executing task on selected instance");
+
+      const chunks = new ReplaySubject<string>();
+      return await this.wrapWithLoadManagement(instance, async () => {
+        if (isGenerationTask(task as Task<string, GenerationParams>)) {
+          return await this.executeGenerationTask(
+            instance,
+            task as GenerationTask,
+            model,
+            chunks,
+          ) as T;
+        } else if (isChatTask(task as Task<Message, ChatParams>)) {
+          return await this.executeChatTask(
+            instance,
+            task as ChatTask,
+            model,
+            chunks,
+          ) as T;
+        } else if (
+          isEmbeddingsTask(task as Task<number[], EmbeddingsParams>)
+        ) {
+          return await this.executeEmbeddingsTask(
+            instance,
+            task as EmbeddingsTask,
+            model,
+          ) as T;
+        } else {
+          throw new Error("Invalid task method");
+        }
+      });
+    } catch (e) {
+      error = e instanceof Error ? e : new Error(JSON.stringify(e));
+      logger.error({ error, task }, "Failed to execute task on instance");
     }
 
     // If we exhausted all instances and failed, throw the last error
@@ -276,7 +324,7 @@ export class LinguisticProcessor {
       model,
       images: task.params.image ? [rawImage] : undefined,
     });
-    logger.info({ model }, "Generating text");
+    logger.debug({ model }, "Generating text");
     let buffer = "";
     for await (const chunk of stream) {
       chunks.next(chunk.response);
@@ -321,7 +369,7 @@ export class LinguisticProcessor {
   generate(params: GenerationParams): Promise<string> {
     const required = [Generate];
     if (params.image) required.push(Vision);
-    logger.info({ required }, "Generating text");
+    logger.debug({ required }, "Generating text");
     return new Promise((resolve, reject) => {
       this.enqueueTask({
         method: "generate",
