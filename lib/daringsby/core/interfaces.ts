@@ -9,7 +9,7 @@ export interface Impression<D = unknown> {
 }
 
 export interface Sensitive<D = unknown> {
-  feel(sensation: Sensation<D>): Impression<D>;
+  feel(sensation: Sensation<D>): Promise<Impression<D>>;
 }
 export type Experience = Impression<Impression[]>;
 export type Experiencer = Sensitive<Impression[]>;
