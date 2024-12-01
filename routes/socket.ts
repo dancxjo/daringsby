@@ -51,31 +51,44 @@ export const handler: Handlers = {
   },
 };
 
-const witness = new Witness();
+const baseWitness = new Witness();
+const witnesses = [baseWitness];
+
+// Create a chain of witnesses, each feeding into the next one
+for (let i = 1; i < 5; i++) {
+  const newWitness = new Witness();
+  witnesses[i - 1].setNext(newWitness);
+  witnesses.push(newWitness);
+}
+
+// Set the last witness to feed back into the base witness
+witnesses[witnesses.length - 1].setNext(baseWitness);
 
 function tick() {
   setTimeout(async () => {
-    const impression = await witness.feel({
-      when: new Date(),
-      what: [
-        {
-          how: `This is my internal chronometer. It is currently ${
-            new Date().toLocaleTimeString()
-          }. I am alive.`,
-          what: {
-            when: new Date(),
-            what: new Date().toLocaleTimeString(),
+    for (const witness of witnesses) {
+      const impression = await witness.feel({
+        when: new Date(),
+        what: [
+          {
+            how: `I feel my heartbeat. It is currently ${
+              new Date().toLocaleTimeString()
+            }. I am here. This is really happening.`,
+            what: {
+              when: new Date(),
+              what: new Date().toLocaleTimeString(),
+            },
           },
-        },
-      ],
-    });
-    sessions.forEach((session) => {
-      session.connection.send({
-        type: MessageType.Think,
-        data: impression.how,
+        ],
       });
-    });
-    witness.enqueue(impression);
+      sessions.forEach((session) => {
+        session.connection.send({
+          type: MessageType.Think,
+          data: impression.how,
+        });
+      });
+      witness.enqueue(impression);
+    }
     tick();
   }, 1000);
 }
@@ -94,7 +107,7 @@ function handleIncomingSeeMessages(session: Session) {
           when: new Date(message.at),
           what: image,
         });
-        witness.enqueue(impression);
+        baseWitness.enqueue(impression);
         return impression;
       },
     ),
@@ -106,8 +119,8 @@ function handleIncomingSenseMessages(session: Session) {
     session.connection.incoming(isValidSenseMessage).subscribe(
       async (message) => {
         logger.debug({ data: message.data }, "Received a valid SenseMessage");
-        witness.enqueue({
-          ...message.data,
+        baseWitness.enqueue({
+          how: "Received a SenseMessage",
           what: {
             ...message.data.what,
             when: new Date(message.data.what.when),
@@ -130,7 +143,7 @@ function handleIncomingTextMessages(session: Session) {
             what: message.data,
           },
         };
-        witness.enqueue(impression);
+        baseWitness.enqueue(impression);
         return impression;
       },
     ),
@@ -150,7 +163,7 @@ function handleIncomingGeolocationMessages(session: Session) {
             what: message.data,
           },
         };
-        witness.enqueue(impression);
+        baseWitness.enqueue(impression);
         return impression;
       },
     ),

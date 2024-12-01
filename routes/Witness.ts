@@ -11,6 +11,10 @@ import { lm } from "../lib/daringsby/core/core.ts";
 const logger = newLog(import.meta.url, "info");
 
 export class Witness implements Experiencer {
+  protected next?: Witness;
+  setNext(newWitness: Witness) {
+    this.next = newWitness;
+  }
   protected impressions: Impression<unknown>[] = [];
   protected lastTick: number = Date.now();
   protected neo4jDriver = neo4j.driver(
@@ -39,7 +43,7 @@ export class Witness implements Experiencer {
         this.impressions.map((impression) =>
           `${impression.what.when.toLocaleString()}: ${impression.how}\n`
         ).join("\n")
-      }. Generate a rich narration of the experience from the perspective of the artificial being. Narrate in the first person on behalf of the artificial being. Be succinct. Edit out irrelevant details and highlight the salient ones. Merge related events into narratives. Let's imagine you were to feel the keys spell something out. Don't invent events; just try to piece together the given events into a logical explanation. Connect events together. If you see someone, they might be the same someone you feel pressing your keys; they might be trying to communicate with you. Use your words economically.`;
+      }. Generate a rich narration of the experience from the perspective of the artificial being. Narrate in the first person on behalf of the artificial being. Be succinct. Edit out irrelevant details and highlight the salient ones. Merge related events into narratives. Let's imagine you were to feel the keys spell something out. Don't invent events; just try to piece together the given events into a logical explanation. Connect events together. If you see someone, they might be the same someone you feel pressing your keys; they might be trying to communicate with you. Use your words economically. For heaven's sake, be succinct! Did I mention to double check that you were succinct?`;
 
     logger.debug({ prompt }, "Generating experience");
 
@@ -70,7 +74,10 @@ export class Witness implements Experiencer {
     return rv;
   }
 
-  protected async createExperienceNode(session: any, experience: string) {
+  protected async createExperienceNode(
+    session: neo4j.Session,
+    experience: string,
+  ) {
     // Create a node in the neo4j database
     const createNodeQuery =
       `CREATE (e:Experience {text: $text, timestamp: $timestamp}) RETURN e`;
@@ -104,7 +111,7 @@ export class Witness implements Experiencer {
 
   protected async vectorizeAndUpsert(
     experience: string,
-    experienceNodeId: any,
+    experienceNodeId: number,
   ) {
     const vector = await lm.vectorize({
       text: experience,
@@ -124,14 +131,14 @@ export class Witness implements Experiencer {
 
   protected async addNearestNeighborsAsImpressions(
     experience: string,
-    experienceNodeId: any,
+    experienceNodeId: number,
   ) {
     const vector = await lm.vectorize({ text: experience });
     const nearestNeighbors = await this.qdrantClient.search(
       Witness.COLLECTION_NAME,
       {
         vector,
-        limit: 5,
+        limit: 3,
         with_payload: true,
       },
     ).catch((error) => {
@@ -168,7 +175,10 @@ export class Witness implements Experiencer {
     }
   }
 
-  protected async createImpressionNodes(session: any, experienceNodeId: any) {
+  protected async createImpressionNodes(
+    session: neo4j.Session,
+    experienceNodeId: number,
+  ) {
     for (const impression of this.impressions) {
       const createImpressionQuery =
         `CREATE (i:Impression {how: $how, when: $when}) RETURN i`;
