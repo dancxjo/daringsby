@@ -116,6 +116,25 @@ export class Witness implements Experiencer {
     const vector = await lm.vectorize({
       text: experience,
     });
+    const collectionExists = await this.qdrantClient.getCollections()
+      .then((response) =>
+        response.collections.some((col) => col.name === Witness.COLLECTION_NAME)
+      )
+      .catch((error) => {
+        logger.error({ error }, "Failed to check if collection exists");
+        return false;
+      });
+
+    if (!collectionExists) {
+      await this.qdrantClient.createCollection(Witness.COLLECTION_NAME, {
+        vectors: {
+          size: vector.length,
+          distance: "Cosine",
+        },
+      }).catch((error) => {
+        logger.error({ error }, "Failed to create collection");
+      });
+    }
     await this.qdrantClient.upsert(Witness.COLLECTION_NAME, {
       points: [
         {

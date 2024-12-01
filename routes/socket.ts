@@ -120,7 +120,7 @@ function handleIncomingSenseMessages(session: Session) {
       async (message) => {
         logger.debug({ data: message.data }, "Received a valid SenseMessage");
         baseWitness.enqueue({
-          how: "Received a SenseMessage",
+          how: `I sense: ${message.data.what}`,
           what: {
             ...message.data.what,
             when: new Date(message.data.what.when),
