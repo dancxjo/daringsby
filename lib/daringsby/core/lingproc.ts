@@ -24,15 +24,15 @@ export interface Profile {
 }
 
 export const characteristics: Record<string, Characteristics[]> = {
-  // "tinyllama": [Fast, Chat, Generate], // 637 MB
-  "nomic-embed-text": [Embed, Fast], // 274 MB
-  "llama3.2": [Fast, Chat, Generate], // 2.0 GB
-  // "nemotron-mini": [Fast, Chat, Generate], // 2.7 GB
-  "llama3.2-vision": [Vision, Chat, Generate], // 7.9 GB
-  // "llava:13b": [Vision], // 8.0 GB
-  "gemma2": [Chat, Generate], // 5.4 GB
-  "gemma2:27b": [Smart, Chat, Generate], // 15 GB
-  // "mistral-nemo": [Smart, Chat, Generate], // 7.1 GB
+  // "tinyllama:latest": [Fast, Chat, Generate], // 637 MB
+  "nomic-embed-text:latest": [Embed, Fast], // 274 MB
+  "llama3.2:latest": [Fast, Chat, Generate], // 2.0 GB
+  "nemotron-mini:latest": [Fast, Chat, Generate], // 2.7 GB
+  "llama3.2-vision:latest": [Vision, Generate], // 7.9 GB
+  // "llava:13b:latest": [Vision, Generate], // 8.0 GB
+  "gemma2:latest": [Chat, Generate], // 5.4 GB
+  "gemma2:27b:latest": [Smart, Chat, Generate], // 15 GB
+  // "mistral-nemo:latest": [Smart, Chat, Generate], // 7.1 GB
 };
 
 export interface GenerationParams {
@@ -127,11 +127,43 @@ export class LinguisticProcessor {
     // Iterate through sorted instances and try to find a model that meets requirements
     for (const instance of sortedInstances) {
       try {
-        // Fetch models from the current instance with a timeout of 5 seconds
+        // First, try to get a valid model from instance.ps
+        const psResponse = await Promise.race([
+          instance.ps(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Instance ps timeout")), 10000)
+          ),
+        ]);
+        logger.debug({ instance, psResponse }, "Instance ps response");
+
+        if (psResponse) {
+          const response = psResponse as { models: { name: string }[] };
+          const availableModels = response.models.map((model) => model.name);
+
+          // Check each model in the list to see if it meets the requirements
+          for (const [modelName, charList] of Object.entries(characteristics)) {
+            logger.debug(
+              { modelName, required, charList },
+              "Checking if model meets required characteristics",
+            );
+            if (
+              (availableModels.includes(modelName)) &&
+              required.every((reqChar) => charList.includes(reqChar))
+            ) {
+              logger.debug(
+                { modelName, charList },
+                "Model available on current instance via ps",
+              );
+              return { instance, model: modelName };
+            }
+          }
+        }
+
+        // If no valid model found with instance.ps, then use instance.list
         const modelResponse = await Promise.race([
           instance.list(),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Instance list timeout")), 5000)
+            setTimeout(() => reject(new Error("Instance list timeout")), 10000)
           ),
         ]);
         logger.debug({ instance, modelResponse }, "Instance list response");
@@ -146,14 +178,17 @@ export class LinguisticProcessor {
 
         // Check each model in the list to see if it meets the requirements
         for (const [modelName, charList] of Object.entries(characteristics)) {
+          logger.debug(
+            { modelName, required, charList },
+            "Checking if model meets required characteristics",
+          );
           if (
-            (availableModels.includes(modelName) ||
-              availableModels.includes(modelName + ":latest")) &&
+            (availableModels.includes(modelName)) &&
             required.every((reqChar) => charList.includes(reqChar))
           ) {
             logger.debug(
               { modelName, charList },
-              "Model available on current instance",
+              "Model available on current instance via list",
             );
             // Return the instance and model as soon as a suitable match is found
             return { instance, model: modelName };
@@ -182,9 +217,14 @@ export class LinguisticProcessor {
     instance: Ollama,
     required: Characteristics[],
   ): number {
-    // Implement a scoring system that gives preference to instances that have handled similar tasks
-    // For now, just return 0, but this can be updated based on successful task completions
     return 0;
+    // Implement a scoring system that gives preference to instances that have handled similar tasks
+    // For now, return a value based on previous successful task completions (placeholder logic)
+    let score = 0;
+    if (instance.hasHandledTaskWith(required)) {
+      score += 10;
+    }
+    return score;
   }
 
   // Processes all tasks in the queue with a round-robin mechanism
@@ -202,7 +242,9 @@ export class LinguisticProcessor {
           const task = queue.shift(); // Get the next task from the queue
           if (task) {
             try {
-              const response = await this.executeTask(task);
+              const response = await this.executeTask(task).catch((e) => {
+                throw e;
+              });
               await task.onComplete(response);
               logger.debug({ task }, "Task completed successfully");
             } catch (e) {
@@ -212,6 +254,8 @@ export class LinguisticProcessor {
               }
               await task.onError(error as Error);
               logger.error({ task, error }, "Task execution failed");
+              // Instead of crashing, log the failure and continue processing other tasks
+              continue;
             }
           }
         }
@@ -219,28 +263,8 @@ export class LinguisticProcessor {
     }
   }
 
-  // Adjusts task priorities to avoid starvation
-  private adjustTaskPriorities(): void {
-    for (let priority = 0; priority < this.taskQueues.length; priority++) {
-      const queue = this.taskQueues[priority];
-      if (queue) {
-        for (const task of queue) {
-          if (this.isTaskStarving(task)) {
-            // Move the task to a higher priority if it's been waiting too long
-            task.priority = Math.max(0, priority - 1);
-          }
-        }
-      }
-    }
-  }
-
-  private isTaskStarving(task: Task<unknown>): boolean {
-    // Define starvation logic, e.g., based on how long the task has been waiting
-    return Date.now() - (task.enqueuedAt ?? 0) > 10000; // Example: waiting for more than 10 seconds
-  }
-
   // Executes a specific task based on its type
-  private async executeTask<T>(task: Task<T>): Promise<T> {
+  private async executeTask<T>(task: Task<T>): Promise<T | void> {
     let error: Error | null = null;
 
     try {
@@ -286,12 +310,16 @@ export class LinguisticProcessor {
       logger.error({ error, task }, "Failed to execute task on instance");
     }
 
-    // If we exhausted all instances and failed, throw the last error
+    // If we exhausted all instances and failed, log a warning instead of throwing
     if (error) {
-      throw error;
+      logger.warn(
+        { error, task },
+        "No instances available to execute the task, moving on",
+      );
     }
 
-    throw new Error("Unexpected error in executing task");
+    // throw new Error("Unexpected error in executing task");
+    task.onError(error as Error);
   }
 
   // Manages load for a given instance during task execution
@@ -323,6 +351,7 @@ export class LinguisticProcessor {
       stream: true,
       model,
       images: task.params.image ? [rawImage] : undefined,
+      options: { num_ctx: 4096 },
     });
     logger.debug({ model }, "Generating text");
     let buffer = "";
@@ -413,7 +442,7 @@ export class LinguisticProcessor {
   }
 }
 
-function isMessage(message: unknown): message is Message {
+export function isMessage(message: unknown): message is Message {
   return (
     typeof message === "object" &&
     message !== null &&

@@ -18,6 +18,7 @@ import { isValidMienMessage } from "../lib/daringsby/network/messages/MienMessag
 import { isValidSayMessage } from "../lib/daringsby/network/messages/SayMessage.ts";
 import { isValidThoughtMessage } from "../lib/daringsby/network/messages/ThoughtMessage.ts";
 
+import yml from "npm:yaml";
 export default function LiveConnection() {
     if (IS_BROWSER) {
         initializeWebSocket();
@@ -113,9 +114,79 @@ export default function LiveConnection() {
         }
     };
 
+    const reportEvent = (event: Event) => {
+        if (!serverRef.current) {
+            logger.error("No server connection");
+            return;
+        }
+        try {
+            logger.info("Reporting event to server");
+            const deets = JSON.stringify(
+                {
+                    ...event,
+                    type: event.type,
+                    code: (event as KeyboardEvent)?.code,
+                    // key: (event as KeyboardEvent)?.key,
+                    // keyCode: (event as KeyboardEvent)?.keyCode,
+                    // charCode: (event as KeyboardEvent)?.charCode,
+                    location: (event as KeyboardEvent)?.location,
+                    repeat: (event as KeyboardEvent)?.repeat,
+                    altKey: (event as KeyboardEvent)?.altKey,
+                    button: (event as MouseEvent)?.button,
+                    buttons: (event as MouseEvent)?.buttons,
+                    clientX: (event as MouseEvent)?.clientX,
+                    clientY: (event as MouseEvent)?.clientY,
+                    movementX: (event as MouseEvent)?.movementX,
+                    movementY: (event as MouseEvent)?.movementY,
+                    offsetX: (event as MouseEvent)?.offsetX,
+                    offsetY: (event as MouseEvent)?.offsetY,
+                    pageX: (event as MouseEvent)?.pageX,
+                    pageY: (event as MouseEvent)?.pageY,
+                    screenX: (event as MouseEvent)?.screenX,
+                    screenY: (event as MouseEvent)?.screenY,
+                    shiftKey: (event as KeyboardEvent)?.shiftKey,
+
+                    target: {
+                        id: (event.target as HTMLElement)?.id,
+                        classList: (event.target as HTMLElement)?.classList,
+                        nodeName: (event.target as HTMLElement)?.nodeName,
+                    },
+                    // target: event.target,
+                    timeStamp: event.timeStamp,
+                    // bubbles: event.bubbles,
+                    // cancelable: event.cancelable,
+                    // composed: event.composed,
+                    // defaultPrevented: event.defaultPrevented,
+                    // isTrusted: event.isTrusted,
+                },
+                null,
+                2,
+            );
+            serverRef.current?.send({
+                type: MessageType.Sense,
+                data: {
+                    how: `I felt a ${event.type} event. Here are its details: ${deets}`,
+                    what: {
+                        when: new Date(), // This gets serialized as a string
+                        what: event,
+                    },
+                },
+            });
+        } catch (error) {
+            logger.error({ error }, "Failed to report event");
+        }
+    };
+
     const mien = useSignal("");
     const thought = useSignal("");
     const words = useSignal("");
+
+    // addEventListener("keydown", reportEvent);
+    // addEventListener("keyup", reportEvent);
+    addEventListener("keypress", reportEvent);
+    // addEventListener("mousedown", reportEvent);
+    addEventListener("mouseup", reportEvent);
+    // addEventListener("mousemove", reportEvent);
 
     return (
         <div class="container live-connection">
