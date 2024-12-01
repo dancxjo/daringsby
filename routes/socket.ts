@@ -73,7 +73,7 @@ function tick() {
           {
             how: `I feel my heartbeat. It is currently ${
               new Date().toLocaleTimeString()
-            }. I am here. This is really happening.`,
+            }. I am here. This is really happening. (But I won't make a big deal about it. Yes, I exist....just move on.)`,
             depth_low: 0,
             depth_high: 0,
             what: {
@@ -141,7 +141,7 @@ function handleIncomingTextMessages(session: Session) {
       async (message) => {
         logger.debug({ data: message.data }, "Received a TextMessage");
         const impression = {
-          how: `I just heard: ${message.data}`,
+          how: `I just heard someone say to me: ${message.data}`,
           depth_low: 0,
           depth_high: 0,
           what: {

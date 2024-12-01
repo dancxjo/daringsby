@@ -1,8 +1,6 @@
 import { Message, Ollama } from "npm:ollama";
 import { ReplaySubject } from "npm:rxjs";
-import { newLog } from "./logger.ts";
-
-const logger = newLog(import.meta.url, "info");
+import { logger } from "./logger.ts";
 
 export enum Characteristics {
   Fast = "Fast",
@@ -27,12 +25,14 @@ export const characteristics: Record<string, Characteristics[]> = {
   // "tinyllama:latest": [Fast, Chat, Generate], // 637 MB
   "nomic-embed-text:latest": [Embed, Fast], // 274 MB
   // "llama3.2:latest": [Fast, Chat, Generate], // 2.0 GB
-  // "nemotron-mini:latest": [Fast, Chat, Generate], // 2.7 GB
+  // "mistral:latest": [Fast, Chat, Generate], // 2.7 GB
   "llama3.2-vision:latest": [Vision, Generate], // 7.9 GB
+  "llama3.1:70b-instruct-q2_K": [Smart, Chat, Generate],
   // "llava:13b:latest": [Vision, Generate], // 8.0 GB
   // "gemma2:latest": [Chat, Generate], // 5.4 GB
-  "gemma2:27b:latest": [Smart, Chat, Generate], // 15 GB
+  // "gemma2:27b:latest": [Smart, Chat, Generate], // 15 GB
   // "mistral-nemo:latest": [Smart, Chat, Generate], // 7.1 GB
+  // "qwq:latest": [Huge, Chat, Generate], // 20 GB
 };
 
 export interface GenerationParams {
@@ -112,6 +112,12 @@ export class LinguisticProcessor {
   private async findOptimalInstance(
     required: Characteristics[],
   ): Promise<{ instance: Ollama; model: string } | undefined> {
+    // return {
+    //   instance: this.instances[0],
+    //   model: Vision in required
+    //     ? "llama3.2-vision:latest"
+    //     : (Embed in required ? "nomic-embed-text:latest" : "gemma2:27b"),
+    // };
     // Sort instances by busyness (load in ascending order) and affinity score
     const sortedInstances = this.instances.sort((a, b) => {
       const loadA = this.instanceLoadMap.get(a) ?? 0;
@@ -134,7 +140,7 @@ export class LinguisticProcessor {
             setTimeout(() => reject(new Error("Instance ps timeout")), 10000)
           ),
         ]);
-        logger.debug({ instance, psResponse }, "Instance ps response");
+        logger.info({ instance, psResponse }, "Instance ps response");
 
         if (psResponse) {
           const response = psResponse as { models: { name: string }[] };
@@ -142,7 +148,7 @@ export class LinguisticProcessor {
 
           // Check each model in the list to see if it meets the requirements
           for (const [modelName, charList] of Object.entries(characteristics)) {
-            logger.debug(
+            logger.info(
               { modelName, required, charList },
               "Checking if model meets required characteristics",
             );
@@ -209,7 +215,7 @@ export class LinguisticProcessor {
     }
 
     // If no suitable instance and model were found, log an error and return undefined
-    logger.error("No suitable instance found for task");
+    logger.error({ task: required }, "No suitable instance found for task");
     return undefined;
   }
 
@@ -351,7 +357,10 @@ export class LinguisticProcessor {
       stream: true,
       model,
       images: task.params.image ? [rawImage] : undefined,
-      options: { num_ctx: 4096 },
+      options: {
+        num_ctx: 2048,
+        temperature: 0.75 + (Math.random() * 0.5 - 0.25),
+      },
     });
     logger.debug({ model }, "Generating text");
     let buffer = "";
@@ -373,6 +382,10 @@ export class LinguisticProcessor {
       messages: task.params.messages,
       model,
       stream: true,
+      options: {
+        num_ctx: 4096,
+        temperature: 0.7,
+      },
     });
     let buffer = "";
     for await (const chunk of stream) {

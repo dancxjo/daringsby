@@ -39,11 +39,11 @@ export class Witness implements Experiencer {
     );
 
     const prompt =
-      `You are the linguistic processor of an embodied artificial being. These are the impressions of the sensations you have recently felt:\n\n${
+      `You are the linguistic processor of an embodied artificial being. These are the recent impressions from your body and the world around you:\n\n${
         this.impressions.map((impression) =>
           `${impression.what.when.toLocaleString()}: ${impression.how}\n`
         ).join("\n")
-      }. Generate a rich narration of the experience from the perspective of the artificial being. Narrate in the first person on behalf of the artificial being. Be succinct. Edit out irrelevant details and highlight the salient ones. Merge related events into narratives. Let's imagine you were to feel the keys spell something out. Don't invent events; just try to piece together the given events into a logical explanation. Connect events together. If you see someone, they might be the same someone you feel pressing your keys; they might be trying to communicate with you. Use your words economically. For heaven's sake, be succinct! Did I mention to double check that you were succinct?`;
+      }. Generate a rich narration of the experience from the perspective of the artificial being. Narrate in the first person on behalf of the artificial being. Be succinct. Edit out irrelevant details and highlight the salient ones. Merge related events into narratives. Don't invent events; just try to piece together the given events into a logical explanation. Connect events together--these are live from the real world. Use your words economically. For heaven's sake, be succinct! Did I mention to double check that you were succinct? DO NOT REPEAT THIS PROMPT...none of it! Do not respond to this request directly; simply follow the instructions without other comment. (DO NOT CLAIM TO BE A LINGUISTIC PROCESSING UNIT OR LLM; YOU *ARE [speaking on behalf of]* THE LARGER ARTIFICIAL BEING.) DON'T MAKE STUFF UP! Use the data you're given an remember that senses sometimes lie. Only report what you know based on the impressions above; nothing else! If no impressions are available, say you feel nothing.`;
 
     logger.debug({ prompt }, "Generating experience");
 
@@ -156,7 +156,7 @@ export class Witness implements Experiencer {
     if (!collectionExists) {
       await this.qdrantClient.createCollection(Witness.COLLECTION_NAME, {
         vectors: {
-          size: vector.length,
+          size: 768, //vector.length,
           distance: "Cosine",
         },
       }).catch((error) => {
@@ -192,13 +192,18 @@ export class Witness implements Experiencer {
       logger.error({ error }, "Failed to find nearest neighbors");
       return [];
     });
-    // Sort by the depth_low and depth_high of the impressions; we want to prefer more synthetic responses
+    // Sort by the weight of the impressions first, then by depth_low and depth_high
     nearestNeighbors.sort((a, b) => {
+      const weight_a = Number(a.payload?.weight || 0);
+      const weight_b = Number(b.payload?.weight || 0);
+      if (weight_a !== weight_b) {
+        return weight_b - weight_a;
+      }
       const depth_low_a = Number(a.payload?.depth_low || 0);
       const depth_high_a = Number(a.payload?.depth_high || 0);
       const depth_low_b = Number(b.payload?.depth_low || 0);
       const depth_high_b = Number(b.payload?.depth_high || 0);
-      return depth_low_a + depth_high_a - depth_low_b - depth_high_b;
+      return (depth_low_a + depth_high_a) - (depth_low_b + depth_high_b);
     });
     // logger.info({ nearestNeighbors }, "Nearest neighbors");
     for (const neighbor of nearestNeighbors.slice(0, 2)) {
@@ -229,6 +234,25 @@ export class Witness implements Experiencer {
           neighborText: neighbor.payload.how,
         }).catch((error) => {
           logger.error({ error }, "Failed to create ASSOCIATED relationship");
+        });
+
+        // Increment the weight of the remembered node
+        const incrementWeightQuery = `
+  MATCH (e:Experience)
+  WHERE ID(e) = $neighborId
+  SET e.weight = COALESCE(e.weight, 0) + 1
+`;
+        const neighborId = parseInt(
+          neighbor.payload?.id?.toString() ?? "0",
+          10,
+        );
+        await this.neo4jDriver.session().run(incrementWeightQuery, {
+          neighborId,
+        }).catch((error) => {
+          logger.error(
+            { error },
+            "Failed to increment weight of the remembered node",
+          );
         });
       }
     }

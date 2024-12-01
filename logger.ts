@@ -1,8 +1,2 @@
-import { pino } from "npm:pino";
-import { IS_BROWSER } from "$fresh/runtime.ts";
-
-export const logger = pino({
-    name: "daringsby",
-    level: "debug",
-    browser: IS_BROWSER ? { asObject: true } : undefined,
-});
+import { logger as real } from "./lib/daringsby/core/logger.ts";
+export const logger = real;

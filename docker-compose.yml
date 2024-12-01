@@ -25,7 +25,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - TZ=${TZ}
+      - TZ=America/Los_Angeles
       - OLLAMA_URL=http://192.168.0.97:11434
       - OLLAMA2_URL=http://192.168.0.19:11434
       - COQUI_URL=http://tts:5002

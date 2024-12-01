@@ -185,9 +185,9 @@ export default function LiveConnection() {
 
   // addEventListener("keydown", reportEvent);
   // addEventListener("keyup", reportEvent);
-  addEventListener("keypress", reportEvent);
+  // addEventListener("keypress", reportEvent);
   // addEventListener("mousedown", reportEvent);
-  addEventListener("mouseup", reportEvent);
+  // addEventListener("mouseup", reportEvent);
   // addEventListener("mousemove", reportEvent);
 
   return (
