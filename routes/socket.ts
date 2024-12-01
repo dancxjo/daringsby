@@ -74,6 +74,8 @@ function tick() {
             how: `I feel my heartbeat. It is currently ${
               new Date().toLocaleTimeString()
             }. I am here. This is really happening.`,
+            depth_low: 0,
+            depth_high: 0,
             what: {
               when: new Date(),
               what: new Date().toLocaleTimeString(),
@@ -120,7 +122,9 @@ function handleIncomingSenseMessages(session: Session) {
       async (message) => {
         logger.debug({ data: message.data }, "Received a valid SenseMessage");
         baseWitness.enqueue({
-          how: `I sense: ${message.data.what}`,
+          how: `I sense: ${message.data.how}`,
+          depth_low: message.data.depth_low,
+          depth_high: message.data.depth_high,
           what: {
             ...message.data.what,
             when: new Date(message.data.what.when),
@@ -137,7 +141,9 @@ function handleIncomingTextMessages(session: Session) {
       async (message) => {
         logger.debug({ data: message.data }, "Received a TextMessage");
         const impression = {
-          how: `I heard: ${message.data}`,
+          how: `I just heard: ${message.data}`,
+          depth_low: 0,
+          depth_high: 0,
           what: {
             when: new Date(),
             what: message.data,
@@ -158,6 +164,8 @@ function handleIncomingGeolocationMessages(session: Session) {
         const impression = {
           how:
             `I am geolocated at ${message.data.latitude}, ${message.data.longitude}`,
+          depth_low: 0,
+          depth_high: 0,
           what: {
             when: new Date(),
             what: message.data,

@@ -51,15 +51,30 @@ export class Witness implements Experiencer {
       prompt,
     });
 
+    let min = 0;
+    let max = 0;
+    for (const impression of this.impressions) {
+      min = Math.min(min, impression.depth_low || 0);
+      max = Math.max(max, impression.depth_high || 0);
+    }
+    const depth_low = min + 1, depth_high = max + 1;
+
     const session = this.neo4jDriver.session();
     try {
-      await this.createExperienceNode(session, experience);
+      await this.createExperienceNode(
+        session,
+        experience,
+        depth_low,
+        depth_high,
+      );
     } finally {
       await session.close();
     }
 
     const rv = {
       how: experience,
+      depth_low,
+      depth_high,
       what: {
         when: new Date(),
         what: this.impressions,
@@ -77,18 +92,28 @@ export class Witness implements Experiencer {
   protected async createExperienceNode(
     session: neo4j.Session,
     experience: string,
+    depth_low: number,
+    depth_high: number,
   ) {
     // Create a node in the neo4j database
     const createNodeQuery =
-      `CREATE (e:Experience {text: $text, timestamp: $timestamp}) RETURN e`;
+      `MERGE (e:Impression {how: $how, when: $when, depth_low: $depth_low, depth_high: $depth_high}) SET e :Experience RETURN e`;
     const result = await session.run(createNodeQuery, {
-      text: experience,
-      timestamp: new Date().toISOString(),
+      how: experience,
+      when: new Date().toISOString(),
+      depth_low,
+      depth_high,
     });
     const experienceNodeId = result.records[0].get("e").identity;
 
     // Vectorize and upsert in qdrant
-    await this.vectorizeAndUpsert(experience, experienceNodeId);
+    await this.vectorizeAndUpsert(
+      experience,
+      depth_low,
+      depth_high,
+      new Date().toISOString(),
+      experienceNodeId,
+    );
 
     // Add nearest neighbors as impressions
     await this.addNearestNeighborsAsImpressions(experience, experienceNodeId);
@@ -111,6 +136,9 @@ export class Witness implements Experiencer {
 
   protected async vectorizeAndUpsert(
     experience: string,
+    depth_low: number,
+    depth_high: number,
+    timestamp: string,
     experienceNodeId: number,
   ) {
     const vector = await lm.vectorize({
@@ -140,7 +168,7 @@ export class Witness implements Experiencer {
         {
           id: parseInt(experienceNodeId.toString()),
           vector,
-          payload: { text: experience },
+          payload: { how: experience, depth_low, depth_high, timestamp },
         },
       ],
     }).catch((error) => {
@@ -157,19 +185,31 @@ export class Witness implements Experiencer {
       Witness.COLLECTION_NAME,
       {
         vector,
-        limit: 3,
+        limit: 15,
         with_payload: true,
       },
     ).catch((error) => {
       logger.error({ error }, "Failed to find nearest neighbors");
       return [];
     });
-    logger.info({ nearestNeighbors }, "Nearest neighbors");
-    for (const neighbor of nearestNeighbors) {
-      if (neighbor.payload && neighbor.payload.text) {
+    // Sort by the depth_low and depth_high of the impressions; we want to prefer more synthetic responses
+    nearestNeighbors.sort((a, b) => {
+      const depth_low_a = Number(a.payload?.depth_low || 0);
+      const depth_high_a = Number(a.payload?.depth_high || 0);
+      const depth_low_b = Number(b.payload?.depth_low || 0);
+      const depth_high_b = Number(b.payload?.depth_high || 0);
+      return depth_low_a + depth_high_a - depth_low_b - depth_high_b;
+    });
+    // logger.info({ nearestNeighbors }, "Nearest neighbors");
+    for (const neighbor of nearestNeighbors.slice(0, 2)) {
+      if (neighbor.payload && neighbor.payload.how) {
+        const depth_low = Number(neighbor.payload.depth_low || 0);
+        const depth_high = Number(neighbor.payload.depth_high || 0);
         this.enqueue({
           how:
-            `I am reminded of a memory from ${neighbor.payload.timestamp}: ${neighbor.payload.text}`,
+            `I am reminded of a memory from ${neighbor.payload.when}: ${neighbor.payload.how}`,
+          depth_low: depth_low + 1,
+          depth_high: depth_high + 1,
           what: {
             when: new Date(),
             what: neighbor,
@@ -179,14 +219,14 @@ export class Witness implements Experiencer {
         // Record the nearest neighbor relationship in the graph database
         const associateQuery = `
           MATCH (e1:Experience), (e2:Experience)
-          WHERE ID(e1) = $currentId AND e2.text = $neighborText AND e1 <> e2
+          WHERE ID(e1) = $currentId AND e2.how = $neighborText AND e1 <> e2
           MERGE (e1)-[r:ASSOCIATED]->(e2)
           ON CREATE SET r.strength = 1
           ON MATCH SET r.strength = r.strength + 1
         `;
         await this.neo4jDriver.session().run(associateQuery, {
           currentId: experienceNodeId,
-          neighborText: neighbor.payload.text,
+          neighborText: neighbor.payload.how,
         }).catch((error) => {
           logger.error({ error }, "Failed to create ASSOCIATED relationship");
         });
@@ -200,10 +240,12 @@ export class Witness implements Experiencer {
   ) {
     for (const impression of this.impressions) {
       const createImpressionQuery =
-        `CREATE (i:Impression {how: $how, when: $when}) RETURN i`;
+        `MERGE (i:Impression {how: $how, when: $when, depth_low: $depth_low, depth_high: $depth_high}) RETURN i`;
       const impressionResult = await session.run(createImpressionQuery, {
         how: impression.how,
         when: impression.what.when.toISOString(),
+        depth_low: impression.depth_low,
+        depth_high: impression.depth_high,
       });
       const impressionNodeId = impressionResult.records[0].get("i").identity;
 

@@ -32,6 +32,8 @@ Examples:
     logger.debug(`Refinement: ${refinement}`);
     return {
       how: refinement.trim(),
+      depth_low: 1,
+      depth_high: 1,
       what: sensation,
     };
   }

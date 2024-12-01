@@ -16,6 +16,8 @@ export function isSensation<D = unknown>(
 
 export interface Impression<D = unknown> {
   how: string; // This is what the text-processing model receives
+  depth_low?: number; // This is the depth of the impression in the chain
+  depth_high?: number; // This is the depth of the impression in the chain
   what: Sensation<D>; // This is the raw data preserved for further manipulation
 }
 
