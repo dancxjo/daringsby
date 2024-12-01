@@ -29,7 +29,7 @@ Examples:
 
 `,
     });
-    logger.info(`Refinement: ${refinement}`);
+    logger.debug(`Refinement: ${refinement}`);
     return {
       how: refinement.trim(),
       what: sensation,

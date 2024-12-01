@@ -12,6 +12,7 @@ import { ImageDescriber } from "../lib/daringsby/vision/describer.ts";
 import { MessageType } from "../lib/daringsby/network/messages/MessageType.ts";
 import { isValidSenseMessage } from "../lib/daringsby/network/messages/SenseMessage.ts";
 import { isValidTextMessage } from "../lib/daringsby/network/messages/TextMessage.ts";
+import { isValidGeolocateMessage } from "../lib/daringsby/network/messages/GeolocateMessage.ts";
 import { Witness } from "./Witness.ts";
 
 export const handler: Handlers = {
@@ -43,6 +44,7 @@ export const handler: Handlers = {
     handleIncomingSeeMessages(session);
     handleIncomingSenseMessages(session);
     handleIncomingTextMessages(session);
+    handleIncomingGeolocationMessages(session);
 
     logger.debug("Successfully upgraded to WebSocket");
     return response;
@@ -123,6 +125,26 @@ function handleIncomingTextMessages(session: Session) {
         logger.debug({ data: message.data }, "Received a TextMessage");
         const impression = {
           how: `I heard: ${message.data}`,
+          what: {
+            when: new Date(),
+            what: message.data,
+          },
+        };
+        witness.enqueue(impression);
+        return impression;
+      },
+    ),
+  );
+}
+
+function handleIncomingGeolocationMessages(session: Session) {
+  session.subscriptions.push(
+    session.connection.incoming(isValidGeolocateMessage).subscribe(
+      async (message) => {
+        logger.debug({ data: message.data }, "Received a GeolocationMessage");
+        const impression = {
+          how:
+            `I am geolocated at ${message.data.latitude}, ${message.data.longitude}`,
           what: {
             when: new Date(),
             what: message.data,

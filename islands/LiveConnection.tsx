@@ -120,7 +120,7 @@ export default function LiveConnection() {
       return;
     }
     try {
-      logger.info("Reporting event to server");
+      logger.debug("Reporting event to server");
       const deets = JSON.stringify(
         {
           ...event,

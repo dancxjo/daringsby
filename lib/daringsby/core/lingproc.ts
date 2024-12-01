@@ -2,7 +2,7 @@ import { Message, Ollama } from "npm:ollama";
 import { ReplaySubject } from "npm:rxjs";
 import { newLog } from "./logger.ts";
 
-const logger = newLog(import.meta.url, "debug");
+const logger = newLog(import.meta.url, "info");
 
 export enum Characteristics {
   Fast = "Fast",
