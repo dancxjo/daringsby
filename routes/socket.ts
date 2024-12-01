@@ -11,13 +11,8 @@ import { Image } from "../lib/daringsby/vision/describer.ts";
 import { ImageDescriber } from "../lib/daringsby/vision/describer.ts";
 import { MessageType } from "../lib/daringsby/network/messages/MessageType.ts";
 import { isValidSenseMessage } from "../lib/daringsby/network/messages/SenseMessage.ts";
-import {
-  Experiencer,
-  Impression,
-  Sensation,
-} from "../lib/daringsby/core/interfaces.ts";
-import { lm } from "../lib/daringsby/core/core.ts";
 import { isValidTextMessage } from "../lib/daringsby/network/messages/TextMessage.ts";
+import { Witness } from "./Witness.ts";
 
 export const handler: Handlers = {
   GET(req, _ctx) {
@@ -54,60 +49,23 @@ export const handler: Handlers = {
   },
 };
 
-class Witness implements Experiencer {
-  protected impressions: Impression<unknown>[] = [];
-  protected lastTick: number = Date.now();
-
-  enqueue(impression: Impression): void {
-    this.impressions.push(impression);
-  }
-
-  async feel(
-    sensation: Sensation<Impression[]>,
-  ): Promise<Impression<Impression<unknown>[]>> {
-    this.impressions = [...this.impressions, ...sensation.what];
-    this.impressions.sort((a, b) =>
-      a.what.when.getTime() - b.what.when.getTime()
-    );
-
-    const prompt =
-      `You are the linguistic processor of an embodied artificial being. These are the impressions of the sensations you have recently felt:\n\n${
-        this.impressions.map((impression) =>
-          `${impression.what.when.toLocaleString()}: ${impression.how}\n`
-        ).join("\n")
-      }. Generate a rich narration of the experience from the perspective of the artificial being. Narrate in the first person on behalf of the artificial being. Be succinct. Edit out irrelevant details and highlight the salient ones. Merge related events into narratives. Let's imagine you were to feel the keys spell something out. Don't invent events; just try to piece together the given events into a logical explanation. Connect events together. If you see someone, they might be the same someone you feel pressing your keys; they might be trying to communicate with you.`;
-
-    logger.info({ prompt }, "Generating experience");
-
-    const experience = await lm.generate({
-      prompt,
-    });
-
-    const rv = {
-      how: experience,
-      what: {
-        when: new Date(),
-        what: this.impressions,
-      },
-    };
-
-    // Scroll older events off the list
-    // TODO: Vectorize and memorize the impressions
-    this.impressions = this.impressions.filter((impression) =>
-      impression.what.when.getTime() > Date.now() - 1000 * 60 * 3
-    );
-
-    return rv;
-  }
-}
-
 const witness = new Witness();
 
 function tick() {
   setTimeout(async () => {
     const impression = await witness.feel({
       when: new Date(),
-      what: [],
+      what: [
+        {
+          how: `This is my internal chronometer. It is currently ${
+            new Date().toLocaleTimeString()
+          }. I am alive.`,
+          what: {
+            when: new Date(),
+            what: new Date().toLocaleTimeString(),
+          },
+        },
+      ],
     });
     sessions.forEach((session) => {
       session.connection.send({
@@ -115,6 +73,7 @@ function tick() {
         data: impression.how,
       });
     });
+    witness.enqueue(impression);
     tick();
   }, 1000);
 }

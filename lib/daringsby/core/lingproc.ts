@@ -26,11 +26,11 @@ export interface Profile {
 export const characteristics: Record<string, Characteristics[]> = {
   // "tinyllama:latest": [Fast, Chat, Generate], // 637 MB
   "nomic-embed-text:latest": [Embed, Fast], // 274 MB
-  "llama3.2:latest": [Fast, Chat, Generate], // 2.0 GB
-  "nemotron-mini:latest": [Fast, Chat, Generate], // 2.7 GB
+  // "llama3.2:latest": [Fast, Chat, Generate], // 2.0 GB
+  // "nemotron-mini:latest": [Fast, Chat, Generate], // 2.7 GB
   "llama3.2-vision:latest": [Vision, Generate], // 7.9 GB
   // "llava:13b:latest": [Vision, Generate], // 8.0 GB
-  "gemma2:latest": [Chat, Generate], // 5.4 GB
+  // "gemma2:latest": [Chat, Generate], // 5.4 GB
   "gemma2:27b:latest": [Smart, Chat, Generate], // 15 GB
   // "mistral-nemo:latest": [Smart, Chat, Generate], // 7.1 GB
 };
