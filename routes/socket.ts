@@ -13,7 +13,9 @@ import { MessageType } from "../lib/daringsby/network/messages/MessageType.ts";
 import { isValidSenseMessage } from "../lib/daringsby/network/messages/SenseMessage.ts";
 import { isValidTextMessage } from "../lib/daringsby/network/messages/TextMessage.ts";
 import { isValidGeolocateMessage } from "../lib/daringsby/network/messages/GeolocateMessage.ts";
-import { Witness } from "./Witness.ts";
+import { Wit } from "../lib/daringsby/core/wit.ts";
+import { Contextualizer } from "../lib/daringsby/core/contextualizer.ts";
+import { Experience } from "../lib/daringsby/core/interfaces.ts";
 
 export const handler: Handlers = {
   GET(req, _ctx) {
@@ -51,12 +53,14 @@ export const handler: Handlers = {
   },
 };
 
-const baseWitness = new Witness();
+const baseWitness = new Wit();
 const witnesses = [baseWitness];
+const contextualizer = new Contextualizer();
+let recentExperiences: Experience[] = [];
 
 // Create a chain of witnesses, each feeding into the next one
 for (let i = 1; i < 5; i++) {
-  const newWitness = new Witness();
+  const newWitness = new Wit();
   witnesses[i - 1].setNext(newWitness);
   witnesses.push(newWitness);
 }
@@ -65,38 +69,78 @@ for (let i = 1; i < 5; i++) {
 witnesses[witnesses.length - 1].setNext(baseWitness);
 
 function tick() {
-  setTimeout(async () => {
-    for (const witness of witnesses) {
-      const impression = await witness.feel({
-        when: new Date(),
-        what: [
-          {
-            how: `I feel my heartbeat. It is currently ${
-              new Date().toLocaleTimeString()
-            }. I am here. This is really happening. (But I won't make a big deal about it. Yes, I exist....just move on.)`,
-            depth_low: 0,
-            depth_high: 0,
-            what: {
-              when: new Date(),
-              what: new Date().toLocaleTimeString(),
-            },
-          },
-        ],
-      });
-      sessions.forEach((session) => {
-        session.connection.send({
-          type: MessageType.Think,
-          data: impression.how,
-        });
-      });
-      witness.enqueue(impression);
+  let interval = 1000;
+
+  const tickWithDelay = async (witnessIndex: number) => {
+    if (witnessIndex >= witnesses.length) {
+      tick(); // Restart the loop once all witnesses have processed
+      return;
     }
-    tick();
-  }, 1000);
+
+    const witness = witnesses[witnessIndex];
+
+    if (witness.impressions?.length < 3) { // Defer processing if there are not enough sensations queued
+      setTimeout(
+        () => tickWithDelay(witnessIndex + 1),
+        interval / witnesses.length,
+      );
+      return;
+    }
+
+    const impression = await witness.feel({
+      when: new Date(),
+      what: [
+        {
+          how: `It is currently ${new Date().toLocaleTimeString()}.`,
+          depth_low: 0,
+          depth_high: 0,
+          what: {
+            when: new Date(),
+            what: new Date().toLocaleTimeString(),
+          },
+        },
+      ],
+    });
+
+    sessions.forEach((session) => {
+      session.connection.send({
+        type: MessageType.Think,
+        data: impression.how,
+      });
+    });
+
+    witness.next?.enqueue(impression);
+    recentExperiences = [impression, ...recentExperiences].slice(0, 10);
+
+    setTimeout(
+      () => tickWithDelay(witnessIndex + 1),
+      interval / witnesses.length,
+    );
+  };
+
+  setTimeout(() => tickWithDelay(0), interval);
 }
 
 tick();
 
+setInterval(async () => {
+  await contextualizer.feel({
+    when: new Date(),
+    what: recentExperiences,
+  });
+  const context = await contextualizer.getContext();
+  witnesses.forEach((witness) =>
+    witness.enqueue({
+      how: `Possibly relevant memories: ${context}`,
+      depth_low: 1,
+      depth_high: 1,
+      what: {
+        when: new Date(),
+        what: context,
+      },
+    })
+  );
+}, 10000);
 function handleIncomingSeeMessages(session: Session) {
   const eye = new ImageDescriber();
 

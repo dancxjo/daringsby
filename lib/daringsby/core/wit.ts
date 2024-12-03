@@ -1,21 +1,17 @@
-import { newLog } from "../lib/daringsby/core/logger.ts";
+import { newLog } from "./logger.ts";
 import neo4j from "npm:neo4j-driver";
 import { QdrantClient } from "npm:@qdrant/qdrant-js";
-import {
-  Experiencer,
-  Impression,
-  Sensation,
-} from "../lib/daringsby/core/interfaces.ts";
-import { lm } from "../lib/daringsby/core/core.ts";
+import { Experiencer, Impression, Sensation } from "./interfaces.ts";
+import { lm } from "./core.ts";
 
 const logger = newLog(import.meta.url, "info");
 
-export class Witness implements Experiencer {
-  protected next?: Witness;
-  setNext(newWitness: Witness) {
+export class Wit implements Experiencer {
+  public next?: Wit;
+  setNext(newWitness: Wit) {
     this.next = newWitness;
   }
-  protected impressions: Impression<unknown>[] = [];
+  impressions: Impression<unknown>[] = [];
   protected lastTick: number = Date.now();
   protected neo4jDriver = neo4j.driver(
     Deno.env.get("NEO4J_URL") || "bolt://localhost:7687",
@@ -146,7 +142,7 @@ export class Witness implements Experiencer {
     });
     const collectionExists = await this.qdrantClient.getCollections()
       .then((response) =>
-        response.collections.some((col) => col.name === Witness.COLLECTION_NAME)
+        response.collections.some((col) => col.name === Wit.COLLECTION_NAME)
       )
       .catch((error) => {
         logger.error({ error }, "Failed to check if collection exists");
@@ -154,7 +150,7 @@ export class Witness implements Experiencer {
       });
 
     if (!collectionExists) {
-      await this.qdrantClient.createCollection(Witness.COLLECTION_NAME, {
+      await this.qdrantClient.createCollection(Wit.COLLECTION_NAME, {
         vectors: {
           size: 768, //vector.length,
           distance: "Cosine",
@@ -163,7 +159,7 @@ export class Witness implements Experiencer {
         logger.error({ error }, "Failed to create collection");
       });
     }
-    await this.qdrantClient.upsert(Witness.COLLECTION_NAME, {
+    await this.qdrantClient.upsert(Wit.COLLECTION_NAME, {
       points: [
         {
           id: parseInt(experienceNodeId.toString()),
@@ -182,7 +178,7 @@ export class Witness implements Experiencer {
   ) {
     const vector = await lm.vectorize({ text: experience });
     const nearestNeighbors = await this.qdrantClient.search(
-      Witness.COLLECTION_NAME,
+      Wit.COLLECTION_NAME,
       {
         vector,
         limit: 15,
@@ -205,7 +201,7 @@ export class Witness implements Experiencer {
       const depth_high_b = Number(b.payload?.depth_high || 0);
       return (depth_low_a + depth_high_a) - (depth_low_b + depth_high_b);
     });
-    // logger.info({ nearestNeighbors }, "Nearest neighbors");
+    // logger.debug({ nearestNeighbors }, "Nearest neighbors");
     for (const neighbor of nearestNeighbors.slice(0, 2)) {
       if (neighbor.payload && neighbor.payload.how) {
         const depth_low = Number(neighbor.payload.depth_low || 0);
@@ -300,7 +296,7 @@ export class Witness implements Experiencer {
 
         // Check if the node is already in the vector store
         const existingVector = await this.qdrantClient.search(
-          Witness.COLLECTION_NAME,
+          Wit.COLLECTION_NAME,
           {
             vector,
             limit: 1,
@@ -313,7 +309,7 @@ export class Witness implements Experiencer {
 
         if (!existingVector || existingVector.length === 0) {
           // Store if not present
-          await this.qdrantClient.upsert(Witness.COLLECTION_NAME, {
+          await this.qdrantClient.upsert(Wit.COLLECTION_NAME, {
             points: [
               {
                 id: parseInt(nodeId.toString()),
@@ -333,7 +329,7 @@ export class Witness implements Experiencer {
 }
 
 // Call the new method to vectorize and store missing nodes
-const witness = new Witness();
+const witness = new Wit();
 witness.vectorizeAndStoreMissingNodes().catch((error) => {
   logger.error({ error }, "Failed to vectorize and store missing nodes");
 });

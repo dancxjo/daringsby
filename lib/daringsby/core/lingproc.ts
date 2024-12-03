@@ -30,7 +30,7 @@ export const characteristics: Record<string, Characteristics[]> = {
   "llama3.1:70b-instruct-q2_K": [Smart, Chat, Generate],
   // "llava:13b:latest": [Vision, Generate], // 8.0 GB
   // "gemma2:latest": [Chat, Generate], // 5.4 GB
-  // "gemma2:27b:latest": [Smart, Chat, Generate], // 15 GB
+  "gemma2:27b:latest": [Smart, Chat, Generate], // 15 GB
   // "mistral-nemo:latest": [Smart, Chat, Generate], // 7.1 GB
   // "qwq:latest": [Huge, Chat, Generate], // 20 GB
 };
@@ -140,7 +140,7 @@ export class LinguisticProcessor {
             setTimeout(() => reject(new Error("Instance ps timeout")), 10000)
           ),
         ]);
-        logger.info({ instance, psResponse }, "Instance ps response");
+        logger.debug({ instance, psResponse }, "Instance ps response");
 
         if (psResponse) {
           const response = psResponse as { models: { name: string }[] };
@@ -148,7 +148,7 @@ export class LinguisticProcessor {
 
           // Check each model in the list to see if it meets the requirements
           for (const [modelName, charList] of Object.entries(characteristics)) {
-            logger.info(
+            logger.debug(
               { modelName, required, charList },
               "Checking if model meets required characteristics",
             );
@@ -207,10 +207,10 @@ export class LinguisticProcessor {
         }
       } catch (error) {
         // Log any issues finding suitable models for an instance, but continue to the next one
-        logger.warn(
-          { instance, error },
-          `Could not find suitable model for instance`,
-        );
+        // logger.warn(
+        //   { instance, error },
+        //   `Could not find suitable model for instance`,
+        // );
       }
     }
 
@@ -226,11 +226,11 @@ export class LinguisticProcessor {
     return 0;
     // Implement a scoring system that gives preference to instances that have handled similar tasks
     // For now, return a value based on previous successful task completions (placeholder logic)
-    let score = 0;
-    if (instance.hasHandledTaskWith(required)) {
-      score += 10;
-    }
-    return score;
+    // let score = 0;
+    // if (instance.hasHandledTaskWith(required)) {
+    //   score += 10;
+    // }
+    // return score;
   }
 
   // Processes all tasks in the queue with a round-robin mechanism
@@ -359,7 +359,7 @@ export class LinguisticProcessor {
       images: task.params.image ? [rawImage] : undefined,
       options: {
         num_ctx: 2048,
-        temperature: 0.75 + (Math.random() * 0.5 - 0.25),
+        // temperature: 0.75 + (Math.random() * 0.5 - 0.25),
       },
     });
     logger.debug({ model }, "Generating text");

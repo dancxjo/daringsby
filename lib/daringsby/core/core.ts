@@ -3,10 +3,10 @@ import { Ollama } from "npm:ollama";
 import logger from "./logger.ts";
 
 const forebrain = new Ollama({
-  host: Deno.env.get("OLLAMA_HOST") || "http://172.17.0.1:11434",
+  host: Deno.env.get("OLLAMA_HOST") || "http://forebrain.local:11434",
 });
 const offload = new Ollama({
-  host: Deno.env.get("OLLAMA2_HOST") || "http://192.168.0.19:11434",
+  host: Deno.env.get("OLLAMA2_HOST") || "http://victus.local:11434",
 });
 
 const slow = new Ollama({
