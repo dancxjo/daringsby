@@ -25,14 +25,15 @@ export const characteristics: Record<string, Characteristics[]> = {
   "tinyllama:latest": [Fast, Chat, Generate], // 637 MB
   "nomic-embed-text:latest": [Embed, Fast], // 274 MB
   "llama3.2:latest": [Fast, Chat, Generate], // 2.0 GB
-  // "mistral:latest": [Fast, Chat, Generate], // 2.7 GB
+  "mistral:latest": [Fast, Chat, Generate], // 2.7 GB
   "llama3.2-vision:latest": [Vision, Generate], // 7.9 GB
+  "codellama:latest": [Fast, Chat, Generate], // 3.3 GB
   "llama3.1:70b-instruct-q2_K": [Smart, Chat, Generate],
   // "llava:13b:latest": [Vision, Generate], // 8.0 GB
   "gemma2:latest": [Chat, Generate], // 5.4 GB
   "gemma2:27b:latest": [Smart, Chat, Generate], // 15 GB
-  // "mistral-nemo:latest": [Smart, Chat, Generate], // 7.1 GB
-  // "qwq:latest": [Huge, Chat, Generate], // 20 GB
+  "mistral-nemo:latest": [Smart, Chat, Generate], // 7.1 GB
+  "qwq:latest": [Huge, Chat, Generate], // 20 GB
 };
 
 export interface GenerationParams {
