@@ -10,8 +10,9 @@ import {
 } from "./interfaces.ts";
 import { lm } from "./core.ts";
 import yml from "npm:yaml";
+import { Characteristics } from "./lingproc.ts";
 
-const logger = newLog(import.meta.url, "info");
+const logger = newLog(import.meta.url, "debug");
 
 export class Contextualizer implements Sensitive<Experience[]> {
   protected neo4jDriver;
@@ -21,6 +22,8 @@ export class Contextualizer implements Sensitive<Experience[]> {
   protected static readonly COLLECTION_NAME = "experiences";
   protected results: string = "";
   protected fullResponse: string = "";
+  private retryLimit = 1; // Add a retry limit
+  private retryCount = 0;
 
   constructor(protected context: string = "MERGE (me:Self) RETURN me") {
     this.neo4jDriver = neo4j.driver(
@@ -104,29 +107,43 @@ export class Contextualizer implements Sensitive<Experience[]> {
   New, corrected or repeated query:
 `;
 
-    const response = (await lm.generate({ prompt })).replace(/```\s*$/g, "");
+    const response = (await lm.generate({ prompt }, [Characteristics.Code]))
+      .replace(/```\s*$/g, "");
     logger.debug({ response }, `Response`);
     this.fullResponse = response;
 
     const extractedQuery = this.extractCypherQuery(response);
     if (!extractedQuery) {
       logger.error("No valid Cypher query found in the response");
-      return {
-        how: "No valid Cypher query found",
-        depth_low: 0,
-        depth_high: 0,
-        what: sensation,
-      };
+      this.retryCount++;
+
+      if (this.retryCount >= this.retryLimit) {
+        logger.error(
+          "Reached retry limit, unable to generate a valid Cypher query",
+        );
+        return {
+          how: "Retry limit reached: No valid Cypher query found",
+          depth_low: 0,
+          depth_high: 0,
+          what: sensation,
+        };
+      }
+
+      // Retry the same sensation
+      return this.feel(sensation);
     }
 
-    const depth_low = sensation.what.reduce((acc, exp) => {
-      return acc + (exp.depth_low ?? 0);
-    }, 0);
-    const depth_high = sensation.what.reduce((acc, exp) => {
-      return acc + (exp.depth_high ?? 0);
-    }, 0);
-
+    this.retryCount = 0; // Reset retry count if a valid query is found
     this.attemptNewContext(extractedQuery);
+
+    const depth_low = sensation.what.reduce(
+      (acc, exp) => acc + (exp.depth_low ?? 0),
+      0,
+    );
+    const depth_high = sensation.what.reduce(
+      (acc, exp) => acc + (exp.depth_high ?? 0),
+      0,
+    );
 
     return {
       how: response,
@@ -179,7 +196,7 @@ export class Contextualizer implements Sensitive<Experience[]> {
       Please summarize the graph data in a first-person narrative, as if you are the artificial being. Describe the key nodes and relationships that are important to you, focusing on their relevance to your experiences. Use a reflective and introspective tone to convey what you find significant, any new connections you understand, and how these relationships impact your sense of self or current situation. If the graph is unclear or contains errors, mention that you feel disoriented or that something is missing.
       
       Provide this summary in natural language, with no repetition of this prompt. Focus on what stands out the most in light of your recent experiences.`;
-    const response = await lm.generate({ prompt });
+    const response = await lm.generate({ prompt }, [Characteristics.Fast]);
     this.results += "\n" + response;
     logger.debug({ response }, "Response to getContext");
     return response;

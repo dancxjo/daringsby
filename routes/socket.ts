@@ -123,27 +123,33 @@ function tick() {
 
 tick();
 
-setInterval(async () => {
-  await contextualizer.feel({
-    when: new Date(),
-    what: recentExperiences,
-  });
-  const context = await contextualizer.getContext();
-  if (context.match(/^Error/)) {
-    return;
-  }
-  witnesses.forEach((witness) =>
-    witness.enqueue({
-      how: `Possibly relevant memories: ${context}`,
-      depth_low: 1,
-      depth_high: 1,
-      what: {
-        when: new Date(),
-        what: context,
-      },
-    })
-  );
-}, 10000);
+function tock() {
+  setTimeout(async () => {
+    await contextualizer.feel({
+      when: new Date(),
+      what: recentExperiences,
+    });
+    const willHaveContext = contextualizer.getContext();
+    willHaveContext.then((context) => {
+      if (context.match(/^Error/)) {
+        return;
+      }
+      witnesses.forEach((witness) =>
+        witness.enqueue({
+          how: `Possibly relevant memories: ${context}`,
+          depth_low: 1,
+          depth_high: 1,
+          what: {
+            when: new Date(),
+            what: context,
+          },
+        })
+      );
+    });
+  }, 1000);
+}
+
+tock();
 function handleIncomingSeeMessages(session: Session) {
   const eye = new ImageDescriber();
 

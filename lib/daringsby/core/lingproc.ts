@@ -10,9 +10,10 @@ export enum Characteristics {
   Huge = "Huge",
   Generate = "Generate",
   Chat = "Chat",
+  Code = "Code",
 }
 
-const { Fast, Smart, Vision, Embed, Huge, Chat, Generate } = Characteristics;
+const { Fast, Smart, Vision, Embed, Code, Chat, Generate } = Characteristics;
 
 export interface Profile {
   model: string;
@@ -22,18 +23,18 @@ export interface Profile {
 }
 
 export const characteristics: Record<string, Characteristics[]> = {
-  "tinyllama:latest": [Fast, Chat, Generate], // 637 MB
+  // "tinyllama:latest": [Fast, Chat, Generate], // 637 MB
   "nomic-embed-text:latest": [Embed, Fast], // 274 MB
   "llama3.2:latest": [Fast, Chat, Generate], // 2.0 GB
-  "mistral:latest": [Fast, Chat, Generate], // 2.7 GB
+  // "mistral:latest": [Fast, Chat, Generate], // 2.7 GB
   "llama3.2-vision:latest": [Vision, Generate], // 7.9 GB
-  "codellama:latest": [Fast, Chat, Generate], // 3.3 GB
-  "llama3.1:70b-instruct-q2_K": [Smart, Chat, Generate],
+  "codellama:latest": [Fast, Chat, Generate, Code], // 3.3 GB
+  // "llama3.1:70b-instruct-q2_K": [Smart, Chat, Generate],
   // "llava:13b:latest": [Vision, Generate], // 8.0 GB
-  "gemma2:latest": [Chat, Generate], // 5.4 GB
-  "gemma2:27b:latest": [Smart, Chat, Generate], // 15 GB
-  "mistral-nemo:latest": [Smart, Chat, Generate], // 7.1 GB
-  "qwq:latest": [Huge, Chat, Generate], // 20 GB
+  // "gemma2:latest": [Chat, Generate], // 5.4 GB
+  "gemma2:27b": [Smart, Chat, Generate, Code], // 15 GB
+  // "mistral-nemo:latest": [Smart, Chat, Generate], // 7.1 GB
+  // "qwq:latest": [Huge, Chat, Generate], // 20 GB
 };
 
 export interface GenerationParams {
@@ -409,8 +410,11 @@ export class LinguisticProcessor {
     return embeddings.embedding;
   }
 
-  generate(params: GenerationParams): Promise<string> {
-    const required = [Generate];
+  generate(
+    params: GenerationParams,
+    extraRequirements: Characteristics[] = [],
+  ): Promise<string> {
+    const required = [Generate, ...extraRequirements];
     if (params.image) required.push(Vision);
     logger.debug({ required }, "Generating text");
     return new Promise((resolve, reject) => {

@@ -3,6 +3,7 @@ import neo4j from "npm:neo4j-driver";
 import { QdrantClient } from "npm:@qdrant/qdrant-js";
 import { Experiencer, Impression, Sensation } from "./interfaces.ts";
 import { lm } from "./core.ts";
+import { Characteristics } from "./lingproc.ts";
 
 const logger = newLog(import.meta.url, "debug");
 
@@ -45,7 +46,7 @@ export class Wit implements Experiencer {
 
     const experience = await lm.generate({
       prompt,
-    });
+    }, [Characteristics.Smart]);
 
     let min = 0;
     let max = 0;
@@ -211,7 +212,7 @@ export class Wit implements Experiencer {
       Please summarize the graph data in a first-person narrative, as if you are the artificial being. Describe the key nodes and relationships that are important to you, focusing on their relevance to your experiences. Use a reflective and introspective tone to convey what you find significant, any new connections you understand, and how these relationships impact your sense of self or current situation. If the graph is unclear or contains errors, mention that you feel disoriented or that something is missing (i.e. signal cognitive dissonance to yourself).
       
       Provide this summary in natural language, with no repetition of this prompt. Focus on what stands out the most in light of your recent experiences.`,
-    });
+    }, [Characteristics.Fast]);
 
     let depth = 0;
     for (const neighbor of nearestNeighbors.slice(0, 5)) {
