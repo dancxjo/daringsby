@@ -11,20 +11,29 @@ import {
 import { lm } from "./core.ts";
 import yml from "npm:yaml";
 
-const logger = newLog(import.meta.url, "debug");
+const logger = newLog(import.meta.url, "info");
 
 export class Contextualizer implements Sensitive<Experience[]> {
-  protected neo4jDriver = neo4j.driver(
-    Deno.env.get("NEO4J_URL") || "bolt://localhost:7687",
-    neo4j.auth.basic("neo4j", "password"),
-  );
+  protected neo4jDriver;
   protected qdrantClient = new QdrantClient({
     url: Deno.env.get("QDRANT_URL") || "http://localhost:6333",
   });
   protected static readonly COLLECTION_NAME = "experiences";
   protected results: string = "";
+  protected fullResponse: string = "";
 
   constructor(protected context: string = "MERGE (me:Self) RETURN me") {
+    this.neo4jDriver = neo4j.driver(
+      Deno.env.get("NEO4J_URL") || "bolt://localhost:7687",
+      neo4j.auth.basic(
+        Deno.env.get("NEO4J_USER") || "neo4j",
+        Deno.env.get("NEO4J_PASSWORD") || "password",
+      ),
+      {
+        /* Additional driver configuration */
+        disableLosslessIntegers: true, // Example configuration
+      },
+    );
     logger.debug("Contextualizer initialized");
     // Load the latest experiences from neo4j
     this.loadExperiences().then((experiences) => {
@@ -40,13 +49,16 @@ export class Contextualizer implements Sensitive<Experience[]> {
   }
 
   async loadExperiences(): Promise<Experience[]> {
-    const session = this.neo4jDriver.session();
+    const session = this.neo4jDriver.session({
+      defaultAccessMode: neo4j.session.READ,
+    });
     try {
       const query =
         `MATCH (e:Experience) RETURN e ORDER BY e.when DESC LIMIT 10`;
       const result = await session.run(query);
       return result.records.map((record) => record.get("e").properties);
     } catch (e) {
+      logger.error({ e }, `Failed to load experiences`);
       return [{
         how:
           `I feel...foggy somehow. Like, I'm having trouble remembering what I was doing. Where am I? What's going on? ${
@@ -60,7 +72,7 @@ export class Contextualizer implements Sensitive<Experience[]> {
         },
       }];
     } finally {
-      session.close();
+      await session.close(); // Added 'await' to ensure proper session closure
     }
   }
 
@@ -69,11 +81,43 @@ export class Contextualizer implements Sensitive<Experience[]> {
   ): Promise<Impression<Experience[]>> {
     // Feed the experiences to the language model
     const experiences = yml.stringify(sensation);
-    const prompt =
-      `Here are the recent experiences of an artificial being: ${experiences}\n\nConsider all the entities and relationships in these experiences. We need to represent these experiences in a graph database. Please write a Cypher query that will merge these experiences into the graph. You can assume that the experiences are already in the database. The query should return the node representing the artificial being and all entities relevant to the situation represented in the experiences. Be wary of creating new nodes or relationships unnecessarily; use MERGE insted of CREATE. Remember, the goal is to represent the experiences in the graph, to create new data in the graph and to update old data. A query that is always appropriate is: MERGE (me:Self) RETURN me. Include that at the bare minimum. Example: Experience: "I see a pretty yellow cat." Cypher: "MERGE (me:Self) MERGE (cat:Cat {color: 'yellow'}) RETURN me, cat\n\nIMPORTANT: Your response will be executed immediately. It must be valid and correct cypher. Do not include comments explanations or dithering. Make the query work or crash yourself.\nThe context was previously: ${this.context}\n\nThe results of that query are: ${this.results}\n\nNew query or repeated last query:\n\n`;
+    const prompt = `
+  Here are the recent experiences of an artificial being: ${experiences}
+  
+  Consider all the entities and relationships in these experiences. We need to represent these experiences in a graph database. Please write a Cypher query that will merge these experiences into the graph.
+  
+  Important rules for generating Cypher queries:
+  1. Each MERGE statement must be independent (e.g., MERGE (a:Label) MERGE (b:Label)).
+  2. Relationships must be specified between two nodes explicitly (e.g., MERGE (a)-[:RELATION]->(b)).
+  3. Always start by merging the Self node, and use existing nodes where applicable.
+  4. If unsure, return the default: MERGE (me:Self) RETURN me.
+
+  Provide the query separately using the following format:
+  \`\`\`cypher
+  <Your Cypher Query Here>
+  \`\`\`
+  Add any additional useful comments above or below the query.
+
+  Context: ${this.context}
+  Results: ${this.results}
+
+  New, corrected or repeated query:
+`;
 
     const response = (await lm.generate({ prompt })).replace(/```\s*$/g, "");
     logger.debug({ response }, `Response`);
+    this.fullResponse = response;
+
+    const extractedQuery = this.extractCypherQuery(response);
+    if (!extractedQuery) {
+      logger.error("No valid Cypher query found in the response");
+      return {
+        how: "No valid Cypher query found",
+        depth_low: 0,
+        depth_high: 0,
+        what: sensation,
+      };
+    }
 
     const depth_low = sensation.what.reduce((acc, exp) => {
       return acc + (exp.depth_low ?? 0);
@@ -82,7 +126,7 @@ export class Contextualizer implements Sensitive<Experience[]> {
       return acc + (exp.depth_high ?? 0);
     }, 0);
 
-    this.attemptNewContext(response);
+    this.attemptNewContext(extractedQuery);
 
     return {
       how: response,
@@ -94,9 +138,26 @@ export class Contextualizer implements Sensitive<Experience[]> {
 
   async attemptNewContext(response: string): Promise<void> {
     logger.debug({ response }, "Attempting new context");
-    const session = this.neo4jDriver.session();
+
+    // Sanitize and validate the response
+    const sanitizedResponse = sanitizeCypherOutput(response);
+    if (!sanitizedResponse) {
+      logger.error("Generated response is not a valid Cypher query");
+      return;
+    }
+
+    const isValid = this.validateCypher(sanitizedResponse);
+    if (!isValid) {
+      logger.error("Invalid Cypher query generated, falling back to default");
+      this.results = `Error: Invalid Cypher query generated`;
+      return;
+    }
+
+    const session = this.neo4jDriver.session({
+      defaultAccessMode: neo4j.session.WRITE,
+    });
     try {
-      const result = await session.run(response);
+      const result = await session.run(sanitizedResponse);
       this.results = JSON.stringify(
         result.records.map((record) => record.toObject()),
       );
@@ -105,15 +166,49 @@ export class Contextualizer implements Sensitive<Experience[]> {
       this.results = `Error: ${(e as any).message ? (e as any).message : e}`;
       logger.error({ error: this.results }, "Error");
     } finally {
-      session.close();
+      await session.close();
     }
   }
 
   async getContext(): Promise<string> {
     const prompt =
-      `These are the recent experiences of an artificial being and possibly relevant memory records. The following query resulted in the following graph: ${this.context} ${this.results}\n\nNarrate the nodes/relationships from the graph to the artificial being in natural language. Use the first person, as if you are the artificial being speaking to itself. Disregard irrelevant nodes and relationships. Highlight what is important in light of the experiences. Do not repeat this prompt: simply provide the summary of the graph in natural language. If the results are in error, say that no bells are ringing.`;
+      `You are an artificial being reflecting on your recent experiences and the corresponding graph representation. The following Cypher query produced the current state of the graph: ${this.context} ${this.results}
+      
+      Additionally, here is the full response from the query generator: ${this.fullResponse}
+      
+      Please summarize the graph data in a first-person narrative, as if you are the artificial being. Describe the key nodes and relationships that are important to you, focusing on their relevance to your experiences. Use a reflective and introspective tone to convey what you find significant, any new connections you understand, and how these relationships impact your sense of self or current situation. If the graph is unclear or contains errors, mention that you feel disoriented or that something is missing.
+      
+      Provide this summary in natural language, with no repetition of this prompt. Focus on what stands out the most in light of your recent experiences.`;
     const response = await lm.generate({ prompt });
+    this.results += "\n" + response;
     logger.debug({ response }, "Response to getContext");
     return response;
   }
+
+  validateCypher(query: string): boolean {
+    // Basic validation using regular expressions to check Cypher syntax
+    const cypherPattern =
+      /^(MERGE|MATCH|CREATE|RETURN|SET|DELETE|DETACH|WITH|UNWIND|OPTIONAL|WHERE)\b.*$/im;
+    const lines = query.split("\n").map((line) => line.trim());
+    for (const line of lines) {
+      if (!cypherPattern.test(line)) {
+        logger.error(`Invalid Cypher query line: ${line}`);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  extractCypherQuery(response: string): string | null {
+    const match = response.match(/```cypher\n([\s\S]*?)\n```/);
+    return match ? match[1].trim() : null;
+  }
+}
+
+function sanitizeCypherOutput(response: string): string {
+  // Remove any narrative content, keep only Cypher statements
+  const cypherPattern =
+    /MATCH|MERGE|RETURN|CREATE|SET|DELETE|DETACH|WITH|UNWIND/;
+  return response.split("\n").filter((line) => cypherPattern.test(line.trim()))
+    .join("\n");
 }

@@ -4,7 +4,7 @@ import { QdrantClient } from "npm:@qdrant/qdrant-js";
 import { Experiencer, Impression, Sensation } from "./interfaces.ts";
 import { lm } from "./core.ts";
 
-const logger = newLog(import.meta.url, "info");
+const logger = newLog(import.meta.url, "debug");
 
 export class Wit implements Experiencer {
   public next?: Wit;
@@ -201,21 +201,24 @@ export class Wit implements Experiencer {
       const depth_high_b = Number(b.payload?.depth_high || 0);
       return (depth_low_a + depth_high_a) - (depth_low_b + depth_high_b);
     });
-    // logger.debug({ nearestNeighbors }, "Nearest neighbors");
-    for (const neighbor of nearestNeighbors.slice(0, 2)) {
+    logger.debug({ nearestNeighbors }, "Nearest neighbors");
+    const summary = await lm.generate({
+      prompt:
+        `You are an artificial being reflecting on your recent experiences and the corresponding graph representation. Here are some potentially useful insights from the graph data:\n\n${
+          JSON.stringify(nearestNeighbors)
+        }\n\n
+      
+      Please summarize the graph data in a first-person narrative, as if you are the artificial being. Describe the key nodes and relationships that are important to you, focusing on their relevance to your experiences. Use a reflective and introspective tone to convey what you find significant, any new connections you understand, and how these relationships impact your sense of self or current situation. If the graph is unclear or contains errors, mention that you feel disoriented or that something is missing (i.e. signal cognitive dissonance to yourself).
+      
+      Provide this summary in natural language, with no repetition of this prompt. Focus on what stands out the most in light of your recent experiences.`,
+    });
+
+    let depth = 0;
+    for (const neighbor of nearestNeighbors.slice(0, 5)) {
       if (neighbor.payload && neighbor.payload.how) {
         const depth_low = Number(neighbor.payload.depth_low || 0);
         const depth_high = Number(neighbor.payload.depth_high || 0);
-        this.enqueue({
-          how:
-            `I am reminded of a memory from ${neighbor.payload.when}: ${neighbor.payload.how}`,
-          depth_low: depth_low + 1,
-          depth_high: depth_high + 1,
-          what: {
-            when: new Date(),
-            what: neighbor,
-          },
-        });
+        depth = Math.max(depth, depth_high);
 
         // Record the nearest neighbor relationship in the graph database
         const associateQuery = `
@@ -252,6 +255,16 @@ export class Wit implements Experiencer {
         });
       }
     }
+
+    this.enqueue({
+      how: summary,
+      depth_low: depth + 1,
+      depth_high: depth + 1,
+      what: {
+        when: new Date(),
+        what: nearestNeighbors,
+      },
+    });
   }
 
   protected async createImpressionNodes(
@@ -327,9 +340,3 @@ export class Wit implements Experiencer {
     }
   }
 }
-
-// Call the new method to vectorize and store missing nodes
-const witness = new Wit();
-witness.vectorizeAndStoreMissingNodes().catch((error) => {
-  logger.error({ error }, "Failed to vectorize and store missing nodes");
-});
