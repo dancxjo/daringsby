@@ -129,6 +129,9 @@ setInterval(async () => {
     what: recentExperiences,
   });
   const context = await contextualizer.getContext();
+  if (context.match(/^Error/)) {
+    return;
+  }
   witnesses.forEach((witness) =>
     witness.enqueue({
       how: `Possibly relevant memories: ${context}`,

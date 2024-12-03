@@ -110,6 +110,10 @@ export class Contextualizer implements Sensitive<Experience[]> {
   }
 
   async getContext(): Promise<string> {
-    return this.results;
+    const prompt =
+      `These are the recent experiences of an artificial being and possibly relevant memory records. The following query resulted in the following graph: ${this.context} ${this.results}\n\nNarrate the nodes/relationships from the graph to the artificial being in natural language. Use the first person, as if you are the artificial being speaking to itself. Disregard irrelevant nodes and relationships. Highlight what is important in light of the experiences. Do not repeat this prompt: simply provide the summary of the graph in natural language. If the results are in error, say that no bells are ringing.`;
+    const response = await lm.generate({ prompt });
+    logger.debug({ response }, "Response to getContext");
+    return response;
   }
 }
