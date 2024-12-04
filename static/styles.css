@@ -1,12 +1,5 @@
-.mien {
+.mien, .Mien {
     text-align: center;
-<<<<<<< HEAD
-    font-size: 15rem;
-=======
-}
-
-/* Mien styling for the bot's emoji */
-.Mien {
     font-size: 18em;
     line-height: 1;
     color: var(--bs-primary);
@@ -68,5 +61,4 @@
     background-color: rgba(0, 0, 0, 0.5);
     z-index: 1000;
 
->>>>>>> gapski
 }
