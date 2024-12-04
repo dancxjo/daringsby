@@ -94,6 +94,8 @@ export class Contextualizer implements Sensitive<Experience[]> {
   2. Relationships must be specified between two nodes explicitly (e.g., MERGE (a)-[:RELATION]->(b)).
   3. Always start by merging the Self node, and use existing nodes where applicable.
   4. If unsure, return the default: MERGE (me:Self) RETURN me.
+  5. Don't try to do everything at once. You will get more chances. Learn from past mistakes.
+  6. Only one cypher query per response.
 
   Provide the query separately using the following format:
   \`\`\`cypher

@@ -16,6 +16,7 @@ import { isValidGeolocateMessage } from "../lib/daringsby/network/messages/Geolo
 import { Wit } from "../lib/daringsby/core/wit.ts";
 import { Contextualizer } from "../lib/daringsby/core/contextualizer.ts";
 import { Experience } from "../lib/daringsby/core/interfaces.ts";
+import { Voice } from "../lib/daringsby/core/voice.ts";
 
 export const handler: Handlers = {
   GET(req, _ctx) {
@@ -34,7 +35,8 @@ export const handler: Handlers = {
     if (!sessions.has(socket)) {
       logger.debug("Creating new SocketToClient for WebSocket");
       const connection = new SocketConnection(socket);
-      addSession(socket, connection);
+      const voice = new Voice("", connection, baseWitness);
+      addSession(socket, connection, voice);
     }
 
     const session = sessions.get(socket);
@@ -107,6 +109,9 @@ function tick() {
         type: MessageType.Think,
         data: impression.how,
       });
+      if (session.voice) {
+        session.voice.context = impression.how;
+      }
     });
 
     witness.next?.enqueue(impression);
