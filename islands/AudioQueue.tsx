@@ -1,113 +1,105 @@
-import { useEffect, useRef } from "preact/hooks";
+import { useSignal } from "@preact/signals";
+import { useEffect } from "preact/hooks";
 import { MessageType } from "../lib/daringsby/network/messages/MessageType.ts";
 import {
-    isValidSayMessage,
-    SayMessage,
+  isValidSayMessage,
+  SayMessage,
 } from "../lib/daringsby/network/messages/SayMessage.ts";
 import { SocketConnection } from "../lib/daringsby/network/sockets/connection.ts";
 import { logger } from "../lib/daringsby/core/logger.ts";
 
-export default function AudioPlayer(
-    { serverRef }: { serverRef: { current: SocketConnection | null } },
+export default function AudioQueue(
+  { serverRef }: { serverRef: { current: SocketConnection | null } },
 ) {
-    const isPlaying = useRef(false);
-    const listenerAttached = useRef(false);
-    const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playqueue = useSignal<SayMessage[]>([]);
+  let isProcessingQueue = false; // Using a simple boolean to ensure synchronous behavior
 
-    const playSound = (wav: string) => {
-        return new Promise<void>((resolve, reject) => {
-            try {
-                if (!audioRef.current) {
-                    audioRef.current = new Audio();
-                }
+  const processQueue = async () => {
+    if (isProcessingQueue) {
+      return; // Prevent multiple overlapping calls
+    }
 
-                const audio = audioRef.current;
+    isProcessingQueue = true;
 
-                // Set the audio source
-                const audioBlob = new Blob([
-                    new Uint8Array(
-                        atob(wav).split("").map((char) => char.charCodeAt(0)),
-                    ),
-                ], { type: "audio/wav" });
-                const audioUrl = URL.createObjectURL(audioBlob);
-                audio.src = audioUrl;
+    while (playqueue.value.length > 0) {
+      const message = playqueue.value.shift(); // Remove the first item from the queue
+      if (!message) {
+        break;
+      }
 
-                audio.onended = () => {
-                    logger.debug("Audio playback ended successfully");
-                    isPlaying.current = false;
-                    resolve();
-                };
+      logger.debug("Playing message:", message.at);
+      try {
+        await playSound(message.data.wav);
+        logger.debug("Finished playing message:", message.at);
+      } catch (error) {
+        logger.error({ error }, "Error playing sound");
+      }
+    }
 
-                audio.onerror = (e) => {
-                    logger.error({ e }, "Audio playback failed");
-                    isPlaying.current = false;
-                    reject(e);
-                };
+    isProcessingQueue = false;
+  };
 
-                // Start playback
-                isPlaying.current = true;
-                audio.play().catch((e) => {
-                    logger.error({ e }, "Error attempting to play audio");
-                    isPlaying.current = false;
-                    resolve(); // Resolve even if playback fails to continue processing
-                });
-            } catch (error) {
-                logger.error({ error }, "Error preparing audio for playback");
-                isPlaying.current = false;
-                reject(error);
-            }
+  const queueToPlay = (message: SayMessage) => {
+    logger.debug("Enqueuing message");
+    playqueue.value = [...playqueue.value, message];
+
+    // Only start processing if not already processing
+    if (!isProcessingQueue) {
+      processQueue();
+    }
+  };
+
+  const playSound = (wav: string) => {
+    return new Promise<void>((resolve, reject) => {
+      try {
+        const audioBlob = new Blob([
+          new Uint8Array(
+            atob(wav).split("").map((char) => char.charCodeAt(0)),
+          ),
+        ], { type: "audio/wav" });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+
+        audio.onended = () => {
+          logger.debug("Audio playback ended successfully");
+          resolve();
+        };
+
+        audio.onerror = (e) => {
+          logger.error({ e }, "Audio playback failed");
+          reject(e);
+        };
+
+        // Start playback
+        audio.play().catch((e) => {
+          logger.error({ e }, "Error attempting to play audio");
+          reject(e);
         });
-    };
+      } catch (error) {
+        logger.error({ error }, "Error preparing audio for playback");
+        reject(error);
+      }
+    });
+  };
 
-    let lastWordsFrom = new Date();
-
-    const handleMessage = async (message: SayMessage) => {
-        const theseWordsFrom = new Date(message.at ?? new Date());
-        if (theseWordsFrom < lastWordsFrom) {
-            logger.debug(
-                "Skipping obsolete message from the past:",
-                message.at,
-            );
-            return;
-        }
-        lastWordsFrom = theseWordsFrom;
+  useEffect(() => {
+    const server = serverRef.current;
+    if (server) {
+      const handleMessage = (message: SayMessage) => {
         logger.debug({
-            message: message.at,
-            data: message.data.words,
+          message: message.at,
+          data: message.data.words,
         }, "Received say message");
+        queueToPlay(message);
+      };
 
-        if (isPlaying.current) {
-            logger.debug(
-                "Audio is currently playing, skipping message:",
-                message.at,
-            );
-            return;
-        }
+      server.onMessage(isValidSayMessage, MessageType.Say, handleMessage);
 
-        try {
-            await playSound(message.data.wav);
-            logger.debug("Finished playing message:", message.at);
-            serverRef.current?.send({
-                type: MessageType.Echo,
-                data: message.data.words,
-            });
-        } catch (error) {
-            logger.error({ error }, "Error playing sound");
-        }
-    };
+      return () => {
+        server.offMessage(MessageType.Say, handleMessage);
+      };
+    }
+  }, [serverRef.current]);
 
-    useEffect(() => {
-        const server = serverRef.current;
-        if (server && !listenerAttached.current) {
-            server.onMessage(isValidSayMessage, MessageType.Say, handleMessage);
-            listenerAttached.current = true;
-
-            return () => {
-                server.offMessage(MessageType.Say, handleMessage);
-                listenerAttached.current = false;
-            };
-        }
-    }, [serverRef.current]);
-
-    return null;
+  return null;
 }

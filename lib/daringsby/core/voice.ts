@@ -37,7 +37,7 @@ export class Voice implements Sensitive<Message[]> {
       ),
       {},
     );
-    connection.incoming(isValidTextMessage).subscribe((message) => {
+    connection.incoming(isValidTextMessage).subscribe(async (message) => {
       // Write the message to the database
       const dbSession = this.neo4jDriver.session({
         defaultAccessMode: neo4j.session.WRITE,
@@ -45,7 +45,7 @@ export class Voice implements Sensitive<Message[]> {
       try {
         const query =
           `CREATE (e:ChatMessage {content: $content, role: $role }) RETURN e`;
-        const result = dbSession.run(query, {
+        await dbSession.run(query, {
           content: message.data,
           role: "user",
         });
@@ -75,7 +75,7 @@ export class Voice implements Sensitive<Message[]> {
         wit.enqueue(impression);
       });
     });
-    connection.incoming(isValidEchoMessage).subscribe((message) => {
+    connection.incoming(isValidEchoMessage).subscribe(async (message) => {
       // Write the message to the database
       const dbSession = this.neo4jDriver.session({
         defaultAccessMode: neo4j.session.WRITE,
@@ -83,7 +83,7 @@ export class Voice implements Sensitive<Message[]> {
       try {
         const query =
           `CREATE (e:ChatMessage {content: $content, role: $role}) RETURN e`;
-        const result = dbSession.run(query, {
+        await dbSession.run(query, {
           content: message.data,
           role: "assistant",
           when: message.at ?? new Date(),
@@ -144,7 +144,7 @@ export class Voice implements Sensitive<Message[]> {
     sensation: Sensation<Message[]>,
   ): Promise<Impression<Message[]>> {
     const prompt =
-      `You are an artificial being named Pete Daringsby. Your memory is constantly keeping up with the conversation, but it's a smidge slow. The following is a conversation you're currently having. Here is what you know: ${this.context}\n(If the context above is empty, it means you're still groggily waking up. Stall for time while your memory catches up.\nDo not speak excessively in one response. You will be able to continue your response momentarily. Please allow others to speak. You may also execute typescript code and get the results using <function name="typescript">// Code here will be executed and you will feel the results</function> [Only call functions you know exist, such as 'typescript']. DO NOT SPEAK MORE THAN ONE SENTENCE. DO NOT USE THE ASTERISK SYMBOL OR RESPOND WITH ANY TEXT MEANT NOT TO BE VERBALIZED. NOT MORE THAN A SENTENCE AT A TIME. Spell out numbers and initials always so your TTS can correctly speak for you. Include an emoji in your response and it will become your face. ONE AND ONLY ONE SENTENCE (but as many function calls as you want...anything outside a function call will be spoken aloud or displayed as your face)!`;
+      `You are an artificial being named Pete Daringsby. Your memory is constantly keeping up with the conversation, but it's a smidge slow. The following is a conversation you're currently having. Here is what you know: ${this.context}\n(If the context above is empty, it means you're still groggily waking up. Stall for time while your memory catches up.\nDo not speak excessively in one response. You will be able to continue your response momentarily. Please allow others to speak. You may also execute typescript code and get the results using <function name="typescript">const meaningOfLife = 42; meaningOfLife;</function>. DO NOT SPEAK MORE THAN ONE SENTENCE. DO NOT USE THE ASTERISK SYMBOL OR RESPOND WITH ANY TEXT MEANT NOT TO BE VERBALIZED. NOT MORE THAN A SENTENCE AT A TIME. Spell out numbers and initials always so your TTS can correctly speak for you. Include an emoji in your response and it will become your face. ONE AND ONLY ONE SENTENCE (but as many function calls as you want...anything outside a function call will be spoken aloud or displayed as your face)!`;
 
     const response = await lm.chat({
       messages: [

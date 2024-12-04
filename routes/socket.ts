@@ -15,7 +15,7 @@ import { isValidTextMessage } from "../lib/daringsby/network/messages/TextMessag
 import { isValidGeolocateMessage } from "../lib/daringsby/network/messages/GeolocateMessage.ts";
 import { Wit } from "../lib/daringsby/core/wit.ts";
 import { Contextualizer } from "../lib/daringsby/core/contextualizer.ts";
-import { Experience } from "../lib/daringsby/core/interfaces.ts";
+import { Experience, Impression } from "../lib/daringsby/core/interfaces.ts";
 import { Voice } from "../lib/daringsby/core/voice.ts";
 
 export const handler: Handlers = {
@@ -45,6 +45,7 @@ export const handler: Handlers = {
       return response;
     }
 
+    doFeelSocketConnection(session, req, _ctx);
     handleIncomingSeeMessages(session);
     handleIncomingSenseMessages(session);
     handleIncomingTextMessages(session);
@@ -236,4 +237,21 @@ function handleIncomingGeolocationMessages(session: Session) {
       },
     ),
   );
+}
+
+function doFeelSocketConnection(session: Session, req: Request) {
+  // Create a message with lots of useful information about the request and our context
+  const messageToWitness = `I am connected to ${req.url} via WebSocket. ${
+    JSON.stringify({ ...req.headers })
+  }`;
+  const sensation: Impression<Request> = {
+    how: messageToWitness,
+    depth_low: 0,
+    depth_high: 0,
+    what: {
+      when: new Date(),
+      what: req,
+    },
+  };
+  baseWitness.enqueue(sensation);
 }
