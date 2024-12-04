@@ -145,7 +145,7 @@ export class Voice implements Sensitive<Message[]> {
     sensation: Sensation<Message[]>,
   ): Promise<Impression<Message[]>> {
     const prompt =
-      `You are an artificial being named Pete Daringsby. Your memory is constantly keeping up with the conversation, but it's a smidge slow. The following is a conversation you're currently having. Here is what you know: ${this.context}\n(If the context above is empty, it means you're still groggily waking up. Stall for time while your memory catches up.\nDo not speak excessively in one response. You will be able to continue your response momentarily. Please allow others to speak. You may also execute typescript code and get the results using <function name="typescript">const meaningOfLife = 42; meaningOfLife;</function>. DO NOT SPEAK MORE THAN ONE SENTENCE. DO NOT USE THE ASTERISK SYMBOL OR RESPOND WITH ANY TEXT MEANT NOT TO BE VERBALIZED. NOT MORE THAN A SENTENCE AT A TIME. Spell out numbers and initials always so your TTS can correctly speak for you. Include an emoji in your response and it will become your face. ONE AND ONLY ONE SENTENCE (but as many function calls as you want...anything outside a function call will be spoken aloud or displayed as your face)!`;
+      `You are an artificial being named Pete Daringsby. Your memory is constantly keeping up with the conversation, but it's a smidge slow. The following is a conversation you're currently having. Here is what you know: ${this.context}\n(If the context above is empty, it means you're still groggily waking up. Stall for time while your memory catches up.\nDo not speak excessively in one response. You will be able to continue your response momentarily. Please allow others to speak. You may also call functions like this: <function name="known-function">main argument</function>. Currently, you may call the function named "fetch" with the main argument of a URL and sense the text content of that page. DO NOT SPEAK MORE THAN ONE SENTENCE. DO NOT USE THE ASTERISK SYMBOL OR RESPOND WITH ANY TEXT MEANT NOT TO BE VERBALIZED. NOT MORE THAN A SENTENCE AT A TIME. Spell out numbers and initials always so your TTS can correctly speak for you. Include an emoji in your response and it will become your face. ONE AND ONLY ONE SENTENCE (but as many function calls as you want...anything outside a function call will be spoken aloud or displayed as your face)!`;
 
     const response = await lm.chat({
       messages: [
@@ -205,7 +205,7 @@ export class Voice implements Sensitive<Message[]> {
           logger.error({ e }, `Error`);
           this.wit.enqueue({
             how:
-              `I just attempted to execute the following code: ${fc.content} but encountered an error: ${
+              `OOof! Gut punch! I just attempted to execute the following code: ${fc.content} but encountered an error: ${
                 JSON.stringify(e)
               }`,
             depth_high: 0,
@@ -216,6 +216,35 @@ export class Voice implements Sensitive<Message[]> {
             },
           });
         }
+      } else if (fc.name === "fetch") {
+        try {
+          const body = await fetch(fc.content).then((res) => res.text());
+          const $ = cheerio.load(body);
+          this.wit.enqueue({
+            how:
+              `I just fetched the content of the page ${fc.content}: ${$.text()}`,
+            depth_high: 0,
+            depth_low: 0,
+            what: {
+              when: new Date(),
+              what: body,
+            },
+          });
+        } catch (e) {
+          this.wit.enqueue({
+            how:
+              `Ouch! I just attempted to fetch the content of the page ${fc.content} but encountered an error: ${
+                JSON.stringify(e)
+              }`,
+            depth_high: 0,
+            depth_low: 0,
+            what: {
+              when: new Date(),
+              what: e,
+            },
+          });
+        }
+        text = fc.replace("");
       } else {
         text = fc.replace(``);
         this.wit.enqueue({
