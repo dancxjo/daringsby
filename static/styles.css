@@ -1,8 +1,18 @@
 .mien, .Mien {
     text-align: center;
-    font-size: 18em;
-    line-height: 1;
     color: var(--bs-primary);
+    width: 100%;                /* Set container width */
+  white-space: nowrap;        /* Keep the text on one line */
+  overflow: hidden;           /* Hide anything that overflows */
+  text-overflow: ellipsis;    /* Add ellipsis if content overflows */
+  font-size: calc(100vw / 5);/* Set a default font size relative to viewport */
+
+  display: inline-block;
+  line-height: 2;             /* Keeps emoji size aligned closely */
+  vertical-align: middle;
+  
+  /* Adjusts font size automatically to fit inside container */
+  font-size: 10vw;
 }
 
 /* Styling for spoken words */

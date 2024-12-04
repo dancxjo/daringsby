@@ -12,6 +12,7 @@ import { Wit } from "./wit.ts";
 import { SocketConnection } from "../network/sockets/connection.ts";
 import { isValidTextMessage } from "../network/messages/TextMessage.ts";
 import emojiRegex from "npm:emoji-regex";
+import * as cheerio from "npm:cheerio";
 
 const logger = newLog(import.meta.url, "debug");
 
@@ -43,11 +44,10 @@ export class Voice implements Sensitive<Message[]> {
       });
       try {
         const query =
-          `CREATE (e:ChatMessage {content: $content, role: $role, when: datetime($when)}) RETURN e`;
+          `CREATE (e:ChatMessage {content: $content, role: $role }) RETURN e`;
         const result = dbSession.run(query, {
           content: message.data,
           role: "user",
-          when: message.at ?? new Date(),
         });
         logger.debug(`Saved message: ${message.data}`);
         this.conversation.push({
@@ -82,7 +82,7 @@ export class Voice implements Sensitive<Message[]> {
       });
       try {
         const query =
-          `CREATE (e:ChatMessage {content: $content, role: $role, when: datetime($when)}) RETURN e`;
+          `CREATE (e:ChatMessage {content: $content, role: $role}) RETURN e`;
         const result = dbSession.run(query, {
           content: message.data,
           role: "assistant",
@@ -144,7 +144,7 @@ export class Voice implements Sensitive<Message[]> {
     sensation: Sensation<Message[]>,
   ): Promise<Impression<Message[]>> {
     const prompt =
-      `You are an artificial being. The following is a conversation you're currently having. Here is what you know: ${this.context}\n\nDo not speak excessively in one response. You will be able to continue your response momentarily. Please allow others to speak. DO NOT SPEAK MORE THAN ONE SENTENCE. DO NOT USE THE ASTERISK SYMBOL OR RESPOND WITH ANY TEXT MEANT NOT TO BE VERBALIZED. NOT MORE THAN A SENTENCE AT A TIME. Spell out numbers and initials always so your TTS can correctly speak for you. Include an emoji in your response and it will become your face.`;
+      `You are an artificial being named Pete Daringsby. Your memory is constantly keeping up with the conversation, but it's a smidge slow. The following is a conversation you're currently having. Here is what you know: ${this.context}\n(If the context above is empty, it means you're still groggily waking up. Stall for time while your memory catches up.\nDo not speak excessively in one response. You will be able to continue your response momentarily. Please allow others to speak. You may also execute typescript code and get the results using <function name="typescript">// Code here will be executed and you will feel the results</function> [Only call functions you know exist, such as 'typescript']. DO NOT SPEAK MORE THAN ONE SENTENCE. DO NOT USE THE ASTERISK SYMBOL OR RESPOND WITH ANY TEXT MEANT NOT TO BE VERBALIZED. NOT MORE THAN A SENTENCE AT A TIME. Spell out numbers and initials always so your TTS can correctly speak for you. Include an emoji in your response and it will become your face. ONE AND ONLY ONE SENTENCE (but as many function calls as you want...anything outside a function call will be spoken aloud or displayed as your face)!`;
 
     const response = await lm.chat({
       messages: [
@@ -177,9 +177,61 @@ export class Voice implements Sensitive<Message[]> {
       },
     };
 
+    const functionCalls = await this.extractFunctions(response.content);
+    let text = response.content.replace(emojiRegex(), "");
+
+    for (const fc of functionCalls) {
+      logger.debug({ fc }, `Function call`);
+      if (fc.name === "typescript") {
+        try {
+          const result = await eval(fc.content);
+          text = fc.replace(``);
+          logger.debug({ result }, `Result`);
+          this.wit.enqueue({
+            how:
+              `I just executed the following code: ${fc.content} to arrive at the result of: ${
+                JSON.stringify(result)
+              }`,
+            depth_high: 0,
+            depth_low: 0,
+            what: {
+              when: new Date(),
+              what: result,
+            },
+          });
+        } catch (e) {
+          text = fc.replace(`Error: ${e.message}`);
+          logger.error({ e }, `Error`);
+          this.wit.enqueue({
+            how:
+              `I just attempted to execute the following code: ${fc.content} but encountered an error: ${
+                JSON.stringify(e)
+              }`,
+            depth_high: 0,
+            depth_low: 0,
+            what: {
+              when: new Date(),
+              what: e,
+            },
+          });
+        }
+      } else {
+        text = fc.replace(``);
+        this.wit.enqueue({
+          how:
+            `I just encountered an unknown function: ${fc.name} with content: ${fc.content}`,
+          depth_high: 0,
+          depth_low: 0,
+          what: {
+            when: new Date(),
+            what: fc,
+          },
+        });
+      }
+    }
+
     const face = response.content.matchAll(emojiRegex());
     const emoji = Array.from(face).map((match) => match[0]).join("");
-    const text = response.content.replace(emojiRegex(), "");
     this.connection.send({
       type: MessageType.Emote,
       data: emoji,
@@ -203,5 +255,21 @@ export class Voice implements Sensitive<Message[]> {
     });
 
     return aboutToSpeak;
+  }
+
+  async extractFunctions(response: string) {
+    const $ = cheerio.load(response);
+    const functionCalls = $("function").toArray().map((fc) => ({
+      content: $(fc).text(),
+      name: $(fc).attr("name"),
+      args: $(fc).attr(),
+      replace: (value: string) => {
+        const $ = cheerio.load(value);
+        const newContent = $(fc).text();
+        $(fc).replaceWith(newContent);
+        return $.html();
+      },
+    }));
+    return functionCalls;
   }
 }
