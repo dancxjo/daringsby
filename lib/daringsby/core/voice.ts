@@ -220,9 +220,10 @@ export class Voice implements Sensitive<Message[]> {
         try {
           const body = await fetch(fc.content).then((res) => res.text());
           const $ = cheerio.load(body);
+          const raw = $.text();
+          logger.debug({ raw }, `Fetched content`);
           this.wit.enqueue({
-            how:
-              `I just fetched the content of the page ${fc.content}: ${$.text()}`,
+            how: `I just fetched the content of the page ${fc.content}: ${raw}`,
             depth_high: 0,
             depth_low: 0,
             what: {

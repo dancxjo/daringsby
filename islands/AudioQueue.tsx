@@ -7,9 +7,14 @@ import {
 } from "../lib/daringsby/network/messages/SayMessage.ts";
 import { SocketConnection } from "../lib/daringsby/network/sockets/connection.ts";
 import { logger } from "../lib/daringsby/core/logger.ts";
+import { Impression } from "../lib/daringsby/core/interfaces.ts";
+
+export type EchoFunction = () => void;
 
 export default function AudioQueue(
-  { serverRef }: { serverRef: { current: SocketConnection | null } },
+  { serverRef }: {
+    serverRef: { current: SocketConnection | null };
+  },
 ) {
   const playqueue = useSignal<SayMessage[]>([]);
   let isProcessingQueue = false; // Using a simple boolean to ensure synchronous behavior
@@ -29,7 +34,12 @@ export default function AudioQueue(
 
       logger.debug("Playing message:", message.at);
       try {
-        await playSound(message.data.wav);
+        await playSound(message.data.wav, () => {
+          serverRef.current?.send({
+            type: MessageType.Echo,
+            data: message.data.words,
+          });
+        });
         logger.debug("Finished playing message:", message.at);
       } catch (error) {
         logger.error({ error }, "Error playing sound");
@@ -49,7 +59,7 @@ export default function AudioQueue(
     }
   };
 
-  const playSound = (wav: string) => {
+  const playSound = (wav: string, echo: EchoFunction) => {
     return new Promise<void>((resolve, reject) => {
       try {
         const audioBlob = new Blob([
@@ -62,6 +72,7 @@ export default function AudioQueue(
 
         audio.onended = () => {
           logger.debug("Audio playback ended successfully");
+          echo();
           resolve();
         };
 
