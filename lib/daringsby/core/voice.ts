@@ -44,10 +44,11 @@ export class Voice implements Sensitive<Message[]> {
       });
       try {
         const query =
-          `CREATE (e:ChatMessage {content: $content, role: $role }) RETURN e`;
+          `CREATE (e:ChatMessage {content: $content, role: $role, when: timestamp($when) }) RETURN e`;
         await dbSession.run(query, {
           content: message.data,
           role: "user",
+          when: message.at ?? new Date(),
         });
         logger.debug(`Saved message: ${message.data}`);
         this.conversation.push({
@@ -82,7 +83,7 @@ export class Voice implements Sensitive<Message[]> {
       });
       try {
         const query =
-          `CREATE (e:ChatMessage {content: $content, role: $role}) RETURN e`;
+          `CREATE (e:ChatMessage {content: $content, role: $role, when: timestamp($when)}) RETURN e`;
         await dbSession.run(query, {
           content: message.data,
           role: "assistant",
