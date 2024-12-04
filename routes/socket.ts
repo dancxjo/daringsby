@@ -93,7 +93,9 @@ function tick() {
       when: new Date(),
       what: [
         {
-          how: `It is currently ${new Date().toLocaleTimeString()}.`,
+          how: `It is currently ${new Date().toLocaleString()}/${
+            new Date().toISOString()
+          }.`,
           depth_low: 0,
           depth_high: 0,
           what: {

@@ -200,8 +200,30 @@ export class Contextualizer implements Sensitive<Experience[]> {
       Provide this summary in natural language, with no repetition of this prompt. Focus on what stands out the most in light of your recent experiences.`;
     const response = await lm.generate({ prompt }, [Characteristics.Fast]);
     this.results += "\n" + response;
+
+    this.saveConnections(response);
     logger.debug({ response }, "Response to getContext");
     return response;
+  }
+
+  private saveConnections(summary: string): void {
+    // Create a new impression based on the summary, give it a high depth (as it's at this point quite synthetic--based on the max of the depth_low and depth_high values of the source experiences), save it to the graph and link it to the experiences it is based on
+    const session = this.neo4jDriver.session({
+      defaultAccessMode: neo4j.session.WRITE,
+    });
+    session.run(
+      `CREATE (i:Impression {how: $how, depth_low: $depth_low, depth_high: $depth_high, what: $what}) RETURN i`,
+      {
+        how: summary,
+        depth_low: 0,
+        depth_high: 1,
+        what: {
+          when: new Date(),
+          what: this.fullResponse,
+        },
+      },
+    );
+    session.close();
   }
 
   validateCypher(query: string): boolean {

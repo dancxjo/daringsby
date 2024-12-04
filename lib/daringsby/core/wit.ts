@@ -240,6 +240,17 @@ RETURN e
         }).catch((error) => {
           logger.error({ error }, "Failed to create ASSOCIATED relationship");
         });
+        const summarizeQuery = `
+        MERGE (i:Impression {how: $how, when: $when, depth_low: $depth_low, depth_high: $depth_high}) MERGE (o:Impression {how: $neighborText}) MERGE (i)-[:SUMMARIZES]->(o)`;
+        await this.neo4jDriver.session().run(summarizeQuery, {
+          how: summary,
+          when: new Date().toISOString(),
+          depth_low,
+          depth_high,
+          neighborText: neighbor.payload.how,
+        }).catch((error) => {
+          logger.error({ error }, "Failed to create SUMMARIZES relationship");
+        });
 
         // Increment the weight of the remembered node
         const incrementWeightQuery = `
@@ -261,16 +272,6 @@ RETURN e
         });
       }
     }
-
-    this.enqueue({
-      how: summary,
-      depth_low: depth + 1,
-      depth_high: depth + 1,
-      what: {
-        when: new Date(),
-        what: nearestNeighbors,
-      },
-    });
   }
 
   protected async createImpressionNodes(

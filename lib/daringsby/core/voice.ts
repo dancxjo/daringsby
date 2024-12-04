@@ -184,6 +184,16 @@ export class Voice implements Sensitive<Message[]> {
       type: MessageType.Emote,
       data: emoji,
     });
+    const faceChange: Impression<string> = {
+      how: `I feel my face form into the shape of: ${emoji}`,
+      depth_high: 0,
+      depth_low: 0,
+      what: {
+        when: new Date(),
+        what: emoji,
+      },
+    };
+    this.wit.enqueue(faceChange);
     this.connection.send({
       type: MessageType.Say,
       data: {

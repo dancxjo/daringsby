@@ -31,8 +31,8 @@ export const characteristics: Record<string, Characteristics[]> = {
   // "codellama:latest": [Fast, Chat, Generate, Code], // 3.3 GB
   // "llama3.1:70b-instruct-q2_K": [Smart, Chat, Generate],
   // "llava:13b:latest": [Vision, Generate], // 8.0 GB
-  // "gemma2:latest": [Chat, Generate, Code], // 5.4 GB
-  // "gemma2:27b": [Smart, Chat, Generate, Code], // 15 GB
+  "gemma2:latest": [Chat, Generate, Code], // 5.4 GB
+  "gemma2:27b": [Smart, Chat, Generate, Code], // 15 GB
   // "mistral-nemo:latest": [Smart, Chat, Generate], // 7.1 GB
   // "qwq:latest": [Huge, Chat, Generate], // 20 GB
 };
