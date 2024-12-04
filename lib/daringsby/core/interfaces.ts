@@ -1,19 +1,40 @@
-import { Observable, ReplaySubject } from "npm:rxjs";
-
-export interface Stamped<I> {
-    when: Date; // We must always record and maintain the time of the event
-    content: I;
+export interface Sensation<D = unknown> {
+  when: Date; // We must always record and maintain the time of the event
+  what: D;
 }
 
-export interface Described<I> {
-    explanation: string; // This is what the text-processing model receives
-    content: I; // This is the raw data preserved for further manipulation
+export function isSensation<D = unknown>(
+  sensation: unknown,
+): sensation is Sensation<D> {
+  return (
+    sensation !== null &&
+    typeof sensation === "object" &&
+    "when" in sensation &&
+    "what" in sensation
+  );
 }
 
-export type Sensation<I> = Stamped<Described<string>>;
-export type Sensitive<I> = ReplaySubject<Sensation<I>>;
-
-export interface Faculty<I = unknown, O = unknown> {
-    quick?: Sensitive<I>;
-    consult(): Observable<O>;
+export interface Impression<D = unknown> {
+  how: string; // This is what the text-processing model receives
+  depth_low?: number; // This is the depth of the impression in the chain
+  depth_high?: number; // This is the depth of the impression in the chain
+  what: Sensation<D>; // This is the raw data preserved for further manipulation
 }
+
+export function isImpression<D = unknown>(
+  impression: unknown,
+): impression is Impression<D> {
+  return (
+    impression !== null &&
+    typeof impression === "object" &&
+    "how" in impression &&
+    "what" in impression &&
+    isSensation(impression.what)
+  );
+}
+
+export interface Sensitive<D = unknown> {
+  feel(sensation: Sensation<D>): Promise<Impression<D>>;
+}
+export type Experience = Impression<Impression[]>;
+export type Experiencer = Sensitive<Impression[]>;

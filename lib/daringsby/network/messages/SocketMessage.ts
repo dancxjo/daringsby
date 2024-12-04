@@ -1,8 +1,9 @@
+import { Impression } from "../../core/interfaces.ts";
 import { MessageType } from "./MessageType.ts";
 
 export interface SocketMessage {
     type: MessageType;
-    data: Blob | string | Record<string, unknown>;
+    data: Blob | string | Record<string, unknown> | Impression;
     at?: string;
 }
 

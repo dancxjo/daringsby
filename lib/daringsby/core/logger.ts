@@ -3,6 +3,7 @@ import { pino } from "npm:pino";
 import { Subject } from "npm:rxjs";
 import { Sensation } from "../core/interfaces.ts";
 
+<<<<<<< HEAD
 const baseLogger = pino({
   name: "daringsby",
   level: "debug",
@@ -11,6 +12,12 @@ const baseLogger = pino({
 
 // Create a Subject for error messages
 export const errorSubject = new Subject<Sensation<string>>();
+=======
+export const newLog = (name: string, level = "info") =>
+  pino({ name, level, browser: IS_BROWSER ? { asObject: true } : undefined });
+
+export const logger = newLog("daringsby", "info");
+>>>>>>> gapski
 
 export const trapLog = () => {
   const wrappedLogger = new Proxy(baseLogger, {

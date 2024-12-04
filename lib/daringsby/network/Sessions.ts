@@ -15,6 +15,7 @@ import { Voice } from "../genii/Voice.ts";
 import { MessageType } from "./messages/MessageType.ts";
 import * as yaml from "npm:yaml";
 
+<<<<<<< HEAD
 import {
   establishMemory,
   memorize,
@@ -273,6 +274,11 @@ export class Session {
   unsubscribe() {
     this.subscriptions.forEach((subscription) => subscription.unsubscribe());
   }
+=======
+export interface Session {
+  connection: SocketConnection;
+  subscriptions: Subscription[];
+>>>>>>> gapski
 }
 
 export const sessions = new Map<WebSocket, Session>();
@@ -281,11 +287,18 @@ export function addSession(
   socket: WebSocket,
   connection: SocketConnection,
 ): Session {
+<<<<<<< HEAD
   const session = new Session(
     connection,
     [],
   );
 
+=======
+  const session: Session = {
+    connection,
+    subscriptions: [],
+  };
+>>>>>>> gapski
   sessions.set(socket, session);
   return session;
 }
@@ -293,8 +306,12 @@ export function addSession(
 export function removeSession(socket: WebSocket) {
   const session = sessions.get(socket);
   if (session) {
+<<<<<<< HEAD
     session.connection.hangup();
     session.unsubscribe();
+=======
+    session.subscriptions.forEach((subscription) => subscription.unsubscribe());
+>>>>>>> gapski
     sessions.delete(socket);
   }
 }

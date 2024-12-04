@@ -1,4 +1,4 @@
-import { useSignal } from "@preact/signals";
+import { Signal, useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 
 interface GeolocatorProps {
@@ -7,19 +7,34 @@ interface GeolocatorProps {
     ) => void;
 }
 
+export type Geolocation = {
+    longitude: number;
+    latitude: number;
+};
+
+function ubificate(
+    location: Signal<Geolocation>,
+    onChange?: (location: Geolocation) => void,
+) {
+    navigator.geolocation.getCurrentPosition((position) => {
+        const coords = {
+            longitude: position.coords.longitude,
+            latitude: position.coords.latitude,
+        };
+        if (!location.value && onChange) {
+            onChange(coords);
+        }
+        location.value = coords;
+    });
+}
+
 export default function Geolocator(props: GeolocatorProps) {
     const location = useSignal({ longitude: 0, latitude: 0 });
     useEffect(() => {
-        navigator.geolocation.getCurrentPosition((position) => {
-            const coords = {
-                longitude: position.coords.longitude,
-                latitude: position.coords.latitude,
-            };
-            if (!location.value && props.onChange) {
-                props.onChange(coords);
-            }
-            location.value = coords;
-        });
+        ubificate(location);
+        const id = setInterval(() => {
+            ubificate(location);
+        }, 30000);
     }, []);
 
     useEffect(() => {
