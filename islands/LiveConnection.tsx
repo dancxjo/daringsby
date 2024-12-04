@@ -114,25 +114,6 @@ export default function LiveConnection() {
     }
   };
 
-<<<<<<< HEAD
-  const mien = useSignal("");
-  const thought = useSignal("");
-  const words = useSignal("");
-
-  return (
-    <div class="container live-connection">
-      <div class="row">
-        <div class="col-12 col-md-6 mb-4 live-connection-output">
-          <Mien mien={mien} />
-          <p class="spoken-words">{words.value}</p>
-          <TextInput onChange={sendText} />
-          <ThoughtBubble thought={thought} />
-          <AudioQueue serverRef={serverRef} />
-        </div>
-        <div class="col-12 col-md-6 mb-4 live-connection-inputs">
-          <Webcam onSnap={sendSnapshot} interval={10000} />
-          <Geolocator onChange={reportLocation} />
-=======
   const reportEvent = (event: Event) => {
     if (!serverRef.current) {
       logger.error("No server connection");
@@ -222,7 +203,6 @@ export default function LiveConnection() {
           <p class="spoken-words">{words.value}</p>
           <ThoughtBubble thought={thought} />
           <AudioQueue serverRef={serverRef} />
->>>>>>> gapski
         </div>
       </div>
     </div>

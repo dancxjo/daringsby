@@ -1,19 +1,11 @@
 import { Handlers } from "$fresh/server.ts";
 import { SocketConnection } from "../lib/daringsby/network/sockets/connection.ts";
-<<<<<<< HEAD
-import { addSession, sessions } from "../lib/daringsby/network/Sessions.ts";
-import { logger } from "../lib/daringsby/core/logger.ts";
-
-export const handler: Handlers = {
-  GET(req, _ctx) {
-    logger.info("Received GET request");
-=======
 import {
   addSession,
   Session,
   sessions,
 } from "../lib/daringsby/network/Sessions.ts";
-import { logger } from "../logger.ts";
+import { logger } from "../lib/daringsby/core/logger.ts";
 import { isValidSeeMessage } from "../lib/daringsby/network/messages/SeeMessage.ts";
 import { Image } from "../lib/daringsby/vision/describer.ts";
 import { ImageDescriber } from "../lib/daringsby/vision/describer.ts";
@@ -28,7 +20,6 @@ import { Experience } from "../lib/daringsby/core/interfaces.ts";
 export const handler: Handlers = {
   GET(req, _ctx) {
     logger.debug("Received GET request");
->>>>>>> gapski
     if (!req.headers.get("upgrade")?.toLowerCase().includes("websocket")) {
       logger.error("Received non-WebSocket request");
       return new Response("Expected WebSocket request", { status: 400 });
@@ -41,11 +32,7 @@ export const handler: Handlers = {
     }
 
     if (!sessions.has(socket)) {
-<<<<<<< HEAD
-      logger.info("Creating new SocketToClient for WebSocket");
-=======
       logger.debug("Creating new SocketToClient for WebSocket");
->>>>>>> gapski
       const connection = new SocketConnection(socket);
       addSession(socket, connection);
     }
@@ -56,16 +43,12 @@ export const handler: Handlers = {
       return response;
     }
 
-<<<<<<< HEAD
-    logger.info("Successfully upgraded to WebSocket");
-=======
     handleIncomingSeeMessages(session);
     handleIncomingSenseMessages(session);
     handleIncomingTextMessages(session);
     handleIncomingGeolocationMessages(session);
 
     logger.debug("Successfully upgraded to WebSocket");
->>>>>>> gapski
     return response;
   },
 };
@@ -86,7 +69,7 @@ for (let i = 1; i < 5; i++) {
 witnesses[witnesses.length - 1].setNext(baseWitness);
 
 function tick() {
-  let interval = 1000;
+  const interval = 1000;
 
   const tickWithDelay = async (witnessIndex: number) => {
     if (witnessIndex >= witnesses.length) {
