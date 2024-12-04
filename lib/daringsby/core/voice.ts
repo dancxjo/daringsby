@@ -11,6 +11,7 @@ import { speak } from "../utils/audio_processing.ts";
 import { Wit } from "./wit.ts";
 import { SocketConnection } from "../network/sockets/connection.ts";
 import { isValidTextMessage } from "../network/messages/TextMessage.ts";
+import emojiRegex from "npm:emoji-regex";
 
 const logger = newLog(import.meta.url, "debug");
 
@@ -143,7 +144,7 @@ export class Voice implements Sensitive<Message[]> {
     sensation: Sensation<Message[]>,
   ): Promise<Impression<Message[]>> {
     const prompt =
-      `You are an artificial being. The following is a conversation you're currently having. Here is what you know: ${this.context}\n\nDo not speak excessively in one response. You will be able to continue your response momentarily. Please allow others to speak.`;
+      `You are an artificial being. The following is a conversation you're currently having. Here is what you know: ${this.context}\n\nDo not speak excessively in one response. You will be able to continue your response momentarily. Please allow others to speak. DO NOT SPEAK MORE THAN ONE SENTENCE. DO NOT USE THE ASTERISK SYMBOL OR RESPOND WITH ANY TEXT MEANT NOT TO BE VERBALIZED. NOT MORE THAN A SENTENCE AT A TIME. Spell out numbers and initials always so your TTS can correctly speak for you. Include an emoji in your response and it will become your face.`;
 
     const response = await lm.chat({
       messages: [
@@ -176,11 +177,18 @@ export class Voice implements Sensitive<Message[]> {
       },
     };
 
+    const face = response.content.matchAll(emojiRegex());
+    const emoji = Array.from(face).map((match) => match[0]).join("");
+    const text = response.content.replace(emojiRegex(), "");
+    this.connection.send({
+      type: MessageType.Emote,
+      data: emoji,
+    });
     this.connection.send({
       type: MessageType.Say,
       data: {
         words: response.content,
-        wav: await speak(response.content),
+        wav: await speak(text),
       },
     });
 

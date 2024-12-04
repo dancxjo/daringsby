@@ -61,7 +61,7 @@ const contextualizer = new Contextualizer();
 let recentExperiences: Experience[] = [];
 
 // Create a chain of witnesses, each feeding into the next one
-for (let i = 1; i < 5; i++) {
+for (let i = 1; i < 3; i++) {
   const newWitness = new Wit();
   witnesses[i - 1].setNext(newWitness);
   witnesses.push(newWitness);
