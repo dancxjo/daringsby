@@ -94,7 +94,12 @@ export class Wit implements Experiencer {
   ) {
     // Create a node in the neo4j database
     const createNodeQuery =
-      `MERGE (e:Impression {how: $how, when: $when, depth_low: $depth_low, depth_high: $depth_high}) SET e :Experience RETURN e`;
+      `MERGE (e:Impression {how: $how, when: $when, depth_low: $depth_low, depth_high: $depth_high})
+SET e :Experience
+MERGE (me:Self)
+MERGE (me)-[:EXPERIENCE]->(e)
+RETURN e
+`;
     const result = await session.run(createNodeQuery, {
       how: experience,
       when: new Date().toISOString(),
@@ -274,7 +279,8 @@ export class Wit implements Experiencer {
   ) {
     for (const impression of this.impressions) {
       const createImpressionQuery =
-        `MERGE (i:Impression {how: $how, when: $when, depth_low: $depth_low, depth_high: $depth_high}) RETURN i`;
+        `MERGE (i:Impression {how: $how, when: $when, depth_low: $depth_low, depth_high: $depth_high}) MERGE (me:Self)
+MERGE (me)-[:EXPERIENCE]->(i) RETURN i`;
       const impressionResult = await session.run(createImpressionQuery, {
         how: impression.how,
         when: impression.what.when.toISOString(),
