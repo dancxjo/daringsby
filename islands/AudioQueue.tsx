@@ -7,7 +7,6 @@ import {
 } from "../lib/daringsby/network/messages/SayMessage.ts";
 import { SocketConnection } from "../lib/daringsby/network/sockets/connection.ts";
 import { logger } from "../lib/daringsby/core/logger.ts";
-import { Impression } from "../lib/daringsby/core/interfaces.ts";
 
 export type EchoFunction = () => void;
 
@@ -17,7 +16,7 @@ export default function AudioQueue(
   },
 ) {
   const playqueue = useSignal<SayMessage[]>([]);
-  let isProcessingQueue = false; // Using a simple boolean to ensure synchronous behavior
+  let isProcessingQueue = false;
 
   const processQueue = async () => {
     if (isProcessingQueue) {
@@ -47,6 +46,11 @@ export default function AudioQueue(
     }
 
     isProcessingQueue = false;
+
+    // If new messages were added during processing, continue processing
+    if (playqueue.value.length > 0) {
+      processQueue();
+    }
   };
 
   const queueToPlay = (message: SayMessage) => {

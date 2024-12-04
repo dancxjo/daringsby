@@ -216,7 +216,7 @@ RETURN e
       
       Please summarize the graph data in a first-person narrative, as if you are the artificial being. Describe the key nodes and relationships that are important to you, focusing on their relevance to your experiences. Use a reflective and introspective tone to convey what you find significant, any new connections you understand, and how these relationships impact your sense of self or current situation. If the graph is unclear or contains errors, mention that you feel disoriented or that something is missing (i.e. signal cognitive dissonance to yourself).
       
-      Provide this summary in natural language, with no repetition of this prompt. Focus on what stands out the most in light of your recent experiences.`,
+      Provide this summary in natural language, with no repetition of this prompt. Focus on what stands out the most in light of your recent experiences. These are your own feelings, thoughts, emotions, words and actions. This is your body.`,
     }, [Characteristics.Fast]);
 
     let depth = 0;
