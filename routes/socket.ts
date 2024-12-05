@@ -18,6 +18,7 @@ import { Contextualizer } from "../lib/daringsby/core/contextualizer.ts";
 import { Experience, Impression } from "../lib/daringsby/core/interfaces.ts";
 import { Voice } from "../lib/daringsby/core/voice.ts";
 import neo4j from "npm:neo4j-driver";
+import { Message } from "npm:ollama";
 
 const eye = new ImageDescriber();
 const baseWitness = new Wit();
@@ -163,6 +164,19 @@ function tock() {
 }
 
 tock();
+
+// Give the voice a chance to act
+const dontStop = () =>
+  setInterval(async () => {
+    sessions.forEach(async (session) => {
+      if (session.voice) {
+        await session.voice.offerChanceToAct();
+      }
+    });
+  }, 30000);
+
+dontStop();
+
 function handleIncomingSeeMessages(session: Session) {
   session.subscriptions.push(
     session.connection.incoming(isValidSeeMessage).subscribe(
@@ -244,9 +258,10 @@ function handleIncomingGeolocationMessages(session: Session) {
 
 function doFeelSocketConnection(session: Session, req: Request) {
   // Create a message with lots of useful information about the request and our context
-  const messageToWitness = `I am connected to ${req.url} via WebSocket. ${
-    JSON.stringify({ ...req.headers })
-  }`;
+  const messageToWitness =
+    `I just felt someone connect to me at ${req.url} via WebSocket. ${
+      JSON.stringify({ ...req.headers })
+    }. I now can see through their webcam and hear them speaking to me. Anything I say will be spoken to them.`;
   const sensation: Impression<Request> = {
     how: messageToWitness,
     depth_low: 0,

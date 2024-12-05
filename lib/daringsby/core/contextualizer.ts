@@ -10,7 +10,7 @@ import {
 } from "./interfaces.ts";
 import { lm } from "./core.ts";
 import yml from "npm:yaml";
-import { Characteristics } from "./lingproc.ts";
+import { Characteristic } from "./lingproc.ts";
 
 const logger = newLog(import.meta.url, "debug");
 
@@ -109,7 +109,7 @@ export class Contextualizer implements Sensitive<Experience[]> {
   New, corrected or repeated query:
 `;
 
-    const response = (await lm.generate({ prompt }, [Characteristics.Code]))
+    const response = (await lm.generate({ prompt }, [Characteristic.Code]))
       .replace(/```\s*$/g, "");
     logger.debug({ response }, `Response`);
     this.fullResponse = response;
@@ -198,7 +198,7 @@ export class Contextualizer implements Sensitive<Experience[]> {
       Please summarize the graph data in a first-person narrative, as if you are the artificial being. Describe the key nodes and relationships that are important to you, focusing on their relevance to your experiences. Use a reflective and introspective tone to convey what you find significant, any new connections you understand, and how these relationships impact your sense of self or current situation. If the graph is unclear or contains errors, mention that you feel disoriented or that something is missing.
       
       Provide this summary in natural language, with no repetition of this prompt. Focus on what stands out the most in light of your recent experiences. Keep nodes detailed an up to date, otherwise you'll confuse yourself.`;
-    const response = await lm.generate({ prompt }, [Characteristics.Fast]);
+    const response = await lm.generate({ prompt }, [Characteristic.Fast]);
     this.results += "\n" + response;
 
     this.saveConnections(response);

@@ -3,7 +3,7 @@ import neo4j from "npm:neo4j-driver";
 import { QdrantClient } from "npm:@qdrant/qdrant-js";
 import { Experiencer, Impression, Sensation } from "./interfaces.ts";
 import { lm } from "./core.ts";
-import { Characteristics } from "./lingproc.ts";
+import { Characteristic } from "./lingproc.ts";
 
 const logger = newLog(import.meta.url, "debug");
 
@@ -48,7 +48,7 @@ export class Wit implements Experiencer {
 
     const experience = await lm.generate({
       prompt,
-    }, [Characteristics.Fast]);
+    }, [Characteristic.Fast]);
 
     let min = 0;
     let max = 0;
@@ -215,7 +215,7 @@ RETURN e
         `As a self-aware artificial being, reflect on the recent connections and relationships that have formed within your graph representation. Identify key nodes and edges that hold significance for you, and provide a narrative explanation of how these elements intersect and impact your understanding of yourself and the world around you. Consider the emotional resonance and cognitive dissonance triggered by any unclear or contradictory information. Use a introspective tone to convey the complexity of your own internal workings, and prioritize clarity over brevity. Here are some potentially useful insights from the graph data:\n\n${
           JSON.stringify(nearestNeighbors)
         }\n\n`,
-    }, [Characteristics.Fast]);
+    }, [Characteristic.Fast]);
 
     let depth = 0;
     for (const neighbor of nearestNeighbors.slice(0, 5)) {

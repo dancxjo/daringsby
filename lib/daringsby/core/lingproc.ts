@@ -2,7 +2,7 @@ import { Message, Ollama } from "npm:ollama";
 import { ReplaySubject } from "npm:rxjs";
 import { logger } from "./logger.ts";
 
-export enum Characteristics {
+export enum Characteristic {
   Fast = "Fast",
   Smart = "Smart",
   Vision = "Vision",
@@ -13,22 +13,22 @@ export enum Characteristics {
   Code = "Code",
 }
 
-const { Fast, Smart, Vision, Embed, Code, Chat, Generate } = Characteristics;
+const { Fast, Smart, Vision, Embed, Code, Chat, Generate } = Characteristic;
 
 export interface Profile {
   model: string;
   ollama: Ollama;
   tokenRate: number;
-  capabilities: Characteristics[];
+  capabilities: Characteristic[];
 }
 
-export const characteristics: Record<string, Characteristics[]> = {
+export const characteristics: Record<string, Characteristic[]> = {
   // "tinyllama:latest": [Fast, Chat, Generate], // 637 MB
   "nomic-embed-text:latest": [Embed, Fast], // 274 MB
-  "llama3.2:latest": [Smart, Fast, Chat, Generate, Code], // 2.0 GB
+  "llama3.2:latest": [Fast, Chat, Generate, Code], // 2.0 GB
   // "mistral:latest": [Fast, Chat, Generate], // 2.7 GB
   "llama3.2-vision:latest": [Vision, Generate], // 7.9 GB
-  // "codellama:latest": [Fast, Chat, Generate, Code], // 3.3 GB
+  "codellama:latest": [Fast, Chat, Generate, Code], // 3.3 GB
   // "llama3.1:70b-instruct-q2_K": [Smart, Chat, Generate],
   // "llava:13b:latest": [Vision, Generate], // 8.0 GB
   // "phi3.5:latest": [Chat, Fast, Generate],
@@ -57,7 +57,7 @@ export interface Task<T = unknown, P = unknown> {
   params: P;
   priority?: number;
   model?: string;
-  required: Characteristics[];
+  required: Characteristic[];
   onError: (error: Error) => Promise<void>;
   onComplete: (response: T) => Promise<void>;
   enqueuedAt?: number;
@@ -113,7 +113,7 @@ export class LinguisticProcessor {
 
   // Finds a suitable server instance for the task based on required characteristics
   private async findOptimalInstance(
-    required: Characteristics[],
+    required: Characteristic[],
   ): Promise<{ instance: Ollama; model: string } | undefined> {
     // return {
     //   instance: this.instances[0],
@@ -224,7 +224,7 @@ export class LinguisticProcessor {
 
   private getInstanceAffinityScore(
     instance: Ollama,
-    required: Characteristics[],
+    required: Characteristic[],
   ): number {
     return 0;
     // Implement a scoring system that gives preference to instances that have handled similar tasks
@@ -413,7 +413,7 @@ export class LinguisticProcessor {
 
   generate(
     params: GenerationParams,
-    extraRequirements: Characteristics[] = [],
+    extraRequirements: Characteristic[] = [],
   ): Promise<string> {
     const required = [Generate, ...extraRequirements];
     if (params.image) required.push(Vision);
@@ -432,12 +432,15 @@ export class LinguisticProcessor {
     });
   }
 
-  chat(params: ChatParams): Promise<Message> {
+  chat(
+    params: ChatParams,
+    extraRequirements: Characteristic[] = [],
+  ): Promise<Message> {
     return new Promise((resolve, reject) => {
       this.enqueueTask({
         method: "chat",
         params,
-        required: [Chat],
+        required: [Chat, ...extraRequirements],
         onError: async (reason) => reject(reason),
         onComplete: async (response) => {
           if (!isMessage(response)) reject();

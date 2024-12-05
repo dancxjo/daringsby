@@ -1,7 +1,7 @@
 import { Sensation, Sensitive } from "../core/interfaces.ts";
 import { lm } from "../core/core.ts";
 import logger from "../core/logger.ts";
-import { Characteristics } from "../core/lingproc.ts";
+import { Characteristic } from "../core/lingproc.ts";
 
 export interface Image {
   base64: string;
@@ -33,7 +33,7 @@ Examples:
 - "The image shows a red car parked next to a tree." should become "I see a red car parked next to a tree."
 
 `,
-    }, [Characteristics.Fast]);
+    }, [Characteristic.Fast]);
     logger.debug(`Refinement: ${refinement}`);
     return {
       how: refinement.trim(),

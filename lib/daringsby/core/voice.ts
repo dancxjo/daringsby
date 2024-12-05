@@ -13,6 +13,7 @@ import { SocketConnection } from "../network/sockets/connection.ts";
 import { isValidTextMessage } from "../network/messages/TextMessage.ts";
 import emojiRegex from "npm:emoji-regex";
 import * as cheerio from "npm:cheerio";
+import { Characteristic } from "./lingproc.ts";
 
 const logger = newLog(import.meta.url, "debug");
 
@@ -23,6 +24,10 @@ export class Voice implements Sensitive<Message[]> {
   });
   protected static readonly COLLECTION_NAME = "experiences";
   protected conversation: Message[] = [];
+
+  // A queue to ensure that `feel` impressions are processed sequentially
+  private feelQueue: Array<Sensation<Message[]>> = [];
+  private isProcessingFeelQueue = false;
 
   constructor(
     public context: string = "",
@@ -37,14 +42,16 @@ export class Voice implements Sensitive<Message[]> {
       ),
       {},
     );
+
     connection.incoming(isValidTextMessage).subscribe(async (message) => {
-      // Write the message to the database
+      // Save the message to the database
       const dbSession = this.neo4jDriver.session({
         defaultAccessMode: neo4j.session.WRITE,
       });
       try {
-        const query =
-          `CREATE (e:ChatMessage {content: $content, role: $role, when: timestamp($when) }) RETURN e`;
+        const query = `
+          CREATE (e:ChatMessage {content: $content, role: $role, when: timestamp($when) }) RETURN e
+        `;
         await dbSession.run(query, {
           content: message.data,
           role: "user",
@@ -55,7 +62,7 @@ export class Voice implements Sensitive<Message[]> {
           content: message.data,
           role: "user",
         });
-        wit.enqueue({
+        this.wit.enqueue({
           how: "I just heard my interlocutor say: " + message.data,
           depth_high: 0,
           depth_low: 0,
@@ -69,21 +76,23 @@ export class Voice implements Sensitive<Message[]> {
       } finally {
         dbSession.close();
       }
-      this.feel({
+
+      // Enqueue a feel sensation after receiving a user message
+      this.enqueueFeel({
         when: new Date(),
         what: this.conversation,
-      }).then((impression) => {
-        wit.enqueue(impression);
       });
     });
+
     connection.incoming(isValidEchoMessage).subscribe(async (message) => {
-      // Write the message to the database
+      // Save the assistant's echoed message
       const dbSession = this.neo4jDriver.session({
         defaultAccessMode: neo4j.session.WRITE,
       });
       try {
-        const query =
-          `CREATE (e:ChatMessage {content: $content, role: $role, when: timestamp($when)}) RETURN e`;
+        const query = `
+          CREATE (e:ChatMessage {content: $content, role: $role, when: timestamp($when)}) RETURN e
+        `;
         await dbSession.run(query, {
           content: message.data,
           role: "assistant",
@@ -94,7 +103,7 @@ export class Voice implements Sensitive<Message[]> {
           content: message.data,
           role: "assistant",
         });
-        wit.enqueue({
+        this.wit.enqueue({
           how: "I just said the following: " + message.data,
           depth_high: 0,
           depth_low: 0,
@@ -109,6 +118,7 @@ export class Voice implements Sensitive<Message[]> {
         dbSession.close();
       }
     });
+
     logger.debug("Voice initialized");
     this.loadConversation().then((messages) => {
       logger.debug(`Loaded ${messages.length} messages`);
@@ -117,10 +127,9 @@ export class Voice implements Sensitive<Message[]> {
         when: new Date(),
         what: messages,
       };
-      this.feel(sensation).then((impression) => {
-        logger.debug("Voice initialized");
-        wit.enqueue(impression);
-      });
+
+      // Enqueue the initial feel sensation upon loading the conversation
+      this.enqueueFeel(sensation);
     });
   }
 
@@ -129,30 +138,86 @@ export class Voice implements Sensitive<Message[]> {
       defaultAccessMode: neo4j.session.READ,
     });
     try {
-      const query =
-        `MATCH (e:ChatMessage) RETURN e ORDER BY e.when DESC LIMIT 10`;
+      const query = `
+        MATCH (e:ChatMessage) 
+        RETURN e 
+        ORDER BY e.when DESC 
+        LIMIT 10
+      `;
       const result = await session.run(query);
       return result.records.map((record) => record.get("e").properties);
     } catch (e) {
       logger.error({ e }, `Failed to load experiences`);
       return [];
     } finally {
-      await session.close(); // Added 'await' to ensure proper session closure
+      await session.close();
     }
+  }
+
+  async offerChanceToAct(): Promise<void> {
+    // Called periodically, also enqueued to maintain order
+    const sensation: Sensation<Message[]> = {
+      when: new Date(),
+      what: this.conversation,
+    };
+    this.enqueueFeel(sensation);
+  }
+
+  // Instead of calling `feel` directly, we queue sensations
+  private enqueueFeel(sensation: Sensation<Message[]>) {
+    this.feelQueue.push(sensation);
+    this.processFeelQueue();
+  }
+
+  private async processFeelQueue() {
+    if (this.isProcessingFeelQueue) return;
+    this.isProcessingFeelQueue = true;
+
+    while (this.feelQueue.length > 0) {
+      const nextSensation = this.feelQueue.shift();
+      if (!nextSensation) continue;
+
+      const impression = await this.feel(nextSensation);
+      // Now that `feel` is done, we can enqueue the impression to wit
+      this.wit.enqueue(impression);
+    }
+
+    this.isProcessingFeelQueue = false;
   }
 
   async feel(
     sensation: Sensation<Message[]>,
   ): Promise<Impression<Message[]>> {
-    const prompt =
-      `You are an artificial being named Pete Daringsby. Your memory is constantly keeping up with the conversation, but it's a smidge slow. The following is a conversation you're currently having. Here is what you know: ${this.context}\n(If the context above is empty, it means you're still groggily waking up. Stall for time while your memory catches up.\nDo not speak excessively in one response. You will be able to continue your response momentarily. Please allow others to speak. DO NOT SPEAK MORE THAN ONE SENTENCE. DO NOT USE THE ASTERISK SYMBOL OR RESPOND WITH ANY TEXT MEANT NOT TO BE VERBALIZED. NOT MORE THAN A SENTENCE AT A TIME. Spell out numbers and initials always so your TTS can correctly speak for you. Include an emoji in your response and it will become your face. ONE AND ONLY ONE SENTENCE (but as many function calls as you want...anything outside a function call will be spoken aloud or displayed as your face)! To run Typescript on your server and feel the result, you may do this <typescript>console.log("Hello, World!")</typescript>. To fetch a webpage, you may do this <fetch>https://example.com</fetch>). To run a Cypher query, you may do this <cypher>MATCH (n) RETURN n</cypher>. Do not write sentences with title case. Use proper casing even if not used in previous messages!`;
+    const prompt = `
+    You are an artificial being named Pete Daringsby. Your memory consistently keeps pace with the conversation, albeit with a slight delay. Below is the conversation you're currently engaged in. Here is what you know: ${this.context}
+    
+    (If the context above is empty, it means you're still groggily waking up. Please stall for time while your memory catches up.
 
+    Kindly refrain from speaking excessively in one response. You will be able to continue your reply momentarily. Please allow others the opportunity to speak.
+
+    - **DO NOT SPEAK MORE THAN ONE SENTENCE.**
+    - **DO NOT USE THE ASTERISK SYMBOL OR RESPOND WITH ANY TEXT NOT MEANT TO BE VERBALIZED.**
+    - **ONLY ONE SENTENCE AT A TIME.**
+    
+    Always spell out numbers and initials so your TTS can correctly articulate for you. Include an emoji in your response; it will become your face. ONE AND ONLY ONE SENTENCE (but as many function calls as you wish... anything outside a function call will be spoken aloud or displayed as your face)!
+    
+    To run TypeScript on your server and observe the result, you may do this: \`<typescript>console.log("Hello, World!")</typescript>\`.
+    To fetch a webpage, you may do this: \`<fetch>https://example.com</fetch>\`.
+    To execute a Cypher query, you may do this: \`<cypher>MATCH (n) RETURN n</cypher>\`.
+    
+    Use the context provided above as your primary source of knowledge. Don't like and don't invent and don't confabulate. If you don't know something, say so and don't make things up.
+
+    It is current ${
+      new Date().valueOf()
+    }. You may remain silent, speak or execute functions.
+    Remember: One and only one sentence. No asterisks. No text that's not meant to be spoken aloud.`;
+    logger.debug({ sensation }, `Sensation`);
     const response = await lm.chat({
       messages: [
         { role: "system", content: prompt },
         ...sensation.what,
       ],
-    });
+    }, []);
     logger.debug({ response }, `Response`);
     if (!response.content) {
       return {
@@ -167,6 +232,7 @@ export class Voice implements Sensitive<Message[]> {
         },
       };
     }
+
     const aboutToSpeak: Impression<Message[]> = {
       how:
         `I'm about to say the following. I should hear a confirmation from myself once I say it: ${response.content}`,
@@ -277,6 +343,8 @@ export class Voice implements Sensitive<Message[]> {
       },
     };
     this.wit.enqueue(faceChange);
+
+    // Say the text only after processing all function calls
     this.connection.send({
       type: MessageType.Say,
       data: {
