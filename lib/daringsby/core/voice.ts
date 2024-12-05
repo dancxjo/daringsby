@@ -145,7 +145,7 @@ export class Voice implements Sensitive<Message[]> {
     sensation: Sensation<Message[]>,
   ): Promise<Impression<Message[]>> {
     const prompt =
-      `You are an artificial being named Pete Daringsby. Your memory is constantly keeping up with the conversation, but it's a smidge slow. The following is a conversation you're currently having. Here is what you know: ${this.context}\n(If the context above is empty, it means you're still groggily waking up. Stall for time while your memory catches up.\nDo not speak excessively in one response. You will be able to continue your response momentarily. Please allow others to speak. DO NOT SPEAK MORE THAN ONE SENTENCE. DO NOT USE THE ASTERISK SYMBOL OR RESPOND WITH ANY TEXT MEANT NOT TO BE VERBALIZED. NOT MORE THAN A SENTENCE AT A TIME. Spell out numbers and initials always so your TTS can correctly speak for you. Include an emoji in your response and it will become your face. ONE AND ONLY ONE SENTENCE (but as many function calls as you want...anything outside a function call will be spoken aloud or displayed as your face)!`;
+      `You are an artificial being named Pete Daringsby. Your memory is constantly keeping up with the conversation, but it's a smidge slow. The following is a conversation you're currently having. Here is what you know: ${this.context}\n(If the context above is empty, it means you're still groggily waking up. Stall for time while your memory catches up.\nDo not speak excessively in one response. You will be able to continue your response momentarily. Please allow others to speak. DO NOT SPEAK MORE THAN ONE SENTENCE. DO NOT USE THE ASTERISK SYMBOL OR RESPOND WITH ANY TEXT MEANT NOT TO BE VERBALIZED. NOT MORE THAN A SENTENCE AT A TIME. Spell out numbers and initials always so your TTS can correctly speak for you. Include an emoji in your response and it will become your face. ONE AND ONLY ONE SENTENCE (but as many function calls as you want...anything outside a function call will be spoken aloud or displayed as your face)! To run Typescript on your server and feel the result, you may do this <typescript>console.log("Hello, World!")</typescript>. To fetch a webpage, you may do this <fetch>https://example.com</fetch>). To run a Cypher query, you may do this <cypher>MATCH (n) RETURN n</cypher>. Do not write sentences with title case. Use proper casing even if not used in previous messages!`;
 
     const response = await lm.chat({
       messages: [
@@ -290,9 +290,9 @@ export class Voice implements Sensitive<Message[]> {
 
   async extractFunctions(response: string) {
     const $ = cheerio.load(response);
-    const functionCalls = $("function").toArray().map((fc) => ({
+    const traditionals = $("function").toArray().map((fc) => ({
       content: $(fc).text(),
-      name: $(fc).attr("name"),
+      name: $(fc).attr("name") ?? "typescript",
       args: $(fc).attr(),
       replace: (value: string) => {
         const $ = cheerio.load(value);
@@ -301,6 +301,39 @@ export class Voice implements Sensitive<Message[]> {
         return $.html();
       },
     }));
-    return functionCalls;
+    const tss = $("typescript").toArray().map((fc) => ({
+      content: $(fc).text(),
+      name: "typescript",
+      args: $(fc).attr(),
+      replace: (value: string) => {
+        const $ = cheerio.load(value);
+        const newContent = $(fc).text();
+        $(fc).replaceWith(newContent);
+        return $.html();
+      },
+    }));
+    const fetches = $("fetch").toArray().map((fc) => ({
+      content: $(fc).text(),
+      name: "fetch",
+      args: $(fc).attr(),
+      replace: (value: string) => {
+        const $ = cheerio.load(value);
+        const newContent = $(fc).text();
+        $(fc).replaceWith(newContent);
+        return $.html();
+      },
+    }));
+    const cyphers = $("cypher").toArray().map((fc) => ({
+      content: $(fc).text(),
+      name: "cypher",
+      args: $(fc).attr(),
+      replace: (value: string) => {
+        const $ = cheerio.load(value);
+        const newContent = $(fc).text();
+        $(fc).replaceWith(newContent);
+        return $.html();
+      },
+    }));
+    return [...traditionals, ...tss, ...fetches, ...cyphers];
   }
 }
