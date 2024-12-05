@@ -19,6 +19,12 @@ import { Experience, Impression } from "../lib/daringsby/core/interfaces.ts";
 import { Voice } from "../lib/daringsby/core/voice.ts";
 import neo4j from "npm:neo4j-driver";
 
+const eye = new ImageDescriber();
+const baseWitness = new Wit();
+const witnesses = [baseWitness];
+const contextualizer = new Contextualizer();
+let recentExperiences: Experience[] = [];
+
 export const handler: Handlers = {
   async GET(req, _ctx) {
     logger.debug("Received GET request");
@@ -37,6 +43,7 @@ export const handler: Handlers = {
       logger.debug("Creating new SocketToClient for WebSocket");
       const connection = new SocketConnection(socket);
       const context = await getLastContext();
+      eye.context = context;
       const voice = new Voice(context, connection, baseWitness);
       addSession(socket, connection, voice);
     }
@@ -57,11 +64,6 @@ export const handler: Handlers = {
     return response;
   },
 };
-
-const baseWitness = new Wit();
-const witnesses = [baseWitness];
-const contextualizer = new Contextualizer();
-let recentExperiences: Experience[] = [];
 
 // Create a chain of witnesses, each feeding into the next one
 for (let i = 1; i < 3; i++) {
@@ -117,6 +119,7 @@ function tick() {
       if (session.voice) {
         session.voice.context = impression.how;
       }
+      eye.context = impression.how;
     });
 
     witness.next?.enqueue(impression);
@@ -161,8 +164,6 @@ function tock() {
 
 tock();
 function handleIncomingSeeMessages(session: Session) {
-  const eye = new ImageDescriber();
-
   session.subscriptions.push(
     session.connection.incoming(isValidSeeMessage).subscribe(
       async (message) => {

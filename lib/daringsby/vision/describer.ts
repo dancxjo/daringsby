@@ -8,9 +8,13 @@ export interface Image {
 }
 
 export class ImageDescriber implements Sensitive<Image> {
+  public context: string = "I am Pete Daringsby.";
   async feel(sensation: Sensation<Image>) {
     const description = await lm.generate({
-      prompt: "Describe the image.",
+      prompt:
+        "You are an artificial being named Pete Daringsby. This is what you know about yourself: `" +
+        this.context +
+        "`. With this context describe what you are seeing. Attached is a view of what you see.",
       image: sensation.what.base64,
     });
 
