@@ -1,5 +1,4 @@
-import { useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { MessageType } from "../lib/daringsby/network/messages/MessageType.ts";
 import {
   isValidSayMessage,
@@ -15,21 +14,17 @@ export default function AudioQueue(
     serverRef: { current: SocketConnection | null };
   },
 ) {
-  const playqueue = useSignal<SayMessage[]>([]);
-  let isProcessingQueue = false;
+  const playqueue = useRef<SayMessage[]>([]);
+  const isProcessingQueue = useRef<boolean>(false);
 
   const processQueue = async () => {
-    if (isProcessingQueue) {
-      return; // Prevent multiple overlapping calls
-    }
+    if (isProcessingQueue.current) return;
 
-    isProcessingQueue = true;
+    isProcessingQueue.current = true;
 
-    while (playqueue.value.length > 0) {
-      const message = playqueue.value.shift(); // Remove the first item from the queue
-      if (!message) {
-        break;
-      }
+    while (playqueue.current.length > 0) {
+      const message = playqueue.current.shift(); // Remove the first item from the queue
+      if (!message) continue;
 
       logger.debug("Playing message:", message.at);
       try {
@@ -45,20 +40,15 @@ export default function AudioQueue(
       }
     }
 
-    isProcessingQueue = false;
-
-    // If new messages were added during processing, continue processing
-    if (playqueue.value.length > 0) {
-      processQueue();
-    }
+    isProcessingQueue.current = false;
   };
 
   const queueToPlay = (message: SayMessage) => {
     logger.debug("Enqueuing message");
-    playqueue.value = [...playqueue.value, message];
+    playqueue.current.push(message);
 
-    // Only start processing if not already processing
-    if (!isProcessingQueue) {
+    // If not processing, start processing the queue
+    if (!isProcessingQueue.current) {
       processQueue();
     }
   };
@@ -74,6 +64,7 @@ export default function AudioQueue(
         const audioUrl = URL.createObjectURL(audioBlob);
         const audio = new Audio(audioUrl);
 
+        // Set up the event handlers for proper resolution
         audio.onended = () => {
           logger.debug("Audio playback ended successfully");
           echo();
@@ -86,7 +77,9 @@ export default function AudioQueue(
         };
 
         // Start playback
-        audio.play().catch((e) => {
+        audio.play().then(() => {
+          logger.debug("Audio playback started successfully");
+        }).catch((e) => {
           logger.error({ e }, "Error attempting to play audio");
           reject(e);
         });

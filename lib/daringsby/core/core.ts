@@ -10,7 +10,7 @@ const offload = new Ollama({
 });
 
 const slow = new Ollama({
-  host: Deno.env.get("OLLAMA3_HOST") || "http://ideapad.lan:11434",
+  host: Deno.env.get("OLLAMA3_HOST") || "http://ideapad.local:11434",
 });
 
-export const lm = new LinguisticProcessor([forebrain, offload]);
+export const lm = new LinguisticProcessor([forebrain, offload, slow]);

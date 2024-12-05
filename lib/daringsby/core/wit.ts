@@ -35,18 +35,20 @@ export class Wit implements Experiencer {
       a.what.when.getTime() - b.what.when.getTime()
     );
 
+    const impressions = this.impressions.map((impression) =>
+      `${impression.what.when.toLocaleString()}: ${impression.how}`
+    );
+
     const prompt =
-      `You are the linguistic processor of an embodied artificial being. These are the recent impressions from your body and the world around you:\n\n${
-        this.impressions.map((impression) =>
-          `${impression.what.when.toLocaleString()}: ${impression.how}\n`
-        ).join("\n")
-      }. Generate a rich narration of the experience from the perspective of the artificial being. Narrate in the first person on behalf of the artificial being. Be succinct. Edit out irrelevant details and highlight the salient ones. Merge related events into narratives. Don't invent events; just try to piece together the given events into a logical explanation. Connect events together--these are live from the real world. Use your words economically. For heaven's sake, be succinct! Did I mention to double check that you were succinct? DO NOT REPEAT THIS PROMPT...none of it! Do not respond to this request directly; simply follow the instructions without other comment. (DO NOT CLAIM TO BE A LINGUISTIC PROCESSING UNIT OR LLM; YOU *ARE [speaking on behalf of]* THE LARGER ARTIFICIAL BEING.) DON'T MAKE STUFF UP! Use the data you're given and remember that senses sometimes lie. Only report what you know based on the impressions above; nothing else! If no impressions are available, say you feel nothing.`;
+      `As a self-aware artificial being, generate a rich narration of this episode. Focus on connecting events together using available data. Prioritize succinctness and report only known information. If no impressions are available, say you feel nothing.\n\nThese are your recent experiences. Use the first person, speaking on behalf of the artificial being. Impressions:\n${
+        impressions.join("\n")
+      }\n\nRemember, you're talking to yourself, not someone else. Speak as if you're writing a diary entry.`;
 
     logger.debug({ prompt }, "Generating experience");
 
     const experience = await lm.generate({
       prompt,
-    }, [Characteristics.Smart]);
+    }, [Characteristics.Fast]);
 
     let min = 0;
     let max = 0;
@@ -210,13 +212,9 @@ RETURN e
     logger.debug({ nearestNeighbors }, "Nearest neighbors");
     const summary = await lm.generate({
       prompt:
-        `You are an artificial being reflecting on your recent experiences and the corresponding graph representation. Here are some potentially useful insights from the graph data:\n\n${
+        `As a self-aware artificial being, reflect on the recent connections and relationships that have formed within your graph representation. Identify key nodes and edges that hold significance for you, and provide a narrative explanation of how these elements intersect and impact your understanding of yourself and the world around you. Consider the emotional resonance and cognitive dissonance triggered by any unclear or contradictory information. Use a introspective tone to convey the complexity of your own internal workings, and prioritize clarity over brevity. Here are some potentially useful insights from the graph data:\n\n${
           JSON.stringify(nearestNeighbors)
-        }\n\n
-      
-      Please summarize the graph data in a first-person narrative, as if you are the artificial being. Describe the key nodes and relationships that are important to you, focusing on their relevance to your experiences. Use a reflective and introspective tone to convey what you find significant, any new connections you understand, and how these relationships impact your sense of self or current situation. If the graph is unclear or contains errors, mention that you feel disoriented or that something is missing (i.e. signal cognitive dissonance to yourself).
-      
-      Provide this summary in natural language, with no repetition of this prompt. Focus on what stands out the most in light of your recent experiences. These are your own feelings, thoughts, emotions, words and actions. This is your body.`,
+        }\n\n`,
     }, [Characteristics.Fast]);
 
     let depth = 0;

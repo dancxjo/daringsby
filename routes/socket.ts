@@ -17,9 +17,10 @@ import { Wit } from "../lib/daringsby/core/wit.ts";
 import { Contextualizer } from "../lib/daringsby/core/contextualizer.ts";
 import { Experience, Impression } from "../lib/daringsby/core/interfaces.ts";
 import { Voice } from "../lib/daringsby/core/voice.ts";
+import neo4j from "npm:neo4j-driver";
 
 export const handler: Handlers = {
-  GET(req, _ctx) {
+  async GET(req, _ctx) {
     logger.debug("Received GET request");
     if (!req.headers.get("upgrade")?.toLowerCase().includes("websocket")) {
       logger.error("Received non-WebSocket request");
@@ -35,7 +36,8 @@ export const handler: Handlers = {
     if (!sessions.has(socket)) {
       logger.debug("Creating new SocketToClient for WebSocket");
       const connection = new SocketConnection(socket);
-      const voice = new Voice("", connection, baseWitness);
+      const context = await getLastContext();
+      const voice = new Voice(context, connection, baseWitness);
       addSession(socket, connection, voice);
     }
 
@@ -45,7 +47,7 @@ export const handler: Handlers = {
       return response;
     }
 
-    doFeelSocketConnection(session, req, _ctx);
+    doFeelSocketConnection(session, req);
     handleIncomingSeeMessages(session);
     handleIncomingSenseMessages(session);
     handleIncomingTextMessages(session);
@@ -254,4 +256,22 @@ function doFeelSocketConnection(session: Session, req: Request) {
     },
   };
   baseWitness.enqueue(sensation);
+}
+
+async function getLastContext() {
+  // Open the neo4j db and fetch the latest experience and return its content
+  const driver = neo4j.driver(
+    Deno.env.get("NEO4J_URL") || "bolt://localhost:7687",
+    neo4j.auth.basic(
+      Deno.env.get("NEO4J_USER") || "neo4j",
+      Deno.env.get("NEO4J_PASSWORD") || "password",
+    ),
+  );
+  const session = driver.session();
+  const result = await session.run(
+    "MATCH (e:Experience) RETURN e ORDER BY e.when DESC LIMIT 1",
+  );
+  session.close();
+  driver.close();
+  return result.records[0].get(0).properties.what;
 }
