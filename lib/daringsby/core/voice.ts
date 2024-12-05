@@ -201,7 +201,7 @@ export class Voice implements Sensitive<Message[]> {
             },
           });
         } catch (e) {
-          text = fc.replace(`Error: ${e.message}`);
+          text = fc.replace(``);
           logger.error({ e }, `Error`);
           this.wit.enqueue({
             how:
