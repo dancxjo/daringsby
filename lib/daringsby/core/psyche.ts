@@ -172,9 +172,6 @@ class Psyche {
     // Handle incoming messages
     this.handleIncomingMessages(session);
 
-    // Broadcast to all sessions when a new connection is established
-    this.broadcast(`A new connection has been established at ${req.url}`);
-
     logger.debug("Successfully upgraded to WebSocket");
     return response;
   }
