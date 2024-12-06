@@ -5,7 +5,7 @@ import { Experiencer, Impression, Sensation } from "./interfaces.ts";
 import { lm } from "./core.ts";
 import { Characteristic } from "./lingproc.ts";
 
-const logger = newLog(import.meta.url, "debug");
+const logger = newLog(import.meta.url, "info");
 
 export class Wit implements Experiencer {
   public next?: Wit;

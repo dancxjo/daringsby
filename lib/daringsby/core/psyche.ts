@@ -10,7 +10,6 @@ import { MessageType } from "../network/messages/MessageType.ts";
 import { speak } from "../utils/audio_processing.ts";
 import handleIncomingGeolocationMessages from "../network/handlers/geolocation.ts";
 import handleIncomingSeeMessages from "../network/handlers/images.ts";
-import handleIncomingTextMessages from "../network/handlers/text.ts";
 import handleIncomingSenseMessages from "../network/handlers/sense.ts";
 import { Voice } from "./voice.ts";
 import { SocketMessage } from "../network/messages/SocketMessage.ts";
@@ -47,11 +46,13 @@ class Psyche {
     this.sessions = sessions; // Use the existing sessions map
 
     this.startFetchingContext();
-    // this.startTalking();
+    this.startTalking();
   }
+
   async startTalking() {
     while (this.isConversing) {
-      this.voice.offerChanceToAct();
+      await this.voice.offerChanceToAct();
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 
@@ -135,7 +136,7 @@ class Psyche {
           data: this.situation,
         });
         isBusy = false;
-      }, i * 1000);
+      }, 1000 + i * 2000);
     }
     return wits;
   }
@@ -181,7 +182,6 @@ class Psyche {
   private handleIncomingMessages(session: Session) {
     handleIncomingGeolocationMessages(session);
     handleIncomingSeeMessages(session);
-    handleIncomingTextMessages(session);
     handleIncomingSenseMessages(session);
   }
 

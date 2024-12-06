@@ -1,3 +1,4 @@
+import { psyche } from "../core/psyche.ts";
 import { SocketConnection } from "./sockets/connection.ts";
 import { Subscription } from "npm:rxjs";
 
@@ -17,6 +18,7 @@ export function addSession(
     subscriptions: [],
   };
   sessions.set(socket, session);
+  psyche.voice.attachConnection(session.connection);
   return session;
 }
 

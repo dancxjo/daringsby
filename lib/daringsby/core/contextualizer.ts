@@ -12,7 +12,7 @@ import { lm } from "./core.ts";
 import yml from "npm:yaml";
 import { Characteristic } from "./lingproc.ts";
 
-const logger = newLog(import.meta.url, "debug");
+const logger = newLog(import.meta.url, "info");
 
 export class Contextualizer implements Sensitive<Experience[]> {
   protected neo4jDriver;
@@ -211,7 +211,7 @@ export class Contextualizer implements Sensitive<Experience[]> {
       
       Please summarize the graph data in a first-person narrative, as if you are the artificial being. Describe the key nodes and relationships that are important to you, focusing on their relevance to your experiences. Use a reflective and introspective tone to convey what you find significant, any new connections you understand, and how these relationships impact your sense of self or current situation. If the graph is unclear or contains errors, mention that you feel disoriented or that something is missing.
       
-      Provide this summary in natural language, with no repetition of this prompt. Focus on what stands out the most in light of your recent experiences. Keep nodes detailed an up to date, otherwise you'll confuse yourself.`;
+      Provide this summary in natural language, with no repetition of this prompt. Focus on what stands out the most in light of your recent experiences. Keep nodes detailed an up to date, otherwise you'll confuse yourself. Be sure to leave in specific salient details (such as your own name, etc.) as your voice has no other source of data than this to go on.`;
     const response = await lm.generate({ prompt }, [Characteristic.Fast]);
     this.results += "\n" + response;
 

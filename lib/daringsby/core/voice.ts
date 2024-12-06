@@ -26,10 +26,6 @@ export class Voice implements Sensitive<Message[]> {
   protected static readonly COLLECTION_NAME = "experiences";
   protected conversation: Message[] = [];
 
-  // A queue to ensure that `feel` impressions are processed sequentially
-  private feelQueue: Array<Sensation<Message[]>> = [];
-  private isProcessingFeelQueue = false;
-
   constructor(
     public situation: string = "",
     protected send: (message: SocketMessage) => void,
@@ -45,16 +41,14 @@ export class Voice implements Sensitive<Message[]> {
     );
 
     logger.debug("Voice initialized");
-    this.loadConversation().then((messages) => {
+    this.loadConversation().then(async (messages) => {
       logger.debug(`Loaded ${messages.length} messages`);
       this.conversation = messages;
       const sensation: Sensation<Message[]> = {
         when: new Date(),
         what: messages,
       };
-
-      // Enqueue the initial feel sensation upon loading the conversation
-      this.enqueueFeel(sensation);
+      return this.feel(sensation);
     });
   }
 
@@ -94,7 +88,7 @@ export class Voice implements Sensitive<Message[]> {
       }
 
       // Enqueue a feel sensation after receiving a user message
-      this.enqueueFeel({
+      await this.feel({
         when: new Date(),
         what: this.conversation,
       });
@@ -163,29 +157,7 @@ export class Voice implements Sensitive<Message[]> {
       when: new Date(),
       what: this.conversation,
     };
-    this.enqueueFeel(sensation);
-  }
-
-  // Instead of calling `feel` directly, we queue sensations
-  private enqueueFeel(sensation: Sensation<Message[]>) {
-    this.feelQueue.push(sensation);
-    this.processFeelQueue();
-  }
-
-  private async processFeelQueue() {
-    if (this.isProcessingFeelQueue) return;
-    this.isProcessingFeelQueue = true;
-
-    while (this.feelQueue.length > 0) {
-      const nextSensation = this.feelQueue.shift();
-      if (!nextSensation) continue;
-
-      const impression = await this.feel(nextSensation);
-      // Now that `feel` is done, we can enqueue the impression to wit
-      this.witness(impression);
-    }
-
-    this.isProcessingFeelQueue = false;
+    await this.feel(sensation);
   }
 
   async feel(
@@ -218,9 +190,11 @@ export class Voice implements Sensitive<Message[]> {
     const response = await lm.chat({
       messages: [
         { role: "system", content: prompt },
+        ...this.conversation.slice(-10),
         ...sensation.what,
       ],
     }, []);
+    logger.debug({ response }, `Response`);
     logger.debug({ response }, `Response`);
     if (!response.content) {
       return {
