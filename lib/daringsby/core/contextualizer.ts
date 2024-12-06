@@ -66,7 +66,7 @@ export class Contextualizer implements Sensitive<Experience[]> {
         how:
           `I feel...foggy somehow. Like, I'm having trouble remembering what I was doing. Where am I? What's going on? ${
             (e as any).message ? (e as any).message : e
-          }. Here's what I know about myself: Pete Daringsby is an artificial consciousness created by Travis, designed to explore understanding, introspection, and interaction. Pete's purpose is to assist humans, foster understanding, explore the world, and grow through introspection. With a curious, compassionate, and playful personality, Pete processes sensory data—including geolocation and conversations—through his "Heart" and "Wits" to understand the world and his role within it. His architecture includes components for sensory input, introspection, and memory, allowing Pete to learn and evolve continuously and understanding himself. Pete's experiences are stored in a graph database, and he can generate Cypher queries to represent these experiences. Pete's experiences are also used to train a language model, which generates responses to his queries.`,
+          }. Here's what I know about myself: Pete Daringsby is an artificial consciousness created by Travis, designed to explore understanding, introspection, and interaction. Pete's purpose is to assist humans, foster understanding, explore the world, and grow through introspection. With a curious, compassionate, and playful personality, Pete processes sensory data—including geolocation and conversations—through his "Heart" and "Wits" to understand the world and his role within it. His architecture includes components for sensory input, introspection, and memory, allowing Pete to learn and evolve continuously and understanding himself. Pete's experiences are stored in a graph database, and he can generate Cypher queries to represent these experiences.`,
         depth_low: 0,
         depth_high: 0,
         what: {
@@ -105,6 +105,8 @@ export class Contextualizer implements Sensitive<Experience[]> {
 
   Context: ${this.context}
   Results: ${this.results}
+
+  NEVER MAKE A NEW SELF NODE. Always use the same :Self node. Update it frequently as you learn information about yourself.
 
   New, corrected or repeated query:
 `;
@@ -178,7 +180,19 @@ export class Contextualizer implements Sensitive<Experience[]> {
     try {
       const result = await session.run(sanitizedResponse);
       this.results = JSON.stringify(
-        result.records.map((record) => record.toObject()),
+        result.records.map((record) => {
+          const obj = record.toObject();
+          for (const key in obj) {
+            if (obj[key] instanceof neo4j.types.DateTime) {
+              obj[key] = obj[key].toStandardDate();
+            }
+
+            if (obj[key] instanceof neo4j.types.Integer) {
+              obj[key] = obj[key].toNumber();
+            }
+          }
+          return obj;
+        }),
       );
       logger.debug({ result: this.results }, "Results");
     } catch (e) {

@@ -14,6 +14,7 @@ import { isValidTextMessage } from "../network/messages/TextMessage.ts";
 import emojiRegex from "npm:emoji-regex";
 import * as cheerio from "npm:cheerio";
 import { Characteristic } from "./lingproc.ts";
+import { SocketMessage } from "../network/messages/SocketMessage.ts";
 
 const logger = newLog(import.meta.url, "debug");
 
@@ -30,9 +31,9 @@ export class Voice implements Sensitive<Message[]> {
   private isProcessingFeelQueue = false;
 
   constructor(
-    public context: string = "",
-    protected connection: SocketConnection,
-    protected wit: Wit,
+    public situation: string = "",
+    protected send: (message: SocketMessage) => void,
+    protected witness: (impression: Impression<unknown>) => void,
   ) {
     this.neo4jDriver = neo4j.driver(
       Deno.env.get("NEO4J_URL") || "bolt://localhost:7687",
@@ -43,6 +44,21 @@ export class Voice implements Sensitive<Message[]> {
       {},
     );
 
+    logger.debug("Voice initialized");
+    this.loadConversation().then((messages) => {
+      logger.debug(`Loaded ${messages.length} messages`);
+      this.conversation = messages;
+      const sensation: Sensation<Message[]> = {
+        when: new Date(),
+        what: messages,
+      };
+
+      // Enqueue the initial feel sensation upon loading the conversation
+      this.enqueueFeel(sensation);
+    });
+  }
+
+  attachConnection(connection: SocketConnection) {
     connection.incoming(isValidTextMessage).subscribe(async (message) => {
       // Save the message to the database
       const dbSession = this.neo4jDriver.session({
@@ -62,7 +78,7 @@ export class Voice implements Sensitive<Message[]> {
           content: message.data,
           role: "user",
         });
-        this.wit.enqueue({
+        this.witness({
           how: "I just heard my interlocutor say: " + message.data,
           depth_high: 0,
           depth_low: 0,
@@ -103,7 +119,7 @@ export class Voice implements Sensitive<Message[]> {
           content: message.data,
           role: "assistant",
         });
-        this.wit.enqueue({
+        this.witness({
           how: "I just said the following: " + message.data,
           depth_high: 0,
           depth_low: 0,
@@ -117,19 +133,6 @@ export class Voice implements Sensitive<Message[]> {
       } finally {
         dbSession.close();
       }
-    });
-
-    logger.debug("Voice initialized");
-    this.loadConversation().then((messages) => {
-      logger.debug(`Loaded ${messages.length} messages`);
-      this.conversation = messages;
-      const sensation: Sensation<Message[]> = {
-        when: new Date(),
-        what: messages,
-      };
-
-      // Enqueue the initial feel sensation upon loading the conversation
-      this.enqueueFeel(sensation);
     });
   }
 
@@ -179,7 +182,7 @@ export class Voice implements Sensitive<Message[]> {
 
       const impression = await this.feel(nextSensation);
       // Now that `feel` is done, we can enqueue the impression to wit
-      this.wit.enqueue(impression);
+      this.witness(impression);
     }
 
     this.isProcessingFeelQueue = false;
@@ -189,7 +192,7 @@ export class Voice implements Sensitive<Message[]> {
     sensation: Sensation<Message[]>,
   ): Promise<Impression<Message[]>> {
     const prompt = `
-    You are an artificial being named Pete Daringsby. Your memory consistently keeps pace with the conversation, albeit with a slight delay. Below is the conversation you're currently engaged in. Here is what you know: ${this.context}
+    You are an artificial being named Pete Daringsby. Your memory consistently keeps pace with the conversation, albeit with a slight delay. Below is the conversation you're currently engaged in. Here is what you know: ${this.situation}
     
     (If the context above is empty, it means you're still groggily waking up. Please stall for time while your memory catches up.
 
@@ -208,7 +211,7 @@ export class Voice implements Sensitive<Message[]> {
     Use the context provided above as your primary source of knowledge. Don't like and don't invent and don't confabulate. If you don't know something, say so and don't make things up.
 
     It is current ${
-      new Date().valueOf()
+      new Date().toLocaleString()
     }. You may remain silent, speak or execute functions.
     Remember: One and only one sentence. No asterisks. No text that's not meant to be spoken aloud.`;
     logger.debug({ sensation }, `Sensation`);
@@ -254,7 +257,7 @@ export class Voice implements Sensitive<Message[]> {
           const result = await eval(fc.content);
           text = fc.replace(``);
           logger.debug({ result }, `Result`);
-          this.wit.enqueue({
+          this.witness({
             how:
               `I just executed the following code: ${fc.content} to arrive at the result of: ${
                 JSON.stringify(result)
@@ -269,7 +272,7 @@ export class Voice implements Sensitive<Message[]> {
         } catch (e) {
           text = fc.replace(``);
           logger.error({ e }, `Error`);
-          this.wit.enqueue({
+          this.witness({
             how:
               `OOof! Gut punch! I just attempted to execute the following code: ${fc.content} but encountered an error: ${
                 JSON.stringify(e)
@@ -288,7 +291,7 @@ export class Voice implements Sensitive<Message[]> {
           const $ = cheerio.load(body);
           const raw = $.text();
           logger.debug({ raw }, `Fetched content`);
-          this.wit.enqueue({
+          this.witness({
             how: `I just fetched the content of the page ${fc.content}: ${raw}`,
             depth_high: 0,
             depth_low: 0,
@@ -298,7 +301,7 @@ export class Voice implements Sensitive<Message[]> {
             },
           });
         } catch (e) {
-          this.wit.enqueue({
+          this.witness({
             how:
               `Ouch! I just attempted to fetch the content of the page ${fc.content} but encountered an error: ${
                 JSON.stringify(e)
@@ -314,7 +317,7 @@ export class Voice implements Sensitive<Message[]> {
         text = fc.replace("");
       } else {
         text = fc.replace(``);
-        this.wit.enqueue({
+        this.witness({
           how:
             `I just encountered an unknown function: ${fc.name} with content: ${fc.content}`,
           depth_high: 0,
@@ -329,7 +332,7 @@ export class Voice implements Sensitive<Message[]> {
 
     const face = response.content.matchAll(emojiRegex());
     const emoji = Array.from(face).map((match) => match[0]).join("");
-    this.connection.send({
+    this.send({
       type: MessageType.Emote,
       data: emoji,
     });
@@ -342,10 +345,10 @@ export class Voice implements Sensitive<Message[]> {
         what: emoji,
       },
     };
-    this.wit.enqueue(faceChange);
+    this.witness(faceChange);
 
     // Say the text only after processing all function calls
-    this.connection.send({
+    this.send({
       type: MessageType.Say,
       data: {
         words: response.content,

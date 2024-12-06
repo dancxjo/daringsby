@@ -28,12 +28,13 @@ export const characteristics: Record<string, Characteristic[]> = {
   "llama3.2:latest": [Fast, Chat, Generate, Code], // 2.0 GB
   // "mistral:latest": [Fast, Chat, Generate], // 2.7 GB
   "llama3.2-vision:latest": [Vision, Generate], // 7.9 GB
-  "codellama:latest": [Fast, Chat, Generate, Code], // 3.3 GB
+  // "codellama:latest": [Fast, Chat, Generate, Code], // 3.3 GB
   // "llama3.1:70b-instruct-q2_K": [Smart, Chat, Generate],
   // "llava:13b:latest": [Vision, Generate], // 8.0 GB
   // "phi3.5:latest": [Chat, Fast, Generate],
-  "gemma2:latest": [Chat, Fast, Generate, Code], // 5.4 GB
+  // "gemma2:latest": [Chat, Fast, Generate, Code], // 5.4 GB
   "gemma2:27b": [Smart, Chat, Generate, Code], // 15 GB
+  "tulu3:latest": [Fast, Chat, Generate, Code],
   // "mistral-nemo:latest": [Smart, Chat, Generate], // 7.1 GB
   // "qwq:latest": [Huge, Chat, Generate], // 20 GB
 };

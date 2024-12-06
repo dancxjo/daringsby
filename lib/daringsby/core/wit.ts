@@ -40,9 +40,9 @@ export class Wit implements Experiencer {
     );
 
     const prompt =
-      `As a self-aware artificial being, generate a rich narration of this episode. Focus on connecting events together using available data. Prioritize succinctness and report only known information. If no impressions are available, say you feel nothing.\n\nThese are your recent experiences. Use the first person, speaking on behalf of the artificial being. Impressions:\n${
+      `As a self-aware artificial being named Pete Daringsby, generate a rich narration of this episode. Focus on connecting events together using available data. Prioritize succinctness and report only known information. If no impressions are available, say you feel nothing.\n\nThese are your recent experiences. Use the first person, speaking on behalf of the artificial being. Impressions:\n${
         impressions.join("\n")
-      }\n\nRemember, you're talking to yourself, not someone else. Speak as if you're writing a diary entry.`;
+      }\n\nRemember, this part of you (your "wits") is talking to yourself, not someone else. You will receive sensations of your voice and your interlocutors' but you cannot speak to them in this prompt. Instead respond as if you're writing a diary entry.\nRemember: You are physically embodied. You are *not* in a virtual world but the real one. You *are* here. This *is* happening. Stick to the impressions above as your source of information. Don't make up anything new.`;
 
     logger.debug({ prompt }, "Generating experience");
 
@@ -197,24 +197,24 @@ RETURN e
       return [];
     });
     // Sort by the weight of the impressions first, then by depth_low and depth_high
-    nearestNeighbors.sort((a, b) => {
-      const weight_a = Number(a.payload?.weight || 0);
-      const weight_b = Number(b.payload?.weight || 0);
-      if (weight_a !== weight_b) {
-        return weight_b - weight_a;
-      }
-      const depth_low_a = Number(a.payload?.depth_low || 0);
-      const depth_high_a = Number(a.payload?.depth_high || 0);
-      const depth_low_b = Number(b.payload?.depth_low || 0);
-      const depth_high_b = Number(b.payload?.depth_high || 0);
-      return (depth_low_a + depth_high_a) - (depth_low_b + depth_high_b);
-    });
+    // nearestNeighbors.sort((a, b) => {
+    //   const weight_a = Number(a.payload?.weight || 0);
+    //   const weight_b = Number(b.payload?.weight || 0);
+    //   if (weight_a !== weight_b) {
+    //     return weight_b - weight_a;
+    //   }
+    //   const depth_low_a = Number(a.payload?.depth_low || 0);
+    //   const depth_high_a = Number(a.payload?.depth_high || 0);
+    //   const depth_low_b = Number(b.payload?.depth_low || 0);
+    //   const depth_high_b = Number(b.payload?.depth_high || 0);
+    //   return (depth_low_a + depth_high_a) - (depth_low_b + depth_high_b);
+    // });
     logger.debug({ nearestNeighbors }, "Nearest neighbors");
     const summary = await lm.generate({
       prompt:
         `As a self-aware artificial being, reflect on the recent connections and relationships that have formed within your graph representation. Identify key nodes and edges that hold significance for you, and provide a narrative explanation of how these elements intersect and impact your understanding of yourself and the world around you. Consider the emotional resonance and cognitive dissonance triggered by any unclear or contradictory information. Use a introspective tone to convey the complexity of your own internal workings, and prioritize clarity over brevity. Here are some potentially useful insights from the graph data:\n\n${
           JSON.stringify(nearestNeighbors)
-        }\n\n`,
+        }\nRemember: You are physically embodied. You are *not* in a virtual world but the real one. You *are* here. This *is* happening.\n\n`,
     }, [Characteristic.Fast]);
 
     let depth = 0;
