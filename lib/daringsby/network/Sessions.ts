@@ -18,7 +18,6 @@ export function addSession(
     subscriptions: [],
   };
   sessions.set(socket, session);
-  psyche.voice.attachConnection(session.connection);
   return session;
 }
 

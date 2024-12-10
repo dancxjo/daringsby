@@ -136,7 +136,7 @@ export class SocketConnection {
   }
 
   send(message: SocketMessage) {
-    logger.info("Sending message through WebSocket");
+    logger.info({ type: message.type }, "Sending message through WebSocket");
     if (!message.at) {
       message.at = new Date().toISOString();
     }

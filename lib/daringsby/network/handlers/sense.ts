@@ -10,12 +10,7 @@ export function handleIncomingSenseMessages(session: Session) {
         logger.debug({ data: message.data }, "Received a valid SenseMessage");
         psyche.witness({
           how: `I sense: ${message.data.how}`,
-          depth_low: message.data.depth_low,
-          depth_high: message.data.depth_high,
-          what: {
-            ...message.data.what,
-            when: new Date(message.data.what.when),
-          },
+          when: new Date(message.data.when),
         });
       },
     ),

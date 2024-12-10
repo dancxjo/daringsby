@@ -5,6 +5,7 @@
 import * as $_404 from "./routes/_404.tsx";
 import * as $_app from "./routes/_app.tsx";
 import * as $index from "./routes/index.tsx";
+import * as $senses_location from "./routes/senses/location.ts";
 import * as $socket from "./routes/socket.ts";
 import * as $AudioQueue from "./islands/AudioQueue.tsx";
 import * as $Geolocator from "./islands/Geolocator.tsx";
@@ -20,6 +21,7 @@ const manifest = {
     "./routes/_404.tsx": $_404,
     "./routes/_app.tsx": $_app,
     "./routes/index.tsx": $index,
+    "./routes/senses/location.ts": $senses_location,
     "./routes/socket.ts": $socket,
   },
   islands: {

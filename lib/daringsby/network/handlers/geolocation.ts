@@ -11,12 +11,7 @@ export function handleIncomingGeolocationMessages(session: Session) {
         const impression = {
           how:
             `I am geolocated at ${message.data.latitude}, ${message.data.longitude}`,
-          depth_low: 0,
-          depth_high: 0,
-          what: {
-            when: new Date(),
-            what: message.data,
-          },
+          when: new Date(),
         };
         psyche.witness(impression);
         return impression;

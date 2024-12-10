@@ -1,147 +1,151 @@
+import { Observable, ReplaySubject } from "npm:rxjs";
+import { Message, Ollama } from "npm:ollama";
+import yaml from "npm:yaml";
 import { SocketConnection } from "../network/sockets/connection.ts";
 import { addSession, Session, sessions } from "../network/Sessions.ts";
-import { logger } from "../core/logger.ts";
-import { Image, ImageDescriber } from "../vision/describer.ts";
-import { Wit } from "../core/wit.ts";
-import { Contextualizer } from "../core/contextualizer.ts";
-import neo4j from "npm:neo4j-driver";
-import { Experience, Impression, Sensation } from "./interfaces.ts";
+import { newLog } from "../core/logger.ts";
 import { MessageType } from "../network/messages/MessageType.ts";
 import { speak } from "../utils/audio_processing.ts";
 import handleIncomingGeolocationMessages from "../network/handlers/geolocation.ts";
 import handleIncomingSeeMessages from "../network/handlers/images.ts";
 import handleIncomingSenseMessages from "../network/handlers/sense.ts";
-import { Voice } from "./voice.ts";
+import handleIncomingTextMessages from "../network/handlers/text.ts";
 import { SocketMessage } from "../network/messages/SocketMessage.ts";
+import { Sensation, Voice, Wit } from "./newt.ts";
+import handleIncomingEchoMessages from "../network/handlers/echo.ts";
+
+const logger = newLog("Psyche", "debug");
 
 class Psyche {
-  static maxWit = 3;
-  see(sensation: Sensation<Image>) {
-    return this.eye.feel(sensation);
-  }
-  private static instance: Psyche;
-
-  public eye: ImageDescriber;
-  public witnesses: Wit[];
-  public contextualizer: Contextualizer;
-  protected context: string = ""; // Relevant memories
-  protected situation: string = ""; // Current situation
-  public voice: Voice;
-  public recentExperiences: Experience[];
-  public sessions: Map<WebSocket, Session>;
+  protected static instance: Psyche;
+  protected tickCount = 0;
+  protected sessions: Map<WebSocket, Session> = sessions;
   protected wavs: Map<string, string> = new Map();
-  protected isConceptualizing: boolean = true;
-  protected isConversing: boolean = true;
+  protected theHereAndNow: string = "";
+  protected vision: string = "";
 
-  private constructor() {
-    this.eye = new ImageDescriber();
-    this.witnesses = this.initializeWitnesses();
-    this.contextualizer = new Contextualizer();
-    this.voice = new Voice(
-      "",
-      (m) => this.broadcastMessage(m),
-      (impression) => this.witness(impression),
-    );
-    this.recentExperiences = [];
-    this.sessions = sessions; // Use the existing sessions map
+  protected wits: Wit[] = [];
+  protected voice = new Voice(
+    new Ollama({
+      host: "http://forebrain.local:11434",
+    }),
+  );
+  isAwake = true;
 
-    this.startFetchingContext();
-    this.startTalking();
+  private constructor(protected ollama: Ollama) {
+    this.initializeWits(5, [2, 7, 11, 17, 23]);
+    // this.voice.raw$.subscribe((message) => {
+    //   logger.info({ message: message }, "Received raw message");
+    // });
+    this.voice.sentences$.subscribe((message) => {
+      this.witness({
+        when: new Date(),
+        how:
+          `I feel the impulse to say the following message and I start speaking: ${message}`,
+      });
+      logger.info({ message: message }, "Saying sentence");
+      this.say(message);
+    });
+    this.run();
   }
 
-  async startTalking() {
-    while (this.isConversing) {
-      await this.voice.offerChanceToAct();
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+  hear(message: Message): void {
+    this.voice.hear(message);
+    if (message.role === "user") {
+      this.witness({
+        when: new Date(),
+        how: `I just heard my interlocuter say: ${message.content}`,
+      });
+    } else {
+      this.witness({
+        when: new Date(),
+        how: `I just heard myself finish saying: ${message.content}`,
+      });
     }
   }
 
-  async startFetchingContext() {
-    while (this.isConceptualizing) {
-      const context = await this.contextualizer.getContext();
-      if (context) {
-        this.context = context;
-        this.witnesses.forEach((wit) => {
-          wit.enqueue({
-            how: `These may be relevant memories: "${context}"`,
-            depth_low: 0,
-            depth_high: 0,
-            what: {
-              when: new Date(),
-              what: context,
-            },
+  private initializeWits(layers: number, primes: number[]): void {
+    if (layers !== primes.length) {
+      throw new Error("Layers count must match primes array length.");
+    }
+
+    let previousWit: Wit | null = null;
+    for (let i = 0; i < layers; i++) {
+      const wit = new Wit(this.ollama);
+      this.wits.push(wit);
+      if (previousWit) {
+        previousWit.experience$.subscribe((experience) => wit.feel(experience));
+      }
+      previousWit = wit;
+    }
+  }
+
+  protected async run() {
+    let lastSent = "";
+    while (this.isAwake) {
+      await this.tick();
+      if (this.theHereAndNow !== lastSent) {
+        this.think(this.theHereAndNow);
+        this.voice.orient(this.theHereAndNow);
+        lastSent = this.theHereAndNow;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+  }
+
+  protected async tick() {
+    this.tickCount++;
+    logger.trace({ tickCount: this.tickCount }, "Ticking");
+
+    for (let i = 0; i < this.wits.length; i++) {
+      const wit = this.wits[i];
+      const modPrime = [2, 7, 11, 17, 23][i];
+
+      if (this.tickCount % modPrime === 0) {
+        if (!wit.canSample) {
+          logger.trace(`Not enough data in layer ${i} to process.`);
+          return;
+        }
+
+        await wit.sample();
+
+        if (i === this.wits.length - 1) {
+          wit.experience$.subscribe((experience) => {
+            logger.info(
+              { experience: experience.how },
+              "Processed top-level experience",
+            );
+            this.theHereAndNow = experience.how;
           });
-        });
+        }
       }
     }
+
+    if (this.tickCount % 3 === 0) {
+      await this.voice.thinkOfResponse();
+    }
   }
 
-  // Singleton instance retrieval
-  public static getInstance(): Psyche {
+  public static getInstance(ollama: Ollama): Psyche {
     if (!Psyche.instance) {
-      Psyche.instance = new Psyche();
+      Psyche.instance = new Psyche(ollama);
     }
     return Psyche.instance;
   }
 
-  public witness(impression: Impression<unknown>) {
-    this.witnesses[0].enqueue(impression);
-  }
-
-  private initializeWitnesses(): Wit[] {
-    const wits = [];
-    for (let i = 0; i < Psyche.maxWit; i++) {
-      const newWit = new Wit();
-      if (i > 0) {
-        wits[i - 1].setNext(newWit);
-      }
-
-      wits.push(newWit);
-
-      let isBusy = false;
-      setInterval(async () => {
-        if (isBusy) {
-          return;
-        }
-        isBusy = true;
-        const impression = await newWit.feel({
-          when: new Date(),
-          what: [
-            {
-              how: `It is currently ${new Date().toLocaleString()}/${
-                new Date().toISOString()
-              }.`,
-              depth_low: 0,
-              depth_high: 0,
-              what: {
-                when: new Date(),
-                what: new Date().toLocaleTimeString(),
-              },
-            },
-          ],
-        });
-
-        const isOnLastWit = i == Psyche.maxWit - 1;
-        if (isOnLastWit) {
-          this.situation = impression.how;
-          this.eye.situation = impression.how;
-          this.voice.situation = impression.how;
-        } else {
-          this.situation += " " + impression.how;
-          this.eye.situation = this.situation;
-          this.voice.situation = this.situation;
-        }
-        this.broadcastMessage({
-          type: MessageType.Think,
-          data: this.situation,
-        });
-        isBusy = false;
-      }, 1000 + i * 2000);
+  public witness(sensation: Sensation) {
+    logger.debug("Witnessing a sensation");
+    if (this.wits.length > 0) {
+      this.wits[0].feel(sensation);
     }
-    return wits;
   }
 
-  public async handleWebSocketConnection(req: Request): Promise<Response> {
+  see(image: string): void {
+    this.vision = image;
+    this.wits.forEach((wit) => wit.see(this.vision));
+  }
+
+  public handleWebSocketConnection(req: Request): Response {
     logger.debug("Received GET request");
     if (!req.headers.get("upgrade")?.toLowerCase().includes("websocket")) {
       logger.error("Received non-WebSocket request");
@@ -157,8 +161,6 @@ class Psyche {
     if (!this.sessions.has(socket)) {
       logger.debug("Creating new SocketToClient for WebSocket");
       const connection = new SocketConnection(socket);
-      const context = await this.getLastContext();
-      this.eye.situation = context;
       addSession(socket, connection);
     }
 
@@ -168,10 +170,8 @@ class Psyche {
       return response;
     }
 
-    this.doFeelSocketConnection(session, req);
-    // Handle incoming messages
     this.handleIncomingMessages(session);
-
+    this.doFeelSocketConnection(req);
     logger.debug("Successfully upgraded to WebSocket");
     return response;
   }
@@ -180,71 +180,58 @@ class Psyche {
     handleIncomingGeolocationMessages(session);
     handleIncomingSeeMessages(session);
     handleIncomingSenseMessages(session);
+    handleIncomingTextMessages(session);
+    handleIncomingEchoMessages(session);
   }
 
-  private doFeelSocketConnection(session: Session, req: Request) {
-    const messageToWitness =
-      `I just felt someone connect to me at ${req.url} via WebSocket. ${
-        JSON.stringify({ ...req.headers })
-      }. I now can see through their webcam and hear them speaking to me. Anything I say will be spoken to them.`;
-    const sensation: Impression<Request> = {
-      how: messageToWitness,
-      depth_low: 0,
-      depth_high: 0,
-      what: {
-        when: new Date(),
-        what: req,
-      },
+  private doFeelSocketConnection(req: Request) {
+    const sensation: Sensation = {
+      when: new Date(),
+      how: `Connection from ${req.url}`,
     };
-    this.witnesses[0].enqueue(sensation);
+    this.witness(sensation);
   }
 
-  private async getLastContext() {
-    const driver = neo4j.driver(
-      Deno.env.get("NEO4J_URL") || "bolt://localhost:7687",
-      neo4j.auth.basic(
-        Deno.env.get("NEO4J_USER") || "neo4j",
-        Deno.env.get("NEO4J_PASSWORD") || "password",
-      ),
-    );
-    const session = driver.session();
-    const result = await session.run(
-      "MATCH (e:Experience) RETURN e ORDER BY e.when DESC LIMIT 1",
-    );
-    session.close();
-    driver.close();
-    return result.records[0]?.get(0)?.properties?.what || "";
-  }
-
-  public broadcastMessage(message: SocketMessage) {
+  private broadcast(message: SocketMessage) {
     this.sessions.forEach((session) => {
+      logger.info({ message: message }, "Sending message to session");
       session.connection.send(message);
+      logger.info({ message: message }, "Sent message to session");
     });
   }
 
-  public broadcast(message: string) {
-    this.generateWave(message).then((wav) => {
-      this.broadcastMessage({
-        type: MessageType.Say,
-        data: {
-          words: message,
-          wav,
-        },
-      });
+  private async say(message: string) {
+    logger.info({ message: message }, "Generating wav");
+    const wav = await this.generateWave(message);
+    logger.info("Generated wav");
+    this.broadcast({
+      type: MessageType.Say,
+      data: {
+        words: message,
+        wav,
+      },
+    });
+    logger.info("Broadcasted message");
+  }
+
+  private think(message: string) {
+    this.broadcast({
+      type: MessageType.Think,
+      data: message,
     });
   }
 
-  async generateWave(message: string): Promise<string> {
+  private async generateWave(message: string): Promise<string> {
     if (!this.wavs.has(message)) {
       const wav = await speak(message);
       this.wavs.set(message, wav);
     }
-    const wav = this.wavs.get(message);
-    if (!wav) {
-      throw new Error("Failed to generate wave");
-    }
-    return wav;
+    return this.wavs.get(message)!;
   }
 }
 
-export const psyche = Psyche.getInstance();
+export const psyche = Psyche.getInstance(
+  new Ollama({
+    host: Deno.env.get("OLLAMA_HOST") ?? "http://forebrain.local:11434",
+  }),
+);

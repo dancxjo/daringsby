@@ -1,14 +1,14 @@
 import { IS_BROWSER } from "$fresh/runtime.ts";
 import { pino } from "npm:pino";
 import { Subject } from "npm:rxjs";
-import { Sensation } from "../core/interfaces.ts";
+import { Sensation } from "./newt.ts";
 
-export const newLog = (name: string, level = "info") =>
+export const newLog = (name: string, level = "debug") =>
   pino({ name, level, browser: IS_BROWSER ? { asObject: true } : undefined });
 
-const errorSubject = new Subject<Sensation<string>>();
+const errorSubject = new Subject<Sensation>();
 
-const baseLogger = newLog("daringsby");
+const baseLogger = newLog("daringsby", "debug");
 
 export const trapLog = () => {
   const wrappedLogger = new Proxy(baseLogger, {
@@ -20,9 +20,9 @@ export const trapLog = () => {
           // Emit the error sensation to the subject
           const errorMessage = msg ||
             (typeof obj === "string" ? obj : JSON.stringify(obj));
-          const sensation: Sensation<string> = {
+          const sensation: Sensation = {
             when: new Date(),
-            what: `Ouch! That hurt! Error occurred: ${errorMessage}`,
+            how: `Ouch! That hurt! Error occurred: ${errorMessage}`,
           };
           errorSubject.next(sensation);
         };

@@ -26,6 +26,8 @@ services:
       - "8000:8000"
     environment:
       - TZ=America/Los_Angeles
+      - PERCEPTION_OLLAMA_URL=http://forebrain.local:11434
+      - COMPREHENSION_OLLAMA_URL=http://forebrain.local:11434
       - OLLAMA_URL=http://forebrain.local:11434
       - OLLAMA2_URL=http://victus.local:11434
       - COQUI_URL=http://tts:5002

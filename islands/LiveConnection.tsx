@@ -166,12 +166,7 @@ export default function LiveConnection() {
         type: MessageType.Sense,
         data: {
           how: `I felt a ${event.type} event. Here are its details: ${deets}`,
-          depth_low: 0,
-          depth_high: 0,
-          what: {
-            when: new Date(), // This gets serialized as a string
-            what: event,
-          },
+          when: new Date(), // This gets serialized as a string
         },
       });
     } catch (error) {
