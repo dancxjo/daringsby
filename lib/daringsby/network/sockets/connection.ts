@@ -33,7 +33,7 @@ export class SocketConnection {
   }
 
   protected setupWebSocket() {
-    logger.info("Setting up WebSocket");
+    logger.debug("Setting up WebSocket");
     this.ws.onopen = () => {
       this.handleOpen();
     };
@@ -55,7 +55,7 @@ export class SocketConnection {
       readyState: this.ws.readyState ?? 0,
       protocols: this.ws.protocol ?? "",
     });
-    logger.info("WebSocket connection established");
+    logger.debug("WebSocket connection established");
   }
 
   protected handleError(error: Event) {
@@ -68,7 +68,7 @@ export class SocketConnection {
   protected handleClose(event: CloseEvent) {
     this.closings.forEach((closing) => closing(event));
     this.connectionStatusSubject.next("Disconnected");
-    logger.info("WebSocket connection closed");
+    logger.debug("WebSocket connection closed");
     logger.warn("WebSocket connection closed", event);
   }
 
@@ -136,7 +136,7 @@ export class SocketConnection {
   }
 
   send(message: SocketMessage) {
-    logger.info({ type: message.type }, "Sending message through WebSocket");
+    logger.debug({ type: message.type }, "Sending message through WebSocket");
     if (!message.at) {
       message.at = new Date().toISOString();
     }

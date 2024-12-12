@@ -3,12 +3,12 @@ import { pino } from "npm:pino";
 import { Subject } from "npm:rxjs";
 import { Sensation } from "./newt.ts";
 
-export const newLog = (name: string, level = "debug") =>
+export const newLog = (name: string, level = "info") =>
   pino({ name, level, browser: IS_BROWSER ? { asObject: true } : undefined });
 
 const errorSubject = new Subject<Sensation>();
 
-const baseLogger = newLog("daringsby", "debug");
+const baseLogger = newLog("daringsby", "info");
 
 export const trapLog = () => {
   const wrappedLogger = new Proxy(baseLogger, {

@@ -262,7 +262,7 @@ export async function recall(prompt: string, k: number = 10): Promise<any[]> {
       prompt,
       model: "nomic-embed-text",
     });
-    logger.info("Got prompt embedding");
+    logger.debug("Got prompt embedding");
     const neighbors = findNearestNeighbors(
       promptEmbedding.embedding,
       indexedEmbeddings.map((n) => n.embedding),

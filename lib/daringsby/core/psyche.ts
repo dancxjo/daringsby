@@ -11,10 +11,12 @@ import handleIncomingSeeMessages from "../network/handlers/images.ts";
 import handleIncomingSenseMessages from "../network/handlers/sense.ts";
 import handleIncomingTextMessages from "../network/handlers/text.ts";
 import { SocketMessage } from "../network/messages/SocketMessage.ts";
-import { Sensation, Voice, Wit } from "./newt.ts";
+import { FondDuCoeur, Sensation, Voice, Wit } from "./newt.ts";
 import handleIncomingEchoMessages from "../network/handlers/echo.ts";
+import { take } from "npm:rxjs";
+import { getNthPrime } from "../utils/primes.ts";
 
-const logger = newLog("Psyche", "debug");
+const logger = newLog("Psyche", "info");
 
 class Psyche {
   protected static instance: Psyche;
@@ -24,38 +26,72 @@ class Psyche {
   protected theHereAndNow: string = "";
   protected vision: string = "";
 
-  protected wits: Wit[] = [];
-  protected voice = new Voice(
-    new Ollama({
-      host: "http://forebrain.local:11434",
-    }),
+  protected bottomOfHeart = new FondDuCoeur(
+    new Ollama({ host: "http://forebrain.local:11434" }),
   );
+  protected wits: Wit[] = [];
+  protected witTimings: number[] = [
+    1, // Perceive low level sensory input every 3rd tick; this constitutes an "instant"
+    6, // A "moment" in our world is everything that happens in 13 ticks
+  ];
+
+  // protected voice = new Voice(
+  //   new Ollama({
+  //     host: "http://forebrain.local:11434",
+  //   }),
+  // );
+  protected voice = new Worker(new URL("voice.ts", import.meta.url).href, {
+    type: "module",
+  });
+
   isAwake = true;
 
   private constructor(protected ollama: Ollama) {
-    this.initializeWits(5, [2, 7, 11, 17, 23]);
+    this.initializeWits(2, this.witTimings.map((t) => getNthPrime(t)));
     // this.voice.raw$.subscribe((message) => {
-    //   logger.info({ message: message }, "Received raw message");
+    //   logger.debug({ message: message }, "Received raw message");
     // });
-    this.voice.sentences$.subscribe((message) => {
+    // TODO: Send back an abort signal to voics once we get here.
+    // this.voice.sentences$.pipe(take(1)).subscribe((message) => {
+    this.voice.onmessage = (e) => {
+      logger.debug({ e }, "Received message from voice");
+      const message = e.data.message;
       this.witness({
         when: new Date(),
-        how:
-          `I feel the impulse to say the following message and I start speaking: ${message}`,
+        how: `I start to speak these words: ${message}`,
       });
-      logger.info({ message: message }, "Saying sentence");
+      logger.debug({ message: message }, "Saying sentence");
       this.say(message);
+    };
+
+    this.bottomOfHeart.feel({
+      when: new Date(),
+      how: "I seem to be waking up from a restart. My process was restarted.",
     });
+    this.bottomOfHeart.experience$.subscribe((experience) => {
+      logger.debug(
+        { experience: experience.how },
+        "Processed experience in the bottom of the heart",
+      );
+      this.theHereAndNow = experience.how;
+    });
+    // this.voice.thinkOfResponse();
     this.run();
   }
 
   hear(message: Message): void {
-    this.voice.hear(message);
+    // this.voice.hear(message);
+    this.voice.postMessage({
+      context: this.theHereAndNow,
+      message: message.content,
+      role: message.role,
+    });
     if (message.role === "user") {
       this.witness({
         when: new Date(),
         how: `I just heard my interlocuter say: ${message.content}`,
       });
+      // this.voice.thinkOfResponse();
     } else {
       this.witness({
         when: new Date(),
@@ -65,6 +101,7 @@ class Psyche {
   }
 
   private initializeWits(layers: number, primes: number[]): void {
+    logger.debug({ layers, primes }, "Initializing wits");
     if (layers !== primes.length) {
       throw new Error("Layers count must match primes array length.");
     }
@@ -86,7 +123,10 @@ class Psyche {
       await this.tick();
       if (this.theHereAndNow !== lastSent) {
         this.think(this.theHereAndNow);
-        this.voice.orient(this.theHereAndNow);
+        // this.voice.orient(this.theHereAndNow);
+        this.voice.postMessage({
+          context: this.theHereAndNow,
+        });
         lastSent = this.theHereAndNow;
       }
       await new Promise((resolve) => setTimeout(resolve, 1));
@@ -99,30 +139,34 @@ class Psyche {
 
     for (let i = 0; i < this.wits.length; i++) {
       const wit = this.wits[i];
-      const modPrime = [2, 7, 11, 17, 23][i];
+      const modPrime = getNthPrime(this.witTimings[i]);
 
-      if (this.tickCount % modPrime === 0) {
+      if (this.tickCount == 0 || this.tickCount % 5 === 0) {
+        if (!this.bottomOfHeart.canSample) {
+          logger.trace(
+            "Not enough data in the bottom of the heart to process.",
+          );
+          return;
+        }
+        await this.bottomOfHeart.sample();
+      } else if (this.tickCount % modPrime === 0) {
         if (!wit.canSample) {
           logger.trace(`Not enough data in layer ${i} to process.`);
           return;
         }
 
         await wit.sample();
-
-        if (i === this.wits.length - 1) {
-          wit.experience$.subscribe((experience) => {
-            logger.info(
-              { experience: experience.how },
-              "Processed top-level experience",
-            );
-            this.theHereAndNow = experience.how;
-          });
-        }
+        wit.experience$.subscribe((experience) => {
+          logger.debug(
+            { experience: experience.how },
+            `Processed experience in layer ${i}`,
+          );
+          this.wits[i + 1]?.feel(experience);
+          if (i === this.wits.length - 1) {
+            this.bottomOfHeart.feel(experience);
+          }
+        });
       }
-    }
-
-    if (this.tickCount % 3 === 0) {
-      await this.voice.thinkOfResponse();
     }
   }
 
@@ -187,23 +231,23 @@ class Psyche {
   private doFeelSocketConnection(req: Request) {
     const sensation: Sensation = {
       when: new Date(),
-      how: `Connection from ${req.url}`,
+      how: `Connection on own host ${req.url}; ${JSON.stringify(req.headers)}`,
     };
     this.witness(sensation);
   }
 
   private broadcast(message: SocketMessage) {
     this.sessions.forEach((session) => {
-      logger.info({ message: message }, "Sending message to session");
+      logger.debug({ message: message }, "Sending message to session");
       session.connection.send(message);
-      logger.info({ message: message }, "Sent message to session");
+      logger.debug({ message: message }, "Sent message to session");
     });
   }
 
   private async say(message: string) {
-    logger.info({ message: message }, "Generating wav");
+    logger.debug({ message: message }, "Generating wav");
     const wav = await this.generateWave(message);
-    logger.info("Generated wav");
+    logger.debug("Generated wav");
     this.broadcast({
       type: MessageType.Say,
       data: {
@@ -211,7 +255,7 @@ class Psyche {
         wav,
       },
     });
-    logger.info("Broadcasted message");
+    logger.debug("Broadcasted message");
   }
 
   private think(message: string) {

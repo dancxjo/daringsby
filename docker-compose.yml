@@ -29,7 +29,7 @@ services:
       - PERCEPTION_OLLAMA_URL=http://forebrain.local:11434
       - COMPREHENSION_OLLAMA_URL=http://forebrain.local:11434
       - OLLAMA_URL=http://forebrain.local:11434
-      - OLLAMA2_URL=http://victus.local:11434
+      - OLLAMA2_URL=http://10.0.0.95:11434
       - COQUI_URL=http://tts:5002
       - WHISPER_URL=http://whisper:9000
       - NEO4J_URL=bolt://neo4j:7687

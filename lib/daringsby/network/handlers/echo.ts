@@ -11,7 +11,7 @@ export function handleIncomingEchoMessages(session: Session) {
         logger.debug("Received a valid EchoMessage");
 
         psyche.hear({
-          role: "ai",
+          role: "assistant",
           content: message.data,
         });
       },
