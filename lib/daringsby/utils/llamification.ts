@@ -4,7 +4,7 @@ import { Message } from "npm:ollama";
 import { logger } from "../core/logger.ts";
 
 export function llamify(
-  model: string = "llama3.2",
+  model: string = "llama3.1",
   config: Partial<Config> = {},
   extra: Partial<GenerateRequest> = {},
 ): OperatorFunction<string, string> {
@@ -48,7 +48,7 @@ export function llamify(
 }
 
 export function chatify(
-  model: string = "llama3.2",
+  model: string = "llama3.1",
   config: Partial<Config> = {},
 ): OperatorFunction<Message[], string> {
   const ollama = new Ollama(config);

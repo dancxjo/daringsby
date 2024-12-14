@@ -15,6 +15,7 @@ import { FondDuCoeur, Sensation, Voice, Wit } from "./newt.ts";
 import handleIncomingEchoMessages from "../network/handlers/echo.ts";
 import { take } from "npm:rxjs";
 import { getNthPrime } from "../utils/primes.ts";
+import { memorize } from "../utils/memory.ts";
 
 const logger = newLog("Psyche", "info");
 
@@ -32,7 +33,11 @@ class Psyche {
   protected wits: Wit[] = [];
   protected witTimings: number[] = [
     1, // Perceive low level sensory input every 3rd tick; this constitutes an "instant"
+    3, // A "beat" is a moment in our world that is 3 ticks long
     6, // A "moment" in our world is everything that happens in 13 ticks
+    7, // A "scene" is a moment in our world that is 7 moments long
+    13, // A "chapter" in our world is 13 scenes long
+    17, // A "book" in our world is 17 chapters long
   ];
 
   // protected voice = new Voice(
@@ -47,7 +52,9 @@ class Psyche {
   isAwake = true;
 
   private constructor(protected ollama: Ollama) {
-    this.initializeWits(2, this.witTimings.map((t) => getNthPrime(t)));
+    this.initializeWits(
+      this.witTimings.map((t) => getNthPrime(t)),
+    );
     // this.voice.raw$.subscribe((message) => {
     //   logger.debug({ message: message }, "Received raw message");
     // });
@@ -100,7 +107,8 @@ class Psyche {
     }
   }
 
-  private initializeWits(layers: number, primes: number[]): void {
+  private initializeWits(primes: number[]): void {
+    const layers = primes.length;
     logger.debug({ layers, primes }, "Initializing wits");
     if (layers !== primes.length) {
       throw new Error("Layers count must match primes array length.");
@@ -122,6 +130,13 @@ class Psyche {
     while (this.isAwake) {
       await this.tick();
       if (this.theHereAndNow !== lastSent) {
+        memorize({
+          metadata: { label: "Situation" },
+          data: {
+            theHereAndNow: this.theHereAndNow,
+            now: new Date().toISOString(),
+          },
+        });
         this.think(this.theHereAndNow);
         // this.voice.orient(this.theHereAndNow);
         this.voice.postMessage({
@@ -161,9 +176,13 @@ class Psyche {
             { experience: experience.how },
             `Processed experience in layer ${i}`,
           );
+          if (i > 2) {
+            this.theHereAndNow += experience.how;
+          }
           this.wits[i + 1]?.feel(experience);
           if (i === this.wits.length - 1) {
             this.bottomOfHeart.feel(experience);
+            this.wits[0].feel(experience);
           }
         });
       }

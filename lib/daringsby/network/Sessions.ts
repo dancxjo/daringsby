@@ -28,3 +28,11 @@ export function removeSession(socket: WebSocket) {
     sessions.delete(socket);
   }
 }
+
+setInterval(() => {
+  for (const [socket, session] of sessions) {
+    if (socket.readyState !== WebSocket.OPEN) {
+      removeSession(socket);
+    }
+  }
+}, 10000);

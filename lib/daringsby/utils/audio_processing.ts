@@ -127,7 +127,7 @@ export function toWav(audioBuffer: AudioBuffer): Uint8Array {
 
 export async function speak(
   text: string,
-  speakerId = "p287", //"p230",
+  speakerId = "p234", //"p287", //"p230",
   languageId = "",
 ): Promise<string> {
   const host = Deno.env.get("COQUI_URL") ?? "http://localhost:5002";
