@@ -101,7 +101,7 @@ class Psyche {
 
   hear(message: Message): void {
     // this.voice.hear(message);
-    recall(message.content, 3).then((results) => {
+    recall(message.content, 7).then((results) => {
       logger.info({ results }, "Recalled nodes");
       if (results.length > 0) {
         this.witness({
@@ -169,7 +169,7 @@ class Psyche {
     while (this.isAwake) {
       await this.tick();
       if (this.theHereAndNow !== lastSent) {
-        recall(this.theHereAndNow, 3).then((results) => {
+        recall(this.theHereAndNow, 7).then((results) => {
           logger.info({ results }, "Recalled nodes");
           if (results.length > 0) {
             this.witness({

@@ -15,9 +15,9 @@ export function handleIncomingGeolocationMessages(session: Session) {
         );
         const impression = {
           how:
-            `I am geolocated at ${message.data.latitude}, ${message.data.longitude}. According to my reverse geocoding, I am at or near ${
+            `I am geolocated *near* ${message.data.latitude}, ${message.data.longitude}. According to my reverse geocoding, I am near ${
               JSON.stringify(address)
-            }.`,
+            }. As is usual for geolocations, this may flicker around a bit and get more accurate over time.`,
           when: new Date(),
         };
         psyche.witness(impression);

@@ -140,6 +140,7 @@ export class Voice {
       return;
     }
     this.recentConversation.push(message);
+    this.recentConversation = this.recentConversation.slice(-10);
   }
 
   async thinkOfResponse(): Promise<void> {

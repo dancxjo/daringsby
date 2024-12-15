@@ -11,6 +11,15 @@ export async function loadDocuments() {
     import.meta.dirname ?? process.cwd(),
     {
       ".ts": (path) => new TextLoader(path),
+      ".md": (path) => new TextLoader(path),
+      ".tsx": (path) => new TextLoader(path),
+      ".css": (path) => new TextLoader(path),
+      ".json": (path) => new JSONLoader(path),
+      ".yaml": (path) => new JSONLoader(path),
+      ".yml": (path) => new JSONLoader(path),
+      ".": (path) => new TextLoader(path),
+      ".sh": (path) => new TextLoader(path),
+      ".conf": (path) => new TextLoader(path),
     },
   );
   const docs = await loader.load();
@@ -26,5 +35,6 @@ export async function createSourceCodeDocument(JS_CODE: string) {
     chunkOverlap: 0,
   });
   const jsDocs = await jsSplitter.createDocuments([JS_CODE]);
+  jsDocs.sort((a, b) => Math.random() - 0.5);
   return jsDocs;
 }

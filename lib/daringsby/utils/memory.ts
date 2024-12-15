@@ -2,6 +2,7 @@ import { logger } from "../core/logger.ts";
 import neo4j from "npm:neo4j-driver";
 import { QdrantClient } from "npm:@qdrant/qdrant-js";
 import { Config, EmbeddingsResponse, Ollama } from "npm:ollama";
+import { v4 } from "npm:uuid";
 
 interface Document<T> {
   metadata: {
@@ -71,8 +72,8 @@ export async function memorize<
     logger.debug({ embedding }, "Embedding generated successfully");
 
     // Store document in Neo4j and get the generated node ID
-    const nodeId = await storeDocumentInNeo4j(document);
-
+    // const nodeId = await storeDocumentInNeo4j(document);
+    const nodeId = v4();
     // Store embedding in Qdrant using the node ID
     await qdrant.upsert(COLLECTION_NAME, {
       points: [
@@ -148,7 +149,7 @@ async function storeDocumentInNeo4j<T>(
   }
 }
 
-const recentlyRecalled = new Set<string>();
+const recentlyRecalled = new Map<string, Date>();
 
 /**
  * Recalls the top k nodes from Qdrant based on a given prompt.
@@ -179,10 +180,15 @@ export async function recall(prompt: string, k: number = 10): Promise<any[]> {
     const results = response.filter((p) =>
       !recentlyRecalled.has(p.id.toString())
     ).map((point) => {
-      recentlyRecalled.add(point.id.toString());
+      recentlyRecalled.set(point.id.toString(), new Date());
       return point.payload;
     }).slice(0, k);
     logger.info({ results }, "Recalled nodes");
+    recentlyRecalled.forEach((date, key) => {
+      if (new Date().getTime() - date.getTime() > 1000 * 60 * 120) {
+        recentlyRecalled.delete(key);
+      }
+    });
     return results;
   } catch (error) {
     logger.error("Error recalling nodes from Qdrant:", error);
