@@ -15,7 +15,14 @@ import { FondDuCoeur, Sensation, Voice, Wit } from "./newt.ts";
 import handleIncomingEchoMessages from "../network/handlers/echo.ts";
 import { take } from "npm:rxjs";
 import { getNthPrime } from "../utils/primes.ts";
-import { memorize } from "../utils/memory.ts";
+import {
+  latestSituation,
+  loadConversation,
+  memorize,
+  recall,
+  storeMessage,
+} from "../utils/memory.ts";
+import { load } from "$std/dotenv/mod.ts";
 
 const logger = newLog("Psyche", "info");
 
@@ -55,6 +62,15 @@ class Psyche {
     this.initializeWits(
       this.witTimings.map((t) => getNthPrime(t)),
     );
+
+    latestSituation().then((situation) => {
+      this.witness({
+        when: new Date(),
+        how:
+          `The last thing I remember is from ${situation.now}: ${situation.theHereAndNow}`,
+      });
+    });
+
     // this.voice.raw$.subscribe((message) => {
     //   logger.debug({ message: message }, "Received raw message");
     // });
@@ -88,6 +104,16 @@ class Psyche {
 
   hear(message: Message): void {
     // this.voice.hear(message);
+    recall(message.content, 3).then((results) => {
+      logger.info({ results }, "Recalled nodes");
+      this.witness({
+        when: new Date(),
+        how: `That makes me think of these memories: ${
+          yaml.stringify(results)
+        }`,
+      });
+    });
+    storeMessage(message.role, message.content);
     this.voice.postMessage({
       context: this.theHereAndNow,
       message: message.content,
@@ -130,6 +156,15 @@ class Psyche {
     while (this.isAwake) {
       await this.tick();
       if (this.theHereAndNow !== lastSent) {
+        recall(this.theHereAndNow, 3).then((results) => {
+          logger.info({ results }, "Recalled nodes");
+          this.witness({
+            when: new Date(),
+            how: `That makes me think of these memories: ${
+              yaml.stringify(results)
+            }`,
+          });
+        });
         memorize({
           metadata: { label: "Situation" },
           data: {
@@ -176,9 +211,7 @@ class Psyche {
             { experience: experience.how },
             `Processed experience in layer ${i}`,
           );
-          if (i > 2) {
-            this.theHereAndNow += experience.how;
-          }
+          this.theHereAndNow = experience.how;
           this.wits[i + 1]?.feel(experience);
           if (i === this.wits.length - 1) {
             this.bottomOfHeart.feel(experience);
@@ -295,6 +328,6 @@ class Psyche {
 
 export const psyche = Psyche.getInstance(
   new Ollama({
-    host: Deno.env.get("OLLAMA_HOST") ?? "http://forebrain.local:11434",
+    host: Deno.env.get("OLLAMA_HOST") ?? "http://172.18.0.1:11434",
   }),
 );

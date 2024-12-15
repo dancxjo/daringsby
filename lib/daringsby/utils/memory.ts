@@ -205,6 +205,16 @@ export async function loadConversation() {
   return messages;
 }
 
+export async function storeMessage(role: string, content: string) {
+  const session = createSession();
+  await session.run(
+    `
+    CREATE (n:ChatMessage { role: $role, content: $content, when: datetime() })
+  `,
+    { role, content },
+  );
+}
+
 export async function latestSituation() {
   const session = createSession();
   const result = await session.run(`

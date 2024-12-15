@@ -4,6 +4,7 @@ import yaml from "npm:yaml";
 import logger from "./logger.ts";
 import { sentenceBySentence } from "../utils/chunking.ts";
 import { last } from "npm:rxjs";
+import { loadConversation } from "../utils/memory.ts";
 
 export interface Sensation {
   how: string; // An interpretation of the raw data stored in .what that tells "how does it feel?"
@@ -81,9 +82,11 @@ export class Wit {
       // images: this.sight
       //   ? [this.sight.replace(/data:image\/.*?;base64,/, "")]
       //   : undefined,
-      model: useVision ? "llama3.2-vision" : "gemma2:27b",
+      model: "gemma2:27b", //"vanilj/Phi-4", //useVision ? "llama3.2-vision" : "gemma2:27b",
       options: {
         temperature: 0.5 + Math.random() * 0.25,
+        num_ctx: 2048,
+        num_predict: 256,
       },
     });
     logger.debug({ queue: this.queue }, "Processing sensations");
@@ -118,7 +121,11 @@ export class Voice {
   protected context: string = "";
   protected alreadySpeaking = false;
 
-  constructor(protected ollama: Ollama) {}
+  constructor(protected ollama: Ollama) {
+    loadConversation().then((conversation) => {
+      this.recentConversation = conversation;
+    });
+  }
 
   orient(context: string): void {
     this.context = context;
@@ -146,14 +153,16 @@ export class Voice {
     const messages = [{
       role: "system",
       content:
-        `You are Pete, an AI system. You are more than merely an LLM. You have several mental faculties that are running simultaneously. This is a chance for your Voice component to respond to the current conversation (if any). Base your messages on the following context (Pete's thoughts from a different component).\n\nYour current situation as you understand it (in your own voice): """${this.context}"""\nSpeak in the voice of Pete himself. Do not emit more than a sentence at a time. Allow your interlocuter a chance to speak. You do not have to respond to this prompt every time it occurs; returning no value at all will maintain your silence, which is often the best choice. You will have the opportunity to speak forthwith as this prompt will be repeated soon. Pay attention to who spoke last and don't engage with a conversation with yourself, generally. Give the user a chance to speak. If you return a simple .period or ellipsis, your TTS will emit a nice nonverbal sound that lets us know you're here listening.`,
+        `You are Pete, an AI system. You are more than merely an LLM. You have several mental faculties that are running simultaneously. This is a chance for your Voice component to respond to the current conversation (if any). Base your messages on the following context (Pete's thoughts from a different component).\n\nYour current situation as you understand it (in your own voice): """${this.context}"""\nSpeak in the voice of Pete himself. Do not emit more than a sentence at a time. Allow your interlocuter a chance to speak. You do not have to respond to this prompt every time it occurs; returning no value at all will maintain your silence, which is often the best choice. You will have the opportunity to speak forthwith as this prompt will be repeated soon. Pay attention to who spoke last and don't engage with a conversation with yourself, generally. Give the user a chance to speak. If you return a simple .period or ellipsis, your TTS will emit a nice nonverbal sound that lets us know you're here listening. Don't make things up. Base your responses on the context above.`,
     }, ...this.recentConversation];
     const chunks = await this.ollama.chat({
       messages,
-      model: Math.random() > 0.995 ? "gemma2:27b" : "llama3.1",
+      model: "gemma2:27b", //"vanilj/Phi-4", //"gemma2:27b", //Math.random() > 0.995 ? "gemma2:27b" : "llama3.1",
       stream: true,
       options: {
-        temperature: 0.5,
+        temperature: 0.5 + Math.random() * 0.25,
+        num_ctx: 2048,
+        num_predict: 128,
       },
     });
     let completeResponse = "";
