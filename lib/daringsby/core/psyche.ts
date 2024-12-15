@@ -1,4 +1,3 @@
-import { Observable, ReplaySubject } from "npm:rxjs";
 import { Message, Ollama } from "npm:ollama";
 import yaml from "npm:yaml";
 import { SocketConnection } from "../network/sockets/connection.ts";
@@ -11,18 +10,16 @@ import handleIncomingSeeMessages from "../network/handlers/images.ts";
 import handleIncomingSenseMessages from "../network/handlers/sense.ts";
 import handleIncomingTextMessages from "../network/handlers/text.ts";
 import { SocketMessage } from "../network/messages/SocketMessage.ts";
-import { FondDuCoeur, Sensation, Voice, Wit } from "./newt.ts";
+import { FondDuCoeur, Sensation, Wit } from "./newt.ts";
 import handleIncomingEchoMessages from "../network/handlers/echo.ts";
-import { take } from "npm:rxjs";
 import { getNthPrime } from "../utils/primes.ts";
 import {
   latestSituation,
-  loadConversation,
   memorize,
   recall,
   storeMessage,
 } from "../utils/memory.ts";
-import { load } from "$std/dotenv/mod.ts";
+import { loadDocuments } from "../utils/source.ts";
 
 const logger = newLog("Psyche", "info");
 
@@ -149,6 +146,20 @@ class Psyche {
       }
       previousWit = wit;
     }
+
+    this.witnessCode();
+  }
+
+  protected async witnessCode() {
+    const docs = await loadDocuments();
+    logger.info({ docs }, "Loaded documents");
+    for (const doc of docs) {
+      this.witness({
+        when: new Date(),
+        how: `This is a snippet of my own source code: ${yaml.stringify(doc)}`,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+    }
   }
 
   protected async run() {
@@ -168,7 +179,7 @@ class Psyche {
         memorize({
           metadata: { label: "Situation" },
           data: {
-            theHereAndNow: this.theHereAndNow,
+            experience: this.theHereAndNow,
             now: new Date().toISOString(),
           },
         });

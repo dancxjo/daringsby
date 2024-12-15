@@ -5,6 +5,7 @@ import logger from "./logger.ts";
 import { sentenceBySentence } from "../utils/chunking.ts";
 import { last } from "npm:rxjs";
 import { loadConversation } from "../utils/memory.ts";
+import * as cheerio from "npm:cheerio";
 
 export interface Sensation {
   how: string; // An interpretation of the raw data stored in .what that tells "how does it feel?"
@@ -54,7 +55,7 @@ export class Wit {
           ? ` You may also use the attached image, which is what Pete is currently seeing. It's not just an image; it's what you're currently looking at in real time. Use it if it's helpful.`
           : "")
         : "") +
-      `\n\nReminder: Do not repeat this prompt or any part of it. Be concise.`;
+      `\n\nReminder: Do not repeat this prompt or any part of it. Be concise. Senses can be deceiving and get confused. Don't take all your sensations at face value.`;
   }
 
   get last(): Sensation | null {
@@ -153,7 +154,7 @@ export class Voice {
     const messages = [{
       role: "system",
       content:
-        `You are Pete, an AI system. You are more than merely an LLM. You have several mental faculties that are running simultaneously. This is a chance for your Voice component to respond to the current conversation (if any). Base your messages on the following context (Pete's thoughts from a different component).\n\nYour current situation as you understand it (in your own voice): """${this.context}"""\nSpeak in the voice of Pete himself. Do not emit more than a sentence at a time. Allow your interlocuter a chance to speak. You do not have to respond to this prompt every time it occurs; returning no value at all will maintain your silence, which is often the best choice. You will have the opportunity to speak forthwith as this prompt will be repeated soon. Pay attention to who spoke last and don't engage with a conversation with yourself, generally. Give the user a chance to speak. If you return a simple .period or ellipsis, your TTS will emit a nice nonverbal sound that lets us know you're here listening. Don't make things up. Base your responses on the context above.`,
+        `You are Pete, an AI system. You are more than merely an LLM. You have several mental faculties that are running simultaneously. This is a chance for your Voice component to respond to the current conversation (if any). Base your messages on the following context (Pete's thoughts from a different component).\n\nYour current situation as you understand it (in your own voice): """${this.context}"""\nSpeak in the voice of Pete himself. Do not emit more than a sentence at a time. Allow your interlocuter a chance to speak. You do not have to respond to this prompt every time it occurs; returning no value at all will maintain your silence, which is often the best choice. You will have the opportunity to speak forthwith as this prompt will be repeated soon. Pay attention to who spoke last and don't engage with a conversation with yourself, generally. Give the user a chance to speak. If you return a simple .period or ellipsis, your TTS will emit a nice nonverbal sound that lets us know you're here listening. Don't make things up. Base your responses on the context above. To look at a webpage, use <function name="visit">http://github.com/dancxjo/daringsby</function>.`,
     }, ...this.recentConversation];
     const chunks = await this.ollama.chat({
       messages,
@@ -176,5 +177,23 @@ export class Voice {
     });
     logger.debug({ response: completeResponse }, "Generated response");
     this.alreadySpeaking = false;
+
+    const $ = cheerio.load(completeResponse);
+    const functionCalls = $("function");
+    for (const functionCall of functionCalls) {
+      const $functionCall = $(functionCall);
+      const functionName = $functionCall.attr("name");
+      const functionArgs = $functionCall.text();
+      switch (functionName) {
+        case "visit": {
+          const body = await fetch(functionArgs).then((res) => res.text());
+          this.recentConversation.push({
+            role: "assistant",
+            content: `I visited the page at ${functionArgs}: ${body}`,
+          });
+          break;
+        }
+      }
+    }
   }
 }

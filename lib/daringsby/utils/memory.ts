@@ -170,11 +170,13 @@ export async function recall(prompt: string, k: number = 10): Promise<any[]> {
     logger.info({ promptEmbedding }, "Embedding generated successfully");
     const response = await qdrant.search(COLLECTION_NAME, {
       vector: promptEmbedding.embedding,
-      limit: k,
+      limit: k + 3,
       with_payload: true,
     });
     logger.info({ response }, "Recalled nodes from Qdrant");
-    const results = response.map((point) => point.payload);
+    const results = response.map((point) => point.payload).sort((a, b) =>
+      a.data.now - b.data.now
+    ).slice(0, k);
     logger.info({ results }, "Recalled nodes");
     return results;
   } catch (error) {

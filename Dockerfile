@@ -3,7 +3,6 @@ FROM denoland/deno:latest
 # Install OpenSSL
 USER root
 RUN apt-get update && apt-get install -y openssl && apt-get clean
-
 # Set working directory
 WORKDIR /app
 
