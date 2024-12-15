@@ -103,12 +103,14 @@ class Psyche {
     // this.voice.hear(message);
     recall(message.content, 3).then((results) => {
       logger.info({ results }, "Recalled nodes");
-      this.witness({
-        when: new Date(),
-        how: `That makes me think of these memories: ${
-          yaml.stringify(results)
-        }`,
-      });
+      if (results.length > 0) {
+        this.witness({
+          when: new Date(),
+          how: `That makes me think of these memories: ${
+            yaml.stringify(results)
+          }`,
+        });
+      }
     });
     storeMessage(message.role, message.content);
     this.voice.postMessage({
@@ -158,7 +160,7 @@ class Psyche {
         when: new Date(),
         how: `This is a snippet of my own source code: ${yaml.stringify(doc)}`,
       });
-      await new Promise((resolve) => setTimeout(resolve, 10000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 
@@ -169,12 +171,14 @@ class Psyche {
       if (this.theHereAndNow !== lastSent) {
         recall(this.theHereAndNow, 3).then((results) => {
           logger.info({ results }, "Recalled nodes");
-          this.witness({
-            when: new Date(),
-            how: `That makes me think of these memories: ${
-              yaml.stringify(results)
-            }`,
-          });
+          if (results.length > 0) {
+            this.witness({
+              when: new Date(),
+              how: `That makes me think of these memories: ${
+                yaml.stringify(results)
+              }`,
+            });
+          }
         });
         memorize({
           metadata: { label: "Situation" },
