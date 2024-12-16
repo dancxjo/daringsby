@@ -31,8 +31,8 @@ export async function loadDocuments() {
 
 export async function createSourceCodeDocument(JS_CODE: string) {
   const jsSplitter = RecursiveCharacterTextSplitter.fromLanguage("js", {
-    chunkSize: 60,
-    chunkOverlap: 0,
+    chunkSize: 1024,
+    chunkOverlap: 4,
   });
   const jsDocs = await jsSplitter.createDocuments([JS_CODE]);
   jsDocs.sort((a, b) => Math.random() - 0.5);

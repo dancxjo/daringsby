@@ -12,7 +12,17 @@ export function handleIncomingGeolocationMessages(session: Session) {
         const address = await getAddressByLocation(
           message.data.latitude,
           message.data.longitude,
-        );
+        ).catch((error) => {
+          logger.error(
+            {
+              error,
+              latitude: message.data.latitude,
+              longitude: message.data.longitude,
+            },
+            "Error fetching address from geolocation",
+          );
+          return "an unknown location";
+        });
         const impression = {
           how:
             `I am geolocated *near* ${message.data.latitude}, ${message.data.longitude}. According to my reverse geocoding, I am near ${

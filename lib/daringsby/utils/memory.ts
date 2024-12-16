@@ -39,9 +39,22 @@ async function initializeQdrantCollection(): Promise<void> {
     });
     logger.info("Qdrant collection initialized successfully");
   } catch (error) {
-    logger.error("Error initializing Qdrant collection:", error);
-    throw error;
+    logger.error({ error }, "Error initializing Qdrant collection:");
+    // throw error;
   }
+}
+
+export async function vectorize(prompt: string): Promise<EmbeddingsResponse> {
+  // Generate embedding using Ollama
+  const url = Deno.env.get("OLLAMA_URL") || "http://localhost:11434";
+  const ollama = new Ollama({
+    host: url,
+  });
+  const embedding = await ollama.embeddings({
+    prompt: JSON.stringify(prompt),
+    model: "nomic-embed-text",
+  });
+  return embedding;
 }
 
 /**
@@ -60,20 +73,13 @@ export async function memorize<
     return;
   }
   try {
-    // Generate embedding using Ollama
-    const url = Deno.env.get("OLLAMA_URL") || "http://localhost:11434";
-    const ollama = new Ollama({
-      host: url,
-    });
-    const embedding = await ollama.embeddings({
-      prompt: JSON.stringify(document.data),
-      model: "nomic-embed-text",
-    });
-    logger.debug({ embedding }, "Embedding generated successfully");
+    const embedding = await vectorize(JSON.stringify(document.data));
+    logger.info("Embedding generated successfully");
 
     // Store document in Neo4j and get the generated node ID
     // const nodeId = await storeDocumentInNeo4j(document);
     const nodeId = v4();
+    logger.info({ nodeId }, "Document stored in Neo4j successfully");
     // Store embedding in Qdrant using the node ID
     await qdrant.upsert(COLLECTION_NAME, {
       points: [
@@ -86,7 +92,7 @@ export async function memorize<
     });
     logger.info("Document stored in Neo4j and embedding stored in Qdrant");
   } catch (error) {
-    logger.error({ error }, "Error storing document and embedding:", error);
+    logger.error({ error }, "Error storing document and embedding:");
   }
 }
 
@@ -204,6 +210,9 @@ export async function establishMemory() {
     await initializeQdrantCollection();
   }
 }
+await initializeQdrantCollection().catch((error) => {
+  logger.error(error, "Error initializing Qdrant collection:");
+});
 
 export async function loadConversation() {
   // Load conversation from Neo4j

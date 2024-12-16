@@ -6,7 +6,7 @@ import { Sensation } from "./newt.ts";
 export const newLog = (name: string, level = "info") =>
   pino({ name, level, browser: IS_BROWSER ? { asObject: true } : undefined });
 
-const errorSubject = new Subject<Sensation>();
+export const errorSubject = new Subject<Sensation>();
 
 const baseLogger = newLog("daringsby", "info");
 

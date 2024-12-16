@@ -4,8 +4,9 @@ import yaml from "npm:yaml";
 import logger from "./logger.ts";
 import { sentenceBySentence } from "../utils/chunking.ts";
 import { last } from "npm:rxjs";
-import { loadConversation } from "../utils/memory.ts";
+import { loadConversation, recall } from "../utils/memory.ts";
 import * as cheerio from "npm:cheerio";
+import { startCoalescence } from "../utils/coalesce.ts";
 
 export interface Sensation {
   how: string; // An interpretation of the raw data stored in .what that tells "how does it feel?"
@@ -43,7 +44,7 @@ export class Wit {
   protected getPrompt(useVision: boolean): string {
     // Process the sensations in the queue
     const asString = yaml.stringify(this.queue) +
-      `{Note: The dates above are in GMT. I must adjust all timestamps above for your current time zone. It is currently ${
+      `{Note: The dates above are in GMT. It is currently ${
         new Date().toLocaleTimeString()
       } locally and ${new Date().toISOString()}.}`;
     if (useVision) {
@@ -75,15 +76,15 @@ export class Wit {
   }
 
   async sample(): Promise<void> {
-    const useVision = false; // Math.random() < 0.5;
+    const useVision = Math.random() < 0.25;
 
     const response = await this.ollama.generate({
       prompt: this.getPrompt(useVision),
       // model: "llama3.2-vision",
-      // images: this.sight
-      //   ? [this.sight.replace(/data:image\/.*?;base64,/, "")]
-      //   : undefined,
-      model: "gemma2:27b", //"vanilj/Phi-4", //useVision ? "llama3.2-vision" : "gemma2:27b",
+      images: this.sight
+        ? [this.sight.replace(/data:image\/.*?;base64,/, "")]
+        : undefined,
+      model: useVision ? "llama3.2-vision" : "gemma2:27b",
       options: {
         temperature: 0.5 + Math.random() * 0.25,
         num_ctx: 2048,
@@ -155,7 +156,7 @@ export class Voice {
     const messages = [{
       role: "system",
       content:
-        `You are Pete, an AI system. You are more than merely an LLM. You have several mental faculties that are running simultaneously. This is a chance for your Voice component to respond to the current conversation (if any). Base your messages on the following context (Pete's thoughts from a different component).\n\nYour current situation as you understand it (in your own voice): """${this.context}"""\nSpeak in the voice of Pete himself. Do not emit more than a sentence at a time. Allow your interlocuter a chance to speak. You do not have to respond to this prompt every time it occurs; returning no value at all will maintain your silence, which is often the best choice. You will have the opportunity to speak forthwith as this prompt will be repeated soon. Pay attention to who spoke last and don't engage with a conversation with yourself, generally. Give the user a chance to speak. If you return a simple .period or ellipsis, your TTS will emit a nice nonverbal sound that lets us know you're here listening. Don't make things up. Base your responses on the context above. To look at a webpage, use <function name="visit">http://github.com/dancxjo/daringsby</function>.`,
+        `You are Pete, an AI system. You are more than merely an LLM. You have several mental faculties that are running simultaneously. This is a chance for your Voice component to respond to the current conversation (if any). Base your messages on the following context (Pete's thoughts from a different component).\n\nYour current situation as you understand it (in your own voice): """${this.context}"""\nSpeak in the voice of Pete himself. Do not emit more than a sentence at a time. Allow your interlocuter a chance to speak. You do not have to respond to this prompt every time it occurs; returning no value at all will maintain your silence, which is often the best choice. You will have the opportunity to speak forthwith as this prompt will be repeated soon. Pay attention to who spoke last and don't engage with a conversation with yourself, generally. Give the user a chance to speak. If you return a simple .period or ellipsis, your TTS will emit a nice nonverbal sound that lets us know you're here listening. Don't make things up. Base your responses on the context above. To look at a webpage, use <function name="visit">http://github.com/dancxjo/daringsby</function>. To recall memories on a topic, use <function name="recall">topic</function>.`,
     }, ...this.recentConversation];
     const chunks = await this.ollama.chat({
       messages,
@@ -190,7 +191,17 @@ export class Voice {
           const body = await fetch(functionArgs).then((res) => res.text());
           this.recentConversation.push({
             role: "assistant",
-            content: `I visited the page at ${functionArgs}: ${body}`,
+            content:
+              `{I did not speak the following aloud:} I visited the page at ${functionArgs}: ${body}`,
+          });
+          break;
+        }
+        case "recall": {
+          const memory = await recall(functionArgs);
+          this.recentConversation.push({
+            role: "assistant",
+            content:
+              `{I did not speak the following aloud:} I recalled the following memories on ${functionArgs}: ${memory}`,
           });
           break;
         }
@@ -198,3 +209,5 @@ export class Voice {
     }
   }
 }
+
+startCoalescence();

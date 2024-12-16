@@ -14,13 +14,14 @@ import { FondDuCoeur, Sensation, Wit } from "./newt.ts";
 import handleIncomingEchoMessages from "../network/handlers/echo.ts";
 import { getNthPrime } from "../utils/primes.ts";
 import {
+  establishMemory,
   latestSituation,
   memorize,
   recall,
   storeMessage,
 } from "../utils/memory.ts";
 import { loadDocuments } from "../utils/source.ts";
-
+import { errorSubject } from "../core/logger.ts";
 const logger = newLog("Psyche", "info");
 
 class Psyche {
@@ -56,9 +57,16 @@ class Psyche {
   isAwake = true;
 
   private constructor(protected ollama: Ollama) {
+    establishMemory().catch((e) =>
+      logger.error({ e }, "Cannot establish memory")
+    );
     this.initializeWits(
       this.witTimings.map((t) => getNthPrime(t)),
     );
+
+    errorSubject.subscribe((error) => {
+      this.witness(error);
+    });
 
     latestSituation().then((situation) => {
       this.witness({
@@ -66,6 +74,8 @@ class Psyche {
         how:
           `The last thing I remember is from ${situation.now}: ${situation.theHereAndNow}`,
       });
+    }).catch((error) => {
+      logger.error({ error }, "Failed to get latest situation");
     });
 
     // this.voice.raw$.subscribe((message) => {
@@ -169,15 +179,21 @@ class Psyche {
     while (this.isAwake) {
       await this.tick();
       if (this.theHereAndNow !== lastSent) {
+        this.witness({
+          when: new Date(),
+          how: this.theHereAndNow,
+        });
         recall(this.theHereAndNow, 7).then((results) => {
           logger.info({ results }, "Recalled nodes");
           if (results.length > 0) {
-            this.witness({
-              when: new Date(),
-              how: `That makes me think of these memories: ${
-                yaml.stringify(results)
-              }`,
-            });
+            for (const wit of this.wits) {
+              wit.feel({
+                when: new Date(),
+                how: `That makes me think of these memories: ${
+                  yaml.stringify(results)
+                }`,
+              });
+            }
           }
         });
         memorize({
@@ -226,10 +242,20 @@ class Psyche {
             { experience: experience.how },
             `Processed experience in layer ${i}`,
           );
-          this.theHereAndNow = experience.how;
+          this.hear({
+            role: "system",
+            content:
+              `{Unspoken message from your wits: DO NOT REPEAT THIS OUT LOUD! THIS IS PRIVATE. DO NOT REPLY OUT LOUD TO THIS.} This is information about yourself (from your own point of view) ${experience.how}`,
+          });
+          memorize({
+            metadata: { label: `Layer ${i}` },
+            data: experience,
+          });
           this.wits[i + 1]?.feel(experience);
           if (i === this.wits.length - 1) {
             this.bottomOfHeart.feel(experience);
+            this.theHereAndNow = experience.how;
+
             this.wits[0].feel(experience);
           }
         });
