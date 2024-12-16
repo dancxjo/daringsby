@@ -84,7 +84,18 @@ class Psyche {
     // TODO: Send back an abort signal to voics once we get here.
     // this.voice.sentences$.pipe(take(1)).subscribe((message) => {
     this.voice.onmessage = (e) => {
-      logger.debug({ e }, "Received message from voice");
+      logger.info({ e }, "Received message from voice");
+
+      if ("mien" in e.data) {
+        this.broadcast({
+          type: MessageType.Emote,
+          data: e.data.mien,
+        });
+        this.witness({
+          when: new Date(),
+          how: `My face turns into this shape: ${e.data.mien}`,
+        });
+      }
       const message = e.data.message;
       this.witness({
         when: new Date(),

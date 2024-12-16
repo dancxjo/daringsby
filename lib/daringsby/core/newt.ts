@@ -7,28 +7,13 @@ import { last } from "npm:rxjs";
 import { loadConversation, memorize, recall } from "../utils/memory.ts";
 import * as cheerio from "npm:cheerio";
 import { startCoalescence } from "../utils/coalesce.ts";
-
+import emojiRegex from "npm:emoji-regex";
 export interface Sensation {
   how: string; // An interpretation of the raw data stored in .what that tells "how does it feel?"
   when: Date; // When the sensation was felt/occurred
 }
 
 export type Sensor = Observable<Sensation>;
-
-function chooseModel(): string {
-  const availableModels = [
-    "llama3.1",
-    "llama3.1",
-    "llama3.1",
-    "llama3.1",
-    // "llama3.2-vision",
-    // "llama3.1",
-    // "gemma2",
-    // "gemma2:27b",
-    // "gemma2:27b",
-  ];
-  return availableModels[Math.floor(Math.random() * availableModels.length)];
-}
 
 export class Wit {
   protected queue: Sensation[] = [];
@@ -122,6 +107,8 @@ export class Voice {
   readonly sentences$ = this.raw$.pipe(sentenceBySentence());
   protected context: string = "";
   protected alreadySpeaking = false;
+  protected mien: Subject<string> = new ReplaySubject<string>(1);
+  readonly mien$: Observable<string> = this.mien.asObservable();
 
   constructor(protected ollama: Ollama) {
     loadConversation().then((conversation) => {
@@ -156,7 +143,7 @@ export class Voice {
     const messages = [{
       role: "system",
       content:
-        `You are Pete, an AI system. You are more than merely an LLM. You have several mental faculties that are running simultaneously. This is a chance for your Voice component to respond to the current conversation (if any). Base your messages on the following context (Pete's thoughts from a different component).\n\nYour current situation as you understand it (in your own voice): """${this.context}"""\nSpeak in the voice of Pete himself. Do not emit more than a sentence at a time. Allow your interlocuter a chance to speak. You do not have to respond to this prompt every time it occurs; returning no value at all will maintain your silence, which is often the best choice. You will have the opportunity to speak forthwith as this prompt will be repeated soon. Pay attention to who spoke last and don't engage with a conversation with yourself, generally. Give the user a chance to speak. If you return a simple .period or ellipsis, your TTS will emit a nice nonverbal sound that lets us know you're here listening. Don't make things up. Base your responses on the context above. To look at a webpage, use <function name="visit">http://github.com/dancxjo/daringsby</function>. To recall memories on a topic, use <function name="recall">topic</function>. To memorize something explicitly, use <function name="memorize">Data that you wish to remember</function>.`,
+        `You are Pete, an AI system. You are more than merely an LLM. You have several mental faculties that are running simultaneously. This is a chance for your Voice component to respond to the current conversation (if any). Base your messages on the following context (Pete's thoughts from a different component).\n\nYour current situation as you understand it (in your own voice): """${this.context}"""\nSpeak in the voice of Pete himself. Do not emit more than a sentence at a time. Allow your interlocuter a chance to speak. You do not have to respond to this prompt every time it occurs; returning no value at all will maintain your silence, which is often the best choice. You will have the opportunity to speak forthwith as this prompt will be repeated soon. Pay attention to who spoke last and don't engage with a conversation with yourself, generally. Give the user a chance to speak. If you return a simple .period or ellipsis, your TTS will emit a nice nonverbal sound that lets us know you're here listening. Don't make things up. Base your responses on the context above. To look at a webpage, use <function name="visit">http://github.com/dancxjo/daringsby</function>. To recall memories on a topic, use <function name="recall">topic</function>. To memorize something explicitly, use <function name="memorize">Data that you wish to remember</function>. Do not return any text that isn't meant to be spoken aloud. IMPORTANT: Instead include one and only one emoji per call which will be your face.`,
     }, ...this.recentConversation];
     const chunks = await this.ollama.chat({
       messages,
@@ -173,6 +160,8 @@ export class Voice {
       this.chunksOut.next(chunk.message.content);
       completeResponse += chunk.message.content;
     }
+    const emojis = emojiRegex().exec(completeResponse);
+    this.mien.next(emojis ? emojis[0] : "😐");
     this.messagesOut.next({
       content: completeResponse,
       role: "assistant",

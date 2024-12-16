@@ -25,6 +25,10 @@ self.onmessage = async (e) => {
   logger.debug({ e }, "Received message from main thread");
   voice.orient(e.data.context);
 
+  voice.mien$.subscribe((mien) => {
+    logger.debug({ mien }, "Sending");
+    self.postMessage({ mien });
+  });
   if (e.data.message) {
     logger.debug(
       { message: e.data.message, role: e.data.role },
