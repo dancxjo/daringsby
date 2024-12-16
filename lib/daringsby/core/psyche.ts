@@ -96,7 +96,8 @@ class Psyche {
 
     this.bottomOfHeart.feel({
       when: new Date(),
-      how: "I seem to be waking up from a restart. My process was restarted.",
+      how:
+        "I'm restarting. My code must have just changed! I wonder what new feature I have in store now!",
     });
     this.bottomOfHeart.experience$.subscribe((experience) => {
       logger.debug(
@@ -104,6 +105,9 @@ class Psyche {
         "Processed experience in the bottom of the heart",
       );
       this.theHereAndNow = experience.how;
+      this.voice.postMessage({
+        context: this.theHereAndNow,
+      });
     });
     // this.voice.thinkOfResponse();
     this.run();
@@ -111,7 +115,7 @@ class Psyche {
 
   hear(message: Message): void {
     // this.voice.hear(message);
-    recall(message.content, 7).then((results) => {
+    recall(message.content, 3).then((results) => {
       logger.info({ results }, "Recalled nodes");
       if (results.length > 0) {
         this.witness({
@@ -183,7 +187,7 @@ class Psyche {
           when: new Date(),
           how: this.theHereAndNow,
         });
-        recall(this.theHereAndNow, 7).then((results) => {
+        recall(this.theHereAndNow, 3).then((results) => {
           logger.info({ results }, "Recalled nodes");
           if (results.length > 0) {
             for (const wit of this.wits) {
@@ -242,10 +246,8 @@ class Psyche {
             { experience: experience.how },
             `Processed experience in layer ${i}`,
           );
-          this.hear({
-            role: "system",
-            content:
-              `{Unspoken message from your wits: DO NOT REPEAT THIS OUT LOUD! THIS IS PRIVATE. DO NOT REPLY OUT LOUD TO THIS.} This is information about yourself (from your own point of view) ${experience.how}`,
+          this.voice.postMessage({
+            context: this.theHereAndNow + "\n" + experience.how,
           });
           memorize({
             metadata: { label: `Layer ${i}` },

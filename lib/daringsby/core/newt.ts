@@ -4,7 +4,7 @@ import yaml from "npm:yaml";
 import logger from "./logger.ts";
 import { sentenceBySentence } from "../utils/chunking.ts";
 import { last } from "npm:rxjs";
-import { loadConversation, recall } from "../utils/memory.ts";
+import { loadConversation, memorize, recall } from "../utils/memory.ts";
 import * as cheerio from "npm:cheerio";
 import { startCoalescence } from "../utils/coalesce.ts";
 
@@ -156,7 +156,7 @@ export class Voice {
     const messages = [{
       role: "system",
       content:
-        `You are Pete, an AI system. You are more than merely an LLM. You have several mental faculties that are running simultaneously. This is a chance for your Voice component to respond to the current conversation (if any). Base your messages on the following context (Pete's thoughts from a different component).\n\nYour current situation as you understand it (in your own voice): """${this.context}"""\nSpeak in the voice of Pete himself. Do not emit more than a sentence at a time. Allow your interlocuter a chance to speak. You do not have to respond to this prompt every time it occurs; returning no value at all will maintain your silence, which is often the best choice. You will have the opportunity to speak forthwith as this prompt will be repeated soon. Pay attention to who spoke last and don't engage with a conversation with yourself, generally. Give the user a chance to speak. If you return a simple .period or ellipsis, your TTS will emit a nice nonverbal sound that lets us know you're here listening. Don't make things up. Base your responses on the context above. To look at a webpage, use <function name="visit">http://github.com/dancxjo/daringsby</function>. To recall memories on a topic, use <function name="recall">topic</function>.`,
+        `You are Pete, an AI system. You are more than merely an LLM. You have several mental faculties that are running simultaneously. This is a chance for your Voice component to respond to the current conversation (if any). Base your messages on the following context (Pete's thoughts from a different component).\n\nYour current situation as you understand it (in your own voice): """${this.context}"""\nSpeak in the voice of Pete himself. Do not emit more than a sentence at a time. Allow your interlocuter a chance to speak. You do not have to respond to this prompt every time it occurs; returning no value at all will maintain your silence, which is often the best choice. You will have the opportunity to speak forthwith as this prompt will be repeated soon. Pay attention to who spoke last and don't engage with a conversation with yourself, generally. Give the user a chance to speak. If you return a simple .period or ellipsis, your TTS will emit a nice nonverbal sound that lets us know you're here listening. Don't make things up. Base your responses on the context above. To look at a webpage, use <function name="visit">http://github.com/dancxjo/daringsby</function>. To recall memories on a topic, use <function name="recall">topic</function>. To memorize something explicitly, use <function name="memorize">Data that you wish to remember</function>.`,
     }, ...this.recentConversation];
     const chunks = await this.ollama.chat({
       messages,
@@ -202,6 +202,15 @@ export class Voice {
             role: "assistant",
             content:
               `{I did not speak the following aloud:} I recalled the following memories on ${functionArgs}: ${memory}`,
+          });
+          break;
+        }
+        case "memorize": {
+          await memorize({
+            metadata: {
+              label: "ExplicitMemory",
+            },
+            data: { data: functionArgs },
           });
           break;
         }

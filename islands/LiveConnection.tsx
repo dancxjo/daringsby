@@ -5,6 +5,7 @@ import Geolocator from "./Geolocator.tsx";
 import Webcam from "./Webcam.tsx";
 import Mien from "./Mien.tsx";
 import ThoughtBubble from "./ThoughtBubble.tsx";
+import SpokenWords from "./SpokenWords.tsx";
 import AudioQueue from "./AudioQueue.tsx";
 import TextInput from "./TextInput.tsx";
 import { logger } from "../lib/daringsby/core/logger.ts";
@@ -38,12 +39,11 @@ export default function LiveConnection() {
           mien.value = message.data;
         },
       );
-
       server.onMessage(
         isValidSayMessage,
         MessageType.Say,
         (message) => {
-          words.value = message.data.words;
+          words.value += "\n" + message.data.words;
         },
       );
 
@@ -195,7 +195,7 @@ export default function LiveConnection() {
         </div>
         <div class="col-12 col-md-6 mb-4 live-connection-output">
           <Mien mien={mien} />
-          <p class="spoken-words">{words.value}</p>
+          <SpokenWords words={words} />
           <ThoughtBubble thought={thought} />
           <AudioQueue serverRef={serverRef} />
         </div>

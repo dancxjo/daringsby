@@ -133,7 +133,7 @@ export async function speak(
   const host = Deno.env.get("COQUI_URL") ?? "http://localhost:5002";
   const response = await fetch(
     `${host}/api/tts?text=${
-      encodeURIComponent(text.replace("*", ""))
+      encodeURIComponent(text.replace(/\*/g, ""))
     }&speaker_id=${speakerId}&language_id=${languageId}`,
   );
 

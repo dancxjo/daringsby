@@ -11,6 +11,7 @@ import * as $AudioQueue from "./islands/AudioQueue.tsx";
 import * as $Geolocator from "./islands/Geolocator.tsx";
 import * as $LiveConnection from "./islands/LiveConnection.tsx";
 import * as $Mien from "./islands/Mien.tsx";
+import * as $SpokenWords from "./islands/SpokenWords.tsx";
 import * as $TextInput from "./islands/TextInput.tsx";
 import * as $ThoughtBubble from "./islands/ThoughtBubble.tsx";
 import * as $Webcam from "./islands/Webcam.tsx";
@@ -29,6 +30,7 @@ const manifest = {
     "./islands/Geolocator.tsx": $Geolocator,
     "./islands/LiveConnection.tsx": $LiveConnection,
     "./islands/Mien.tsx": $Mien,
+    "./islands/SpokenWords.tsx": $SpokenWords,
     "./islands/TextInput.tsx": $TextInput,
     "./islands/ThoughtBubble.tsx": $ThoughtBubble,
     "./islands/Webcam.tsx": $Webcam,

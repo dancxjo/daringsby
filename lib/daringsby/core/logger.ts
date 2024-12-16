@@ -13,9 +13,9 @@ const baseLogger = newLog("daringsby", "info");
 export const trapLog = () => {
   const wrappedLogger = new Proxy(baseLogger, {
     get(target, prop, receiver) {
-      if (prop === "error") {
+      if (prop in ["error"]) {
         return (obj: unknown, msg?: string) => {
-          target.error(obj, msg);
+          target[prop as keyof target](obj, msg);
 
           // Emit the error sensation to the subject
           const errorMessage = msg ||

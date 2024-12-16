@@ -127,7 +127,7 @@ export async function coalesceVectors(d = 0.1, n = 10) {
 
 // Example usage (await coalesceVectors())
 export async function startCoalescence() {
-  await coalesceVectors(0.5, 10).catch((error) => {
+  await coalesceVectors(0.7, 10).catch((error) => {
     logger.error({ error }, "Error during coalescence:");
   });
 }
