@@ -26,6 +26,7 @@ import {
   describeFace,
   detectFaces,
   FaceDetectionResponse,
+  recognizeFaces,
 } from "../utils/faces.ts";
 
 const logger = newLog("Psyche", "info");
@@ -311,7 +312,7 @@ class Psyche {
     this.wits.forEach((wit) => wit.see(this.vision));
 
     // Write the file t
-    detectFaces(this.vision).then((faces) => {
+    recognizeFaces(this.vision).then((faces) => {
       logger.info({ faces }, "Detected faces");
       this.faces = faces ?? null;
       if (!faces) {
@@ -321,18 +322,21 @@ class Psyche {
         });
       } else {
         // Strip out all embeddings from the description
-
-        const description = JSON.stringify(faces).replace(
-          /"embedding(s?)": [.+?]/gm,
-          "",
-        );
+        // FaceDetectionResponse
+        logger.info({ faces }, "Faces");
+        const description = JSON.stringify(faces);
         this.witness({
           when: new Date(),
           how:
-            `I am looking at these faces: ${description}. This is what I see.`,
+            `These are the results of my latest facial recognition scan: ${description}. This is who I see.`,
         });
       }
     }).catch((error) => {
+      this.faces = null;
+      this.witness({
+        when: new Date(),
+        how: "I don't seem to see any faces",
+      });
       logger.error({ error }, "Failed to detect faces");
     });
   }
