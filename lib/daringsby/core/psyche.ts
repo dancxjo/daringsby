@@ -22,6 +22,12 @@ import {
 } from "../utils/memory.ts";
 import { loadDocuments } from "../utils/source.ts";
 import { errorSubject } from "../core/logger.ts";
+import {
+  describeFace,
+  detectFaces,
+  FaceDetectionResponse,
+} from "../utils/faces.ts";
+
 const logger = newLog("Psyche", "info");
 
 class Psyche {
@@ -77,7 +83,7 @@ class Psyche {
     }).catch((error) => {
       logger.error({ error }, "Failed to get latest situation");
     });
-
+    let last = "";
     // this.voice.raw$.subscribe((message) => {
     //   logger.debug({ message: message }, "Received raw message");
     // });
@@ -86,7 +92,11 @@ class Psyche {
     this.voice.onmessage = (e) => {
       logger.info({ e }, "Received message from voice");
 
-      if ("mien" in e.data) {
+      if ("mien" in e.data && e.data.mien) {
+        if (e.data.mien === last) {
+          return;
+        }
+        last = e.data.mien;
         this.broadcast({
           type: MessageType.Emote,
           data: e.data.mien,
@@ -95,14 +105,15 @@ class Psyche {
           when: new Date(),
           how: `My face turns into this shape: ${e.data.mien}`,
         });
+      } else {
+        const message = e.data.message;
+        this.witness({
+          when: new Date(),
+          how: `I start to speak these words: ${message}`,
+        });
+        logger.debug({ message: message }, "Saying sentence");
+        this.say(message);
       }
-      const message = e.data.message;
-      this.witness({
-        when: new Date(),
-        how: `I start to speak these words: ${message}`,
-      });
-      logger.debug({ message: message }, "Saying sentence");
-      this.say(message);
     };
 
     this.bottomOfHeart.feel({
@@ -290,9 +301,40 @@ class Psyche {
     }
   }
 
+  protected faces: FaceDetectionResponse | null = null;
+
   see(image: string): void {
-    this.vision = image;
+    // Remove the Base64 prefix
+    this.vision = image.replace(/^data:image\/.+;base64,/, "");
+
+    // Notify wits with the Base64 image
     this.wits.forEach((wit) => wit.see(this.vision));
+
+    // Write the file t
+    detectFaces(this.vision).then((faces) => {
+      logger.info({ faces }, "Detected faces");
+      this.faces = faces ?? null;
+      if (!faces) {
+        this.witness({
+          when: new Date(),
+          how: "I don't seem to see any faces",
+        });
+      } else {
+        // Strip out all embeddings from the description
+
+        const description = JSON.stringify(faces).replace(
+          /"embedding(s?)": [.+?]/gm,
+          "",
+        );
+        this.witness({
+          when: new Date(),
+          how:
+            `I am looking at these faces: ${description}. This is what I see.`,
+        });
+      }
+    }).catch((error) => {
+      logger.error({ error }, "Failed to detect faces");
+    });
   }
 
   public handleWebSocketConnection(req: Request): Response {

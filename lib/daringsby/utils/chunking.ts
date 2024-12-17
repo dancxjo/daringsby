@@ -69,7 +69,7 @@ export function sentenceBySentence(): OperatorFunction<string, string> {
     return new Observable<string>((observer) => {
       const subscription = source.subscribe({
         next(segment) {
-          const text = buffer + segment;
+          const text = (buffer + segment) || "";
           const segments = split(
             text.replace(/\."\s*/, '."\n'),
           ).map((s) => s.raw);

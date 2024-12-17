@@ -4,6 +4,7 @@ import { AudioContext } from "npm:web-audio-api";
 import { v4 as uuidv4 } from "npm:uuid";
 import { join as pathJoin } from "jsr:@std/path";
 import { arrayBufferToBase64 } from "./buffer_transformations.ts";
+import emojiRegex from "npm:emoji-regex";
 
 /** Detects if an audio buffer is mostly silent based on a given threshold */
 export function detectSilence(
@@ -131,9 +132,12 @@ export async function speak(
   languageId = "",
 ): Promise<string> {
   const host = Deno.env.get("COQUI_URL") ?? "http://localhost:5002";
+  // TODO: Trace this type bug...text is arriving here undefined
   const response = await fetch(
     `${host}/api/tts?text=${
-      encodeURIComponent(text.replace(/\*/g, ""))
+      encodeURIComponent(
+        (text || "").replace(/\*/g, "").replace(emojiRegex(), ""),
+      )
     }&speaker_id=${speakerId}&language_id=${languageId}`,
   );
 

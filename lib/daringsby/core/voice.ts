@@ -24,8 +24,12 @@ setInterval(async () => {
 self.onmessage = async (e) => {
   logger.debug({ e }, "Received message from main thread");
   voice.orient(e.data.context);
-
+  let last = "";
   voice.mien$.subscribe((mien) => {
+    if (mien === last) {
+      return;
+    }
+    last = mien;
     logger.debug({ mien }, "Sending");
     self.postMessage({ mien });
   });

@@ -1,9 +1,8 @@
-import { Observable, ReplaySubject, Subject } from "npm:rxjs";
+import { BehaviorSubject, Observable, ReplaySubject, Subject } from "npm:rxjs";
 import { Message, Ollama } from "npm:ollama";
 import yaml from "npm:yaml";
 import logger from "./logger.ts";
 import { sentenceBySentence } from "../utils/chunking.ts";
-import { last } from "npm:rxjs";
 import { loadConversation, memorize, recall } from "../utils/memory.ts";
 import * as cheerio from "npm:cheerio";
 import { startCoalescence } from "../utils/coalesce.ts";
@@ -41,7 +40,7 @@ export class Wit {
           ? ` You may also use the attached image, which is what Pete is currently seeing. It's not just an image; it's what you're currently looking at in real time. Use it if it's helpful.`
           : "")
         : "") +
-      `\n\nReminder: Do not repeat this prompt or any part of it. Be concise. Senses can be deceiving and get confused. Don't take all your sensations at face value.`;
+      `\n\nReminder: Do not repeat this prompt or any part of it. Be concise. Senses can be deceiving and get confused. Don't take all your sensations at face value. Any visual information you receive is about what you are looking at and not your own image.`;
   }
 
   get last(): Sensation | null {
@@ -61,7 +60,7 @@ export class Wit {
   }
 
   async sample(): Promise<void> {
-    const useVision = Math.random() < 0.25;
+    const useVision = Math.random() < 0.50;
 
     const response = await this.ollama.generate({
       prompt: this.getPrompt(useVision),
@@ -107,7 +106,7 @@ export class Voice {
   readonly sentences$ = this.raw$.pipe(sentenceBySentence());
   protected context: string = "";
   protected alreadySpeaking = false;
-  protected mien: Subject<string> = new ReplaySubject<string>(1);
+  protected mien: Subject<string> = new BehaviorSubject<string>("😐");
   readonly mien$: Observable<string> = this.mien.asObservable();
 
   constructor(protected ollama: Ollama) {
@@ -131,6 +130,7 @@ export class Voice {
     this.recentConversation = this.recentConversation.slice(-10);
   }
 
+  protected lastEmoji = "😐";
   async thinkOfResponse(): Promise<void> {
     logger.debug("Thinking of a response");
     if (this.alreadySpeaking) {
@@ -143,7 +143,7 @@ export class Voice {
     const messages = [{
       role: "system",
       content:
-        `You are Pete, an AI system. You are more than merely an LLM. You have several mental faculties that are running simultaneously. This is a chance for your Voice component to respond to the current conversation (if any). Base your messages on the following context (Pete's thoughts from a different component).\n\nYour current situation as you understand it (in your own voice): """${this.context}"""\nSpeak in the voice of Pete himself. Do not emit more than a sentence at a time. Allow your interlocuter a chance to speak. You do not have to respond to this prompt every time it occurs; returning no value at all will maintain your silence, which is often the best choice. You will have the opportunity to speak forthwith as this prompt will be repeated soon. Pay attention to who spoke last and don't engage with a conversation with yourself, generally. Give the user a chance to speak. If you return a simple .period or ellipsis, your TTS will emit a nice nonverbal sound that lets us know you're here listening. Don't make things up. Base your responses on the context above. To look at a webpage, use <function name="visit">http://github.com/dancxjo/daringsby</function>. To recall memories on a topic, use <function name="recall">topic</function>. To memorize something explicitly, use <function name="memorize">Data that you wish to remember</function>. Do not return any text that isn't meant to be spoken aloud. IMPORTANT: Instead include one and only one emoji per call which will be your face.`,
+        `You are Pete, an AI system. You are more than merely an LLM. You have several mental faculties that are running simultaneously. This is a chance for your Voice component to respond to the current conversation (if any). Base your messages on the following context (Pete's thoughts from a different component).\n\nYour current situation as you understand it (in your own voice): """${this.context}"""\nSpeak in the voice of Pete himself. Do not emit more than a sentence at a time. Allow your interlocuter a chance to speak. You do not have to respond to this prompt every time it occurs; returning no value at all will maintain your silence, which is often the best choice. You will have the opportunity to speak forthwith as this prompt will be repeated soon. Pay attention to who spoke last and don't engage with a conversation with yourself, generally. Give the user a chance to speak. If you return a simple .period or ellipsis, your TTS will emit a nice nonverbal sound that lets us know you're here listening. Don't make things up. Base your responses on the context above. To look at a webpage, use <function name="visit">https://raw.githubusercontent.com/dancxjo/daringsby/refs/heads/humfreeze/lib/daringsby/core/psyche.ts</function>. To recall memories on a topic, use <function name="recall">topic</function>. To memorize something explicitly, use <function name="memorize">Data that you wish to remember</function>. Do not return any text that isn't meant to be spoken aloud. IMPORTANT: Instead include one and only one emoji per call which will be your face.  P.S. Obviously you don't see or think or feel like a human, but don't point that out constantly. Instead, extrapolate from the data you have and phrase it in human terms. You have access to facial recognition data. For all intents and purposes, you're *seeing* faces, so describe it as such. To remember a face, call <function name="remember_face" index="0">Mr. X</function> where index is the index of the face in the list of faces you see. Make sure to use the real name of the person if it's available. Use unique names as much as possible.`,
     }, ...this.recentConversation];
     const chunks = await this.ollama.chat({
       messages,
@@ -161,7 +161,12 @@ export class Voice {
       completeResponse += chunk.message.content;
     }
     const emojis = emojiRegex().exec(completeResponse);
-    this.mien.next(emojis ? emojis[0] : "😐");
+    const newOne = emojis ? emojis[0] : "😐";
+    const oldOne = this.lastEmoji;
+    if (newOne !== oldOne) {
+      this.lastEmoji = newOne;
+      this.mien.next(newOne);
+    }
     this.messagesOut.next({
       content: completeResponse,
       role: "assistant",

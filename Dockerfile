@@ -10,6 +10,7 @@ WORKDIR /app
 COPY . /app
 COPY generate-certs.sh /app/generate-certs.sh
 RUN chmod +x /app/generate-certs.sh
+RUN deno install --allow-scripts=npm:@tensorflow/tfjs-node@4.22.0,npm:core-js@3.29.1
 
 # Expose ports
 EXPOSE 8000
