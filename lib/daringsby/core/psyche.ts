@@ -264,19 +264,29 @@ class Psyche {
         }
 
         await wit.sample();
-        wit.experience$.subscribe((experience) => {
+        wit.experience$.subscribe(async (experience) => {
           logger.debug(
             { experience: experience.how },
             `Processed experience in layer ${i}`,
           );
+          const context = this.theHereAndNow + "\n" + experience.how;
+          const summaryResponse = await this.ollama.generate({
+            prompt:
+              `Without prefacing the response, synthesize the following text: ${context}\n\nReminder: Distill the text using the same voice as the text itself. Just condense it by removing repeated information but still preserving important details, especially about anyone you might be currently speaking with and/or seeing and who you are yourself and what is going on around you currently.`,
+            model: "gemma2:27b",
+          });
+          this.theHereAndNow = summaryResponse.response;
           this.voice.postMessage({
-            context: this.theHereAndNow + "\n" + experience.how,
+            context: this.theHereAndNow,
           });
           memorize({
             metadata: { label: `Layer ${i}` },
-            data: experience,
+            data: { summary: this.theHereAndNow },
           });
-          this.wits[i + 1]?.feel(experience);
+          this.wits[i + 1]?.feel({
+            when: new Date(),
+            how: this.theHereAndNow,
+          });
           if (i === this.wits.length - 1) {
             this.bottomOfHeart.feel(experience);
             this.theHereAndNow = experience.how;
@@ -328,7 +338,7 @@ class Psyche {
         this.witness({
           when: new Date(),
           how:
-            `These are the results of my latest facial recognition scan: ${description}. This is who I see.`,
+            `These are the results of my latest facial recognition scan: ${description}. This is who I see. If the subjects field is populated, I should reiterate the identies of the people I see.`,
         });
       }
     }).catch((error) => {
