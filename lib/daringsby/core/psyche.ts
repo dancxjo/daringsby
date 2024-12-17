@@ -334,7 +334,11 @@ class Psyche {
         // Strip out all embeddings from the description
         // FaceDetectionResponse
         logger.info({ faces }, "Faces");
-        const description = JSON.stringify(faces);
+        const description = JSON.stringify(faces).replace(
+          /"embedding(s?)":\s*\[.+?\]/gm,
+          "",
+        );
+        logger.info({ description }, "Description");
         this.witness({
           when: new Date(),
           how:
