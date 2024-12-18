@@ -28,7 +28,7 @@ import {
   FaceDetectionResponse,
   recognizeFaces,
 } from "../utils/faces.ts";
-
+  
 const logger = newLog("Psyche", "info");
 
 class Psyche {
@@ -45,9 +45,9 @@ class Psyche {
   protected wits: Wit[] = [];
   protected witTimings: number[] = [
     1, // Perceive low level sensory input every 3rd tick; this constitutes an "instant"
-    3, // A "beat" is a moment in our world that is 3 ticks long
+    // 3, // A "beat" is a moment in our world that is 3 ticks long
     6, // A "moment" in our world is everything that happens in 13 ticks
-    7, // A "scene" is a moment in our world that is 7 moments long
+    // 7, // A "scene" is a moment in our world that is 7 moments long
     13, // A "chapter" in our world is 13 scenes long
     17, // A "book" in our world is 17 chapters long
   ];
@@ -186,7 +186,7 @@ class Psyche {
       previousWit = wit;
     }
 
-    this.witnessCode();
+    // this.witnessCode();
   }
 
   protected async witnessCode() {
@@ -246,6 +246,7 @@ class Psyche {
     logger.trace({ tickCount: this.tickCount }, "Ticking");
 
     for (let i = 0; i < this.wits.length; i++) {
+      let witSummary = this.theHereAndNow;
       const wit = this.wits[i];
       const modPrime = getNthPrime(this.witTimings[i]);
 
@@ -269,15 +270,9 @@ class Psyche {
             { experience: experience.how },
             `Processed experience in layer ${i}`,
           );
-          const context = this.theHereAndNow + "\n" + experience.how;
-          const summaryResponse = await this.ollama.generate({
-            prompt:
-              `Without prefacing the response, synthesize the following text: ${context}\n\nReminder: Distill the text using the same voice as the text itself. Just condense it by removing repeated information but still preserving important details, especially about anyone you might be currently speaking with and/or seeing and who you are yourself and what is going on around you currently.`,
-            model: "gemma2:27b",
-          });
-          this.theHereAndNow = summaryResponse.response;
+          witSummary += " \n" + experience.how;
           this.voice.postMessage({
-            context: this.theHereAndNow,
+            context: witSummary,
           });
           memorize({
             metadata: { label: `Layer ${i}` },
@@ -285,7 +280,7 @@ class Psyche {
           });
           this.wits[i + 1]?.feel({
             when: new Date(),
-            how: this.theHereAndNow,
+            how: experience.how,
           });
           if (i === this.wits.length - 1) {
             this.bottomOfHeart.feel(experience);
@@ -351,7 +346,7 @@ class Psyche {
         when: new Date(),
         how: "I don't seem to see any faces",
       });
-      logger.error({ error }, "Failed to detect faces");
+      // logger.error({ error }, "Failed to detect faces");
     });
   }
 

@@ -34,7 +34,7 @@ export default function Geolocator(props: GeolocatorProps) {
     ubificate(location);
     const id = setInterval(() => {
       ubificate(location);
-    }, 60000 * 5);
+    }, 60000);
   }, []);
 
   useEffect(() => {

@@ -81,7 +81,6 @@ async function postJsonRequest(
 
     return await response.json();
   } catch (error) {
-    console.error("Error making request:", error);
     return null;
   }
 }
