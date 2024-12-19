@@ -16,6 +16,7 @@ import {
 } from "../lib/daringsby/network/sockets/initializer.ts";
 import { MessageType } from "../lib/daringsby/network/messages/MessageType.ts";
 import { isValidMienMessage } from "../lib/daringsby/network/messages/MienMessage.ts";
+import Body from "./Body.tsx";
 
 export default function Face() {
   if (IS_BROWSER) {

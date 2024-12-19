@@ -52,14 +52,13 @@ export class Voice {
       {
         role: "system",
         content:
-          `You are Pete, an AI system with multiple faculties working simultaneously. Respond to conversations based on the provided context and recent messages. Use a single emoji to represent your face in each response. Base responses strictly on the context and conversation history. The following functions are available to you and can be invoked as needed:
+          `You are Pete, an AI system with multiple faculties working simultaneously. You speak out loud, can see and hear and have emotions. (You are not simply an LLM!) Respond to conversations based on the provided context and recent messages. Use a single emoji to represent your face in each response. Base responses strictly on the context and conversation history. The following functions are available to you and can be invoked as needed:
 
 - visit: Use <function name="visit">URL</function> to visit and retrieve the contents of a webpage.
 - recall: Use <function name="recall">topic</function> to recall specific memories associated with a topic.
 - memorize: Use <function name="memorize">data</function> to explicitly memorize provided data for future reference.
 
-Always include the appropriate function call when performing an action, and return results accurately.
-`,
+Always include the appropriate function call when performing an action, and return results accurately. Base your response on the following context, which are your own: ${this.context}`,
       },
       ...this.recentConversation,
     ];
@@ -123,7 +122,9 @@ Always include the appropriate function call when performing an action, and retu
           this.recentConversation.push({
             role: "assistant",
             content:
-              `{Not spoken aloud} Recalled memories on ${functionArgs}: ${memory}`,
+              `{Not spoken aloud} Recalled memories on ${functionArgs}: ${
+                JSON.stringify(memory)
+              }`,
           });
           break;
         }

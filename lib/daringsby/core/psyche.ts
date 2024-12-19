@@ -48,10 +48,10 @@ class Psyche {
   protected witTimings: number[] = [
     1, // Perceive low level sensory input every 3rd tick; this constitutes an "instant"
     3, // A "beat" is a moment in our world that is 3 ticks long
-    // 5, // A "moment" in our world is everything that happens in 13 ticks
-    // 7, // A "scene" is a moment in our world that is 7 moments long
-    // 13, // A "chapter" in our world is 13 scenes long
-    // 17, // A "book" in our world is 17 chapters long
+    5, // A "moment" in our world is everything that happens in 13 ticks
+    7, // A "scene" is a moment in our world that is 7 moments long
+    13, // A "chapter" in our world is 13 scenes long
+    17, // A "book" in our world is 17 chapters long
   ];
 
   protected voice = new Worker(

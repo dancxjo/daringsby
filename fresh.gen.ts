@@ -9,6 +9,7 @@ import * as $index from "./routes/index.tsx";
 import * as $senses_location from "./routes/senses/location.ts";
 import * as $socket from "./routes/socket.ts";
 import * as $AudioQueue from "./islands/AudioQueue.tsx";
+import * as $Body from "./islands/Body.tsx";
 import * as $Face from "./islands/Face.tsx";
 import * as $Geolocator from "./islands/Geolocator.tsx";
 import * as $LiveConnection from "./islands/LiveConnection.tsx";
@@ -30,6 +31,7 @@ const manifest = {
   },
   islands: {
     "./islands/AudioQueue.tsx": $AudioQueue,
+    "./islands/Body.tsx": $Body,
     "./islands/Face.tsx": $Face,
     "./islands/Geolocator.tsx": $Geolocator,
     "./islands/LiveConnection.tsx": $LiveConnection,

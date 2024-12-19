@@ -13,11 +13,11 @@ voice.sentences$.subscribe((message) => {
   self.postMessage({ message });
 });
 
-// setInterval(async () => {
-//   logger.info("Thinking of a response...");
-//   await voice.thinkOfResponse();
-//   logger.info("Done thinking.");
-// }, 5000);
+setInterval(async () => {
+  logger.info("Thinking of a response...");
+  await voice.thinkOfResponse();
+  logger.info("Done thinking.");
+}, 5000);
 
 // A voice worker to manage conversations in a separate thread.
 self.onmessage = async (e) => {
