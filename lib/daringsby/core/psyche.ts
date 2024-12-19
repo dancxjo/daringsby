@@ -47,7 +47,7 @@ class Psyche {
   protected wits: Wit[] = [];
   protected witTimings: number[] = [
     1,
-    3,
+    // 3,
     // 5,
   ];
 
