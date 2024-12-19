@@ -72,5 +72,21 @@
     align-items: center;
     background-color: rgba(0, 0, 0, 0.5);
     z-index: 1000;
-
 }
+.face {
+    background-color: black;
+    color: white;
+}
+.face video {
+    opacity: 0.5;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover; /* To ensure the video covers the entire area without distortion */
+  }
+
+  .face .mien {
+    font-size: 30em;
+  }

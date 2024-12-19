@@ -7,7 +7,7 @@ import { v4 } from "npm:uuid";
 const qdrant = new QdrantClient({
   url: Deno.env.get("QDRANT_URL") || "http://localhost:6333",
 });
-const COLLECTION_NAME = "embeddings";
+const COLLECTION_NAME = "moments";
 
 /**
  * Coalesces nearby vector points in the Qdrant collection.

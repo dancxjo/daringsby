@@ -1,44 +1,140 @@
-import { Ollama } from "npm:ollama";
-import { Voice } from "./newt.ts";
-import { take } from "npm:rxjs";
+import emojiRegex from "npm:emoji-regex";
+import { Message, Ollama } from "npm:ollama";
+import { BehaviorSubject, Observable, Subject } from "npm:rxjs";
+import { sentenceBySentence } from "../utils/chunking.ts";
+import { loadConversation, memorize, recall } from "../utils/memory.ts";
 import logger from "./logger.ts";
+import * as cheerio from "npm:cheerio";
 
-const voice = new Voice(
-  new Ollama({
-    host: "http://10.0.0.95:11434",
-  }),
-);
+export class Voice {
+  protected recentConversation: Message[] = [];
+  protected chunksOut = new Subject<string>();
+  protected messagesOut = new Subject<Message>();
+  readonly raw$: Observable<string> = this.chunksOut.asObservable();
+  readonly sentences$ = this.raw$.pipe(sentenceBySentence());
+  protected context: string = "";
+  protected alreadySpeaking = false;
+  protected mien: Subject<string> = new BehaviorSubject<string>("😐");
+  readonly mien$: Observable<string> = this.mien.asObservable();
+  protected lastEmoji = "😐";
 
-voice.sentences$.subscribe((message) => {
-  logger.debug({ message }, "Sending message to main thread");
-  self.postMessage({ message });
-});
+  constructor(protected ollama: Ollama) {
+    loadConversation().then((conversation) => {
+      this.recentConversation = conversation;
+    });
+  }
 
-// setInterval(async () => {
-//   logger.info("Thinking of a response...");
-//   await voice.thinkOfResponse();
-//   logger.info("Done thinking.");
-// }, 5000);
+  orient(context: string): void {
+    this.context = context;
+  }
 
-// A voice worker to manage conversations in a separate thread.
-self.onmessage = async (e) => {
-  logger.debug({ e }, "Received message from main thread");
-  voice.orient(e.data.context);
-  let last = "";
-  voice.mien$.subscribe((mien) => {
-    if (mien === last) {
+  hear(message: Message): void {
+    const lastMessage =
+      this.recentConversation[this.recentConversation.length - 1];
+    if (lastMessage && lastMessage.role === message.role) {
+      lastMessage.content += ` ${message.content}`;
+    } else {
+      this.recentConversation.push(message);
+      this.recentConversation = this.recentConversation.slice(-5);
+    }
+  }
+
+  async thinkOfResponse(): Promise<void> {
+    if (this.alreadySpeaking) {
+      logger.debug("Already speaking; skipping");
       return;
     }
-    last = mien;
-    logger.debug({ mien }, "Sending");
-    self.postMessage({ mien });
-  });
-  if (e.data.message) {
-    logger.debug(
-      { message: e.data.message, role: e.data.role },
-      "Received message",
-    );
-    voice.hear({ role: e.data.role, content: e.data.message });
+
+    this.alreadySpeaking = true;
+    logger.debug("Thinking of a response");
+
+    const messages = [
+      {
+        role: "system",
+        content:
+          `You are Pete, an AI system with multiple faculties working simultaneously. Respond to conversations based on the provided context and recent messages. Use a single emoji to represent your face in each response. Base responses strictly on the context and conversation history. The following functions are available to you and can be invoked as needed:
+
+- visit: Use <function name="visit">URL</function> to visit and retrieve the contents of a webpage.
+- recall: Use <function name="recall">topic</function> to recall specific memories associated with a topic.
+- memorize: Use <function name="memorize">data</function> to explicitly memorize provided data for future reference.
+
+Always include the appropriate function call when performing an action, and return results accurately.
+`,
+      },
+      ...this.recentConversation,
+    ];
+
+    const chunks = await this.ollama.chat({
+      messages,
+      model: "gemma2:27b",
+      stream: true,
+      options: {
+        temperature: 0.5 + Math.random() * 0.25,
+        num_ctx: 2048,
+        num_predict: 128,
+      },
+    });
+
+    let completeResponse = "";
+    for await (const chunk of chunks) {
+      this.chunksOut.next(chunk.message.content);
+      completeResponse += chunk.message.content;
+    }
+
+    const newEmoji = emojiRegex().exec(completeResponse)?.[0] || "😐";
+    if (newEmoji !== this.lastEmoji) {
+      this.lastEmoji = newEmoji;
+      this.mien.next(newEmoji);
+    }
+
+    this.messagesOut.next({
+      content: completeResponse,
+      role: "assistant",
+    });
+
+    logger.debug({ response: completeResponse }, "Generated response");
+    this.alreadySpeaking = false;
+
+    await this.handleFunctionCalls(completeResponse).catch((error) => {
+      logger.error(error, "Error handling function calls");
+    });
   }
-  voice.thinkOfResponse();
-};
+
+  private async handleFunctionCalls(response: string): Promise<void> {
+    const $ = cheerio.load(response);
+    const functionCalls = $("function");
+
+    for (const functionCall of functionCalls) {
+      const $functionCall = $(functionCall);
+      const functionName = $functionCall.attr("name");
+      const functionArgs = $functionCall.text();
+
+      switch (functionName) {
+        case "visit": {
+          const body = await fetch(functionArgs).then((res) => res.text());
+          this.recentConversation.push({
+            role: "assistant",
+            content: `{Not spoken aloud} Visited ${functionArgs}: ${body}`,
+          });
+          break;
+        }
+        case "recall": {
+          const memory = await recall(functionArgs);
+          this.recentConversation.push({
+            role: "assistant",
+            content:
+              `{Not spoken aloud} Recalled memories on ${functionArgs}: ${memory}`,
+          });
+          break;
+        }
+        case "memorize": {
+          await memorize({
+            metadata: { label: "ExplicitMemory" },
+            data: { data: functionArgs },
+          });
+          break;
+        }
+      }
+    }
+  }
+}

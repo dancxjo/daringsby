@@ -1,4 +1,4 @@
-import { Sensation } from "../../core/newt.ts";
+import { Sensation } from "../../core/Sensation.ts";
 import { MessageType } from "./MessageType.ts";
 import { SocketMessage } from "./SocketMessage.ts";
 

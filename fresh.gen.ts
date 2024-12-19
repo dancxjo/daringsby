@@ -4,10 +4,12 @@
 
 import * as $_404 from "./routes/_404.tsx";
 import * as $_app from "./routes/_app.tsx";
+import * as $chat from "./routes/chat.tsx";
 import * as $index from "./routes/index.tsx";
 import * as $senses_location from "./routes/senses/location.ts";
 import * as $socket from "./routes/socket.ts";
 import * as $AudioQueue from "./islands/AudioQueue.tsx";
+import * as $Face from "./islands/Face.tsx";
 import * as $Geolocator from "./islands/Geolocator.tsx";
 import * as $LiveConnection from "./islands/LiveConnection.tsx";
 import * as $Mien from "./islands/Mien.tsx";
@@ -21,12 +23,14 @@ const manifest = {
   routes: {
     "./routes/_404.tsx": $_404,
     "./routes/_app.tsx": $_app,
+    "./routes/chat.tsx": $chat,
     "./routes/index.tsx": $index,
     "./routes/senses/location.ts": $senses_location,
     "./routes/socket.ts": $socket,
   },
   islands: {
     "./islands/AudioQueue.tsx": $AudioQueue,
+    "./islands/Face.tsx": $Face,
     "./islands/Geolocator.tsx": $Geolocator,
     "./islands/LiveConnection.tsx": $LiveConnection,
     "./islands/Mien.tsx": $Mien,

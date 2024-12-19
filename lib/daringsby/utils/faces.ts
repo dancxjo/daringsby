@@ -1,3 +1,5 @@
+import logger from "../core/logger.ts";
+
 export interface FaceDetectionResponse {
   level: number;
   time: number;
@@ -97,7 +99,7 @@ export async function recognizeFaces(base64Image: string) {
     recognitionApiKey,
     base64Image,
   );
-  console.log("Face Recognition Response:", data);
+  logger.info({ data }, "Face Recognition Response:");
   return data;
 }
 

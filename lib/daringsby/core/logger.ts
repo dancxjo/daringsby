@@ -1,7 +1,7 @@
 import { IS_BROWSER } from "$fresh/runtime.ts";
 import { pino } from "npm:pino";
 import { Subject } from "npm:rxjs";
-import { Sensation } from "./newt.ts";
+import { Sensation } from "./Sensation.ts";
 
 export const newLog = (name: string, level = "info") =>
   pino({ name, level, browser: IS_BROWSER ? { asObject: true } : undefined });

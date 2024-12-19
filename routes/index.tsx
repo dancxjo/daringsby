@@ -1,5 +1,5 @@
-import LiveConnection from "../islands/LiveConnection.tsx";
+import Face from "../islands/Face.tsx";
 
 export default function Home() {
-  return <LiveConnection />;
+  return <Face />;
 }

@@ -25,7 +25,7 @@ function createSession() {
 const qdrant = new QdrantClient({
   url: Deno.env.get("QDRANT_URL") || "http://localhost:6333",
 });
-const COLLECTION_NAME = "embeddings";
+const COLLECTION_NAME = "memories";
 
 // Initialize Qdrant Collection
 async function initializeQdrantCollection(): Promise<void> {
