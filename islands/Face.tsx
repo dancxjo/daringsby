@@ -18,6 +18,7 @@ import { MessageType } from "../lib/daringsby/network/messages/MessageType.ts";
 import { isValidMienMessage } from "../lib/daringsby/network/messages/MienMessage.ts";
 import Body from "./Body.tsx";
 import AudioCapture from "./AudioCapture.tsx";
+import { HearMessage } from "../lib/daringsby/network/messages/HearMessage.ts";
 
 export default function Face() {
   if (IS_BROWSER) {
@@ -78,30 +79,13 @@ export default function Face() {
     }
   };
 
-  const sendAudio = async (audio: Blob) => {
+  const sendAudio = async (message: HearMessage) => {
     logger.info("Sending audio");
     if (!serverRef.current) {
       logger.error("No server connection");
       return;
     }
-    // const text = await audio.text();
-    const base64Encoded = await new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = reader.result as string;
-        resolve(base64);
-      };
-      reader.readAsDataURL(audio);
-    });
-    logger.info({ base64Encoded }, "Sending audio text");
-    try {
-      serverRef.current?.send({
-        type: MessageType.Hear,
-        data: base64Encoded,
-      });
-    } catch (error) {
-      logger.error(error);
-    }
+    serverRef.current?.send(message);
   };
 
   const sendText = (text: string) => {

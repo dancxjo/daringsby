@@ -2,7 +2,7 @@ FROM denoland/deno:latest
 
 # Install OpenSSL
 USER root
-RUN apt-get update && apt-get install -y openssl && apt-get clean
+RUN apt-get update && apt-get install -y openssl ffmpeg && apt-get clean
 # Set working directory
 WORKDIR /app
 
@@ -10,7 +10,6 @@ WORKDIR /app
 COPY . /app
 COPY generate-certs.sh /app/generate-certs.sh
 RUN chmod +x /app/generate-certs.sh
-RUN deno install --allow-scripts=npm:@tensorflow/tfjs-node@4.22.0,npm:core-js@3.29.1
 
 # Expose ports
 EXPOSE 8000

@@ -12,6 +12,7 @@ import handleIncomingTextMessages from "../network/handlers/text.ts";
 import { SocketMessage } from "../network/messages/SocketMessage.ts";
 import { Sensation } from "./Sensation.ts";
 import handleIncomingEchoMessages from "../network/handlers/echo.ts";
+import handleIncomingHearMessages from "../network/handlers/audio.ts";
 import { getNthPrime } from "../utils/primes.ts";
 import {
   establishMemory,
@@ -48,7 +49,7 @@ class Psyche {
   protected witTimings: number[] = [
     1,
     // 3,
-    // 5,
+    5,
   ];
 
   protected voice = new Worker(
@@ -183,7 +184,7 @@ class Psyche {
       previousWit = wit;
     }
 
-    this.witnessCode();
+    // this.witnessCode();
   }
 
   protected async witnessCode() {
@@ -384,6 +385,7 @@ class Psyche {
     handleIncomingSenseMessages(session);
     handleIncomingTextMessages(session);
     handleIncomingEchoMessages(session);
+    handleIncomingHearMessages(session);
   }
 
   private doFeelSocketConnection(req: Request) {

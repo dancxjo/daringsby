@@ -5,22 +5,67 @@ import { v4 as uuidv4 } from "npm:uuid";
 import { join as pathJoin } from "jsr:@std/path";
 import { arrayBufferToBase64 } from "./buffer_transformations.ts";
 import emojiRegex from "npm:emoji-regex";
+import logger from "../core/logger.ts";
 
-/** Detects if an audio buffer is mostly silent based on a given threshold */
-export function detectSilence(
+/**
+ * Detects silence in an AudioBuffer.
+ *
+ * @param {AudioBuffer} audioBuffer - The audio buffer to analyze.
+ * @param {number} silenceThreshold - The amplitude threshold to consider as silence (e.g., 0.01).
+ * @param {number} minSilenceDuration - Minimum duration (in seconds) to classify as silence.
+ * @returns {Promise<Array<[number, number]>>} - A promise that resolves to an array of [start, end] pairs for silent segments.
+ */
+export async function detectSilence(
   audioBuffer: AudioBuffer,
-  threshold: number = 0.003,
-): boolean {
-  const channelData = audioBuffer.getChannelData(0);
+  silenceThreshold: number = 0.01,
+  minSilenceDuration: number = 0.5,
+): Promise<Array<[number, number]>> {
+  const channelData = audioBuffer.getChannelData(0); // Use the first channel
+  const sampleRate = audioBuffer.sampleRate;
+  const minSilenceSamples = Math.floor(minSilenceDuration * sampleRate);
+
+  let silenceStart = null;
+  const silenceSegments: Array<[number, number]> = [];
+
   for (let i = 0; i < channelData.length; i++) {
-    if (Math.abs(channelData[i]) > threshold) {
-      return false;
+    if (Math.abs(channelData[i]) < silenceThreshold) {
+      if (silenceStart === null) {
+        silenceStart = i;
+      }
+    } else if (silenceStart !== null) {
+      const silenceEnd = i;
+      if (silenceEnd - silenceStart >= minSilenceSamples) {
+        silenceSegments.push([
+          silenceStart / sampleRate,
+          silenceEnd / sampleRate,
+        ]);
+      }
+      silenceStart = null;
     }
   }
-  return true;
+
+  // Handle trailing silence
+  if (
+    silenceStart !== null &&
+    channelData.length - silenceStart >= minSilenceSamples
+  ) {
+    silenceSegments.push([
+      silenceStart / sampleRate,
+      channelData.length / sampleRate,
+    ]);
+  }
+
+  return silenceSegments;
 }
 
-/** Clips a segment of audio from an audiobuffer from a given index to an end index */
+/**
+ * Clips a segment of audio from an AudioBuffer from a given index to an end index.
+ *
+ * @param {AudioBuffer} audioBuffer - The audio buffer to clip.
+ * @param {number} start - Start index in samples.
+ * @param {number} end - End index in samples.
+ * @returns {AudioBuffer} - The clipped AudioBuffer.
+ */
 export function clip(
   audioBuffer: AudioBuffer,
   start: number,
@@ -39,6 +84,55 @@ export function clip(
     outputData[i] = inputData[start + i];
   }
   return outputBuffer;
+}
+
+/**
+ * Splits an AudioBuffer into chunks based on detected silence.
+ *
+ * @param {AudioBuffer} audioBuffer - The audio buffer to split.
+ * @param {number} silenceThreshold - The amplitude threshold to consider as silence (e.g., 0.01).
+ * @param {number} minSilenceDuration - Minimum duration (in seconds) to classify as silence.
+ * @returns {Promise<AudioBuffer[]>} - A promise that resolves to an array of AudioBuffer chunks.
+ */
+export async function splitBySilence(
+  audioBuffer: AudioBuffer,
+  silenceThreshold: number = 0.01,
+  minSilenceDuration: number = 0.5,
+): Promise<AudioBuffer[]> {
+  const silenceSegments = await detectSilence(
+    audioBuffer,
+    silenceThreshold,
+    minSilenceDuration,
+  );
+
+  const audioChunks = [];
+  let lastEnd = 0;
+  const sampleRate = audioBuffer.sampleRate;
+
+  for (const [start, end] of silenceSegments) {
+    if (lastEnd < start) {
+      // Extract non-silent segment as a new AudioBuffer
+      const chunk = clip(
+        audioBuffer,
+        Math.floor(lastEnd * sampleRate),
+        Math.floor(start * sampleRate),
+      );
+      audioChunks.push(chunk);
+    }
+    lastEnd = end;
+  }
+
+  // Add the final segment if there's remaining audio after the last silence
+  if (lastEnd < audioBuffer.duration) {
+    const chunk = clip(
+      audioBuffer,
+      Math.floor(lastEnd * sampleRate),
+      Math.floor(audioBuffer.duration * sampleRate),
+    );
+    audioChunks.push(chunk);
+  }
+
+  return audioChunks;
 }
 
 export async function decodeWebm(webmData: ArrayBuffer): Promise<AudioBuffer> {
@@ -83,7 +177,7 @@ export async function decodeWebm(webmData: ArrayBuffer): Promise<AudioBuffer> {
 
   const audioBuffer = await decodeAudio(wavData.buffer);
   const endedAt = Date.now();
-  console.log(`Decoded WebM in ${endedAt - startedAt}ms.`);
+  logger.debug(`Decoded WebM in ${endedAt - startedAt}ms.`);
   return audioBuffer;
 }
 
