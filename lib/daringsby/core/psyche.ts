@@ -184,7 +184,7 @@ class Psyche {
       previousWit = wit;
     }
 
-    // this.witnessCode();
+    this.witnessCode();
   }
 
   protected async witnessCode() {

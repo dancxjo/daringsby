@@ -97,9 +97,9 @@
     /* To ensure the video covers the entire area without distortion */
 }
 
-.face .Mien {
+.face .mien {
     font-size: 30em;
     text-align: center;
-    font-size: calc(5vw + 5vh);
-    line-height: "1";
+    font-size: calc(100vw / 3) !important;
+    /* line-height: 1; */
 }

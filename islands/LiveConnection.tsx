@@ -206,7 +206,7 @@ export default function LiveConnection() {
           <Geolocator onChange={reportLocation} />
         </div>
         <div class="col-12 col-md-6 mb-4 live-connection-output">
-          <Mien mien={mien} />
+          <Mien mien={mien} style={{ fontSize: "10em" }} />
           <SpokenWords words={words} />
           <ThoughtBubble thought={thought} />
           <AudioQueue serverRef={serverRef} />

@@ -119,7 +119,9 @@ Always include the appropriate function call when performing an action, and retu
           const body = await fetch(functionArgs).then((res) => res.text());
           this.recentConversation.push({
             role: "assistant",
-            content: `{Not spoken aloud} Visited ${functionArgs}: ${body}`,
+            content: `{Not spoken aloud} Visited ${functionArgs}: ${
+              cheerio.load(body).text()
+            }`,
           });
           break;
         }
