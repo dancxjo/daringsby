@@ -20,6 +20,7 @@ import { isValidSayMessage } from "../lib/daringsby/network/messages/SayMessage.
 import { isValidThoughtMessage } from "../lib/daringsby/network/messages/ThoughtMessage.ts";
 
 import yml from "npm:yaml";
+import AudioCapture from "./AudioCapture.tsx";
 export default function LiveConnection() {
   if (IS_BROWSER) {
     initializeWebSocket();
@@ -114,6 +115,32 @@ export default function LiveConnection() {
     }
   };
 
+  const sendAudio = async (audio: Blob) => {
+    logger.info("Sending audio");
+    if (!serverRef.current) {
+      logger.error("No server connection");
+      return;
+    }
+    // const text = await audio.text();
+    const base64Encoded = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result as string;
+        resolve(base64);
+      };
+      reader.readAsDataURL(audio);
+    });
+    logger.info({ base64Encoded }, "Sending audio text");
+    try {
+      serverRef.current?.send({
+        type: MessageType.Hear,
+        data: base64Encoded,
+      });
+    } catch (error) {
+      logger.error(error);
+    }
+  };
+
   const reportEvent = (event: Event) => {
     if (!serverRef.current) {
       logger.error("No server connection");
@@ -191,6 +218,7 @@ export default function LiveConnection() {
         <div class="col-12 col-md-6 mb-4 live-connection-inputs">
           <Webcam onSnap={sendSnapshot} interval={15000} />
           <TextInput onChange={sendText} />
+          <AudioCapture onSample={sendAudio} />
           <Geolocator onChange={reportLocation} />
         </div>
         <div class="col-12 col-md-6 mb-4 live-connection-output">

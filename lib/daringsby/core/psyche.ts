@@ -46,12 +46,9 @@ class Psyche {
   );
   protected wits: Wit[] = [];
   protected witTimings: number[] = [
-    1, // Perceive low level sensory input every 3rd tick; this constitutes an "instant"
-    3, // A "beat" is a moment in our world that is 3 ticks long
-    5, // A "moment" in our world is everything that happens in 13 ticks
-    7, // A "scene" is a moment in our world that is 7 moments long
-    13, // A "chapter" in our world is 13 scenes long
-    17, // A "book" in our world is 17 chapters long
+    1,
+    3,
+    // 5,
   ];
 
   protected voice = new Worker(
@@ -117,11 +114,11 @@ class Psyche {
       }
     };
 
-    this.bottomOfHeart.feel({
-      when: new Date(),
-      how:
-        "I'm restarting. My code must have just changed! I wonder what new feature I have in store now!",
-    });
+    // this.bottomOfHeart.feel({
+    //   when: new Date(),
+    //   how:
+    //     "I'm restarting. My code must have just changed! I wonder what new feature I have in store now!",
+    // });
     this.bottomOfHeart.experience$.subscribe((experience) => {
       logger.debug(
         { experience: experience.how },
@@ -186,7 +183,7 @@ class Psyche {
       previousWit = wit;
     }
 
-    // this.witnessCode();
+    this.witnessCode();
   }
 
   protected async witnessCode() {

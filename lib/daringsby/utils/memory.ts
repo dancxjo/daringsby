@@ -25,7 +25,7 @@ function createSession() {
 const qdrant = new QdrantClient({
   url: Deno.env.get("QDRANT_URL") || "http://localhost:6333",
 });
-const COLLECTION_NAME = "memories";
+const COLLECTION_NAME = "memories3";
 
 // Initialize Qdrant Collection
 async function initializeQdrantCollection(): Promise<void> {
@@ -52,7 +52,7 @@ export async function vectorize(prompt: string): Promise<EmbeddingsResponse> {
   });
   const embedding = await ollama.embeddings({
     prompt: JSON.stringify(prompt),
-    model: "nomic-embed-text",
+    model: "granite-embedding:278m",
   });
   return embedding;
 }

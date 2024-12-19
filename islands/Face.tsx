@@ -17,6 +17,7 @@ import {
 import { MessageType } from "../lib/daringsby/network/messages/MessageType.ts";
 import { isValidMienMessage } from "../lib/daringsby/network/messages/MienMessage.ts";
 import Body from "./Body.tsx";
+import AudioCapture from "./AudioCapture.tsx";
 
 export default function Face() {
   if (IS_BROWSER) {
@@ -71,6 +72,32 @@ export default function Face() {
       serverRef.current?.send({
         type: MessageType.See,
         data: image,
+      });
+    } catch (error) {
+      logger.error(error);
+    }
+  };
+
+  const sendAudio = async (audio: Blob) => {
+    logger.info("Sending audio");
+    if (!serverRef.current) {
+      logger.error("No server connection");
+      return;
+    }
+    // const text = await audio.text();
+    const base64Encoded = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result as string;
+        resolve(base64);
+      };
+      reader.readAsDataURL(audio);
+    });
+    logger.info({ base64Encoded }, "Sending audio text");
+    try {
+      serverRef.current?.send({
+        type: MessageType.Hear,
+        data: base64Encoded,
       });
     } catch (error) {
       logger.error(error);
@@ -135,16 +162,11 @@ export default function Face() {
       >
         <Mien
           mien={mien}
-          style={{
-            textAlign: "center",
-            fontSize: "calc(5vw + 5vh)", // Dynamically scale font size
-            lineHeight: "1", // Use single line height for max font scaling
-            color: "#fff", // Adjust color for readability
-          }}
         />
       </div>
       <Geolocator onChange={reportLocation} />
       <AudioQueue serverRef={serverRef} />
+      <AudioCapture onSample={sendAudio} />
     </div>
   );
 }

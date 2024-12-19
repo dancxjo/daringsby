@@ -1,18 +1,25 @@
-.mien, .Mien {
+.mien,
+.Mien {
     text-align: center;
     color: var(--bs-primary);
-    width: 100%;                /* Set container width */
-  white-space: nowrap;        /* Keep the text on one line */
-  overflow: hidden;           /* Hide anything that overflows */
-  text-overflow: ellipsis;    /* Add ellipsis if content overflows */
-  font-size: calc(100vw / 5);/* Set a default font size relative to viewport */
+    width: 100%;
+    /* Set container width */
+    white-space: nowrap;
+    /* Keep the text on one line */
+    overflow: hidden;
+    /* Hide anything that overflows */
+    text-overflow: ellipsis;
+    /* Add ellipsis if content overflows */
+    font-size: calc(100vw / 5);
+    /* Set a default font size relative to viewport */
 
-  display: inline-block;
-  line-height: 2;             /* Keeps emoji size aligned closely */
-  vertical-align: middle;
-  
-  /* Adjusts font size automatically to fit inside container */
-  font-size: 10vw;
+    display: inline-block;
+    line-height: 2;
+    /* Keeps emoji size aligned closely */
+    vertical-align: middle;
+
+    /* Adjusts font size automatically to fit inside container */
+    font-size: 10vw;
 }
 
 /* Styling for spoken words */
@@ -73,10 +80,12 @@
     background-color: rgba(0, 0, 0, 0.5);
     z-index: 1000;
 }
+
 .face {
     background-color: black;
     color: white;
 }
+
 .face video {
     opacity: 0.5;
     position: fixed;
@@ -84,9 +93,13 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    object-fit: cover; /* To ensure the video covers the entire area without distortion */
-  }
+    object-fit: cover;
+    /* To ensure the video covers the entire area without distortion */
+}
 
-  .face .mien {
+.face .Mien {
     font-size: 30em;
-  }
+    text-align: center;
+    font-size: calc(5vw + 5vh);
+    line-height: "1";
+}

@@ -14,5 +14,8 @@
   "[javascript]": {
     "editor.defaultFormatter": "denoland.vscode-deno"
   },
-  "css.customData": []
+  "css.customData": [],
+  "[css]": {
+    "editor.defaultFormatter": "vscode.css-language-features"
+  }
 }

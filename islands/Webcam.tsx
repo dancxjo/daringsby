@@ -1,84 +1,102 @@
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
+import logger from "../lib/daringsby/core/logger.ts";
 
 interface WebcamProps {
-    onSnap?: (image: string) => void;
-    interval?: number; // Interval in milliseconds
+  onSnap?: (image: string) => void;
+  interval?: number; // Interval in milliseconds
 }
 
 export default function Webcam({ onSnap, interval = 10000 }: WebcamProps) {
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const snapshot = useSignal<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const snapshot = useSignal<string | null>(null);
 
-    useEffect(() => {
-        // Start the webcam stream when the component mounts
-        const startWebcam = async () => {
-            if (videoRef.current) {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({
-                        video: true,
-                    });
-                    videoRef.current.srcObject = stream;
-                } catch (error) {
-                    console.error("Error accessing the webcam:", error);
-                }
-            }
-        };
+  useEffect(() => {
+    logger.info({ data: null }, "Webcam component mounted, starting webcam.");
 
-        startWebcam();
+    const startWebcam = async () => {
+      logger.info("Starting webcam stream.");
+      if (videoRef.current && !videoRef.current.srcObject) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+          });
+          videoRef.current.srcObject = stream;
+          logger.info("Webcam stream started successfully.");
+        } catch (error) {
+          logger.error({ error }, "Error accessing the webcam.");
+        }
+      }
+    };
 
-        // Stop the webcam stream when the component unmounts
-        return () => {
-            if (videoRef.current && videoRef.current.srcObject) {
-                const stream = videoRef.current.srcObject as MediaStream;
-                stream.getTracks().forEach((track) => track.stop());
-            }
-        };
-    }, []);
+    startWebcam();
 
-    useEffect(() => {
-        // Capture snapshots at specified intervals
-        const captureInterval = setInterval(() => {
-            if (videoRef.current && canvasRef.current) {
-                const canvas = canvasRef.current;
-                const context = canvas.getContext("2d");
-                if (context) {
-                    context.drawImage(
-                        videoRef.current,
-                        0,
-                        0,
-                        canvas.width,
-                        canvas.height,
-                    );
+    return () => {
+      logger.info({ data: null }, "Stopping webcam stream.");
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach((track) => {
+          track.stop();
+          logger.info({ data: track }, "Stopped a track in the webcam stream.");
+        });
+      }
+    };
+  }, []);
 
-                    // Convert the canvas content to a data URL and trigger the callback
-                    const image = canvas.toDataURL("image/jpg");
-                    snapshot.value = image; // Update signal with the captured image
-                    if (onSnap) onSnap(image); // Call the onSnap callback if provided
-                }
-            }
-        }, interval);
+  useEffect(() => {
+    logger.info("Setting up capture interval.");
 
-        // Clear the interval when the component unmounts
-        // return () => clearInterval(captureInterval);
-    }, [interval, onSnap]);
+    const captureInterval = setInterval(() => {
+      logger.info("Tick.");
+      if (videoRef.current && canvasRef.current) {
+        const canvas = canvasRef.current;
+        const context = canvas.getContext("2d");
+        if (context) {
+          logger.info(
+            "Capturing frame from webcam to canvas.",
+          );
+          context.drawImage(
+            videoRef.current,
+            0,
+            0,
+            canvas.width,
+            canvas.height,
+          );
 
-    return (
-        <div>
-            {/* Video Preview */}
-            <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-            />
+          const image = canvas.toDataURL("image/jpg");
+          snapshot.value = image;
+          logger.info("Captured image as data URL.");
 
-            {/* Hidden Canvas */}
-            <canvas
-                ref={canvasRef}
-                style={{ display: "none" }}
-            >
-            </canvas>
-        </div>
-    );
+          if (onSnap) {
+            logger.info("Calling onSnap callback.");
+            onSnap(image);
+          }
+        }
+      }
+    }, interval);
+
+    return () => {
+      logger.info("Clearing capture interval.");
+      clearInterval(captureInterval);
+    };
+  }, [interval, onSnap]);
+
+  return (
+    <div>
+      {/* Video Preview */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+      />
+
+      {/* Hidden Canvas */}
+      <canvas
+        ref={canvasRef}
+        style={{ display: "none" }}
+      >
+      </canvas>
+    </div>
+  );
 }
