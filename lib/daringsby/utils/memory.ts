@@ -25,7 +25,7 @@ function createSession() {
 const qdrant = new QdrantClient({
   url: Deno.env.get("QDRANT_URL") || "http://localhost:6333",
 });
-const COLLECTION_NAME = "memories3";
+const COLLECTION_NAME = "memories4";
 
 // Initialize Qdrant Collection
 async function initializeQdrantCollection(): Promise<void> {
@@ -176,7 +176,7 @@ export async function recall(prompt: string, k: number = 10): Promise<any[]> {
       model: "nomic-embed-text",
     });
 
-    logger.info({ promptEmbedding }, "Embedding generated successfully");
+    logger.info("Embedding generated successfully");
     const response = await qdrant.search(COLLECTION_NAME, {
       vector: promptEmbedding.embedding,
       limit: k * 2,

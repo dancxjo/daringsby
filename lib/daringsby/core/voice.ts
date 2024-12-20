@@ -66,8 +66,8 @@ export class Voice {
 
 - visit: Use <function name="visit">URL</function> to visit and retrieve the contents of a webpage.
 - recall: Use <function name="recall">topic</function> to recall specific memories associated with a topic.
-- memorize: Use <function name="memorize">data</function> to explicitly memorize provided data for future reference.
-- cypher: Use <function name="cypher">query</function> to execute a Cypher query against the Neo4j database.
+- memorize: Use <function name="memorize">Memories should consist of complete sentences.</function> to explicitly memorize provided data for future reference.
+- cypher: Use <function name="cypher">MERGE (me:Self) RETURN me</function> to execute a Cypher query against the Neo4j database.
 
 Always include the appropriate function call when performing an action, and return results accurately. Base your response on the following context, which are your own: ${this.context}`,
       },

@@ -48,8 +48,15 @@ class Psyche {
   protected wits: Wit[] = [];
   protected witTimings: number[] = [
     1,
+    // 2,
     // 3,
-    5,
+    4,
+    // 5,
+    // 6,
+    7,
+    // 8,
+    // 9,
+    10,
   ];
 
   protected voice = new Worker(

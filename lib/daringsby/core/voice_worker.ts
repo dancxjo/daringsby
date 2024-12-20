@@ -17,7 +17,7 @@ setInterval(async () => {
   logger.info("Thinking of a response...");
   await voice.thinkOfResponse();
   logger.info("Done thinking.");
-}, 15000);
+}, 6000 * 15);
 
 // A voice worker to manage conversations in a separate thread.
 self.onmessage = async (e) => {
