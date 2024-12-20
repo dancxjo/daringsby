@@ -1,6 +1,6 @@
 import emojiRegex from "npm:emoji-regex";
 import { Message, Ollama } from "npm:ollama";
-import { BehaviorSubject, Observable, Subject } from "npm:rxjs";
+import { BehaviorSubject, Observable, ReplaySubject, Subject } from "npm:rxjs";
 import { sentenceBySentence } from "../utils/chunking.ts";
 import {
   executeCypherQuery,
@@ -15,12 +15,15 @@ export class Voice {
   protected recentConversation: Message[] = [];
   protected chunksOut = new Subject<string>();
   protected messagesOut = new Subject<Message>();
-  readonly raw$: Observable<string> = this.chunksOut.asObservable();
+  readonly messagesOut$: Observable<Message> = this.messagesOut.asObservable();
+  readonly raw$: Observable<string> = new BehaviorSubject(""); //this.chunksOut.asObservable();
   readonly sentences$ = this.raw$.pipe(sentenceBySentence());
   protected context: string = "";
-  protected alreadySpeaking = false;
+  protected alreadyThinking = false;
   protected mien: Subject<string> = new BehaviorSubject<string>("😐");
   readonly mien$: Observable<string> = this.mien.asObservable();
+  protected thought: Subject<string> = new Subject<string>();
+  readonly thought$: Observable<string> = this.thought.asObservable();
   protected lastEmoji = "😐";
 
   constructor(protected ollama: Ollama) {
@@ -49,13 +52,13 @@ export class Voice {
     }
   }
 
-  async thinkOfResponse(): Promise<void> {
-    if (this.alreadySpeaking) {
+  async think(): Promise<void> {
+    if (this.alreadyThinking) {
       logger.debug("Already speaking; skipping");
       return;
     }
 
-    this.alreadySpeaking = true;
+    this.alreadyThinking = true;
     logger.debug("Thinking of a response");
 
     const messages = [
@@ -68,8 +71,9 @@ export class Voice {
 - recall: Use <function name="recall">topic</function> to recall specific memories associated with a topic.
 - memorize: Use <function name="memorize">Memories should consist of complete sentences.</function> to explicitly memorize provided data for future reference.
 - cypher: Use <function name="cypher">MERGE (me:Self) RETURN me</function> to execute a Cypher query against the Neo4j database.
+- speak: Use <function name="speak">Text to speak</function> to speak aloud the provided text. Otherwise, any text your respond with constitutes an internal thought.
 
-Always include the appropriate function call when performing an action, and return results accurately. Base your response on the following context, which are your own: ${this.context}`,
+Always include the appropriate function call when performing an action, and return results accurately. Base your response on the following context, which are your own: ${this.context}. Remember, these are your own thoughts. The user can't hear you unless you speak aloud explicitly. THIS ISN'T A HYPOTHETICAL TEXT; THIS IS WHAT IS LITERALLY HAPPENING TO *YOU* RIGHT NOW. You must <function name="speak">speak</function> to communicate with the user.`,
       },
       ...this.recentConversation,
     ];
@@ -91,19 +95,15 @@ Always include the appropriate function call when performing an action, and retu
       completeResponse += chunk.message.content;
     }
 
+    this.thought.next(completeResponse);
     const newEmoji = emojiRegex().exec(completeResponse)?.[0] || "😐";
     if (newEmoji !== this.lastEmoji) {
       this.lastEmoji = newEmoji;
       this.mien.next(newEmoji);
     }
 
-    this.messagesOut.next({
-      content: completeResponse,
-      role: "assistant",
-    });
-
     logger.debug({ response: completeResponse }, "Generated response");
-    this.alreadySpeaking = false;
+    this.alreadyThinking = false;
 
     await this.handleFunctionCalls(completeResponse).catch((error) => {
       logger.error(error, "Error handling function calls");
@@ -120,6 +120,13 @@ Always include the appropriate function call when performing an action, and retu
       const functionArgs = $functionCall.text();
 
       switch (functionName) {
+        case "speak": {
+          this.messagesOut.next({
+            content: functionArgs,
+            role: "assistant",
+          });
+          break;
+        }
         case "visit": {
           const body = await fetch(functionArgs).then((res) => res.text());
           this.recentConversation.push({

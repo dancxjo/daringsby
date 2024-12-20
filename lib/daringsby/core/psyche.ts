@@ -111,6 +111,16 @@ class Psyche {
           when: new Date(),
           how: `My face turns into this shape: ${e.data.mien}`,
         });
+      } else if ("thought" in e.data && e.data.thought) {
+        const thought = e.data.thought;
+        this.witness({
+          when: new Date(),
+          how: `I think to myself: ${thought}`,
+        });
+        this.broadcast({
+          type: MessageType.Think,
+          data: thought,
+        });
       } else {
         const message = e.data.message;
         this.witness({

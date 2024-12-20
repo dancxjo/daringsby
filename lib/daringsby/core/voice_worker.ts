@@ -8,14 +8,19 @@ const voice = new Voice(
   }),
 );
 
-voice.sentences$.subscribe((message) => {
+voice.messagesOut$.subscribe((message) => {
   logger.debug({ message }, "Sending message to main thread");
-  self.postMessage({ message });
+  self.postMessage({ message: message.content });
+});
+
+voice.thought$.subscribe((thought) => {
+  logger.debug({ thought }, "Sending thought to main thread");
+  self.postMessage({ thought });
 });
 
 setInterval(async () => {
   logger.info("Thinking of a response...");
-  await voice.thinkOfResponse();
+  await voice.think();
   logger.info("Done thinking.");
 }, 6000 * 15);
 
@@ -39,5 +44,5 @@ self.onmessage = async (e) => {
     );
     voice.hear({ role: e.data.role, content: e.data.message });
   }
-  voice.thinkOfResponse();
+  voice.think();
 };
