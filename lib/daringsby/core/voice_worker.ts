@@ -18,11 +18,12 @@ voice.thought$.subscribe((thought) => {
   self.postMessage({ thought });
 });
 
-setInterval(async () => {
-  logger.info("Thinking of a response...");
+async function tick() {
   await voice.think();
-  logger.info("Done thinking.");
-}, 6000 * 15);
+  setTimeout(tick, 1000);
+}
+
+tick();
 
 // A voice worker to manage conversations in a separate thread.
 self.onmessage = async (e) => {
@@ -44,5 +45,4 @@ self.onmessage = async (e) => {
     );
     voice.hear({ role: e.data.role, content: e.data.message });
   }
-  voice.think();
 };

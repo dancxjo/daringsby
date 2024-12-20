@@ -9,6 +9,7 @@ import * as $index from "./routes/index.tsx";
 import * as $senses_location from "./routes/senses/location.ts";
 import * as $socket from "./routes/socket.ts";
 import * as $AudioCapture from "./islands/AudioCapture.tsx";
+import * as $AudioPlayer from "./islands/AudioPlayer.tsx";
 import * as $AudioQueue from "./islands/AudioQueue.tsx";
 import * as $Body from "./islands/Body.tsx";
 import * as $Face from "./islands/Face.tsx";
@@ -32,6 +33,7 @@ const manifest = {
   },
   islands: {
     "./islands/AudioCapture.tsx": $AudioCapture,
+    "./islands/AudioPlayer.tsx": $AudioPlayer,
     "./islands/AudioQueue.tsx": $AudioQueue,
     "./islands/Body.tsx": $Body,
     "./islands/Face.tsx": $Face,

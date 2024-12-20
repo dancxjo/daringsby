@@ -22,6 +22,7 @@ import { isValidThoughtMessage } from "../lib/daringsby/network/messages/Thought
 import yml from "npm:yaml";
 import AudioCapture from "./AudioCapture.tsx";
 import { HearMessage } from "../lib/daringsby/network/messages/HearMessage.ts";
+import AudioPlayer from "./AudioPlayer.tsx";
 export default function LiveConnection() {
   if (IS_BROWSER) {
     initializeWebSocket();
@@ -209,7 +210,7 @@ export default function LiveConnection() {
           <Mien mien={mien} style={{ fontSize: "10em" }} />
           <SpokenWords words={words} />
           <ThoughtBubble thought={thought} />
-          <AudioQueue serverRef={serverRef} />
+          <AudioPlayer serverRef={serverRef} />
         </div>
       </div>
     </div>

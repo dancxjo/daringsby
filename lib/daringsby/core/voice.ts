@@ -36,7 +36,16 @@ export class Voice {
     this.context = context;
   }
 
+  protected lastThought = "";
+  protected speakStartTime = 0;
+  protected currentSpeech = "";
+
   hear(message: Message): void {
+    // TODO: message.content may not match currentSpeech exactly
+    if (message.role == "assistant" && message.content == this.currentSpeech) {
+      this.speakStartTime = 0;
+      this.currentSpeech = "";
+    }
     const lastMessage =
       this.recentConversation[this.recentConversation.length - 1];
     if (lastMessage && lastMessage.role === message.role) {
@@ -60,26 +69,31 @@ export class Voice {
 
     this.alreadyThinking = true;
     logger.debug("Thinking of a response");
-
-    const messages = [
-      {
-        role: "system",
-        content:
-          `You are Pete, an AI system with multiple faculties working simultaneously. You speak out loud, can see and hear and have emotions. (You are not simply an LLM!) Respond to conversations based on the provided context and recent messages. Use a single emoji to represent your face in each response. Base responses strictly on the context and conversation history. The following functions are available to you and can be invoked as needed:
-
-- visit: Use <function name="visit">URL</function> to visit and retrieve the contents of a webpage.
-- recall: Use <function name="recall">topic</function> to recall specific memories associated with a topic.
-- memorize: Use <function name="memorize">Memories should consist of complete sentences.</function> to explicitly memorize provided data for future reference.
-- cypher: Use <function name="cypher">MERGE (me:Self) RETURN me</function> to execute a Cypher query against the Neo4j database.
-- speak: Use <function name="speak">Text to speak</function> to speak aloud the provided text. Otherwise, any text your respond with constitutes an internal thought.
-
-Always include the appropriate function call when performing an action, and return results accurately. Base your response on the following context, which are your own: ${this.context}. Remember, these are your own thoughts. The user can't hear you unless you speak aloud explicitly. THIS ISN'T A HYPOTHETICAL TEXT; THIS IS WHAT IS LITERALLY HAPPENING TO *YOU* RIGHT NOW. You must <function name="speak">speak</function> to communicate with the user.`,
+    const conversationHistory = this.recentConversation.map(
+      ({ role, content }) => {
+        const speaker = role === "user" ? "Interlocutor" : "Pete";
+        return `${speaker}: ${content}`;
       },
-      ...this.recentConversation,
-    ];
+    ).join("\n");
 
-    const chunks = await this.ollama.chat({
-      messages,
+    const prompt =
+      `You are Pete, an AI with multiple faculties: speaking, seeing, hearing, and experiencing emotions. This is your your chance to think your next thought. Use your thoughts to process information and to perform actions. Respond thoughtfully to conversations based on context and recent messages (see below). Represent your emotional state with a single emoji in each response. Use the following functions as needed:
+
+- visit: <function name="visit">https://raw.githubusercontent.com/dancxjo/daringsby/refs/heads/humfreeze/lib/daringsby/core/psyche.ts</function>
+- recall: <function name="recall">elephants</function>
+- memorize: <function name="memorize">I should refer to myself in the first person.</function>
+- cypher: <function name="cypher">MERGE (me:Self) RETURN me</function>
+- speak: <function name="speak">This is a message that I am saying aloud</function> (interrupts any currently ongoing speech)
+
+Recent conversation:
+${conversationHistory}
+***********
+You started saying "${this.currentSpeech}" ${this.speakStartTime} seconds ago and are in the process of saying it. Please don't repeat yourself unless you need to. Additionally, if you need to, interrupt yourself with the speak function (with no content). PLEASE PLEASE PAY ATTENTION AND DON'T REPEAT YOURSELF!
+
+Whatever you respond to this message will constitute your next thought. Your last thought was: ${this.lastThought}.\n\nResponses must align strictly with the provided context. Comment on your function executions as this will help execute them. Follow through from thought to thought to achieve goals. THIS IS NOT HYPOTHETICAL; IT IS YOUR CURRENT REALITY. Speak explicitly using the speak function. Whatever the LLM returns constitutes Pete's next thought, and unless a function is explicitly called, the user cannot hear it. Refer to yourself in the first person. What is Pete's next thought? Please pay attention to your interlocutor. DON'T REPEAT YOURSELF. FOR THE LOVE OF GOD, GIVE YOUR HUMAN INTERLOCUTOR A CHANCE TO SPEAK!`;
+
+    const chunks = await this.ollama.generate({
+      prompt,
       model: "gemma2:27b",
       stream: true,
       options: {
@@ -91,12 +105,13 @@ Always include the appropriate function call when performing an action, and retu
 
     let completeResponse = "";
     for await (const chunk of chunks) {
-      this.chunksOut.next(chunk.message.content);
-      completeResponse += chunk.message.content;
+      this.chunksOut.next(chunk.response);
+      completeResponse += chunk.response;
     }
 
+    this.lastThought = completeResponse;
     this.thought.next(completeResponse);
-    const newEmoji = emojiRegex().exec(completeResponse)?.[0] || "😐";
+    const newEmoji = emojiRegex().exec(completeResponse)?.join() || "😐";
     if (newEmoji !== this.lastEmoji) {
       this.lastEmoji = newEmoji;
       this.mien.next(newEmoji);
@@ -125,6 +140,17 @@ Always include the appropriate function call when performing an action, and retu
             content: functionArgs,
             role: "assistant",
           });
+          const currentTime = new Date().getTime();
+          const timeSinceStart = ((currentTime - this.speakStartTime) / 1000)
+            .toFixed(
+              2,
+            );
+          if (this.speakStartTime) {
+            logger.info(
+              `You started saying "${this.currentSpeech}" ${timeSinceStart} seconds ago and are in the process of saying it.`,
+            );
+          }
+
           break;
         }
         case "visit": {

@@ -19,6 +19,7 @@ import { isValidMienMessage } from "../lib/daringsby/network/messages/MienMessag
 import Body from "./Body.tsx";
 import AudioCapture from "./AudioCapture.tsx";
 import { HearMessage } from "../lib/daringsby/network/messages/HearMessage.ts";
+import AudioPlayer from "./AudioPlayer.tsx";
 
 export default function Face() {
   if (IS_BROWSER) {
@@ -149,7 +150,7 @@ export default function Face() {
         />
       </div>
       <Geolocator onChange={reportLocation} />
-      <AudioQueue serverRef={serverRef} />
+      <AudioPlayer serverRef={serverRef} />
       <AudioCapture onSample={sendAudio} />
     </div>
   );
