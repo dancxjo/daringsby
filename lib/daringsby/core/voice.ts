@@ -40,7 +40,12 @@ export class Voice {
       lastMessage.content += ` ${message.content}`;
     } else {
       this.recentConversation.push(message);
-      this.recentConversation = this.recentConversation.slice(-5);
+      this.recentConversation = this.recentConversation.slice(-10).map((m) => {
+        if (m.content.length > 256) {
+          m.content = m.content.slice(0, 256);
+        }
+        return m;
+      });
     }
   }
 

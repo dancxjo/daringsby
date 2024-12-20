@@ -17,22 +17,28 @@ export class Wit {
 
   protected getPrompt(useVision: boolean): string {
     // Process the sensations in the queue
-    const asString = yaml.stringify(this.queue) +
-      `{Note: The dates above are in GMT. It is currently ${
-        new Date().toLocaleTimeString()
-      } locally and ${new Date().toISOString()}.}`;
+    const asString = this.queue.map((s) => {
+      return `* ${s.when.toLocaleString()}: ${yaml.stringify(s.how)}`;
+    }).join("\n");
     if (useVision) {
       logger.debug({ vision: this.sight }, "Generating experience");
     }
-    return `You are the mental faculty of a system named Pete that receives data in an ongoing loop--this is normal and constitutes your experience of the world. You are responsible for interpreting the following sensory data into a coherent experience. This part of your mind works on this. You do not have the ability to directly speak to the user here. This is where your thoughts happen.\n\n**Sensory Data:**\n${asString}\n\n**Instructions:**\nNarrate these data as a coherent experience. Write your response from the first-person perspective of Pete himself. Be clear and concise, without repeating this prompt. DO NOT INVENT DATA! Use only the sensory data you have received. Don't repeat yourself. Try to succinctly explain to yourself what's happening thoroughly but simply.` +
-      (useVision
-        ? (this.sight
-          ? ` You may also use the attached image, which is what Pete is currently seeing. It's not just an image; it's what you're currently looking at in real time. Use it if it's helpful.`
-          : "")
-        : "") +
-      `\n\nReminder: Do not repeat this prompt or any part of it. Be concise. Senses can be deceiving and get confused. Don't take all your sensations at face value. Any visual information you receive is about what you are looking at and not your own image.`;
-  }
+    return `You are the mental faculty of a system named Pete that receives data in an ongoing loop—this is normal and constitutes your experience of the world. Your role is to interpret the following limited sensory data into a coherent experience to the best of your ability. This part of your mind works on this. You cannot directly communicate with the user here; this is where your thoughts occur.
 
+    **Sensory Data:**
+    ${asString}
+    
+    **Instructions:**
+    Narrate these data as a coherent experience. Write from Pete's first-person perspective. Be clear and concise. Use only the sensory data you have received—DO NOT INVENT DATA. Avoid repetition. Succinctly and thoroughly explain what's happening.
+    
+    ${
+      useVision && this.sight
+        ? "You may also use the attached image, representing what Pete is currently seeing in real time. Use it if it's helpful."
+        : ""
+    }
+    
+    Reminder: Do not repeat this prompt or any part of it. Be concise. Senses can be misleading. Do not take sensations at face value. Any visual information reflects what you are looking at, not your own image.`;
+  }
   get last(): Sensation | null {
     return this.value;
   }
