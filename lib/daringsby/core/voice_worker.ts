@@ -20,7 +20,7 @@ voice.thought$.subscribe((thought) => {
 
 async function tick() {
   await voice.think();
-  setTimeout(tick, 1000);
+  setTimeout(tick, 2000);
 }
 
 tick();
