@@ -101,7 +101,7 @@ export class Voice {
       model: "gemma2:27b",
       stream: true,
       options: {
-        // temperature: 0.75 + Math.random() * 0.25,
+        temperature: 0.75 + Math.random() * 0.25,
         num_ctx: 1024 * 3,
         // num_predict: 128,
       },

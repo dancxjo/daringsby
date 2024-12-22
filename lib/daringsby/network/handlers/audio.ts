@@ -43,6 +43,9 @@ export function handleIncomingHearMessages(session: Session): void {
             // Send the chunk for transcription
             getTranscription(wavData, "", undefined).then(
               (transcription) => {
+                if (!transcription.text.trim()) {
+                  return;
+                }
                 logger.info({ transcription }, "Transcription received");
                 // TODO: Enforce order of receipt here
                 psyche.hear({

@@ -18,10 +18,14 @@ import { MessageType } from "../lib/daringsby/network/messages/MessageType.ts";
 import { isValidMienMessage } from "../lib/daringsby/network/messages/MienMessage.ts";
 import { isValidSayMessage } from "../lib/daringsby/network/messages/SayMessage.ts";
 import { isValidThoughtMessage } from "../lib/daringsby/network/messages/ThoughtMessage.ts";
+import { isValidHeardMessage } from "../lib/daringsby/network/messages/HeardMessage.ts";
 
 import yml from "npm:yaml";
 import AudioCapture from "./AudioCapture.tsx";
-import { HearMessage } from "../lib/daringsby/network/messages/HearMessage.ts";
+import {
+  HearMessage,
+  isValidHearMessage,
+} from "../lib/daringsby/network/messages/HearMessage.ts";
 import AudioPlayer from "./AudioPlayer.tsx";
 export default function LiveConnection() {
   if (IS_BROWSER) {
@@ -55,6 +59,13 @@ export default function LiveConnection() {
         MessageType.Think,
         (message) => {
           thought.value = message.data;
+        },
+      );
+      server.onMessage(
+        isValidHeardMessage,
+        MessageType.Heard,
+        (message) => {
+          clientWords.value += "\n" + message.data;
         },
       );
     } else {
@@ -189,6 +200,7 @@ export default function LiveConnection() {
   const mien = useSignal("");
   const thought = useSignal("");
   const words = useSignal("");
+  const clientWords = useSignal("");
 
   // addEventListener("keydown", reportEvent);
   // addEventListener("keyup", reportEvent);
@@ -202,6 +214,7 @@ export default function LiveConnection() {
       <div class="row">
         <div class="col-12 col-md-6 mb-4 live-connection-inputs">
           <Webcam onSnap={sendSnapshot} interval={5000} />
+          <SpokenWords words={clientWords} />
           <TextInput onChange={sendText} />
           <AudioCapture onSample={sendAudio} />
           <Geolocator onChange={reportLocation} />

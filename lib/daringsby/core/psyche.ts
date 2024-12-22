@@ -44,7 +44,7 @@ class Psyche {
 
   protected bottomOfHeart = new FondDuCoeur(
     // new Ollama({ host: "http://forebrain.local:11434" }),
-    new Ollama({ host: "http://victus.loca:11434" }),
+    new Ollama({ host: "http://victus.local:11434" }),
   );
   protected wits: Wit[] = [];
   protected witTimings: number[] = [
@@ -177,6 +177,10 @@ class Psyche {
         how: `I just heard my interlocuter say: ${message.content}`,
       });
       // this.voice.thinkOfResponse();
+      this.broadcast({
+        type: MessageType.Heard,
+        data: message.content,
+      });
     } else {
       this.witness({
         when: new Date(),

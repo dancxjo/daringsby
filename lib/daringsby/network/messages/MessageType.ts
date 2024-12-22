@@ -7,5 +7,6 @@ export enum MessageType {
   See = "see", // A transmission of the bot's eye (client webcam) to the server
   Geolocate = "geolocate", // A transmission of the client geolocation to the server
   Hear = "hear",
+  Heard = "heard",
   Sense = "sense",
 }
