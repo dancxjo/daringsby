@@ -43,7 +43,8 @@ class Psyche {
   protected vision: string = "";
 
   protected bottomOfHeart = new FondDuCoeur(
-    new Ollama({ host: "http://forebrain.local:11434" }),
+    // new Ollama({ host: "http://forebrain.local:11434" }),
+    new Ollama({ host: "http://victus.loca:11434" }),
   );
   protected wits: Wit[] = [];
   protected witTimings: number[] = [

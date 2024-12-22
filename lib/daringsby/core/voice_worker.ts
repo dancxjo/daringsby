@@ -4,7 +4,8 @@ import logger from "./logger.ts";
 
 const voice = new Voice(
   new Ollama({
-    host: "http://10.0.0.95:11434",
+    host: "http://forebrain.local:11434",
+    //host: "http://10.0.0.95:11434",
   }),
 );
 
@@ -20,7 +21,7 @@ voice.thought$.subscribe((thought) => {
 
 async function tick() {
   await voice.think();
-  setTimeout(tick, 2000);
+  setTimeout(tick, 100);
 }
 
 tick();

@@ -47,9 +47,7 @@ export function handleIncomingHearMessages(session: Session): void {
                 // TODO: Enforce order of receipt here
                 psyche.hear({
                   role: "user",
-                  content:
-                    "{if this message contains cryptic repeated 0's or repeated funky letters, it's probably background noise like clicking or creaking or such}" +
-                    transcription.text,
+                  content: transcription.text,
                 });
               },
             );

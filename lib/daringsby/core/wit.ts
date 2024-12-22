@@ -66,9 +66,9 @@ export class Wit {
         : undefined,
       model: useVision ? "llama3.2-vision" : "gemma2:27b",
       options: {
-        temperature: 0.75 + Math.random() * 0.25,
+        // temperature: 0.75 + Math.random() * 0.25,
         num_ctx: 2048,
-        num_predict: 256,
+        // num_predict: 256,
       },
     });
     logger.debug({ queue: this.queue }, "Processing sensations");
