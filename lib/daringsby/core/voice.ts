@@ -52,7 +52,7 @@ export class Voice {
       lastMessage.content += ` ${message.content}`;
     } else {
       this.recentConversation.push(message);
-      this.recentConversation = this.recentConversation.slice(-30).map((m) => {
+      this.recentConversation = this.recentConversation.slice(-5).map((m) => {
         // if (m.content.length > 256) {
         //   m.content = m.content.slice(0, 256);
         // }
@@ -103,7 +103,7 @@ export class Voice {
       options: {
         // temperature: 0.75 + Math.random() * 0.25,
         num_ctx: 1024 * 3,
-        num_predict: 128,
+        // num_predict: 128,
       },
     });
 
