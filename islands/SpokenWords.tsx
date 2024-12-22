@@ -6,7 +6,7 @@ interface SWProps {
 }
 
 export default function SpokenWords({ words }: SWProps) {
-  const forwardRef = useRef<HTMLTextAreaElement>(null);
+  const forwardRef = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     if (forwardRef.current) {
       forwardRef.current.scrollTop = forwardRef.current.scrollHeight;
@@ -14,8 +14,8 @@ export default function SpokenWords({ words }: SWProps) {
   }, [words.value]);
 
   return (
-    <textarea ref={forwardRef} disabled class="spoken-words">
+    <p ref={forwardRef} class="spoken-words">
       {words.value}
-    </textarea>
+    </p>
   );
 }

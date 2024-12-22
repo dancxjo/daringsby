@@ -103,3 +103,78 @@
     font-size: calc(100vw / 3) !important;
     /* line-height: 1; */
 }
+
+body {
+    background-color: orange;
+}
+
+.thought-bubble {
+    display: flex;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 30px;
+    min-width: 40px;
+    max-width: 100%;
+    min-height: 40px;
+    margin: 20px;
+    position: relative;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.thought-bubble:before,
+.thought-bubble:after {
+    content: "";
+    background-color: #fff;
+    border-radius: 50%;
+    display: block;
+    position: absolute;
+    z-index: -1;
+}
+
+.thought-bubble:before {
+    width: 44px;
+    height: 44px;
+    top: -12px;
+    left: 28px;
+    box-shadow: -50px 30px 0 -12px #fff;
+}
+
+.thought-bubble:after {
+    bottom: -10px;
+    right: 26px;
+    width: 30px;
+    height: 30px;
+    box-shadow: 40px -34px 0 0 #fff,
+        -28px -6px 0 -2px #fff,
+        -24px 17px 0 -6px #fff,
+        -5px 25px 0 -10px #fff;
+
+}
+
+.spoken-words {
+
+    position: relative;
+    max-width: 30em;
+
+    background-color: #fff;
+    padding: 1.125em 1.5em;
+    font-size: 1.25em;
+    border-radius: 1rem;
+    box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, .3), 0 0.0625rem 0.125rem rgba(0, 0, 0, .2);
+}
+
+.spoken-words::before {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 0;
+    bottom: 100%;
+    left: 1.5em;
+    border: .75rem solid transparent;
+    border-top: none;
+
+    border-bottom-color: #fff;
+    filter: drop-shadow(0 -0.0625rem 0.0625rem rgba(0, 0, 0, .1));
+}
