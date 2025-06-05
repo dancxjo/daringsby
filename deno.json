@@ -31,6 +31,5 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "jsxImportSource": "preact"
-  },
-  "nodeModulesDir": "auto"
+  }
 }

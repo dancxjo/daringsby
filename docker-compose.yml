@@ -26,14 +26,14 @@ services:
       - "8000:8000"
     environment:
       - TZ=America/Los_Angeles
-      - OLLAMA_URL=http://forebrain.local:11434
-      - OLLAMA2_URL=http://victus.local:11434
+      - OLLAMA_URL=http://10.0.0.180:11434
+      - OLLAMA2_URL=http://10.0.0.180:11434
       - COQUI_URL=http://tts:5002
       - WHISPER_URL=http://whisper:9000
       - NEO4J_URL=bolt://neo4j:7687
       - QDRANT_URL=http://qdrant:6333
-      - OLLAMA_MODEL=llama3
-      - OLLAMA2_MODEL=gemma2:27b
+      - OLLAMA_MODEL=gemma3:27b
+      - OLLAMA2_MODEL=gemma3:27b
       - SPEAKER=Royston Min
     depends_on:
       - neo4j
