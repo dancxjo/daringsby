@@ -1,3 +1,9 @@
+//! Persistence backends for Pete's long-term memory.
+//!
+//! The [`GraphRag`] type stores [`Experience`] vectors in Qdrant and text nodes
+//! in Neo4j. `explain_and_embed` uses an LLM to describe sensations before they
+//! are stored.
+
 mod experience;
 mod graphrag;
 
@@ -6,6 +12,7 @@ pub use graphrag::{GraphRag, Memory};
 
 use thiserror::Error;
 
+/// Errors produced by the memory backends.
 #[derive(Debug, Error)]
 pub enum MemoryError {
     #[error(transparent)]
@@ -14,11 +21,15 @@ pub enum MemoryError {
     Graph(#[from] neo4rs::Error),
 }
 
-use sensor::Sensation;
-use llm::traits::{LLMClient, LLMError};
 use futures_util::StreamExt;
+use llm::traits::{LLMClient, LLMError};
+use sensor::Sensation;
 
-pub async fn explain_and_embed<C: LLMClient>(sensation: Sensation, llm: &C) -> Result<Experience, LLMError> {
+/// Ask an LLM to summarize and embed a [`Sensation`].
+pub async fn explain_and_embed<C: LLMClient>(
+    sensation: Sensation,
+    llm: &C,
+) -> Result<Experience, LLMError> {
     let prompt = format!("Summarize in one sentence: {}", sensation.how);
     let mut stream = llm.stream_chat("gemma3:27b", &prompt).await?;
     let mut explanation = String::new();
@@ -33,10 +44,10 @@ pub async fn explain_and_embed<C: LLMClient>(sensation: Sensation, llm: &C) -> R
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use futures_core::Stream;
     use futures_util::stream;
     use sensor::Sensation;
     use std::pin::Pin;
-    use futures_core::Stream;
 
     struct MockLLM;
 
@@ -46,8 +57,11 @@ mod tests {
             &self,
             _model: &str,
             _prompt: &str,
-        ) -> Result<Pin<Box<dyn Stream<Item = Result<String, LLMError>> + Send>>, LLMError> {
-            Ok(Box::pin(stream::iter(vec![Ok("mock explanation".to_string())])))
+        ) -> Result<Pin<Box<dyn Stream<Item = Result<String, LLMError>> + Send>>, LLMError>
+        {
+            Ok(Box::pin(stream::iter(vec![Ok(
+                "mock explanation".to_string()
+            )])))
         }
 
         async fn embed(&self, _model: &str, _input: &str) -> Result<Vec<f32>, LLMError> {
@@ -79,7 +93,9 @@ mod tests {
 
     #[tokio::test]
     async fn store_in_mem() {
-        let store = InMem { inner: std::sync::Mutex::new(Vec::new()) };
+        let store = InMem {
+            inner: std::sync::Mutex::new(Vec::new()),
+        };
         let exp = Experience::new(Sensation::new("hi", None::<String>), "ok", vec![1.0]);
         store.store(exp).await.unwrap();
         assert_eq!(store.inner.lock().unwrap().len(), 1);
