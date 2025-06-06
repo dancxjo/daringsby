@@ -74,4 +74,5 @@ This design supports cognitive modularity, streamability, emotional realism, and
 
 * Run `cargo check` in the repository root to ensure all crates compile.
 * Use succinct commit messages.
+* Add unit tests alongside new features when possible.
 * Keep this file updated with new reminders as the project evolves.
