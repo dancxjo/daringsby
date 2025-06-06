@@ -6,5 +6,8 @@ members = [
   "voice",
   "tts",
   "sensor",
-  "vision"
-, "llm"]
+  "vision",
+  "sensation-server",
+  "sensation-tester",
+  "llm"
+]

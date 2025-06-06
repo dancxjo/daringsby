@@ -17,3 +17,5 @@ This document lists each crate in the Pete Daringsby workspace with a short desc
 - **llm** – language model client and routing utilities.
 - **net** – networking helpers.
 - **vision** – stubs for future computer vision work.
+- **sensation-server** – axum based WebSocket server exposing `/ws` and `/devpanel`.
+- **sensation-tester** – CLI utility to send mock sensor events.
