@@ -132,7 +132,10 @@ mod tests {
             llm::traits::LLMError,
         > {
             use futures_util::stream;
-            Ok(Box::pin(stream::iter(vec![Ok("summary".to_string())])))
+            Ok(Box::pin(stream::iter(vec![
+                Ok("summary one. ".to_string()),
+                Ok("summary two".to_string()),
+            ])))
         }
 
         async fn embed(
@@ -155,6 +158,7 @@ mod tests {
             .feel(Sensation::new("beat", None::<String>), &llm)
             .await
             .unwrap();
+        assert_eq!(exp.explanation, "summary one.");
         witness.witness(exp, &mem).await.unwrap();
         assert_eq!(mem.inner.lock().unwrap().len(), 1);
     }

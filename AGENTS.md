@@ -80,6 +80,7 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * Remember "ants across the bridge" when connecting modules.
 * Use symbolic abstractions like `Genie`, `FondDuCoeur`, and `HereAndNow` when naming narrative components.
 * Use `docker-compose.yml` to start the local Coqui TTS server.
+* Configure `OLLAMA_URL` and `OLLAMA_MODEL` in your `.env` for LLM calls.
 * Memory is stored in Qdrant and Neo4j using a GraphRAG approach.
 * Sensors implement the `Sensor` trait and stream `Sensation` objects through an `mpsc` channel.
 * Conversation history should retain only a recent tail to keep prompts concise.
