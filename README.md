@@ -13,3 +13,4 @@ This repository contains the initial Rust workspace layout for the Pete Daringsb
 - **vision** – webcam and face recognition helpers
 
 Run `cargo check` in the repository root to verify that all crates compile.
+CI on GitHub automatically runs `cargo check` and `cargo test` for pushes and pull requests.

@@ -75,4 +75,5 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * Run `cargo check` in the repository root to ensure all crates compile.
 * Use succinct commit messages.
 * Add unit tests alongside new features when possible.
+* Continuous integration runs `cargo check` and `cargo test` via `.github/workflows/ci.yml` on pushes and pull requests.
 * Keep this file updated with new reminders as the project evolves.
