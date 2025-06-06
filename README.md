@@ -11,6 +11,8 @@ This repository contains the initial Rust workspace layout for the Pete Daringsb
 - **tts** – text-to-speech integration
 - **sensor** – audio, geolocation and filesystem listeners
 - **vision** – webcam and face recognition helpers
+- **sensation-server** – WebSocket backend with a simple dev panel
+- **sensation-tester** – CLI tool for sending mock sensor input
 
 Run `cargo check` in the repository root to verify that all crates compile.
 CI on GitHub automatically runs `cargo check` and `cargo test` for pushes and pull requests.
