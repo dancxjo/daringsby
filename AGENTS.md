@@ -81,3 +81,4 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * Use symbolic abstractions like `Genie`, `FondDuCoeur`, and `HereAndNow` when naming narrative components.
 * Use `docker-compose.yml` to start the local Coqui TTS server.
 * Memory is stored in Qdrant and Neo4j using a GraphRAG approach.
+* Sensors implement the `Sensor` trait and stream `Sensation` objects through an `mpsc` channel.

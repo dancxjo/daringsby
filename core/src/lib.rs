@@ -13,6 +13,8 @@ pub fn placeholder() {
 mod tests {
     use super::*;
     use sensor::Sensation;
+    use memory::{Experience, Memory};
+    use std::pin::Pin;
     use voice::{ThinkMessage, VoiceAgent};
     use crate::genie::{Genie, GenieError};
 
@@ -64,5 +66,45 @@ mod tests {
         let summary = fond.consult().await.unwrap();
         assert!(summary.contains("I saw a bird"));
         assert!(summary.contains("It was blue"));
+    }
+
+    struct InMem {
+        inner: std::sync::Mutex<Vec<Experience>>,
+    }
+
+    #[async_trait::async_trait]
+    impl Memory for InMem {
+        async fn store(&self, exp: Experience) -> Result<(), memory::MemoryError> {
+            self.inner.lock().unwrap().push(exp);
+            Ok(())
+        }
+    }
+
+    struct StubLLM;
+
+    #[async_trait::async_trait]
+    impl llm::traits::LLMClient for StubLLM {
+        async fn stream_chat(
+            &self,
+            _model: &str,
+            _prompt: &str,
+        ) -> Result<Pin<Box<dyn futures_util::stream::Stream<Item = Result<String, llm::traits::LLMError>> + Send>>, llm::traits::LLMError> {
+            use futures_util::stream;
+            Ok(Box::pin(stream::iter(vec![Ok("summary".to_string())])))
+        }
+
+        async fn embed(&self, _model: &str, _input: &str) -> Result<Vec<f32>, llm::traits::LLMError> {
+            Ok(vec![0.0])
+        }
+    }
+
+    #[tokio::test]
+    async fn witness_feel_and_store() {
+        let mut witness = witness::WitnessAgent::default();
+        let llm = StubLLM;
+        let mem = InMem { inner: std::sync::Mutex::new(Vec::new()) };
+        let exp = witness.feel(Sensation::new("beat", None::<String>), &llm).await.unwrap();
+        witness.witness(exp, &mem).await.unwrap();
+        assert_eq!(mem.inner.lock().unwrap().len(), 1);
     }
 }

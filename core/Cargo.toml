@@ -16,3 +16,6 @@ log = "0.4"
 env_logger = "0.10"
 sensor = { path = "../sensor" }
 voice = { path = "../voice" }
+memory = { path = "../memory" }
+llm = { path = "../llm" }
+futures-util = "0.3"
