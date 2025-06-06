@@ -1,0 +1,10 @@
+[workspace]
+members = [
+  "core",
+  "net",
+  "memory",
+  "voice",
+  "tts",
+  "sensor",
+  "vision"
+]
