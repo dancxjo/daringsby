@@ -13,3 +13,5 @@ pub trait VoiceAgent: Send + Sync {
 pub fn placeholder() {
     println!("voice module initialized");
 }
+
+pub mod model;

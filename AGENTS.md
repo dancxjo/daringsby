@@ -77,3 +77,4 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * Add unit tests alongside new features when possible.
 * Continuous integration runs `cargo check` and `cargo test` via `.github/workflows/ci.yml` on pushes and pull requests.
 * Keep this file updated with new reminders as the project evolves.
+* Remember "ants across the bridge" when connecting modules.
