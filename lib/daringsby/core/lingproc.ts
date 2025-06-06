@@ -33,7 +33,7 @@ export const characteristics: Record<string, Characteristic[]> = {
   // "llava:13b:latest": [Vision, Generate], // 8.0 GB
   // "phi3.5:latest": [Chat, Fast, Generate],
   // "gemma2:latest": [Chat, Fast, Generate, Code], // 5.4 GB
-  "gemma3:27b": [Smart, Chat, Generate, Code], // 15 GB
+  "gemma3:27b": [Smart, Chat, Generate, Code, Vision], // 15 GB
   "tulu3:latest": [Fast, Chat, Generate, Code],
   // "mistral-nemo:latest": [Smart, Chat, Generate], // 7.1 GB
   // "qwq:latest": [Huge, Chat, Generate], // 20 GB
@@ -116,12 +116,13 @@ export class LinguisticProcessor {
   private async findOptimalInstance(
     required: Characteristic[],
   ): Promise<{ instance: Ollama; model: string } | undefined> {
-    // return {
-    //   instance: this.instances[0],
-    //   model: Vision in required
-    //     ? "llama3.2-vision:latest"
-    //     : (Embed in required ? "nomic-embed-text:latest" : "gemma2:27b"),
-    // };
+    // For now just return gemma3:27b
+    return {
+      instance: this.instances[0],
+      model: Vision in required
+        ? "gemma3:27b"
+        : (Embed in required ? "nomic-embed-text:latest" : "gemma3:27b"),
+    };
     // Sort instances by busyness (load in ascending order) and affinity score
     const sortedInstances = this.instances.sort((a, b) => {
       const loadA = this.instanceLoadMap.get(a) ?? 0;
@@ -278,6 +279,7 @@ export class LinguisticProcessor {
     let error: Error | null = null;
 
     try {
+      logger.debug({ task }, "Executing task");
       const optimalInstance = await this.findOptimalInstance(task.required);
       if (!optimalInstance) {
         throw new Error("No suitable server or model found for task");
