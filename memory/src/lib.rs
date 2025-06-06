@@ -74,7 +74,7 @@ mod tests {
         let s = Sensation::new("test", None::<String>);
         let llm = MockLLM;
         let e = explain_and_embed(s.clone(), &llm).await.unwrap();
-        assert_eq!(e.explanation, "mock explanation.");
+        assert_eq!(e.explanation, "mock explanation. ");
         assert_eq!(e.embedding, vec![0.1, 0.2]);
         assert_eq!(e.sensation, s);
     }

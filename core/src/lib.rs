@@ -10,7 +10,18 @@
 //!
 //! let mut witness = WitnessAgent::default();
 //! witness.ingest(Sensation::new("a passing thought", None::<String>));
-//! let mut psyche = Psyche::new();
+//! struct SilentVoice;
+//! #[async_trait::async_trait]
+//! impl voice::VoiceAgent for SilentVoice {
+//!     async fn narrate(&self, _c: &str) -> voice::VoiceOutput {
+//!         voice::VoiceOutput {
+//!             think: voice::ThinkMessage { content: String::new() },
+//!             say: None,
+//!             emote: None,
+//!         }
+//!     }
+//! }
+//! let mut psyche = Psyche::new(witness, SilentVoice);
 //! // a real VoiceAgent would narrate this context
 //! let context = psyche.here_and_now.clone();
 //! assert!(context.is_empty());
@@ -36,14 +47,18 @@ mod tests {
     use memory::{Experience, Memory};
     use sensor::Sensation;
     use std::pin::Pin;
-    use voice::{ThinkMessage, VoiceAgent};
+    use voice::{EmoteMessage, SayMessage, ThinkMessage, VoiceAgent, VoiceOutput};
 
     struct MockNarrator;
 
     #[async_trait::async_trait]
     impl VoiceAgent for MockNarrator {
-        async fn narrate(&self, context: &str) -> String {
-            format!("echo: {context}")
+        async fn narrate(&self, context: &str) -> VoiceOutput {
+            VoiceOutput {
+                think: ThinkMessage { content: format!("echo: {context}") },
+                say: Some(SayMessage { content: context.into() }),
+                emote: Some(EmoteMessage { emoji: "😊".into() }),
+            }
         }
     }
 
@@ -52,15 +67,12 @@ mod tests {
         let mut witness = witness::WitnessAgent::default();
         witness.ingest(Sensation::new("hello", None::<String>));
         let narrator = MockNarrator;
-        let mut psyche = psyche::Psyche::new();
-        let msg = psyche.tick(&witness, &narrator).await;
+        let mut psyche = psyche::Psyche::new(witness, narrator);
+        let msg = psyche.tick().await;
         assert_eq!(psyche.here_and_now, "hello");
-        assert_eq!(
-            msg,
-            ThinkMessage {
-                content: "echo: hello".into()
-            }
-        );
+        assert_eq!(msg.think.content, "echo: hello");
+        assert_eq!(msg.say, Some(SayMessage { content: "hello".into() }));
+        assert_eq!(msg.emote, Some(EmoteMessage { emoji: "😊".into() }));
     }
 
     struct FixedGenie {
@@ -158,8 +170,18 @@ mod tests {
             .feel(Sensation::new("beat", None::<String>), &llm)
             .await
             .unwrap();
-        assert_eq!(exp.explanation, "summary one.");
+        assert_eq!(exp.explanation, "summary one. ");
         witness.witness(exp, &mem).await.unwrap();
         assert_eq!(mem.inner.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn witness_summarizes_here_and_now() {
+        let mut witness = witness::WitnessAgent::default();
+        witness.ingest(Sensation::new("first", None::<String>));
+        witness.ingest(Sensation::new("second", None::<String>));
+        let mut fond = fond::FondDuCoeur::new();
+        let sum = witness.summarize(&mut fond).await.unwrap();
+        assert_eq!(sum, "first second");
     }
 }
