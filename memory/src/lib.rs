@@ -21,8 +21,10 @@ pub enum MemoryError {
     Graph(#[from] neo4rs::Error),
 }
 
-use futures_util::StreamExt;
-use llm::traits::{LLMClient, LLMError};
+use llm::{
+    runner::{model_from_env, stream_first_sentence},
+    traits::{LLMClient, LLMError},
+};
 use sensor::Sensation;
 
 /// Ask an LLM to summarize and embed a [`Sensation`].
@@ -31,11 +33,8 @@ pub async fn explain_and_embed<C: LLMClient>(
     llm: &C,
 ) -> Result<Experience, LLMError> {
     let prompt = format!("Summarize in one sentence: {}", sensation.how);
-    let mut stream = llm.stream_chat("gemma3:27b", &prompt).await?;
-    let mut explanation = String::new();
-    while let Some(chunk) = stream.next().await {
-        explanation.push_str(&chunk?);
-    }
+    let model = model_from_env();
+    let (_, explanation) = stream_first_sentence(llm, &model, &prompt).await?;
     let embedding = llm.embed("gemma3:embed", &explanation).await?;
     Ok(Experience::new(sensation, explanation, embedding))
 }
@@ -59,9 +58,10 @@ mod tests {
             _prompt: &str,
         ) -> Result<Pin<Box<dyn Stream<Item = Result<String, LLMError>> + Send>>, LLMError>
         {
-            Ok(Box::pin(stream::iter(vec![Ok(
-                "mock explanation".to_string()
-            )])))
+            Ok(Box::pin(stream::iter(vec![
+                Ok("mock explanation. ".to_string()),
+                Ok("second".to_string()),
+            ])))
         }
 
         async fn embed(&self, _model: &str, _input: &str) -> Result<Vec<f32>, LLMError> {
@@ -74,7 +74,7 @@ mod tests {
         let s = Sensation::new("test", None::<String>);
         let llm = MockLLM;
         let e = explain_and_embed(s.clone(), &llm).await.unwrap();
-        assert_eq!(e.explanation, "mock explanation");
+        assert_eq!(e.explanation, "mock explanation.");
         assert_eq!(e.embedding, vec![0.1, 0.2]);
         assert_eq!(e.sensation, s);
     }
