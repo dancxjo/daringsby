@@ -1,3 +1,5 @@
+#![doc(test(no_crate_inject))]
+
 pub mod witness;
 pub mod psyche;
 pub mod genie;

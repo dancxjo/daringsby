@@ -1,3 +1,87 @@
-pub fn placeholder() {
-    println!("memory module initialized");
+mod experience;
+mod graphrag;
+
+pub use experience::Experience;
+pub use graphrag::{GraphRag, Memory};
+
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum MemoryError {
+    #[error(transparent)]
+    Vector(#[from] qdrant_client::QdrantError),
+    #[error(transparent)]
+    Graph(#[from] neo4rs::Error),
+}
+
+use sensor::Sensation;
+use llm::traits::{LLMClient, LLMError};
+use futures_util::StreamExt;
+
+pub async fn explain_and_embed<C: LLMClient>(sensation: Sensation, llm: &C) -> Result<Experience, LLMError> {
+    let prompt = format!("Summarize in one sentence: {}", sensation.how);
+    let mut stream = llm.stream_chat("gemma3:27b", &prompt).await?;
+    let mut explanation = String::new();
+    while let Some(chunk) = stream.next().await {
+        explanation.push_str(&chunk?);
+    }
+    let embedding = llm.embed("gemma3:embed", &explanation).await?;
+    Ok(Experience::new(sensation, explanation, embedding))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use futures_util::stream;
+    use sensor::Sensation;
+    use std::pin::Pin;
+    use futures_core::Stream;
+
+    struct MockLLM;
+
+    #[async_trait]
+    impl LLMClient for MockLLM {
+        async fn stream_chat(
+            &self,
+            _model: &str,
+            _prompt: &str,
+        ) -> Result<Pin<Box<dyn Stream<Item = Result<String, LLMError>> + Send>>, LLMError> {
+            Ok(Box::pin(stream::iter(vec![Ok("mock explanation".to_string())])))
+        }
+
+        async fn embed(&self, _model: &str, _input: &str) -> Result<Vec<f32>, LLMError> {
+            Ok(vec![0.1, 0.2])
+        }
+    }
+
+    #[tokio::test]
+    async fn creates_experience() {
+        let s = Sensation::new("test", None::<String>);
+        let llm = MockLLM;
+        let e = explain_and_embed(s.clone(), &llm).await.unwrap();
+        assert_eq!(e.explanation, "mock explanation");
+        assert_eq!(e.embedding, vec![0.1, 0.2]);
+        assert_eq!(e.sensation, s);
+    }
+
+    struct InMem {
+        inner: std::sync::Mutex<Vec<Experience>>,
+    }
+
+    #[async_trait]
+    impl Memory for InMem {
+        async fn store(&self, exp: Experience) -> Result<(), MemoryError> {
+            self.inner.lock().unwrap().push(exp);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn store_in_mem() {
+        let store = InMem { inner: std::sync::Mutex::new(Vec::new()) };
+        let exp = Experience::new(Sensation::new("hi", None::<String>), "ok", vec![1.0]);
+        store.store(exp).await.unwrap();
+        assert_eq!(store.inner.lock().unwrap().len(), 1);
+    }
 }
