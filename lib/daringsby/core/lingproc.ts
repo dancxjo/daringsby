@@ -117,6 +117,7 @@ export class LinguisticProcessor {
     required: Characteristic[],
   ): Promise<{ instance: Ollama; model: string } | undefined> {
     // For now just return gemma3:27b
+    logger.debug({ required }, "Finding optimal instance for task");
     return {
       instance: this.instances[0],
       model: Vision in required
@@ -281,6 +282,7 @@ export class LinguisticProcessor {
     try {
       logger.debug({ task }, "Executing task");
       const optimalInstance = await this.findOptimalInstance(task.required);
+      logger.debug({ optimalInstance }, "Optimal instance found for task");
       if (!optimalInstance) {
         throw new Error("No suitable server or model found for task");
       }
