@@ -61,7 +61,7 @@ export default function Webcam({ onSnap, interval = 10000 }: WebcamProps) {
         }, interval);
 
         // Clear the interval when the component unmounts
-        // return () => clearInterval(captureInterval);
+        return () => clearInterval(captureInterval);
     }, [interval, onSnap]);
 
     return (

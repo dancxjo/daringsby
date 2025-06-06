@@ -142,7 +142,9 @@ export class Voice implements Sensitive<Message[]> {
         LIMIT 10
       `;
       const result = await session.run(query);
-      return result.records.map((record) => record.get("e").properties);
+      return result.records
+        .map((record) => record.get("e").properties)
+        .reverse(); // chronological order
     } catch (e) {
       logger.error({ e }, `Failed to load experiences`);
       return [];
