@@ -10,10 +10,27 @@ pub struct ThinkMessage {
     pub content: String,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct SayMessage {
+    pub content: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct EmoteMessage {
+    pub emoji: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct VoiceOutput {
+    pub think: ThinkMessage,
+    pub say: Option<SayMessage>,
+    pub emote: Option<EmoteMessage>,
+}
+
 #[async_trait]
 pub trait VoiceAgent: Send + Sync {
     /// Generate Pete's next thought based on the provided context.
-    async fn narrate(&self, context: &str) -> String;
+    async fn narrate(&self, context: &str) -> VoiceOutput;
 }
 
 /// Print a debug message confirming the crate was loaded.
@@ -27,6 +44,7 @@ pub mod model;
 use conversation::{Conversation, Role};
 use futures_util::StreamExt;
 use model::ModelClient;
+use regex::Regex;
 use std::sync::Mutex;
 
 /// Concrete [`VoiceAgent`] that streams chat completions from an LLM.
@@ -56,7 +74,7 @@ impl<C: ModelClient> ChatVoice<C> {
 #[async_trait]
 impl<C: ModelClient + Send + Sync> VoiceAgent for ChatVoice<C> {
     /// Generate a response from the LLM and update conversation history.
-    async fn narrate(&self, context: &str) -> String {
+    async fn narrate(&self, context: &str) -> VoiceOutput {
         let prompt = {
             let conv = self.conversation.lock().unwrap();
             let mut prompt = format!("You are a storyteller narrating the life of Pete Daringsby. Narrate in the voice of Pete from the first person. Current thought: {context}\n");
@@ -70,7 +88,13 @@ impl<C: ModelClient + Send + Sync> VoiceAgent for ChatVoice<C> {
         };
         let mut stream = match self.llm.stream_chat(&self.model, &prompt).await {
             Ok(s) => s,
-            Err(_) => return String::new(),
+            Err(_) => {
+                return VoiceOutput {
+                    think: ThinkMessage { content: String::new() },
+                    say: None,
+                    emote: None,
+                }
+            }
         };
         let mut response = String::new();
         while let Some(chunk) = stream.next().await {
@@ -80,6 +104,14 @@ impl<C: ModelClient + Send + Sync> VoiceAgent for ChatVoice<C> {
         }
         let mut conv = self.conversation.lock().unwrap();
         conv.push(Role::Assistant, response.clone());
-        response
+        let say = Regex::new(r"<say>(.*?)</say>").unwrap();
+        let emote = Regex::new(r"<emote>(.*?)</emote>").unwrap();
+        let say_msg = say.captures(&response).map(|c| SayMessage { content: c[1].to_string() });
+        let emote_msg = emote.captures(&response).map(|c| EmoteMessage { emoji: c[1].to_string() });
+        VoiceOutput {
+            think: ThinkMessage { content: response },
+            say: say_msg,
+            emote: emote_msg,
+        }
     }
 }

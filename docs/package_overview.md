@@ -6,9 +6,23 @@ This document lists each crate in the Pete Daringsby workspace with a short desc
   ```rust
   use core::{psyche::Psyche, witness::WitnessAgent};
   use sensor::Sensation;
+  use voice::{VoiceOutput, ThinkMessage, VoiceAgent};
+
+  struct DummyVoice;
+  #[async_trait::async_trait]
+  impl VoiceAgent for DummyVoice {
+      async fn narrate(&self, _c: &str) -> VoiceOutput {
+          VoiceOutput {
+              think: ThinkMessage { content: String::new() },
+              say: None,
+              emote: None,
+          }
+      }
+  }
+
   let mut wit = WitnessAgent::default();
   wit.ingest(Sensation::new("hi", None::<String>));
-  let psyche = Psyche::new();
+  let psyche = Psyche::new(wit, DummyVoice);
   ```
 - **memory** – store [`Experience`](../memory/src/experience.rs) objects in Qdrant and Neo4j.
 - **voice** – manage LLM conversations and produce responses.

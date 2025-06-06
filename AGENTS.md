@@ -78,6 +78,7 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * Continuous integration runs `cargo check` and `cargo test` via `.github/workflows/ci.yml` on pushes and pull requests.
 * Keep this file updated with new reminders as the project evolves.
 * Remember "ants across the bridge" when connecting modules.
+* Witness and Voice are sibling subagents managed by `Psyche`.
 * Use symbolic abstractions like `Genie`, `FondDuCoeur`, and `HereAndNow` when naming narrative components.
 * Use `docker-compose.yml` to start the local Coqui TTS server.
 * Configure `OLLAMA_URL` and `OLLAMA_MODEL` in your `.env` for LLM calls.

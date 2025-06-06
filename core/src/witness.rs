@@ -1,6 +1,7 @@
 use llm::traits::{LLMClient, LLMError};
 use memory::{self, Experience, Memory, MemoryError};
 use sensor::Sensation;
+use crate::genie::Genie;
 
 /// Collects raw [`Sensation`]s and pushes them into memory.
 #[derive(Default)]
@@ -32,5 +33,17 @@ impl WitnessAgent {
     /// Store an [`Experience`] in the given [`Memory`] backend.
     pub async fn witness<M: Memory>(&self, exp: Experience, memory: &M) -> Result<(), MemoryError> {
         memory.store(exp).await
+    }
+
+    /// Fold all collected sensations into the provided [`Genie`] and
+    /// return the resulting summary.
+    pub async fn summarize<G: Genie>(&mut self, genie: &mut G) -> Option<String> {
+        if self.sensations.is_empty() {
+            return None;
+        }
+        for s in self.sensations.drain(..) {
+            genie.feel(s).await;
+        }
+        genie.consult().await.ok()
     }
 }

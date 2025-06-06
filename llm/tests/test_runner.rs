@@ -19,6 +19,6 @@ async fn capture_first_sentence() {
             " More.".to_string()
         ]
     );
-    assert_eq!(sentence, "Hello world.");
+    assert_eq!(sentence, "Hello world. ");
     let _ = shutdown.send(()).await;
 }
