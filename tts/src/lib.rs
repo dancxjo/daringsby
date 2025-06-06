@@ -1,10 +1,12 @@
+//! Convert LLM output into audio using Coqui TTS.
+
 use emojito::find_emoji;
-use llm::{OllamaClient, LLMError, LLMClient};
+use llm::{LLMClient, LLMError, OllamaClient};
 use regex::Regex;
 use reqwest::Client;
 use std::env;
-use tokio_stream::StreamExt;
 use thiserror::Error;
+use tokio_stream::StreamExt;
 
 #[derive(Debug, Error)]
 pub enum TTSError {
@@ -14,6 +16,7 @@ pub enum TTSError {
     Http(#[from] reqwest::Error),
 }
 
+/// Convenience result type used throughout this crate.
 pub type Result<T> = std::result::Result<T, TTSError>;
 
 fn strip_emojis(input: &str) -> (String, Vec<String>) {
@@ -26,6 +29,7 @@ fn strip_emojis(input: &str) -> (String, Vec<String>) {
     (cleaned, emojis)
 }
 
+/// Stream text from the LLM, capture the first sentence and synthesize speech.
 pub async fn speak_from_llm(prompt: &str) -> Result<Vec<u8>> {
     let ollama_url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".into());
     let coqui_url = env::var("COQUI_URL").unwrap_or_else(|_| "http://localhost:5002".into());
@@ -48,7 +52,11 @@ pub async fn speak_from_llm(prompt: &str) -> Result<Vec<u8>> {
 
     let sentence = sentence.unwrap_or(buffer);
     let (clean, emojis) = strip_emojis(&sentence);
-    let emotion = if emojis.is_empty() { None } else { Some(emojis.join("")) };
+    let emotion = if emojis.is_empty() {
+        None
+    } else {
+        Some(emojis.join(""))
+    };
 
     #[derive(serde::Serialize)]
     struct TtsRequest<'a> {
