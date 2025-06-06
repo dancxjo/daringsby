@@ -27,7 +27,7 @@ services:
     environment:
       - TZ=America/Los_Angeles
       - OLLAMA_URL=http://10.0.0.180:11434
-      - OLLAMA2_URL=http://10.0.0.180:11434
+      - OLLAMA2_URL=http://192.168.1.122:11434
       - COQUI_URL=http://tts:5002
       - WHISPER_URL=http://whisper:9000
       - NEO4J_URL=bolt://neo4j:7687
