@@ -104,12 +104,25 @@ impl<C: ModelClient + Send + Sync> VoiceAgent for ChatVoice<C> {
         }
         let mut conv = self.conversation.lock().unwrap();
         conv.push(Role::Assistant, response.clone());
-        let say = Regex::new(r"<say>(.*?)</say>").unwrap();
-        let emote = Regex::new(r"<emote>(.*?)</emote>").unwrap();
-        let say_msg = say.captures(&response).map(|c| SayMessage { content: c[1].to_string() });
-        let emote_msg = emote.captures(&response).map(|c| EmoteMessage { emoji: c[1].to_string() });
+        let think_re = Regex::new(r"<think-silently>(.*?)</think-silently>").unwrap();
+        let emote_re = Regex::new(r"<emote>(.*?)</emote>").unwrap();
+        let mut think_content = String::new();
+        for cap in think_re.captures_iter(&response) {
+            if !think_content.is_empty() {
+                think_content.push(' ');
+            }
+            think_content.push_str(&cap[1]);
+        }
+        let mut said = think_re.replace_all(&response, "").into_owned();
+        let emote_msg = emote_re.captures(&said).map(|c| EmoteMessage { emoji: c[1].to_string() });
+        said = emote_re.replace_all(&said, "").into_owned();
+        let say_msg = if said.trim().is_empty() {
+            None
+        } else {
+            Some(SayMessage { content: said.trim().to_string() })
+        };
         VoiceOutput {
-            think: ThinkMessage { content: response },
+            think: ThinkMessage { content: think_content },
             say: say_msg,
             emote: emote_msg,
         }
