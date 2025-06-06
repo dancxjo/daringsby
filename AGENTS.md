@@ -78,3 +78,4 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * Continuous integration runs `cargo check` and `cargo test` via `.github/workflows/ci.yml` on pushes and pull requests.
 * Keep this file updated with new reminders as the project evolves.
 * Remember "ants across the bridge" when connecting modules.
+* Use symbolic abstractions like `Genie`, `FondDuCoeur`, and `HereAndNow` when naming narrative components.

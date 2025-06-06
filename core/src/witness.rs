@@ -10,7 +10,7 @@ impl WitnessAgent {
         self.sensations.push(sensation);
     }
 
-    pub fn last_text(&self) -> Option<&str> {
-        self.sensations.last().map(|s| s.text.as_str())
+    pub fn last(&self) -> Option<&Sensation> {
+        self.sensations.last()
     }
 }
