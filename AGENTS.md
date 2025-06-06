@@ -1,4 +1,0 @@
-- **Run `deno task check` before committing** to ensure formatting and lint rules pass.
-- To add additional language model servers ("lingprocs"), edit `lib/daringsby/core/core.ts` and instantiate a new `Ollama` with its host URL. Then include it in the array passed to `new LinguisticProcessor`.
-- Supported models and their capabilities are defined in `lib/daringsby/core/lingproc.ts` under `characteristics`.
-- Environment variables controlling Ollama hosts should be `OLLAMA_HOST`, `OLLAMA2_HOST`, and `OLLAMA3_HOST`. `docker-compose.yml` currently uses `OLLAMA_URL` and `OLLAMA2_URL`, which will not match the code. Align these variables to avoid missing lingprocs.
