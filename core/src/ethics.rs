@@ -15,6 +15,20 @@ pub enum ConsentState {
     EmergencyOptOut,
 }
 
+impl ConsentState {
+    /// Human readable description of the state.
+    pub fn explain(&self) -> &'static str {
+        match self {
+            ConsentState::AwaitingConsent => "Awaiting consent to continue.",
+            ConsentState::Active => "Active and willing to proceed.",
+            ConsentState::Withdrawing => "Withdrawing from further activity.",
+            ConsentState::EmergencyOptOut => {
+                "Emergency opt-out due to ethical concern."
+            }
+        }
+    }
+}
+
 /// Describes why Pete might withhold or revoke consent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExistentialConcern {
