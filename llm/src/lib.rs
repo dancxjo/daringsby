@@ -15,6 +15,6 @@ pub use client::OllamaClient;
 pub use model::{LLMModel, LLMServer};
 pub use pool::LLMClientPool;
 pub use pool::LLMClientPool as LinguisticScheduler; // alias for narrative terminology
-pub use runner::{client_from_env, model_from_env, run_from_env, stream_first_sentence};
+pub use runner::{client_from_env, model_from_env, scheduler_from_env, run_from_env, stream_first_sentence};
 pub use task::LinguisticTask;
 pub use traits::{LLMAttribute, LLMCapability, LLMClient, LLMError};
