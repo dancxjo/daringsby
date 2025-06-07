@@ -93,4 +93,7 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * The workspace uses Cargo resolver `2` in the root `Cargo.toml`.
 * `PromptBuilder` in `core` assembles Pete's LLM prompt.
   * It allows setting the reflection format (natural, JSON, or hybrid).
+* Refer to the `llm` crate as the "language processor".
+* The `LinguisticScheduler` selects a model based on task capabilities.
+* The `WitnessAgent` should call the language processor directly to build the `HereAndNow`, not via `Voice`.
   * Use `max_perceptions` and `max_memories` to keep prompts short.
