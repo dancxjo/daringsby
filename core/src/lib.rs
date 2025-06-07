@@ -33,6 +33,7 @@ pub mod genie;
 pub mod psyche;
 pub mod witness;
 pub mod prompt_builder;
+pub mod ethics;
 
 /// Emit a simple initialization message.
 ///
