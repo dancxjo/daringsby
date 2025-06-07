@@ -2,7 +2,7 @@
 
 This document lists each crate in the Pete Daringsby workspace with a short description and example usage.
 
-- **core** – core abstractions connecting sensors, memory and voice.
+- **core** – core abstractions connecting sensors, memory and voice. Includes the `PromptBuilder` for constructing LLM prompts with customizable reflection formats.
   ```rust
   use core::{psyche::Psyche, witness::WitnessAgent};
   use sensor::Sensation;

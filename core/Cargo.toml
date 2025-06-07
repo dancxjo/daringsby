@@ -19,3 +19,7 @@ voice = { path = "../voice" }
 memory = { path = "../memory" }
 llm = { path = "../llm" }
 futures-util = "0.3"
+indoc = "2"
+
+[dev-dependencies]
+chrono = { version = "0.4", features = ["clock"] }

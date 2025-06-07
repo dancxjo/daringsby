@@ -32,6 +32,7 @@ pub mod fond;
 pub mod genie;
 pub mod psyche;
 pub mod witness;
+pub mod prompt_builder;
 
 /// Emit a simple initialization message.
 ///
