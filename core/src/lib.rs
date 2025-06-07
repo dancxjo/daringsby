@@ -70,6 +70,7 @@ mod tests {
         witness.ingest(Sensation::new("hello", None::<String>));
         let narrator = MockNarrator;
         let mut psyche = psyche::Psyche::new(witness, narrator);
+        psyche.agent.self_understanding = Some("I am Pete".into());
         let msg = psyche.tick().await;
         assert_eq!(psyche.here_and_now, "hello");
         assert_eq!(msg.think.content, "echo: hello");
