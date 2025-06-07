@@ -10,5 +10,6 @@ members = [
   "vision",
   "sensation-server",
   "sensation-tester",
-  "llm"
+  "llm",
+  "runtime"
 ]
