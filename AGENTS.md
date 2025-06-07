@@ -89,6 +89,7 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * Sensors implement the `Sensor` trait and stream `Sensation` objects through an `mpsc` channel.
 * Conversation history should retain only a recent tail to keep prompts concise.
 * Maintain crate documentation summaries in docs/package_overview.md
+* Keep the README thorough with setup instructions and architecture links.
 * The workspace uses Cargo resolver `2` in the root `Cargo.toml`.
 * `PromptBuilder` in `core` assembles Pete's LLM prompt.
   * It allows setting the reflection format (natural, JSON, or hybrid).

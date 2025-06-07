@@ -1,11 +1,21 @@
-use axum::{extract::ws::{WebSocket, WebSocketUpgrade, Message}, routing::get, Router};
+//! Minimal WebSocket server for streaming [`Sensation`] data.
+//!
+//! This crate exposes two routes:
+//! - `/ws` – JSON WebSocket API for sending and receiving sensations.
+//! - `/devpanel` – a tiny HTML page useful during local development.
+
 use axum::response::IntoResponse;
+use axum::{
+    extract::ws::{Message, WebSocket, WebSocketUpgrade},
+    routing::get,
+    Router,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
 #[derive(Debug, Deserialize)]
-#[serde(tag="sensor_type", rename_all="lowercase")]
+#[serde(tag = "sensor_type", rename_all = "lowercase")]
 pub enum SensorInput {
     Geolocation { lat: f64, lon: f64 },
     Audio { transcript: String },
@@ -33,7 +43,10 @@ async fn handle_socket(mut socket: WebSocket) {
                     SensorInput::Image { .. } => "image".to_string(),
                     SensorInput::Text { value } => value,
                 };
-                let sensation = Sensation { how, when: Utc::now() };
+                let sensation = Sensation {
+                    how,
+                    when: Utc::now(),
+                };
                 let _ = socket
                     .send(Message::Text(serde_json::to_string(&sensation).unwrap()))
                     .await;
