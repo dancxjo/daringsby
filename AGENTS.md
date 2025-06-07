@@ -106,3 +106,4 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * Use naturalistic language when describing agent roles (e.g., 'Witness feels sensory data to produce experience').
 * Prefer the `clap` crate for parsing CLI arguments in binaries.
 * Eye sensor emits `Sensation::saw` objects from JPEG snapshots.
+* Keep module declarations unique; avoid duplicate `pub mod` lines.
