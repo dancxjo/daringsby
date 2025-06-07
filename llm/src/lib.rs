@@ -1,3 +1,9 @@
+//! Abstractions for interacting with large language model servers.
+//!
+//! The `llm` crate defines a [`LLMClient`] trait along with concrete
+//! implementations such as [`OllamaClient`]. Utilities are provided for routing
+//! requests to multiple models and for streaming responses.
+
 pub mod client;
 pub mod model;
 pub mod pool;
