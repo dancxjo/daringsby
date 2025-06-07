@@ -87,9 +87,8 @@ Run `cargo check` in the repository root to verify that all crates compile. CI o
 
 1. Install Rust (stable) and Docker.
 2. Copy `.env.example` to `.env` and set the environment variables described below.
-3. Start the Coqui TTS server with `docker-compose up -d tts`.
+3. Start the required services with `docker-compose up -d tts qdrant neo4j`.
 4. Optional: run Whisper locally for ASR and configure its address in `.env`.
-5. Run `docker-compose up -d qdrant neo4j` if you want the memory backends.
 
 ### Environment variables
 

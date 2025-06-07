@@ -5,6 +5,8 @@
 
 use async_trait::async_trait;
 
+pub mod stream;
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ThinkMessage {
     pub content: String,
