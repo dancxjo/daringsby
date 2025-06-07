@@ -19,6 +19,7 @@ pub enum TTSError {
 /// Convenience result type used throughout this crate.
 pub type Result<T> = std::result::Result<T, TTSError>;
 
+/// Remove emoji characters from `input` while returning them separately.
 fn strip_emojis(input: &str) -> (String, Vec<String>) {
     let found = find_emoji(input);
     let mut cleaned = input.to_string();

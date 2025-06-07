@@ -1,18 +1,30 @@
-use std::{pin::Pin, time::Instant, sync::{Arc, Mutex}};
+//! Connection pool and lightweight scheduler for language model servers.
+//!
+//! [`LLMClientPool`] keeps track of multiple [`LLMServer`] instances and records
+//! simple latency statistics. It can then route [`LinguisticTask`] requests to the best
+//! available model.
+
 use futures_core::Stream;
 use futures_util::ready;
 use std::task::{Context, Poll};
+use std::{
+    pin::Pin,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
-use crate::model::{LLMServer, LLMModel};
 use crate::client::OllamaClient;
-use crate::traits::{LLMAttribute, LLMCapability, LLMError};
+use crate::model::{LLMModel, LLMServer};
 use crate::task::LinguisticTask;
+use crate::traits::{LLMAttribute, LLMCapability, LLMError};
 
+/// Pool of language model servers with basic latency profiling.
 pub struct LLMClientPool {
     servers: Vec<LLMServer>,
     profiles: Vec<Arc<Mutex<ServerProfile>>>,
 }
 
+/// Moving average of latency samples for a server.
 #[derive(Default)]
 struct ServerProfile {
     latency_ms: f64,
@@ -33,12 +45,16 @@ impl ServerProfile {
 
 impl LLMClientPool {
     pub fn new() -> Self {
-        Self { servers: Vec::new(), profiles: Vec::new() }
+        Self {
+            servers: Vec::new(),
+            profiles: Vec::new(),
+        }
     }
 
     pub fn add_server(&mut self, server: LLMServer) {
         self.servers.push(server);
-        self.profiles.push(Arc::new(Mutex::new(ServerProfile::default())));
+        self.profiles
+            .push(Arc::new(Mutex::new(ServerProfile::default())));
     }
 
     pub fn add_ollama_host(
