@@ -3,9 +3,8 @@
 /// Determine the tick rate in seconds from CLI or `TICK_RATE` env.
 /// Falls back to `1.0` if unset or invalid.
 pub fn tick_rate(cli: Option<f32>) -> f32 {
-    cli.or_else(|| {
-        std::env::var("TICK_RATE").ok()?.parse::<f32>().ok()
-    }).unwrap_or(1.0)
+    cli.or_else(|| std::env::var("TICK_RATE").ok()?.parse::<f32>().ok())
+        .unwrap_or(1.0)
 }
 
 #[cfg(test)]
@@ -23,6 +22,7 @@ mod tests {
     fn env_used_when_cli_none() {
         env::set_var("TICK_RATE", "3.5");
         assert_eq!(tick_rate(None), 3.5);
+        env::remove_var("TICK_RATE");
     }
 
     #[test]

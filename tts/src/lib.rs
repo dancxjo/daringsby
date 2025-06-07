@@ -6,10 +6,13 @@ use regex::Regex;
 use reqwest::Client;
 use std::env;
 use thiserror::Error;
+pub mod sentence_streamer;
 use tokio_stream::StreamExt;
 
 #[derive(Debug, Error)]
 pub enum TTSError {
+    #[error("queue closed")]
+    QueueClosed,
     #[error(transparent)]
     LLM(#[from] LLMError),
     #[error(transparent)]

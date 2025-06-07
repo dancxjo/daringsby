@@ -7,6 +7,7 @@ pub mod heartbeat;
 pub mod sensation;
 pub mod sensor;
 pub mod ws;
+pub mod whisper_streamer;
 
 pub use sensation::Sensation;
 pub use sensor::Sensor;
