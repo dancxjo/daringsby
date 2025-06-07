@@ -28,7 +28,8 @@ This document lists each crate in the Pete Daringsby workspace with a short desc
 - **voice** – manage LLM conversations and produce responses.
 - **sensor** – emit [`Sensation`](../sensor/src/sensation.rs) values from various inputs.
 - **tts** – turn text into audio using Coqui TTS.
-- **llm** – language model client and routing utilities.
+- **llm** – the "language processor" crate providing model clients, a
+  `LinguisticScheduler`, and capability-based task routing.
 - **net** – networking helpers.
 - **vision** – stubs for future computer vision work.
 - **sensation-server** – axum based WebSocket server exposing `/ws` and `/devpanel`.

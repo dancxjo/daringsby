@@ -2,6 +2,7 @@ use tokio_stream::StreamExt;
 use std::sync::Arc;
 
 use llm::{LLMClientPool, LLMModel, LLMServer, LLMCapability, LLMAttribute, OllamaClient};
+use llm::{LinguisticTask};
 
 mod mock_server;
 use mock_server::spawn_mock_server;
@@ -36,4 +37,19 @@ async fn stream_chat_from_mock() {
     }
     assert_eq!(out, vec!["hi".to_string(), "there".to_string()]);
     let _ = shutdown.send(()).await;
+}
+
+#[tokio::test]
+async fn choose_model_matches_caps() {
+    let client = Arc::new(OllamaClient::new("http://localhost:1234"));
+    let server = LLMServer::new(client)
+        .with_attribute(LLMAttribute::Fast)
+        .with_model(LLMModel::new("gemma3:27b", vec![LLMCapability::Chat]));
+    let mut pool = LLMClientPool::new();
+    pool.add_server(server);
+
+    let task = LinguisticTask::new("ping", vec![LLMCapability::Chat])
+        .prefer_attribute(LLMAttribute::Fast);
+    let model = pool.choose_model(&task.capabilities, task.prefer).unwrap();
+    assert_eq!(model, "gemma3:27b");
 }

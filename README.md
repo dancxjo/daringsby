@@ -18,6 +18,7 @@ agent design. The summary below gives a quick sense of the layout.
 - **memory** – abstractions for storing [`Experience`](memory/src/experience.rs)
   objects in Qdrant and Neo4j.
 - **voice** – language model coordination and conversation state management.
+- **llm** – generic "language processor" utilities and the `LinguisticScheduler` for capability-based model selection.
 - **tts** – converts LLM output into audio via Coqui TTS.
 - **sensor** – audio, geolocation and filesystem listeners that emit
   [`Sensation`](sensor/src/sensation.rs) values.
