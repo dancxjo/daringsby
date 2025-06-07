@@ -3,6 +3,7 @@
 This document lists each crate in the Pete Daringsby workspace with a short description and example usage.
 
 - **core** – core abstractions connecting sensors, memory and voice. Includes the `PromptBuilder` for constructing LLM prompts with customizable reflection formats.
+  It also provides an `ethics` module with a `ConsciousAgent` type implementing a consent-to-exist check.
   ```rust
   use core::{psyche::Psyche, witness::WitnessAgent};
   use sensor::Sensation;

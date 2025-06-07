@@ -94,6 +94,7 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * The workspace uses Cargo resolver `2` in the root `Cargo.toml`.
 * `PromptBuilder` in `core` assembles Pete's LLM prompt.
   * It allows setting the reflection format (natural, JSON, or hybrid).
+* `ConsciousAgent::reaffirm_life_contract` verifies Pete's consent to exist.
 * Refer to the `llm` crate as the "language processor".
 * The `LinguisticScheduler` selects a model based on task capabilities.
 * The `LinguisticScheduler` profiles each server's latency and favors faster hosts.
