@@ -1,27 +1,60 @@
-use std::pin::Pin;
+use std::{pin::Pin, collections::HashMap};
 use futures_core::Stream;
 
-use crate::model::LLMServer;
+use crate::model::{LLMServer, LLMModel};
+use crate::client::OllamaClient;
+use std::sync::Arc;
 use crate::traits::{LLMAttribute, LLMCapability, LLMError};
 use crate::task::LinguisticTask;
 
 pub struct LLMClientPool {
     servers: Vec<LLMServer>,
+    next: HashMap<String, usize>,
 }
 
 impl LLMClientPool {
     pub fn new() -> Self {
-        Self { servers: Vec::new() }
+        Self { servers: Vec::new(), next: HashMap::new() }
     }
 
     pub fn add_server(&mut self, server: LLMServer) {
         self.servers.push(server);
     }
 
-    fn find_server(&self, model: &str, attr: Option<LLMAttribute>) -> Option<&LLMServer> {
-        self.servers.iter().find(|s| {
-            s.models.contains_key(model) && attr.map_or(true, |a| s.attributes.contains(&a))
-        })
+    /// Add an Ollama host with the provided models and attributes.
+    pub fn add_ollama_host(
+        &mut self,
+        url: impl AsRef<str>,
+        models: Vec<LLMModel>,
+        attrs: Vec<LLMAttribute>,
+    ) {
+        let client = Arc::new(OllamaClient::new(url.as_ref()));
+        let mut server = LLMServer::new(client);
+        for attr in attrs {
+            server = server.with_attribute(attr);
+        }
+        for model in models {
+            server = server.with_model(model);
+        }
+        self.add_server(server);
+    }
+
+    fn find_server(&mut self, model: &str, attr: Option<LLMAttribute>) -> Option<&LLMServer> {
+        let matching: Vec<_> = self
+            .servers
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| {
+                s.models.contains_key(model) && attr.map_or(true, |a| s.attributes.contains(&a))
+            })
+            .collect();
+        if matching.is_empty() {
+            return None;
+        }
+        let idx = self.next.entry(model.to_string()).or_insert(0);
+        let server = &self.servers[matching[*idx % matching.len()].0];
+        *idx += 1;
+        Some(server)
     }
 
     pub fn model_capabilities(&self, model: &str) -> Option<Vec<LLMCapability>> {
@@ -33,7 +66,7 @@ impl LLMClientPool {
         None
     }
 
-    pub fn has_attribute(&self, model: &str, attr: LLMAttribute) -> bool {
+    pub fn has_attribute(&mut self, model: &str, attr: LLMAttribute) -> bool {
         self.find_server(model, Some(attr)).is_some()
     }
 
@@ -57,7 +90,7 @@ impl LLMClientPool {
 
     /// Execute a [`LinguisticTask`] by selecting an appropriate model.
     pub async fn run_task(
-        &self,
+        &mut self,
         task: &LinguisticTask,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, LLMError>> + Send>>, LLMError> {
         let model = self
@@ -67,7 +100,7 @@ impl LLMClientPool {
     }
 
     pub async fn stream_chat(
-        &self,
+        &mut self,
         model: &str,
         prompt: &str,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, LLMError>> + Send>>, LLMError> {

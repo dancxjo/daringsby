@@ -42,7 +42,8 @@ CI on GitHub automatically runs `cargo check` and `cargo test` for pushes and pu
 
 | Name | Purpose |
 | --- | --- |
-| `OLLAMA_URL` | Base URL of the Ollama server |
+| `OLLAMA_URL` | Base URL of the primary Ollama server |
+| `OLLAMA_URLS` | Comma separated list of Ollama hosts for load balancing |
 | `OLLAMA_MODEL` | LLM model identifier |
 | `COQUI_URL` | Base URL of the Coqui TTS server |
 | `SPEAKER` | Coqui speaker name |

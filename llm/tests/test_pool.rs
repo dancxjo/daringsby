@@ -53,3 +53,31 @@ async fn choose_model_matches_caps() {
     let model = pool.choose_model(&task.capabilities, task.prefer).unwrap();
     assert_eq!(model, "gemma3:27b");
 }
+
+#[tokio::test]
+async fn round_robin_across_hosts() {
+    let (url1, shutdown1) = spawn_mock_server(vec!["one"]).await;
+    let (url2, shutdown2) = spawn_mock_server(vec!["two"]).await;
+    let client1 = Arc::new(OllamaClient::new(&url1));
+    let client2 = Arc::new(OllamaClient::new(&url2));
+    let server1 = LLMServer::new(client1).with_model(LLMModel::new(
+        "gemma3:27b",
+        vec![LLMCapability::Chat],
+    ));
+    let server2 = LLMServer::new(client2).with_model(LLMModel::new(
+        "gemma3:27b",
+        vec![LLMCapability::Chat],
+    ));
+    let mut pool = LLMClientPool::new();
+    pool.add_server(server1);
+    pool.add_server(server2);
+
+    let mut first = pool.stream_chat("gemma3:27b", "hello").await.unwrap();
+    let out1: Vec<_> = first.next().await.map(|r| r.unwrap()).into_iter().collect();
+    let mut second = pool.stream_chat("gemma3:27b", "hello").await.unwrap();
+    let out2: Vec<_> = second.next().await.map(|r| r.unwrap()).into_iter().collect();
+    assert_eq!(out1, vec!["one".to_string()]);
+    assert_eq!(out2, vec!["two".to_string()]);
+    let _ = shutdown1.send(()).await;
+    let _ = shutdown2.send(()).await;
+}

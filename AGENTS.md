@@ -85,6 +85,7 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * Keep spoken replies brief so listeners can interject.
 * Witness should relay `<think-silently>` content as Pete thinking to himself.
 * Configure `OLLAMA_URL` and `OLLAMA_MODEL` in your `.env` for LLM calls.
+* Use `OLLAMA_URLS` for a comma list of fallback hosts.
 * Memory is stored in Qdrant and Neo4j using a GraphRAG approach.
 * Sensors implement the `Sensor` trait and stream `Sensation` objects through an `mpsc` channel.
 * Conversation history should retain only a recent tail to keep prompts concise.
