@@ -16,5 +16,8 @@ async fn ws_emits_message() {
     let (mut stream, _) = connect_async(url).await.unwrap();
     stream.send(tokio_tungstenite::tungstenite::Message::Text("hi".into())).await.unwrap();
     let s = rx.recv().await.unwrap();
-    assert_eq!(s.what.as_deref(), Some("hi"));
+    match s.data {
+        Some(sensor::sensation::SensationData::Text(ref t)) => assert_eq!(t, "hi"),
+        _ => panic!("missing text"),
+    }
 }

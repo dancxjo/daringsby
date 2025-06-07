@@ -32,7 +32,14 @@ pub async fn explain_and_embed<C: LLMClient>(
     sensation: Sensation,
     llm: &C,
 ) -> Result<Experience, LLMError> {
-    let prompt = format!("Summarize in one sentence: {}", sensation.how);
+    use sensor::sensation::SensationData;
+    let prompt = match &sensation.data {
+        Some(SensationData::Image(bytes)) => {
+            let b64 = base64::encode(bytes);
+            format!("Describe this image as if you are seeing it with your own eyes, using first-person language. Be specific and present-tense. <image>{}</image>", b64)
+        }
+        _ => format!("Summarize in one sentence: {}", sensation.how),
+    };
     let model = model_from_env();
     let (_, explanation) = stream_first_sentence(llm, &model, &prompt).await?;
     let embedding = llm.embed("gemma3:embed", &explanation).await?;

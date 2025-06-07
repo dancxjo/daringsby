@@ -43,6 +43,7 @@ pub fn placeholder() {
 pub mod context;
 pub mod conversation;
 pub mod model;
+pub mod stream;
 use conversation::{Conversation, Role};
 use futures_util::StreamExt;
 use model::ModelClient;

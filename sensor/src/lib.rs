@@ -4,6 +4,7 @@
 //! channel to the rest of the system.
 
 pub mod heartbeat;
+pub mod eye;
 pub mod sensation;
 pub mod sensor;
 pub mod ws;
