@@ -1,0 +1,14 @@
+[package]
+name = "runtime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+core = { path = "../core" }
+voice = { path = "../voice" }
+llm = { path = "../llm" }
+clap = { version = "4", features = ["derive"] }
+env_logger = "0.10"
+dotenvy = "0.15"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+

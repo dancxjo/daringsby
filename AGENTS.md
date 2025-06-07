@@ -102,3 +102,4 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * The `WitnessAgent` should call the language processor directly to build the `HereAndNow`, not via `Voice`.
   * Use `max_perceptions` and `max_memories` to keep prompts short.
 * Use naturalistic language when describing agent roles (e.g., 'Witness feels sensory data to produce experience').
+* Prefer the `clap` crate for parsing CLI arguments in binaries.
