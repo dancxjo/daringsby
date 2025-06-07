@@ -77,7 +77,7 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * Add unit tests alongside new features when possible.
 * Continuous integration runs `cargo check` and `cargo test` via `.github/workflows/ci.yml` on pushes and pull requests.
 * Keep this file updated with new reminders as the project evolves.
-* Remember "ants across the bridge" when connecting modules.
+* Remember "ants across the bridge" when doing tasks. That is to say, go from end to end in telling a user story. Deliver a working feature even if it's not the full product. Make sure you deliver useable, behavior driven features.
 * Witness and Voice are sibling subagents managed by `Psyche`.
 * Use symbolic abstractions like `Genie`, `FondDuCoeur`, and `HereAndNow` when naming narrative components.
 * Use `docker-compose.yml` to start the local Coqui TTS server.
