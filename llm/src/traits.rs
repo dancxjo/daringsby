@@ -1,8 +1,14 @@
+//! Core traits and enums describing language model capabilities.
+//!
+//! Other crates use these abstractions to remain agnostic over the specific LLM
+//! backend being used.
+
 use async_trait::async_trait;
 use futures_core::Stream;
 use std::pin::Pin;
 use thiserror::Error;
 
+/// Features that a model can support.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LLMCapability {
     Chat,
@@ -11,6 +17,7 @@ pub enum LLMCapability {
     Code,
 }
 
+/// Qualitative attributes describing a server or model.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LLMAttribute {
     Fast,
@@ -20,6 +27,7 @@ pub enum LLMAttribute {
     Remote,
 }
 
+/// Errors produced by an [`LLMClient`].
 #[derive(Debug, Error)]
 pub enum LLMError {
     #[error("network error: {0}")]
@@ -30,6 +38,7 @@ pub enum LLMError {
     ModelNotFound,
 }
 
+/// Interface for talking to a language model server.
 #[async_trait]
 pub trait LLMClient: Send + Sync {
     async fn stream_chat(

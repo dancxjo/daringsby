@@ -1,8 +1,8 @@
 //! Core abstractions for Pete Daringsby's mind.
 //!
-//! This crate wires together the [`WitnessAgent`] which perceives incoming
-//! [`Sensation`](sensor::Sensation)s with the [`Psyche`] that summarizes them
-//! using a [`Genie`] implementation such as [`FondDuCoeur`].
+//! This crate wires together the [`witness::WitnessAgent`] which perceives
+//! [`sensor::Sensation`] values with the [`psyche::Psyche`] that summarizes them
+//! using a [`fond::FondDuCoeur`] or other [`genie::Genie`] implementation.
 //!
 //! ```
 //! use core::{psyche::Psyche, witness::WitnessAgent};
@@ -28,12 +28,12 @@
 //! ```
 #![doc(test(no_crate_inject))]
 
+pub mod ethics;
 pub mod fond;
 pub mod genie;
+pub mod prompt_builder;
 pub mod psyche;
 pub mod witness;
-pub mod prompt_builder;
-pub mod ethics;
 
 /// Emit a simple initialization message.
 ///
@@ -57,9 +57,15 @@ mod tests {
     impl VoiceAgent for MockNarrator {
         async fn narrate(&self, context: &str) -> VoiceOutput {
             VoiceOutput {
-                think: ThinkMessage { content: format!("echo: {context}") },
-                say: Some(SayMessage { content: context.into() }),
-                emote: Some(EmoteMessage { emoji: "😊".into() }),
+                think: ThinkMessage {
+                    content: format!("echo: {context}"),
+                },
+                say: Some(SayMessage {
+                    content: context.into(),
+                }),
+                emote: Some(EmoteMessage {
+                    emoji: "😊".into()
+                }),
             }
         }
     }
@@ -74,8 +80,18 @@ mod tests {
         let msg = psyche.tick().await;
         assert_eq!(psyche.here_and_now, "hello");
         assert_eq!(msg.think.content, "echo: hello");
-        assert_eq!(msg.say, Some(SayMessage { content: "hello".into() }));
-        assert_eq!(msg.emote, Some(EmoteMessage { emoji: "😊".into() }));
+        assert_eq!(
+            msg.say,
+            Some(SayMessage {
+                content: "hello".into()
+            })
+        );
+        assert_eq!(
+            msg.emote,
+            Some(EmoteMessage {
+                emoji: "😊".into()
+            })
+        );
     }
 
     struct FixedGenie {

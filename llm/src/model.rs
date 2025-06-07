@@ -1,3 +1,10 @@
+//! Data structures describing available language models and servers.
+//!
+//! A [`LLMServer`] wraps a concrete [`LLMClient`]
+//! implementation and the set of [`LLMModel`]s it exposes. These types are used
+//! by the scheduler in [`crate::pool`] to select an appropriate model for a
+//! [`crate::task::LinguisticTask`].
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -18,7 +25,11 @@ pub struct LLMServer {
 
 impl LLMServer {
     pub fn new(client: Arc<dyn LLMClient>) -> Self {
-        Self { client, models: HashMap::new(), attributes: Vec::new() }
+        Self {
+            client,
+            models: HashMap::new(),
+            attributes: Vec::new(),
+        }
     }
 
     pub fn with_attribute(mut self, attr: LLMAttribute) -> Self {
@@ -34,6 +45,9 @@ impl LLMServer {
 
 impl LLMModel {
     pub fn new(name: impl Into<String>, capabilities: Vec<LLMCapability>) -> Self {
-        Self { name: name.into(), capabilities }
+        Self {
+            name: name.into(),
+            capabilities,
+        }
     }
 }

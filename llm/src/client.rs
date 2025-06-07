@@ -1,10 +1,21 @@
+//! HTTP client for interacting with an Ollama language model server.
+//!
+//! This module provides the [`OllamaClient`] type which implements the
+//! [`LLMClient`] trait. It streams chat responses and
+//! requests embeddings from a running Ollama instance.
+
 use crate::traits::{LLMClient, LLMError};
 use async_trait::async_trait;
 use futures_core::Stream;
 use std::pin::Pin;
 use tokio_stream::StreamExt;
 
-use ollama_rs::{Ollama, generation::{completion::request::GenerationRequest, embeddings::request::GenerateEmbeddingsRequest}};
+use ollama_rs::{
+    generation::{
+        completion::request::GenerationRequest, embeddings::request::GenerateEmbeddingsRequest,
+    },
+    Ollama,
+};
 
 pub struct OllamaClient {
     inner: Ollama,
@@ -12,7 +23,9 @@ pub struct OllamaClient {
 
 impl OllamaClient {
     pub fn new(base_url: impl AsRef<str>) -> Self {
-        Self { inner: Ollama::try_new(base_url.as_ref()).unwrap() }
+        Self {
+            inner: Ollama::try_new(base_url.as_ref()).unwrap(),
+        }
     }
 }
 
@@ -24,14 +37,20 @@ impl LLMClient for OllamaClient {
         prompt: &str,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, LLMError>> + Send>>, LLMError> {
         let req = GenerationRequest::new(model.to_string(), prompt.to_string());
-        let stream = self.inner
+        let stream = self
+            .inner
             .generate_stream(req)
             .await
             .map_err(|e| LLMError::Network(e.to_string()))?;
         let mapped = stream.map(|res| {
-            res.map_err(|e| LLMError::Network(e.to_string())).map(|chunk| {
-                chunk.into_iter().map(|c| c.response).collect::<Vec<_>>().join("")
-            })
+            res.map_err(|e| LLMError::Network(e.to_string()))
+                .map(|chunk| {
+                    chunk
+                        .into_iter()
+                        .map(|c| c.response)
+                        .collect::<Vec<_>>()
+                        .join("")
+                })
         });
         Ok(Box::pin(mapped))
     }

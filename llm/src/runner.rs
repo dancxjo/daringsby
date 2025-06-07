@@ -1,8 +1,8 @@
 use crate::traits::{LLMClient, LLMError};
-use crate::{OllamaClient, LLMClientPool, LLMServer, LLMModel, LLMCapability};
+use crate::{LLMCapability, LLMClientPool, LLMModel, LLMServer, OllamaClient};
+use regex::Regex;
 use std::sync::Arc;
 use tokio_stream::StreamExt;
-use regex::Regex;
 
 /// Stream a prompt and capture each token and the first complete sentence.
 pub async fn stream_first_sentence<C: LLMClient>(
@@ -40,7 +40,7 @@ pub fn model_from_env() -> String {
     std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "gemma3:27b".into())
 }
 
-/// Create a [`LinguisticScheduler`] from the `OLLAMA_URLS` environment variable.
+/// Create a [`crate::LinguisticScheduler`] from the `OLLAMA_URLS` environment variable.
 /// The variable should contain a comma separated list of base URLs. If not set,
 /// `OLLAMA_URL` is used instead.
 pub fn scheduler_from_env() -> LLMClientPool {
@@ -51,10 +51,8 @@ pub fn scheduler_from_env() -> LLMClientPool {
     let mut pool = LLMClientPool::new();
     for url in urls.split(',') {
         let client = Arc::new(OllamaClient::new(url.trim()));
-        let server = LLMServer::new(client).with_model(LLMModel::new(
-            model.clone(),
-            vec![LLMCapability::Chat],
-        ));
+        let server = LLMServer::new(client)
+            .with_model(LLMModel::new(model.clone(), vec![LLMCapability::Chat]));
         pool.add_server(server);
     }
     pool

@@ -1,13 +1,20 @@
+//! Abstractions over concrete LLM backends used by the voice agent.
+//!
+//! The types in this module define a small interface for streaming chat
+//! completions and embeddings. A default [`OllamaClient`] is provided along with
+//! a [`MockModelClient`] used in tests.
+
 use async_trait::async_trait;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use std::pin::Pin;
+use thiserror::Error;
 
 pub mod registry;
 pub mod scheduler;
 
+/// Features that a model can provide.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Capability {
     Chat,
@@ -16,6 +23,7 @@ pub enum Capability {
     Code,
 }
 
+/// Qualitative attributes describing a model or server.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Attribute {
     Fast,
@@ -24,6 +32,7 @@ pub enum Attribute {
     HighMemory,
 }
 
+/// Errors originating from a [`ModelClient`].
 #[derive(Debug, Error)]
 pub enum ModelError {
     #[error("network error: {0}")]
@@ -32,6 +41,7 @@ pub enum ModelError {
     InvalidResponse,
 }
 
+/// Interface for streaming chat completions and embeddings.
 #[async_trait]
 pub trait ModelClient {
     async fn stream_chat(
@@ -43,6 +53,7 @@ pub trait ModelClient {
     async fn embed(&self, model: &str, input: &str) -> Result<Vec<f32>, ModelError>;
 }
 
+/// Implementation of [`ModelClient`] that talks to an Ollama server over HTTP.
 pub struct OllamaClient {
     pub base_url: String,
     client: reqwest::Client,
@@ -50,7 +61,10 @@ pub struct OllamaClient {
 
 impl OllamaClient {
     pub fn new(base_url: impl Into<String>) -> Self {
-        Self { base_url: base_url.into(), client: reqwest::Client::new() }
+        Self {
+            base_url: base_url.into(),
+            client: reqwest::Client::new(),
+        }
     }
 }
 
@@ -107,13 +121,19 @@ impl ModelClient for OllamaClient {
     }
 }
 
+/// Simple in-memory mock used in unit tests.
 pub struct MockModelClient {
     pub responses: Vec<String>,
     pub embeddings: Vec<f32>,
 }
 
 impl MockModelClient {
-    pub fn new(responses: Vec<String>, embeddings: Vec<f32>) -> Self { Self { responses, embeddings } }
+    pub fn new(responses: Vec<String>, embeddings: Vec<f32>) -> Self {
+        Self {
+            responses,
+            embeddings,
+        }
+    }
 }
 
 #[async_trait]
