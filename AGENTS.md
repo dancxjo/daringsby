@@ -20,7 +20,7 @@ This document outlines the conceptual agent design for Pete Daringsby. The syste
 
 ### 1. Witness Agent
 
-* **Role:** Ingests and annotates incoming sensory data
+* **Role:** Feels incoming sensory data to produce experience
 * **Inputs:** Audio (ASR), Vision, Geolocation, Typed Input
 * **Output:** Interpreted `Sensation` objects, passed into a chronological buffer
 * **Purpose:** Forms the raw substrate of experience that other agents summarize and interpret
@@ -98,3 +98,4 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * The `LinguisticScheduler` selects a model based on task capabilities.
 * The `WitnessAgent` should call the language processor directly to build the `HereAndNow`, not via `Voice`.
   * Use `max_perceptions` and `max_memories` to keep prompts short.
+* Use naturalistic language when describing agent roles (e.g., 'Witness feels sensory data to produce experience').
