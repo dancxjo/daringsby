@@ -44,3 +44,40 @@ pub async fn spawn_mock_server(responses: Vec<&'static str>) -> (String, mpsc::S
     let url = format!("http://{}", addr);
     (url, shutdown_tx)
 }
+
+pub async fn spawn_delayed_mock_server(responses: Vec<&'static str>, delay_ms: u64) -> (String, mpsc::Sender<()>) {
+    let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
+    let resp = Arc::new(responses);
+    let shared = warp::any().map(move || resp.clone());
+
+    let route = warp::post()
+        .and(warp::path("api").and(warp::path("generate")))
+        .and(shared)
+        .map(move |responses: Arc<Vec<&'static str>>| {
+            let (mut tx, body) = warp::hyper::Body::channel();
+            tokio::spawn(async move {
+                for (i, r) in responses.iter().enumerate() {
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    let done = i == responses.len() - 1;
+                    let obj = json!({
+                        "model": "gemma3:27b",
+                        "created_at": "now",
+                        "response": r,
+                        "done": done
+                    });
+                    let line = serde_json::to_string(&obj).unwrap() + "\n";
+                    if tx.send_data(line.into()).await.is_err() {
+                        break;
+                    }
+                }
+            });
+            warp::reply::Response::new(body)
+        });
+
+    let (addr, server) = warp::serve(route).bind_with_graceful_shutdown(([127,0,0,1],0), async move {
+        shutdown_rx.recv().await;
+    });
+    tokio::spawn(server);
+    let url = format!("http://{}", addr);
+    (url, shutdown_tx)
+}

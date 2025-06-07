@@ -96,6 +96,7 @@ This design supports cognitive modularity, streamability, emotional realism, and
   * It allows setting the reflection format (natural, JSON, or hybrid).
 * Refer to the `llm` crate as the "language processor".
 * The `LinguisticScheduler` selects a model based on task capabilities.
+* The `LinguisticScheduler` profiles each server's latency and favors faster hosts.
 * The `WitnessAgent` should call the language processor directly to build the `HereAndNow`, not via `Voice`.
   * Use `max_perceptions` and `max_memories` to keep prompts short.
 * Use naturalistic language when describing agent roles (e.g., 'Witness feels sensory data to produce experience').
