@@ -1,0 +1,39 @@
+use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast;
+
+/// Events published across Pete's streaming bus.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", content = "data")]
+pub enum StreamEvent {
+    AsrPartial { transcript: String },
+    AsrFinal { transcript: String },
+    LlmThoughtFragment { content: String },
+    LlmFinalResponse { content: String },
+    TtsChunkReady { id: usize },
+    PerceptionLog { text: String },
+    MemoryUpdate { summary: String },
+    ConsentCheck { ok: bool },
+}
+
+/// Simple broadcast channel for streaming events.
+pub struct StreamBus {
+    tx: broadcast::Sender<StreamEvent>,
+}
+
+impl StreamBus {
+    /// Create a new bus with the given capacity.
+    pub fn new(capacity: usize) -> Self {
+        let (tx, _) = broadcast::channel(capacity);
+        Self { tx }
+    }
+
+    /// Subscribe to the stream.
+    pub fn subscribe(&self) -> broadcast::Receiver<StreamEvent> {
+        self.tx.subscribe()
+    }
+
+    /// Broadcast an event to all subscribers.
+    pub fn send(&self, event: StreamEvent) -> Result<(), broadcast::error::SendError<StreamEvent>> {
+        self.tx.send(event).map(|_| ())
+    }
+}

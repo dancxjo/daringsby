@@ -8,3 +8,5 @@
 pub fn placeholder() {
     println!("net module initialized");
 }
+
+pub mod stream_bus;
