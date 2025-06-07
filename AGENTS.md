@@ -81,6 +81,7 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * Witness and Voice are sibling subagents managed by `Psyche`.
 * Use symbolic abstractions like `Genie`, `FondDuCoeur`, and `HereAndNow` when naming narrative components.
 * Use `docker-compose.yml` to start the local Coqui TTS server.
+* Qdrant and Neo4j services are defined there for the memory backends.
 * Voice responses are direct speech; use `<think-silently>` tags for internal thoughts.
 * Keep spoken replies brief so listeners can interject.
 * Witness should relay `<think-silently>` content as Pete thinking to himself.
