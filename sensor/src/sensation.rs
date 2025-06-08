@@ -34,4 +34,13 @@ impl Sensation {
             data: Some(SensationData::Image(image)),
         }
     }
+
+    /// Construct a face sensation from detected face bytes.
+    pub fn saw_face(image: Vec<u8>) -> Self {
+        Self {
+            when: Utc::now(),
+            how: "face".into(),
+            data: Some(SensationData::Image(image)),
+        }
+    }
 }

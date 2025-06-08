@@ -111,6 +111,7 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * Prefer the `clap` crate for parsing CLI arguments in binaries.
 * Eye sensor emits `Sensation::saw` objects from JPEG snapshots.
 * Keep module declarations unique; avoid duplicate `pub mod` lines.
+* Don't commit large model binaries; keep them in ignored directories like `vision/model/`.
 * Run `cargo run -p runtime` and open `http://localhost:3000/see` to mirror your
   webcam in the browser and stream frames to the runtime.
 * `Psyche` tracks a `mood` emoji each tick via `MoodAgent`.
