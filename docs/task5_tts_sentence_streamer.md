@@ -18,6 +18,7 @@ tts:
   image: ghcr.io/coqui-ai/tts
   ports:
     - "5002:5002"
+  entrypoint: python3
   environment:
     - NVIDIA_VISIBLE_DEVICES=all
     - COQUI_TOS_AGREED=1
@@ -35,6 +36,11 @@ tts:
           - count: all
             capabilities: [gpu]
 ```
+For CPU-only systems, use the Coqui `tts-cpu` image:
+```bash
+docker run --rm -it -p 5002:5002 ghcr.io/coqui-ai/tts-cpu python3 TTS/server/server.py --model_name tts_models/en/vctk/vits
+```
+
 
 Set the following environment variables in `.env` or your configuration:
 
