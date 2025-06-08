@@ -111,3 +111,4 @@ This design supports cognitive modularity, streamability, emotional realism, and
   webcam in the browser and stream frames to the runtime.
 * `Psyche` tracks a `mood` emoji each tick via `MoodAgent`.
 * The web server exposes `/face` and `/logs` for mood and live log output.
+* `/` hosts an interactive dashboard for sending text, audio and location to Pete.

@@ -1,14 +1,14 @@
 use clap::Parser;
-use dotenvy::dotenv;
-use std::{env, sync::Arc, time::Duration};
 use core::{psyche::Psyche, witness::WitnessAgent};
-use voice::ChatVoice;
+use dotenvy::dotenv;
 use llm::model_from_env;
-use voice::model::OllamaClient;
-use tokio::sync::{mpsc, Mutex};
 use log::LevelFilter;
-mod server;
+use std::{env, sync::Arc, time::Duration};
+use tokio::sync::{mpsc, Mutex};
+use voice::model::OllamaClient;
+use voice::ChatVoice;
 mod logger;
+mod server;
 
 #[derive(Parser)]
 struct Args {
@@ -52,8 +52,11 @@ async fn main() {
             let mut m = mood.lock().await;
             *m = psyche.mood.clone();
         }
+        if !output.think.content.is_empty() {
+            log::info!("Think: {}", output.think.content);
+        }
         if let Some(say) = output.say {
-            println!("Pete: {}", say.content);
+            log::info!("Pete: {}", say.content);
         }
         tokio::time::sleep(delay).await;
     }

@@ -10,6 +10,7 @@ llm = { path = "../llm" }
 sensor = { path = "../sensor" }
 clap = { version = "4", features = ["derive"] }
 env_logger = "0.10"
+log = "0.4"
 dotenvy = "0.15"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 axum = { version = "0.7", features = ["ws", "json"] }
@@ -19,4 +20,6 @@ base64 = "0.21"
 
 [dev-dependencies]
 tower = "0.4"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+log = "0.4"
 

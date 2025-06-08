@@ -51,7 +51,7 @@ mod tests {
             &self,
             _model: &str,
             _prompt: &str,
-        ) -> Result<Pin<Box<dyn futures_core::Stream<Item = Result<String, LLMError>> + Send>>, LLMError> {
+        ) -> Result<Pin<Box<dyn futures_util::Stream<Item = Result<String, LLMError>> + Send>>, LLMError> {
             Ok(Box::pin(stream::iter(vec![Ok("😀".to_string())])))
         }
 
