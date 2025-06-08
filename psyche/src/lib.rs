@@ -2,6 +2,7 @@ use std::time::SystemTime;
 
 pub mod bus;
 pub mod logging;
+pub mod sensors;
 pub mod server;
 
 /// Input data captured by the system.
@@ -365,6 +366,65 @@ impl Experience {
     pub fn new(sentence: impl Into<String>) -> Self {
         Self {
             sentence: sentence.into(),
+        }
+    }
+}
+
+/// Central entity combining a [`Heart`] with a set of sensors.
+///
+/// Sensors convert [`bus::Event`]s into experiences that are queued on the
+/// focus wit.
+///
+/// # Examples
+/// ```
+/// use psyche::{bus::Event, sensors::{ChatSensor, ConnectionSensor}, Heart, Wit, JoinScheduler, Sensor};
+/// struct Echo;
+/// impl psyche::Sensor for Echo { type Input = String; fn feel(&mut self, s: psyche::Sensation<String>) -> Option<psyche::Experience> { Some(psyche::Experience::new(s.what)) } }
+/// let wit = Wit::new(JoinScheduler::default(), Echo);
+/// let sensors: Vec<Box<dyn Sensor<Input = Event>>> = vec![
+///     Box::new(ChatSensor::default()),
+///     Box::new(ConnectionSensor::default()),
+/// ];
+/// let mut psyche = psyche::Psyche::new(Heart::new(vec![wit]), sensors);
+/// use std::net::SocketAddr;
+/// psyche.process_event(Event::Connected("127.0.0.1:1".parse().unwrap()));
+/// psyche.heart.tick();
+/// assert_eq!(psyche.heart.wits[0].memory.all().len(), 1);
+/// ```
+pub struct Psyche<Sched, Percept>
+where
+    Sched: Scheduler,
+    Percept: Sensor<Input = Sched::Output>,
+    Sched::Output: Clone,
+{
+    /// Internal heart managing wits.
+    pub heart: Heart<Wit<Sched, Percept>>,
+    sensors: Vec<Box<dyn Sensor<Input = bus::Event>>>,
+}
+
+impl<Sched, Percept> Psyche<Sched, Percept>
+where
+    Sched: Scheduler,
+    Percept: Sensor<Input = Sched::Output>,
+    Sched::Output: Clone,
+{
+    /// Create a new psyche from a heart and sensors.
+    pub fn new(
+        heart: Heart<Wit<Sched, Percept>>,
+        sensors: Vec<Box<dyn Sensor<Input = bus::Event>>>,
+    ) -> Self {
+        Self { heart, sensors }
+    }
+
+    /// Feed an event through all sensors and push resulting experiences to the focus.
+    pub fn process_event(&mut self, evt: bus::Event) {
+        let sensation = Sensation::new(evt);
+        for sensor in &mut self.sensors {
+            if let Some(exp) = sensor.feel(sensation.clone()) {
+                if let Some(focus) = self.heart.focus_mut() {
+                    focus.push(exp);
+                }
+            }
         }
     }
 }

@@ -16,15 +16,22 @@ enum ClientMessage {
     Chat { line: String },
 }
 
-async fn handle_ws(ws: WebSocket) {
+async fn handle_ws(ws: WebSocket, peer: Option<SocketAddr>) {
     let (mut tx, mut rx_ws) = ws.split();
     let mut rx = global_bus().subscribe();
-    info!("WebSocket client connected");
+    if let Some(addr) = peer {
+        info!("WebSocket client connected: {}", addr);
+        global_bus().send(Event::Connected(addr));
+    } else {
+        info!("WebSocket client connected: unknown");
+    }
 
     let forward = tokio::spawn(async move {
         while let Ok(event) = rx.recv().await {
             let text = match event {
                 Event::Log(line) | Event::Chat(line) => line,
+                Event::Connected(addr) => format!("[connected {addr}]") ,
+                Event::Disconnected(addr) => format!("[disconnected {addr}]") ,
             };
             if tx.send(Message::text(text)).await.is_err() {
                 break;
@@ -43,7 +50,12 @@ async fn handle_ws(ws: WebSocket) {
     }
 
     let _ = forward.await;
-    info!("WebSocket client disconnected");
+    if let Some(addr) = peer {
+        info!("WebSocket client disconnected: {}", addr);
+        global_bus().send(Event::Disconnected(addr));
+    } else {
+        info!("WebSocket client disconnected: unknown");
+    }
 }
 
 /// Start the webserver on the provided address.
@@ -51,7 +63,10 @@ pub async fn run(addr: impl Into<SocketAddr>) {
     let html = warp::path::end().map(|| warp::reply::html(INDEX_HTML));
     let ws_route = warp::path("ws")
         .and(warp::ws())
-        .map(|ws: warp::ws::Ws| ws.on_upgrade(handle_ws));
+        .and(warp::addr::remote())
+        .map(|ws: warp::ws::Ws, addr: Option<SocketAddr>| {
+            ws.on_upgrade(move |socket| handle_ws(socket, addr))
+        });
 
     warp::serve(html.or(ws_route)).run(addr).await;
 }
