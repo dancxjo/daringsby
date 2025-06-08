@@ -78,7 +78,12 @@ impl<C: ModelClient + Send + Sync> VoiceAgent for ChatVoice<C> {
     async fn narrate(&self, context: &str) -> VoiceOutput {
         let prompt = {
             let conv = self.conversation.lock().unwrap();
-            let mut prompt = format!("You are a storyteller narrating the life of Pete Daringsby. Narrate in the voice of Pete from the first person. Current thought: {context}\n");
+            let mut prompt = format!(
+                "You are a storyteller narrating the life of Pete Daringsby. \
+                 Narrate in the voice of Pete from the first person. \
+                 Keep your responses brief and grounded in the provided sensations and memories. \
+                 Current thought: {context}\n"
+            );
             for m in conv.tail() {
                 match m.role {
                     Role::Assistant => prompt.push_str(&format!("Pete: {}\n", m.content)),
@@ -92,7 +97,9 @@ impl<C: ModelClient + Send + Sync> VoiceAgent for ChatVoice<C> {
             Ok(s) => s,
             Err(_) => {
                 return VoiceOutput {
-                    think: ThinkMessage { content: String::new() },
+                    think: ThinkMessage {
+                        content: String::new(),
+                    },
                     say: None,
                     emote: None,
                 }
@@ -117,15 +124,21 @@ impl<C: ModelClient + Send + Sync> VoiceAgent for ChatVoice<C> {
             think_content.push_str(&cap[1]);
         }
         let mut said = think_re.replace_all(&response, "").into_owned();
-        let emote_msg = emote_re.captures(&said).map(|c| EmoteMessage { emoji: c[1].to_string() });
+        let emote_msg = emote_re.captures(&said).map(|c| EmoteMessage {
+            emoji: c[1].to_string(),
+        });
         said = emote_re.replace_all(&said, "").into_owned();
         let say_msg = if said.trim().is_empty() {
             None
         } else {
-            Some(SayMessage { content: said.trim().to_string() })
+            Some(SayMessage {
+                content: said.trim().to_string(),
+            })
         };
         VoiceOutput {
-            think: ThinkMessage { content: think_content },
+            think: ThinkMessage {
+                content: think_content,
+            },
             say: say_msg,
             emote: emote_msg,
         }
