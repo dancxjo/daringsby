@@ -3,9 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 
-use crate::{profiling::ProfilingProcessor, Processor, Task, TaskOutput, TaskKind};
-use futures::stream::BoxStream;
+use crate::{Processor, Task, TaskKind, TaskOutput, profiling::ProfilingProcessor};
 use futures::StreamExt;
+use futures::stream::BoxStream;
 use modeldb::AiModel;
 
 /// Aggregated profile information for a provider.
@@ -15,7 +15,7 @@ pub struct ProviderProfile {
 }
 
 impl ProviderProfile {
-    fn record(&mut self, model: &str) {
+    pub(crate) fn record(&mut self, model: &str) {
         *self.runs.entry(model.to_string()).or_insert(0) += 1;
     }
 
@@ -23,7 +23,6 @@ impl ProviderProfile {
     pub fn runs(&self, model: &str) -> usize {
         self.runs.get(model).copied().unwrap_or(0)
     }
-
 }
 
 /// Abstraction over something that can provide processors for various models.
@@ -34,10 +33,7 @@ pub trait ModelRunnerProvider {
 
     /// Obtain a processor for a given model. Implementations should track
     /// profiling data and active process counts.
-    async fn processor_for(
-        &self,
-        model: &str,
-    ) -> anyhow::Result<Box<dyn Processor + Send + Sync>>;
+    async fn processor_for(&self, model: &str) -> anyhow::Result<Box<dyn Processor + Send + Sync>>;
 
     /// Current number of active processes spawned by this provider.
     fn active(&self) -> usize;
@@ -62,9 +58,19 @@ pub(crate) struct ManagedProcessor<P> {
 }
 
 impl<P> ManagedProcessor<P> {
-    fn new(inner: P, profile: Arc<Mutex<ProviderProfile>>, active: Arc<Mutex<usize>>, model: String) -> Self {
+    fn new(
+        inner: P,
+        profile: Arc<Mutex<ProviderProfile>>,
+        active: Arc<Mutex<usize>>,
+        model: String,
+    ) -> Self {
         *active.lock().unwrap() += 1;
-        Self { inner, profile, active, model }
+        Self {
+            inner,
+            profile,
+            active,
+            model,
+        }
     }
 }
 
@@ -74,7 +80,10 @@ impl<P: Processor + Send + Sync + 'static> Processor for ManagedProcessor<Profil
         self.inner.capabilities()
     }
 
-    async fn process(&self, task: Task) -> anyhow::Result<BoxStream<'static, anyhow::Result<TaskOutput>>> {
+    async fn process(
+        &self,
+        task: Task,
+    ) -> anyhow::Result<BoxStream<'static, anyhow::Result<TaskOutput>>> {
         let profile = self.profile.clone();
         let active = self.active.clone();
         let model = self.model.clone();
@@ -204,9 +213,14 @@ mod tests {
 
     #[async_trait]
     impl Processor for Echo {
-        fn capabilities(&self) -> Vec<TaskKind> { vec![TaskKind::InstructionFollowing] }
+        fn capabilities(&self) -> Vec<TaskKind> {
+            vec![TaskKind::InstructionFollowing]
+        }
 
-        async fn process(&self, task: Task) -> anyhow::Result<BoxStream<'static, anyhow::Result<TaskOutput>>> {
+        async fn process(
+            &self,
+            task: Task,
+        ) -> anyhow::Result<BoxStream<'static, anyhow::Result<TaskOutput>>> {
             match task {
                 Task::InstructionFollowing(t) => {
                     use async_stream::stream;
@@ -225,26 +239,47 @@ mod tests {
 
     impl DummyProvider {
         fn new() -> Self {
-            Self { profile: Arc::new(Mutex::new(ProviderProfile::default())), active: Arc::new(Mutex::new(0)) }
+            Self {
+                profile: Arc::new(Mutex::new(ProviderProfile::default())),
+                active: Arc::new(Mutex::new(0)),
+            }
         }
     }
 
     #[async_trait]
     impl ModelRunnerProvider for DummyProvider {
-        async fn models(&self) -> anyhow::Result<Vec<AiModel>> { Ok(Vec::new()) }
-
-        async fn processor_for(&self, _model: &str) -> anyhow::Result<Box<dyn Processor + Send + Sync>> {
-            let proc = ProfilingProcessor::new(Echo);
-            Ok(Box::new(ManagedProcessor::new(proc, self.profile.clone(), self.active.clone(), "echo".into())))
+        async fn models(&self) -> anyhow::Result<Vec<AiModel>> {
+            Ok(Vec::new())
         }
 
-        fn active(&self) -> usize { *self.active.lock().unwrap() }
+        async fn processor_for(
+            &self,
+            _model: &str,
+        ) -> anyhow::Result<Box<dyn Processor + Send + Sync>> {
+            let proc = ProfilingProcessor::new(Echo);
+            Ok(Box::new(ManagedProcessor::new(
+                proc,
+                self.profile.clone(),
+                self.active.clone(),
+                "echo".into(),
+            )))
+        }
 
-        async fn heartbeat(&self) -> bool { true }
+        fn active(&self) -> usize {
+            *self.active.lock().unwrap()
+        }
 
-        async fn health_check(&self) -> bool { true }
+        async fn heartbeat(&self) -> bool {
+            true
+        }
 
-        fn profile(&self) -> ProviderProfile { self.profile.lock().unwrap().clone() }
+        async fn health_check(&self) -> bool {
+            true
+        }
+
+        fn profile(&self) -> ProviderProfile {
+            self.profile.lock().unwrap().clone()
+        }
     }
 
     #[tokio::test]
@@ -252,7 +287,10 @@ mod tests {
         let provider = DummyProvider::new();
         let proc = provider.processor_for("any").await.unwrap();
         assert_eq!(provider.active(), 1);
-        let task = Task::InstructionFollowing(crate::InstructionFollowingTask { instruction: "hi".into(), images: vec![] });
+        let task = Task::InstructionFollowing(crate::InstructionFollowingTask {
+            instruction: "hi".into(),
+            images: vec![],
+        });
         let mut s = proc.process(task).await.unwrap();
         while let Some(_c) = s.next().await {}
         assert!(s.next().await.is_none());
