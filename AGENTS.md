@@ -109,3 +109,5 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * Keep module declarations unique; avoid duplicate `pub mod` lines.
 * Run `cargo run -p runtime` and open `http://localhost:3000/see` to mirror your
   webcam in the browser and stream frames to the runtime.
+* `Psyche` tracks a `mood` emoji each tick via `MoodAgent`.
+* The web server exposes `/face` and `/logs` for mood and live log output.
