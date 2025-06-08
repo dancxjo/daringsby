@@ -36,6 +36,8 @@ pub enum LLMError {
     InvalidResponse,
     #[error("model not found")]
     ModelNotFound,
+    #[error("queue full")]
+    QueueFull,
 }
 
 /// Interface for talking to a language model server.

@@ -1,8 +1,10 @@
 use tokio_stream::StreamExt;
 use std::sync::Arc;
 
-use llm::{LLMClientPool, LLMModel, LLMServer, LLMCapability, LLMAttribute, OllamaClient};
-use llm::{LinguisticTask};
+use llm::{
+    LLMClientPool, LLMModel, LLMServer, LLMCapability, LLMAttribute, OllamaClient, LLMError,
+};
+use llm::LinguisticTask;
 
 mod mock_server;
 use mock_server::spawn_mock_server;
@@ -115,4 +117,26 @@ async fn prefers_fast_server_after_profiling() {
     assert_eq!(token, "fast".to_string());
     let _ = shutdown_fast.send(()).await;
     let _ = shutdown_slow.send(()).await;
+}
+
+#[tokio::test]
+async fn droppable_task_is_skipped_when_busy() {
+    let (url, shutdown) = spawn_delayed_mock_server(vec!["one"], 100).await;
+    let client = Arc::new(OllamaClient::new(&url));
+    let server = LLMServer::new(client).with_model(LLMModel::new(
+        "gemma3:27b",
+        vec![LLMCapability::Chat],
+    ));
+    let mut pool = LLMClientPool::new();
+    pool.add_server(server);
+
+    let mut s1 = pool.stream_chat("gemma3:27b", "a").await.unwrap();
+    let res = pool
+        .run_task(
+            &LinguisticTask::new("b", vec![LLMCapability::Chat]).droppable(true),
+        )
+        .await;
+    assert!(matches!(res, Err(LLMError::QueueFull)));
+    let _ = s1.next().await;
+    let _ = shutdown.send(()).await;
 }
