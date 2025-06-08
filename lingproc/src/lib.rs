@@ -298,6 +298,7 @@ mod tests {
         });
         let mut stream = proc.process(task).await.unwrap();
         while let Some(_c) = stream.next().await {}
+        assert!(stream.next().await.is_none());
         let d = proc.durations();
         assert_eq!(d.len(), 1);
         assert!(d[0] > Duration::from_secs(0));
