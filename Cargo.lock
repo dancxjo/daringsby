@@ -1059,6 +1059,14 @@ dependencies = [
 [[package]]
 name = "psyche"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "futures",
+ "lingproc",
+ "tokio",
+]
 
 [[package]]
 name = "quinn"

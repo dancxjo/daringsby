@@ -110,6 +110,56 @@ impl Scheduler for JoinScheduler {
     }
 }
 
+/// Scheduler using an LLM processor to summarize sentences.
+pub struct ProcessorScheduler<P> {
+    processor: P,
+}
+
+impl<P> ProcessorScheduler<P> {
+    /// Create a new scheduler wrapping the given processor.
+    pub fn new(processor: P) -> Self {
+        Self { processor }
+    }
+}
+
+impl<P> Scheduler for ProcessorScheduler<P>
+where
+    P: lingproc::Processor + Send + Sync + 'static,
+{
+    type Output = String;
+
+    fn schedule(&mut self, batch: Vec<Experience>) -> Option<Sensation<String>> {
+        use futures::StreamExt;
+        use lingproc::{InstructionFollowingTask, Task, TaskOutput};
+
+        if batch.is_empty() {
+            return None;
+        }
+
+        let instruction = batch
+            .into_iter()
+            .map(|e| e.sentence)
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let task = Task::InstructionFollowing(InstructionFollowingTask {
+            instruction,
+            images: vec![],
+        });
+
+        let rt = tokio::runtime::Runtime::new().ok()?;
+        let mut stream = rt.block_on(self.processor.process(task)).ok()?;
+        let mut text = String::new();
+        while let Some(chunk) = rt.block_on(stream.next()) {
+            match chunk.ok()? {
+                TaskOutput::TextChunk(t) => text.push_str(&t),
+                _ => {}
+            }
+        }
+        Some(Sensation::new(text))
+    }
+}
+
 /// Timed loop processing experiences.
 pub struct Wit<S, P>
 where
@@ -280,5 +330,42 @@ mod tests {
         heart.tick();
         assert_eq!(heart.wits[0].memory.all().len(), 1);
         assert_eq!(heart.wits[1].memory.all()[0].what, "hello world");
+    }
+
+    #[test]
+    fn processor_scheduler_runs_llm() {
+        use async_stream::stream;
+        use async_trait::async_trait;
+        use futures::{stream::BoxStream, StreamExt};
+        use lingproc::{Task, TaskOutput, TaskKind, InstructionFollowingTask, Processor};
+
+        struct MockProcessor;
+
+        #[async_trait]
+        impl Processor for MockProcessor {
+            fn capabilities(&self) -> Vec<TaskKind> { vec![TaskKind::InstructionFollowing] }
+
+            async fn process(
+                &self,
+                task: Task,
+            ) -> anyhow::Result<BoxStream<'static, anyhow::Result<TaskOutput>>> {
+                match task {
+                    Task::InstructionFollowing(t) => {
+                        let instr = t.instruction;
+                        let s = stream! { yield Ok(TaskOutput::TextChunk(format!("processed {instr}"))); };
+                        Ok(Box::pin(s))
+                    }
+                    _ => Err(anyhow::anyhow!("unsupported")),
+                }
+            }
+        }
+
+        let scheduler = ProcessorScheduler::new(MockProcessor);
+        let mut wit = Wit::new(scheduler, Echo);
+        wit.push(Experience::new("one"));
+        wit.push(Experience::new("two"));
+        let exp = wit.tick().unwrap();
+        assert_eq!(exp.sentence, "processed one two");
+        assert_eq!(wit.memory.all()[0].what, "processed one two");
     }
 }
