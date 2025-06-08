@@ -53,6 +53,150 @@ pub struct Experience {
     pub sentence: String,
 }
 
+/// A collection of timestamped memories.
+///
+/// ```
+/// use psyche::{Memory, Sensation};
+/// let mut m = Memory::new();
+/// m.remember(Sensation::new(42));
+/// assert_eq!(m.all().len(), 1);
+/// ```
+#[derive(Default)]
+pub struct Memory<T> {
+    entries: Vec<Sensation<T>>,
+}
+
+impl<T> Memory<T> {
+    /// Create an empty memory.
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+
+    /// Store a sensation for later recall.
+    pub fn remember(&mut self, s: Sensation<T>) {
+        self.entries.push(s);
+    }
+
+    /// Access all recorded sensations.
+    pub fn all(&self) -> &[Sensation<T>] {
+        &self.entries
+    }
+}
+
+/// Convert a batch of experiences into a new sensation.
+pub trait Scheduler {
+    type Output;
+    fn schedule(&mut self, batch: Vec<Experience>) -> Option<Sensation<Self::Output>>;
+}
+
+/// Join all sentences together.
+#[derive(Default)]
+pub struct JoinScheduler;
+
+impl Scheduler for JoinScheduler {
+    type Output = String;
+    fn schedule(&mut self, batch: Vec<Experience>) -> Option<Sensation<String>> {
+        if batch.is_empty() {
+            return None;
+        }
+        let text = batch
+            .into_iter()
+            .map(|e| e.sentence)
+            .collect::<Vec<_>>()
+            .join(" ");
+        Some(Sensation::new(text))
+    }
+}
+
+/// Timed loop processing experiences.
+pub struct Wit<S, P>
+where
+    S: Scheduler,
+    P: Sensor<Input = S::Output>,
+    S::Output: Clone,
+{
+    scheduler: S,
+    sensor: P,
+    queue: Vec<Experience>,
+    pub memory: Memory<S::Output>,
+}
+
+impl<S, P> Wit<S, P>
+where
+    S: Scheduler,
+    P: Sensor<Input = S::Output>,
+    S::Output: Clone,
+{
+    /// Create a new wit from a scheduler and sensor.
+    pub fn new(scheduler: S, sensor: P) -> Self {
+        Self {
+            scheduler,
+            sensor,
+            queue: Vec::new(),
+            memory: Memory::new(),
+        }
+    }
+
+    /// Queue an experience for later processing.
+    pub fn push(&mut self, exp: Experience) {
+        self.queue.push(exp);
+    }
+
+    /// Process queued experiences and return a summary experience.
+    pub fn tick(&mut self) -> Option<Experience> {
+        let batch = std::mem::take(&mut self.queue);
+        if batch.is_empty() {
+            return None;
+        }
+        let sensation = self.scheduler.schedule(batch)?;
+        self.memory.remember(sensation.clone());
+        self.sensor.feel(sensation)
+    }
+}
+
+/// Stack of wits from fond (index 0) to focus (last index).
+pub struct Heart<W> {
+    pub wits: Vec<W>,
+}
+
+impl<W> Heart<W> {
+    /// Create a heart from a set of wits.
+    pub fn new(wits: Vec<W>) -> Self {
+        Self { wits }
+    }
+}
+
+impl<S, P> Heart<Wit<S, P>>
+where
+    S: Scheduler,
+    P: Sensor<Input = S::Output>,
+    S::Output: Clone,
+{
+    /// Push a new experience into the fond.
+    pub fn push(&mut self, exp: Experience) {
+        if let Some(first) = self.wits.first_mut() {
+            first.push(exp);
+        }
+    }
+
+    /// Run one processing tick across all wits.
+    pub fn tick(&mut self) {
+        for i in 0..self.wits.len() {
+            let output = {
+                let wit = &mut self.wits[i];
+                wit.tick()
+            };
+            if let Some(exp) = output {
+                if let Some(next) = self.wits.get_mut(i + 1) {
+                    next.push(exp);
+                }
+            }
+        }
+    }
+}
+
 /// Something that can transform a [`Sensation`] into an [`Experience`].
 ///
 /// # Examples
@@ -116,5 +260,25 @@ mod tests {
         let mut sensor = Echo;
         let exp = sensor.feel(Sensation::new("hi".to_string())).unwrap();
         assert_eq!(exp.sentence, "hi");
+    }
+
+    #[test]
+    fn memory_records() {
+        let mut mem = Memory::new();
+        mem.remember(Sensation::new(1u8));
+        assert_eq!(mem.all().len(), 1);
+    }
+
+    #[test]
+    fn heart_flows_between_wits() {
+        let w1 = Wit::new(JoinScheduler::default(), Echo);
+        let w2 = Wit::new(JoinScheduler::default(), Echo);
+        let mut heart = Heart::new(vec![w1, w2]);
+        heart.push(Experience::new("hello"));
+        heart.push(Experience::new("world"));
+        heart.tick();
+        heart.tick();
+        assert_eq!(heart.wits[0].memory.all().len(), 1);
+        assert_eq!(heart.wits[1].memory.all()[0].what, "hello world");
     }
 }
