@@ -1,8 +1,9 @@
-use crate::bus::{Event, global_bus};
+use crate::bus::{Event, EventBus};
 use futures::{SinkExt, StreamExt};
 use log::info;
 use serde::Deserialize;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use warp::{
     Filter,
     ws::{Message, WebSocket},
@@ -16,12 +17,12 @@ enum ClientMessage {
     Chat { line: String },
 }
 
-async fn handle_ws(ws: WebSocket, peer: Option<SocketAddr>) {
+async fn handle_ws(bus: Arc<EventBus>, ws: WebSocket, peer: Option<SocketAddr>) {
     let (mut tx, mut rx_ws) = ws.split();
-    let mut rx = global_bus().subscribe();
+    let mut rx = bus.subscribe();
     if let Some(addr) = peer {
         info!("WebSocket client connected: {}", addr);
-        global_bus().send(Event::Connected(addr));
+        bus.send(Event::Connected(addr));
     } else {
         info!("WebSocket client connected: unknown");
     }
@@ -44,7 +45,7 @@ async fn handle_ws(ws: WebSocket, peer: Option<SocketAddr>) {
             if let Ok(ClientMessage::Chat { line }) =
                 serde_json::from_str::<ClientMessage>(msg.to_str().unwrap_or(""))
             {
-                global_bus().send(Event::Chat(line));
+                bus.send(Event::Chat(line));
             }
         }
     }
@@ -52,20 +53,21 @@ async fn handle_ws(ws: WebSocket, peer: Option<SocketAddr>) {
     let _ = forward.await;
     if let Some(addr) = peer {
         info!("WebSocket client disconnected: {}", addr);
-        global_bus().send(Event::Disconnected(addr));
+        bus.send(Event::Disconnected(addr));
     } else {
         info!("WebSocket client disconnected: unknown");
     }
 }
 
 /// Start the webserver on the provided address.
-pub async fn run(addr: impl Into<SocketAddr>) {
+pub async fn run(bus: Arc<EventBus>, addr: impl Into<SocketAddr>) {
     let html = warp::path::end().map(|| warp::reply::html(INDEX_HTML));
     let ws_route = warp::path("ws")
         .and(warp::ws())
         .and(warp::addr::remote())
-        .map(|ws: warp::ws::Ws, addr: Option<SocketAddr>| {
-            ws.on_upgrade(move |socket| handle_ws(socket, addr))
+        .map(move |ws: warp::ws::Ws, addr: Option<SocketAddr>| {
+            let bus = bus.clone();
+            ws.on_upgrade(move |socket| handle_ws(bus, socket, addr))
         });
 
     warp::serve(html.or(ws_route)).run(addr).await;

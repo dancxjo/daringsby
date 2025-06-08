@@ -1,4 +1,3 @@
-use once_cell::sync::OnceCell;
 use tokio::sync::broadcast;
 
 /// Events emitted by the system.
@@ -20,7 +19,8 @@ pub struct EventBus {
 }
 
 impl EventBus {
-    fn new() -> Self {
+    /// Create a new event bus.
+    pub fn new() -> Self {
         let (sender, _) = broadcast::channel(100);
         Self { sender }
     }
@@ -36,20 +36,13 @@ impl EventBus {
     }
 }
 
-static BUS: OnceCell<EventBus> = OnceCell::new();
-
-/// Access the global event bus used for logging.
-pub fn global_bus() -> &'static EventBus {
-    BUS.get_or_init(EventBus::new)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[tokio::test]
     async fn send_and_receive_chat() {
-        let bus = global_bus();
+        let bus = EventBus::new();
         let mut rx = bus.subscribe();
         bus.send(Event::Chat("hi".into()));
         match rx.recv().await {
@@ -61,7 +54,7 @@ mod tests {
     #[tokio::test]
     async fn send_and_receive_connection() {
         use std::net::SocketAddr;
-        let bus = global_bus();
+        let bus = EventBus::new();
         let mut rx = bus.subscribe();
         let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
         bus.send(Event::Connected(addr));
