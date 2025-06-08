@@ -171,6 +171,11 @@ where
     sensor: P,
     queue: Vec<Experience>,
     pub memory: Memory<S::Output>,
+    /// Optional human readable identifier.
+    pub name: Option<String>,
+    /// Interval between ticks.
+    pub interval: std::time::Duration,
+    last_tick: std::time::Instant,
 }
 
 impl<S, P> Wit<S, P>
@@ -179,13 +184,26 @@ where
     P: Sensor<Input = S::Output>,
     S::Output: Clone,
 {
-    /// Create a new wit from a scheduler and sensor.
+    /// Create a new wit from a scheduler and sensor with default settings.
     pub fn new(scheduler: S, sensor: P) -> Self {
+        Self::with_config(scheduler, sensor, None, std::time::Duration::from_secs(1))
+    }
+
+    /// Create a new wit with a custom name and tick interval.
+    pub fn with_config(
+        scheduler: S,
+        sensor: P,
+        name: Option<String>,
+        interval: std::time::Duration,
+    ) -> Self {
         Self {
             scheduler,
             sensor,
             queue: Vec::new(),
             memory: Memory::new(),
+            name,
+            interval,
+            last_tick: std::time::Instant::now(),
         }
     }
 
@@ -216,6 +234,26 @@ impl<W> Heart<W> {
     pub fn new(wits: Vec<W>) -> Self {
         Self { wits }
     }
+
+    /// Reference to the fond (first wit).
+    pub fn fond(&self) -> Option<&W> {
+        self.wits.first()
+    }
+
+    /// Mutable reference to the fond (first wit).
+    pub fn fond_mut(&mut self) -> Option<&mut W> {
+        self.wits.first_mut()
+    }
+
+    /// Reference to the focus (last wit).
+    pub fn focus(&self) -> Option<&W> {
+        self.wits.last()
+    }
+
+    /// Mutable reference to the focus (last wit).
+    pub fn focus_mut(&mut self) -> Option<&mut W> {
+        self.wits.last_mut()
+    }
 }
 
 impl<S, P> Heart<Wit<S, P>>
@@ -242,6 +280,47 @@ where
                 if let Some(next) = self.wits.get_mut(i + 1) {
                     next.push(exp);
                 }
+            }
+        }
+    }
+
+    /// Continuously run ticks respecting each wit's interval.
+    pub fn run_scheduled(&mut self, cycles: usize) {
+        use std::{
+            thread,
+            time::{Duration, Instant},
+        };
+        let mut completed = 0usize;
+        while completed < cycles {
+            let now = Instant::now();
+            let mut next_wait: Option<Duration> = None;
+            for i in 0..self.wits.len() {
+                let elapsed = now.duration_since(self.wits[i].last_tick);
+                if elapsed >= self.wits[i].interval {
+                    self.wits[i].last_tick = now;
+                    let output = self.wits[i].tick();
+                    if let Some(exp) = output {
+                        if let Some(next) = self.wits.get_mut(i + 1) {
+                            next.push(exp);
+                        }
+                    }
+                    completed += 1;
+                }
+                let remaining = self.wits[i]
+                    .interval
+                    .checked_sub(elapsed)
+                    .unwrap_or_default();
+                next_wait = Some(match next_wait {
+                    Some(d) => d.min(remaining),
+                    None => remaining,
+                });
+            }
+            if let Some(wait) = next_wait {
+                if !wait.is_zero() {
+                    thread::sleep(wait);
+                }
+            } else {
+                break;
             }
         }
     }
@@ -333,17 +412,43 @@ mod tests {
     }
 
     #[test]
+    fn heart_helpers_and_scheduled() {
+        use std::time::Duration;
+        let w1 = Wit::with_config(
+            JoinScheduler::default(),
+            Echo,
+            Some("fond".to_string()),
+            Duration::from_millis(1),
+        );
+        let w2 = Wit::with_config(
+            JoinScheduler::default(),
+            Echo,
+            Some("focus".to_string()),
+            Duration::from_millis(1),
+        );
+        let mut heart = Heart::new(vec![w1, w2]);
+        assert!(heart.fond().is_some());
+        assert!(heart.focus().is_some());
+        heart.push(Experience::new("hello"));
+        heart.push(Experience::new("world"));
+        heart.run_scheduled(2);
+        assert!(!heart.focus().unwrap().memory.all().is_empty());
+    }
+
+    #[test]
     fn processor_scheduler_runs_llm() {
         use async_stream::stream;
         use async_trait::async_trait;
-        use futures::{stream::BoxStream, StreamExt};
-        use lingproc::{Task, TaskOutput, TaskKind, InstructionFollowingTask, Processor};
+        use futures::{StreamExt, stream::BoxStream};
+        use lingproc::{InstructionFollowingTask, Processor, Task, TaskKind, TaskOutput};
 
         struct MockProcessor;
 
         #[async_trait]
         impl Processor for MockProcessor {
-            fn capabilities(&self) -> Vec<TaskKind> { vec![TaskKind::InstructionFollowing] }
+            fn capabilities(&self) -> Vec<TaskKind> {
+                vec![TaskKind::InstructionFollowing]
+            }
 
             async fn process(
                 &self,
