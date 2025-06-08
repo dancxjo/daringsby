@@ -1,15 +1,21 @@
 use serde::{Deserialize, Serialize};
 
-/// Metadata describing an available language model.
+/// Basic information about an AI model.
+///
+/// The struct stores simple metadata that can be used to select an
+/// appropriate model at runtime.
+///
+/// # Examples
 ///
 /// ```
 /// use modeldb::{AiModel, ModelRepository};
+///
 /// let mut repo = ModelRepository::new();
 /// repo.add_model(AiModel {
-///     name: "gpt4".into(),
+///     name: "gpt4".to_string(),
 ///     supports_images: true,
 ///     speed: Some(1.0),
-///     cost_per_token: Some(0.02),
+///     cost_per_token: Some(0.01),
 /// });
 /// assert!(repo.find("gpt4").is_some());
 /// ```
@@ -25,18 +31,22 @@ pub struct AiModel {
     pub cost_per_token: Option<f32>,
 }
 
-/// Simple in-memory collection of [`AiModel`]s.
+/// Collection of available [`AiModel`]s.
+///
+/// # Examples
 ///
 /// ```
 /// use modeldb::{AiModel, ModelRepository};
+///
 /// let mut repo = ModelRepository::new();
 /// repo.add_model(AiModel {
-///     name: "foo".into(),
-///     supports_images: false,
+///     name: "gpt4".into(),
+///     supports_images: true,
 ///     speed: None,
 ///     cost_per_token: None,
 /// });
-/// assert!(repo.find("foo").is_some());
+/// let model = repo.find("gpt4").unwrap();
+/// assert!(model.supports_images);
 /// ```
 pub struct ModelRepository {
     models: Vec<AiModel>,
