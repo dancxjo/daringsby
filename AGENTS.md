@@ -86,6 +86,8 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * Qdrant and Neo4j services are defined there for the memory backends.
 * Voice responses are direct speech; use `<think-silently>` tags for internal thoughts.
 * Keep spoken replies brief so listeners can interject.
+* Narrator responses should stay terse and only draw from current sensations and memories. Avoid fabricating details unless explicitly required.
+* Include key guidelines like this directly in prompts because subagents don't read `AGENTS.md`.
 * Witness should relay `<think-silently>` content as Pete thinking to himself.
 * Configure `OLLAMA_URL` and `OLLAMA_MODEL` in your `.env` for LLM calls.
 * Use `OLLAMA_URLS` for a comma list of fallback hosts.
