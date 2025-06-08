@@ -1,12 +1,14 @@
 use clap::Parser;
 use dotenvy::dotenv;
-use std::{env, time::Duration};
+use std::{env, sync::Arc, time::Duration};
 use core::{psyche::Psyche, witness::WitnessAgent};
 use voice::ChatVoice;
 use llm::model_from_env;
 use voice::model::OllamaClient;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
+use log::LevelFilter;
 mod server;
+mod logger;
 
 #[derive(Parser)]
 struct Args {
@@ -18,7 +20,7 @@ struct Args {
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    env_logger::init();
+    let logger = logger::SimpleLogger::init(LevelFilter::Info);
     let args = Args::parse();
     let rate = runtime::tick_rate(args.tick_rate);
 
@@ -31,7 +33,8 @@ async fn main() {
     let mut psyche = Psyche::new(witness, narrator);
     psyche.agent.self_understanding = Some("I am Pete Daringsby.".into());
     let (tx, mut rx) = mpsc::channel(8);
-    let server = server::router(tx);
+    let mood = Arc::new(Mutex::new(String::from("\u{1F610}")));
+    let server = server::router(tx.clone(), mood.clone(), logger.clone());
     tokio::spawn(async move {
         let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 3000))
             .await
@@ -45,6 +48,10 @@ async fn main() {
             psyche.witness.ingest(s);
         }
         let output = psyche.tick().await;
+        {
+            let mut m = mood.lock().await;
+            *m = psyche.mood.clone();
+        }
         if let Some(say) = output.say {
             println!("Pete: {}", say.content);
         }

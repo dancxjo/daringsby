@@ -31,6 +31,7 @@
 pub mod ethics;
 pub mod fond;
 pub mod genie;
+pub mod mood;
 pub mod prompt_builder;
 pub mod psyche;
 pub mod witness;

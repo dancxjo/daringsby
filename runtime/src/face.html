@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Pete's Face</title>
+<style>
+body { font-size: 5rem; text-align: center; }
+</style>
+<script>
+async function poll() {
+  const res = await fetch('/face/emoji');
+  const text = await res.text();
+  document.getElementById('mood').textContent = text;
+}
+setInterval(poll, 1000);
+window.onload = poll;
+</script>
+</head>
+<body>
+<div id="mood">🙂</div>
+</body>
+</html>

@@ -1,4 +1,10 @@
-use crate::{ethics::{ConsciousAgent, ConsentState}, fond::FondDuCoeur, witness::WitnessAgent};
+use crate::{
+    ethics::{ConsciousAgent, ConsentState},
+    fond::FondDuCoeur,
+    witness::WitnessAgent,
+    mood::MoodAgent,
+};
+use llm;
 use voice::{EmoteMessage, SayMessage, ThinkMessage, VoiceAgent, VoiceOutput};
 
 /// Maintains Pete's current stream of consciousness.
@@ -11,6 +17,8 @@ pub struct Psyche<V: VoiceAgent> {
     pub here_and_now: String,
     fond: FondDuCoeur,
     pub agent: ConsciousAgent,
+    mooder: MoodAgent<llm::OllamaClient>,
+    pub mood: String,
 }
 
 impl<V: VoiceAgent> Psyche<V> {
@@ -22,6 +30,8 @@ impl<V: VoiceAgent> Psyche<V> {
             here_and_now: String::new(),
             fond: FondDuCoeur::new(),
             agent: ConsciousAgent::default(),
+            mooder: MoodAgent::new(),
+            mood: "\u{1F610}".into(),
         }
     }
 
@@ -32,6 +42,9 @@ impl<V: VoiceAgent> Psyche<V> {
             Ok(ConsentState::Active) => {
                 if let Some(sum) = self.witness.summarize(&mut self.fond).await {
                     self.here_and_now = sum;
+                }
+                if let Ok(m) = self.mooder.assess(&self.here_and_now).await {
+                    self.mood = m;
                 }
                 self.voice.narrate(&self.here_and_now).await
             }

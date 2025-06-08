@@ -87,6 +87,7 @@ impl<C: ModelClient + Send + Sync> VoiceAgent for ChatVoice<C> {
             }
             prompt
         };
+        log::info!("Voice prompt: {}", prompt);
         let mut stream = match self.llm.stream_chat(&self.model, &prompt).await {
             Ok(s) => s,
             Err(_) => {
@@ -103,6 +104,7 @@ impl<C: ModelClient + Send + Sync> VoiceAgent for ChatVoice<C> {
                 response.push_str(&text);
             }
         }
+        log::info!("Voice response: {}", response);
         let mut conv = self.conversation.lock().unwrap();
         conv.push(Role::Assistant, response.clone());
         let think_re = Regex::new(r"<think-silently>(.*?)</think-silently>").unwrap();
