@@ -16,6 +16,8 @@ This document defines the event types used when streaming data between Pete Dari
 - `memory_update` – summary of an Experience stored in memory.
 - `consent_check` – result of reaffirming the life contract.
 - `vision_description` – first-person text of what Pete sees.
+- `going_to_say` – line of dialogue Pete is about to speak.
+- `conversation_update` – message appended to the chat history.
 
 Multiple clients can subscribe to these events. Each client maintains its own state so that perception and responses remain isolated.
 

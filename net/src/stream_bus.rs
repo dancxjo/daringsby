@@ -1,6 +1,13 @@
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
+/// Role of a conversation message.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum ConversationRole {
+    Assistant,
+    User,
+}
+
 /// Events published across Pete's streaming bus.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", content = "data")]
@@ -19,6 +26,10 @@ pub enum StreamEvent {
     PerceptionLog { text: String },
     MemoryUpdate { summary: String },
     ConsentCheck { ok: bool },
+    /// Text Pete is about to say aloud.
+    GoingToSay { text: String },
+    /// Finalized line added to the conversation history.
+    ConversationUpdate { role: ConversationRole, content: String },
 }
 
 /// Simple broadcast channel for streaming events.

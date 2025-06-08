@@ -100,6 +100,7 @@ This design supports cognitive modularity, streamability, emotional realism, and
 * `PromptBuilder` in `core` assembles Pete's LLM prompt.
   * It allows setting the reflection format (natural, JSON, or hybrid).
 * Keep docs/protocol.md updated with streaming event definitions.
+* Emit `going_to_say` and `conversation_update` events on the StreamBus when Pete speaks.
 * `ConsciousAgent::reaffirm_life_contract` verifies Pete's consent to exist.
 * `Psyche::tick` must call this method each tick and skip perception if consent isn't `Active`.
 * Refer to the `llm` crate as the "language processor".
