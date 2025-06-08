@@ -11,6 +11,7 @@ use axum::{
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use sensor::Sensation;
+use vision::face::detect_faces;
 use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::{mpsc::Sender, Mutex as AsyncMutex};
@@ -103,6 +104,11 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                 }
                 Input::Frame { base64 } => {
                     if let Ok(bytes) = BASE64.decode(base64) {
+                        if let Ok(faces) = detect_faces(&bytes) {
+                            for face in faces {
+                                let _ = state.tx.send(Sensation::saw_face(face)).await;
+                            }
+                        }
                         let _ = state.tx.send(Sensation::saw(bytes)).await;
                     }
                 }
@@ -119,6 +125,11 @@ async fn handle_frames(mut socket: WebSocket, state: AppState) {
     while let Some(Ok(Message::Text(text))) = socket.recv().await {
         if let Ok(frame) = serde_json::from_str::<Frame>(&text) {
             if let Ok(bytes) = BASE64.decode(frame.base64) {
+                if let Ok(faces) = detect_faces(&bytes) {
+                    for face in faces {
+                        let _ = state.tx.send(Sensation::saw_face(face)).await;
+                    }
+                }
                 let _ = state.tx.send(Sensation::saw(bytes)).await;
             }
         }

@@ -4,3 +4,4 @@ Cargo.lock
 .env
 node_modules/
 certs
+vision/model/
