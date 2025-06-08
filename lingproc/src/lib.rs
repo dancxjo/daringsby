@@ -7,6 +7,7 @@ pub mod provider;
 pub use provider::{ModelRunnerProvider, OllamaProvider, OpenAIProvider, ProviderProfile};
 
 pub mod profiling;
+pub mod scheduler;
 /// Role of a chat participant.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Role {
@@ -144,7 +145,10 @@ pub struct OpenAIProcessor {
 impl OpenAIProcessor {
     pub fn new(api_key: &str, model: &str) -> Self {
         let config = async_openai::config::OpenAIConfig::new().with_api_key(api_key);
-        Self { client: async_openai::Client::with_config(config), model: model.to_string() }
+        Self {
+            client: async_openai::Client::with_config(config),
+            model: model.to_string(),
+        }
     }
 }
 
@@ -265,10 +269,16 @@ mod tests {
     #[tokio::test]
     async fn echo_instruction() {
         let proc = EchoProcessor;
-        let task = Task::InstructionFollowing(InstructionFollowingTask { instruction: "ping".into(), images: vec![] });
+        let task = Task::InstructionFollowing(InstructionFollowingTask {
+            instruction: "ping".into(),
+            images: vec![],
+        });
         let mut stream = proc.process(task).await.unwrap();
         let first = stream.next().await.unwrap().unwrap();
-        match first { TaskOutput::TextChunk(t) => assert_eq!(t, "ping"), _ => panic!("wrong output") }
+        match first {
+            TaskOutput::TextChunk(t) => assert_eq!(t, "ping"),
+            _ => panic!("wrong output"),
+        }
     }
 
     #[tokio::test]
@@ -282,7 +292,10 @@ mod tests {
         use crate::profiling::ProfilingProcessor;
         use std::time::Duration;
         let proc = ProfilingProcessor::new(EchoProcessor);
-        let task = Task::InstructionFollowing(InstructionFollowingTask { instruction: "pong".into(), images: vec![] });
+        let task = Task::InstructionFollowing(InstructionFollowingTask {
+            instruction: "pong".into(),
+            images: vec![],
+        });
         let mut stream = proc.process(task).await.unwrap();
         while let Some(_c) = stream.next().await {}
         let d = proc.durations();
