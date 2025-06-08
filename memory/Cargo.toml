@@ -1,0 +1,13 @@
+[package]
+name = "memory"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait = "0.1"
+anyhow = "1"
+psyche = { path = "../psyche" }
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
