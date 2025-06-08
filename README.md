@@ -94,6 +94,11 @@ cargo fmt --all
 cargo test --all
 ```
 
+This repository includes a `.cargo/config.toml` file enabling incremental
+compilation and directing Cargo to place build artifacts in `../target`.
+Sharing this directory across checkouts lets you reuse cached dependencies
+between runs.
+
 ## Optional Services
 
 `docker-compose.yml` defines additional services that can aid development but aren't required by the tests:
