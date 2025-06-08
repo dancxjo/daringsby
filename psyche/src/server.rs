@@ -1,6 +1,7 @@
 use crate::bus::{Event, global_bus};
-use futures::SinkExt;
+use futures::{SinkExt, StreamExt};
 use log::info;
+use serde::Deserialize;
 use std::net::SocketAddr;
 use warp::{
     Filter,
@@ -9,18 +10,39 @@ use warp::{
 
 static INDEX_HTML: &str = include_str!("../static/index.html");
 
-async fn handle_ws(mut ws: WebSocket) {
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum ClientMessage {
+    Chat { line: String },
+}
+
+async fn handle_ws(ws: WebSocket) {
+    let (mut tx, mut rx_ws) = ws.split();
     let mut rx = global_bus().subscribe();
     info!("WebSocket client connected");
-    while let Ok(event) = rx.recv().await {
-        match event {
-            Event::Log(line) => {
-                if ws.send(Message::text(line)).await.is_err() {
-                    break;
-                }
+
+    let forward = tokio::spawn(async move {
+        while let Ok(event) = rx.recv().await {
+            let text = match event {
+                Event::Log(line) | Event::Chat(line) => line,
+            };
+            if tx.send(Message::text(text)).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    while let Some(Ok(msg)) = rx_ws.next().await {
+        if msg.is_text() {
+            if let Ok(ClientMessage::Chat { line }) =
+                serde_json::from_str::<ClientMessage>(msg.to_str().unwrap_or(""))
+            {
+                global_bus().send(Event::Chat(line));
             }
         }
     }
+
+    let _ = forward.await;
     info!("WebSocket client disconnected");
 }
 
