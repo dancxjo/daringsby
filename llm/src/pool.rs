@@ -6,6 +6,8 @@
 
 use futures_core::Stream;
 use futures_util::ready;
+use tokio::sync::Semaphore;
+use tokio::sync::OwnedSemaphorePermit;
 use std::task::{Context, Poll};
 use std::{
     pin::Pin,
@@ -22,6 +24,7 @@ use crate::traits::{LLMAttribute, LLMCapability, LLMError};
 pub struct LLMClientPool {
     servers: Vec<LLMServer>,
     profiles: Vec<Arc<Mutex<ServerProfile>>>,
+    locks: Vec<Arc<Semaphore>>,
 }
 
 /// Moving average of latency samples for a server.
@@ -48,6 +51,7 @@ impl LLMClientPool {
         Self {
             servers: Vec::new(),
             profiles: Vec::new(),
+            locks: Vec::new(),
         }
     }
 
@@ -55,6 +59,7 @@ impl LLMClientPool {
         self.servers.push(server);
         self.profiles
             .push(Arc::new(Mutex::new(ServerProfile::default())));
+        self.locks.push(Arc::new(Semaphore::new(1)));
     }
 
     pub fn add_ollama_host(
@@ -136,7 +141,7 @@ impl LLMClientPool {
         let model = self
             .choose_model(&task.capabilities, task.prefer)
             .ok_or(LLMError::ModelNotFound)?;
-        self.stream_chat(&model, &task.prompt).await
+        self.stream_chat_internal(&model, &task.prompt, task.droppable).await
     }
 
     pub async fn stream_chat(
@@ -144,17 +149,38 @@ impl LLMClientPool {
         model: &str,
         prompt: &str,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, LLMError>> + Send>>, LLMError> {
-        let (idx, server) = self
+        self.stream_chat_internal(model, prompt, false).await
+    }
+
+    async fn stream_chat_internal(
+        &mut self,
+        model: &str,
+        prompt: &str,
+        droppable: bool,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<String, LLMError>> + Send>>, LLMError> {
+        let idx = self
             .find_server(model, None)
+            .map(|(i, _)| i)
             .ok_or(LLMError::ModelNotFound)?;
+        let client = Arc::clone(&self.servers[idx].client);
+        let sem = Arc::clone(&self.locks[idx]);
+        let permit = if droppable {
+            sem.try_acquire_owned().map_err(|_| LLMError::QueueFull)?
+        } else {
+            sem.acquire_owned().await.map_err(|_| LLMError::QueueFull)?
+        };
         let start = Instant::now();
-        let stream = server.client.stream_chat(model, prompt).await?;
+        let stream = match client.stream_chat(model, prompt).await {
+            Ok(s) => s,
+            Err(e) => return Err(e),
+        };
         let profile = Arc::clone(&self.profiles[idx]);
         let timed = ProfilingStream {
             inner: stream,
             start,
             recorded: false,
             profile,
+            _permit: permit,
         };
         Ok(Box::pin(timed))
     }
@@ -165,6 +191,7 @@ struct ProfilingStream<S> {
     start: Instant,
     recorded: bool,
     profile: Arc<Mutex<ServerProfile>>,
+    _permit: OwnedSemaphorePermit,
 }
 
 impl<S: Stream<Item = Result<String, LLMError>> + Unpin> Stream for ProfilingStream<S> {
