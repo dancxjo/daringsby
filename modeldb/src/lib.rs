@@ -1,3 +1,5 @@
+//! Lightweight in-memory catalog describing available AI models.
+//! See [`ModelRepository`] for usage.
 use serde::{Deserialize, Serialize};
 
 /// Basic information about an AI model.

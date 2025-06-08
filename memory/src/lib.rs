@@ -1,3 +1,7 @@
+//! In-memory abstractions for graph and vector databases used to store
+//! embeddings of faces and sentences.
+//! Components implementing [`MemoryComponent`] process sensations and
+//! record them in a [`Memory`] instance.
 use async_trait::async_trait;
 use psyche::{Experience, Sensation};
 

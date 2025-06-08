@@ -18,3 +18,13 @@
   after the final item to trigger any cleanup logic.
 - When storing timestamped data, prefer field names `when` and `what` for
   clarity.
+
+## Project Overview
+Daringsby houses several Rust crates forming a toy cognitive system named Pete. Events flow through sensors into a `Heart` of `Wit`s which summarize and store experiences.
+
+### Layout
+- `lingproc/` – LLM processors, providers and scheduler
+- `modeldb/`  – catalog of available models
+- `psyche/`   – sensors, event bus, heart/wit logic and web server
+- `memory/`   – graph and vector memory abstractions
+- `pete/`     – binary launching the web interface

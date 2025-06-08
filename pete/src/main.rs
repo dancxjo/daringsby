@@ -1,3 +1,4 @@
+//! Launches the Pete web server exposing log and chat events over WebSockets.
 use anyhow::Result;
 use log::info;
 
