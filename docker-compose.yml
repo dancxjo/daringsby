@@ -3,6 +3,7 @@ services:
     image: ghcr.io/coqui-ai/tts
     ports:
       - "5002:5002"
+    entrypoint: python3
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - COQUI_TOS_AGREED=1
