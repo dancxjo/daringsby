@@ -112,6 +112,15 @@ Start the WebSocket backend:
 cargo run -p sensation-server
 ```
 
+Run the main runtime alongside a simple viewer:
+
+```bash
+cargo run -p runtime
+```
+
+Then open [http://localhost:3000/see](http://localhost:3000/see) in a browser to
+mirror your webcam and stream frames to Pete.
+
 Use `sensation-tester` to send mock sensor input:
 
 ```bash
