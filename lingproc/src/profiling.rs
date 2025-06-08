@@ -12,9 +12,9 @@ use crate::{Processor, Task, TaskKind, TaskOutput};
 /// ```
 /// use lingproc::{profiling::ProfilingProcessor, Processor, Task, InstructionFollowingTask, TaskOutput, TaskKind};
 /// use futures::{StreamExt, stream::BoxStream};
-/// 
+///
 /// struct Echo;
-/// 
+///
 /// #[async_trait::async_trait]
 /// impl Processor for Echo {
 ///     fn capabilities(&self) -> Vec<TaskKind> { vec![TaskKind::InstructionFollowing] }
@@ -30,7 +30,7 @@ use crate::{Processor, Task, TaskKind, TaskOutput};
 ///         }
 ///     }
 /// }
-/// 
+///
 /// # tokio_test::block_on(async {
 /// let proc = ProfilingProcessor::new(Echo);
 /// let task = Task::InstructionFollowing(InstructionFollowingTask { instruction: "hi".into(), images: vec![] });
@@ -47,7 +47,10 @@ pub struct ProfilingProcessor<P> {
 impl<P> ProfilingProcessor<P> {
     /// Create a new profiling wrapper around `inner`.
     pub fn new(inner: P) -> Self {
-        Self { inner, durations: Arc::new(Mutex::new(Vec::new())) }
+        Self {
+            inner,
+            durations: Arc::new(Mutex::new(Vec::new())),
+        }
     }
 
     /// Retrieve recorded durations.
