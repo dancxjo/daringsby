@@ -3,6 +3,9 @@ use futures::stream::BoxStream;
 use modeldb::{AiModel, ModelRepository};
 use serde::{Deserialize, Serialize};
 
+pub mod provider;
+pub use provider::{ModelRunnerProvider, OllamaProvider, OpenAIProvider, ProviderProfile};
+
 pub mod profiling;
 /// Role of a chat participant.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
