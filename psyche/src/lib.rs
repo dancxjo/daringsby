@@ -1,5 +1,9 @@
 use std::time::SystemTime;
 
+pub mod bus;
+pub mod logging;
+pub mod server;
+
 /// Input data captured by the system.
 ///
 /// `Sensation` wraps any data with a timestamp so the moment of
@@ -76,6 +80,7 @@ impl<T> Memory<T> {
 
     /// Store a sensation for later recall.
     pub fn remember(&mut self, s: Sensation<T>) {
+        log::info!("remembering sensation");
         self.entries.push(s);
     }
 
@@ -209,12 +214,14 @@ where
 
     /// Queue an experience for later processing.
     pub fn push(&mut self, exp: Experience) {
+        log::info!("queued experience: {}", exp.sentence);
         self.queue.push(exp);
     }
 
     /// Process queued experiences and return a summary experience.
     pub fn tick(&mut self) -> Option<Experience> {
         let batch = std::mem::take(&mut self.queue);
+        log::info!("processing {} queued", batch.len());
         if batch.is_empty() {
             return None;
         }
@@ -264,6 +271,7 @@ where
 {
     /// Push a new experience into the fond.
     pub fn push(&mut self, exp: Experience) {
+        log::info!("heart push to fond: {}", exp.sentence);
         if let Some(first) = self.wits.first_mut() {
             first.push(exp);
         }
@@ -274,6 +282,7 @@ where
         for i in 0..self.wits.len() {
             let output = {
                 let wit = &mut self.wits[i];
+                log::info!("wit {i} tick");
                 wit.tick()
             };
             if let Some(exp) = output {
@@ -290,6 +299,7 @@ where
             thread,
             time::{Duration, Instant},
         };
+        log::info!("running scheduled for {cycles} cycles");
         let mut completed = 0usize;
         while completed < cycles {
             let now = Instant::now();
