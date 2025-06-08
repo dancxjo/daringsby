@@ -5,6 +5,8 @@ use core::{psyche::Psyche, witness::WitnessAgent};
 use voice::ChatVoice;
 use llm::model_from_env;
 use voice::model::OllamaClient;
+use tokio::sync::mpsc;
+mod server;
 
 #[derive(Parser)]
 struct Args {
@@ -28,9 +30,20 @@ async fn main() {
     let witness = WitnessAgent::default();
     let mut psyche = Psyche::new(witness, narrator);
     psyche.agent.self_understanding = Some("I am Pete Daringsby.".into());
-    let delay = Duration::from_secs_f32(rate);
+    let (tx, mut rx) = mpsc::channel(8);
+    let server = server::router(tx);
+    tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 3000))
+            .await
+            .expect("bind server");
+        axum::serve(listener, server).await.unwrap();
+    });
 
+    let delay = Duration::from_secs_f32(rate);
     loop {
+        while let Ok(s) = rx.try_recv() {
+            psyche.witness.ingest(s);
+        }
         let output = psyche.tick().await;
         if let Some(say) = output.say {
             println!("Pete: {}", say.content);

@@ -7,8 +7,16 @@ edition = "2021"
 core = { path = "../core" }
 voice = { path = "../voice" }
 llm = { path = "../llm" }
+sensor = { path = "../sensor" }
 clap = { version = "4", features = ["derive"] }
 env_logger = "0.10"
 dotenvy = "0.15"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+axum = { version = "0.7", features = ["ws", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.21"
+
+[dev-dependencies]
+tower = "0.4"
 
