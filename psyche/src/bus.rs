@@ -8,6 +8,10 @@ pub enum Event {
     Log(String),
     /// Chat line submitted from a user.
     Chat(String),
+    /// WebSocket client connected from an address.
+    Connected(std::net::SocketAddr),
+    /// WebSocket client disconnected.
+    Disconnected(std::net::SocketAddr),
 }
 
 /// Simple broadcast bus for sending [`Event`]s to multiple listeners.
@@ -50,6 +54,19 @@ mod tests {
         bus.send(Event::Chat("hi".into()));
         match rx.recv().await {
             Ok(Event::Chat(line)) => assert_eq!(line, "hi"),
+            other => panic!("unexpected event: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn send_and_receive_connection() {
+        use std::net::SocketAddr;
+        let bus = global_bus();
+        let mut rx = bus.subscribe();
+        let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+        bus.send(Event::Connected(addr));
+        match rx.recv().await {
+            Ok(Event::Connected(a)) => assert_eq!(a, addr),
             other => panic!("unexpected event: {:?}", other),
         }
     }
