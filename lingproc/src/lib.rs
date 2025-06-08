@@ -3,6 +3,7 @@ use futures::stream::BoxStream;
 use modeldb::{AiModel, ModelRepository};
 use serde::{Deserialize, Serialize};
 
+pub mod profiling;
 /// Role of a chat participant.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Role {
@@ -272,5 +273,17 @@ mod tests {
         let repo = default_repository();
         assert!(repo.find("gpt4").is_some());
         assert!(repo.find("gemma3:27b").is_some());
+    }
+    #[tokio::test]
+    async fn profiler_records_time() {
+        use crate::profiling::ProfilingProcessor;
+        use std::time::Duration;
+        let proc = ProfilingProcessor::new(EchoProcessor);
+        let task = Task::InstructionFollowing(InstructionFollowingTask { instruction: "pong".into(), images: vec![] });
+        let mut stream = proc.process(task).await.unwrap();
+        while let Some(_c) = stream.next().await {}
+        let d = proc.durations();
+        assert_eq!(d.len(), 1);
+        assert!(d[0] > Duration::from_secs(0));
     }
 }
