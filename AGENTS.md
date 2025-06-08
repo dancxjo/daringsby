@@ -17,4 +17,5 @@
 - When testing streams created with `async_stream`, ensure you poll once more
   after the final item to trigger any cleanup logic.
 - When storing timestamped data, prefer field names `when` and `what` for
-  clarity.
+    clarity.
+- Each psyche should create its own `EventBus` and web server. Avoid globals.
