@@ -7,6 +7,9 @@ pub fn tick_rate(cli: Option<f32>) -> f32 {
         .unwrap_or(1.0)
 }
 
+pub mod server;
+pub mod logger;
+
 #[cfg(test)]
 mod tests {
     use super::*;
