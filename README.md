@@ -75,18 +75,6 @@ Daringsby contains a set of Rust crates that together form a small cognitive sys
 
 ## Development
 
-Format the code and run the entire workspace tests:
-=======
-# Daringsby
-
-This workspace contains several Rust crates forming a small experimental AI stack.
-
-- **lingproc** – interfaces with language models and provides processors for chat
-  completion, embeddings and instruction following.
-- **modeldb** – stores metadata about available AI models.
-- **psyche** – basic types representing sensations, experiences and sensors.
-- **memory** – abstractions and utilities for persisting information.
-
 Tests and formatting can be run for the entire workspace:
 
 ```bash
@@ -132,28 +120,6 @@ Run `cargo check` in the repository root to verify that all crates compile. CI o
 | `NEO4J_USER` | Database username |
 | `NEO4J_PASS` | Database password |
 
-## Running
-
-Start the WebSocket backend:
-
-```bash
-cargo run -p sensation-server
-```
-
-Run the main runtime alongside a simple viewer:
-
-```bash
-cargo run -p runtime
-```
-
-Then open [http://localhost:3000/see](http://localhost:3000/see) in a browser to mirror your webcam and stream frames to Pete.
-
-Use `sensation-tester` to send mock sensor input:
-
-```bash
-cargo run -p sensation-tester -- --help
-```
-
 ## Testing
 
 Run the full test suite with:
@@ -161,7 +127,3 @@ Run the full test suite with:
 ```bash
 cargo test
 ```
-=======
-The provided `docker-compose.yml` launches optional services such as text to
-speech (Coqui TTS), Qdrant and Neo4j which are useful during development but not
-required to run the unit tests.
