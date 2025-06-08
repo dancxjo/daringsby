@@ -9,6 +9,12 @@ pub enum StreamEvent {
     AsrFinal { transcript: String },
     LlmThoughtFragment { content: String },
     LlmFinalResponse { content: String },
+    /// Notification that a spoken response has begun.
+    LlmBeginSay,
+    /// Fragment of a spoken response as it streams.
+    LlmSayFragment { content: String },
+    /// Indicates the utterance is complete or was interrupted.
+    LlmEndSay { complete: bool },
     TtsChunkReady { id: usize },
     PerceptionLog { text: String },
     MemoryUpdate { summary: String },

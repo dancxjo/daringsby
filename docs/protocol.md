@@ -8,6 +8,9 @@ This document defines the event types used when streaming data between Pete Dari
 - `asr_final` – finalized transcript for a sentence.
 - `llm_thought_fragment` – partial LLM reflection text.
 - `llm_final_response` – complete LLM response for a sentence.
+- `llm_begin_say` – the voice has started speaking.
+- `llm_say_fragment` – partial text of the current utterance.
+- `llm_end_say` – end of the utterance with a completion flag.
 - `tts_chunk_ready` – identifier for an audio chunk ready to play.
 - `perception_log` – log message from Witness or other sensors.
 - `memory_update` – summary of an Experience stored in memory.
