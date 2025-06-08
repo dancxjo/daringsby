@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Pete Logs</title>
+</head>
+<body>
+<pre id="log"></pre>
+<script>
+const ws = new WebSocket(`ws://${location.host}/ws`);
+ws.onmessage = (ev) => {
+    const pre = document.getElementById('log');
+    pre.textContent += ev.data + '\n';
+};
+</script>
+</body>
+</html>
