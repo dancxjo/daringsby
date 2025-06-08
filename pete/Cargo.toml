@@ -7,3 +7,4 @@ edition = "2024"
 psyche = { path = "../psyche" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 anyhow = "1"
+log = "0.4.27"
