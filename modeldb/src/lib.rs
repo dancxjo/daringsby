@@ -21,9 +21,13 @@ use serde::{Deserialize, Serialize};
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiModel {
+    /// Unique name of the model.
     pub name: String,
+    /// Whether the model accepts image inputs.
     pub supports_images: bool,
+    /// Relative speed factor of the model.
     pub speed: Option<f32>,
+    /// Cost in dollars per generated token.
     pub cost_per_token: Option<f32>,
 }
 
