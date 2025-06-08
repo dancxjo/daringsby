@@ -1307,6 +1307,8 @@ dependencies = [
  "lingproc",
  "log",
  "once_cell",
+ "serde",
+ "serde_json",
  "tokio",
  "warp",
 ]

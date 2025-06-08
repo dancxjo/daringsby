@@ -6,6 +6,8 @@ use tokio::sync::broadcast;
 pub enum Event {
     /// Log line created via [`log`].
     Log(String),
+    /// Chat line submitted from a user.
+    Chat(String),
 }
 
 /// Simple broadcast bus for sending [`Event`]s to multiple listeners.
@@ -35,4 +37,20 @@ static BUS: OnceCell<EventBus> = OnceCell::new();
 /// Access the global event bus used for logging.
 pub fn global_bus() -> &'static EventBus {
     BUS.get_or_init(EventBus::new)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn send_and_receive_chat() {
+        let bus = global_bus();
+        let mut rx = bus.subscribe();
+        bus.send(Event::Chat("hi".into()));
+        match rx.recv().await {
+            Ok(Event::Chat(line)) => assert_eq!(line, "hi"),
+            other => panic!("unexpected event: {:?}", other),
+        }
+    }
 }
