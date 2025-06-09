@@ -2,6 +2,19 @@
 //! See [`ModelRepository`] for usage.
 use serde::{Deserialize, Serialize};
 
+/// Tasks a model can handle.
+///
+/// ```
+/// use modeldb::Capability;
+/// assert_eq!(Capability::ChatCompletion as u8, 0);
+/// ```
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Capability {
+    ChatCompletion,
+    SentenceEmbedding,
+    InstructionFollowing,
+}
+
 /// Basic information about an AI model.
 ///
 /// The struct stores simple metadata that can be used to select an
@@ -10,7 +23,7 @@ use serde::{Deserialize, Serialize};
 /// # Examples
 ///
 /// ```
-/// use modeldb::{AiModel, ModelRepository};
+/// use modeldb::{AiModel, Capability, ModelRepository};
 ///
 /// let mut repo = ModelRepository::new();
 /// repo.add_model(AiModel {
@@ -18,9 +31,11 @@ use serde::{Deserialize, Serialize};
 ///     supports_images: true,
 ///     speed: Some(1.0),
 ///     cost_per_token: Some(0.01),
+///     capabilities: vec![Capability::ChatCompletion],
 /// });
 /// assert!(repo.find("gpt4").is_some());
 /// ```
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiModel {
     /// Unique name of the model.
@@ -31,6 +46,8 @@ pub struct AiModel {
     pub speed: Option<f32>,
     /// Cost in dollars per generated token.
     pub cost_per_token: Option<f32>,
+    /// Supported tasks.
+    pub capabilities: Vec<Capability>,
 }
 
 /// Collection of available [`AiModel`]s.
@@ -38,7 +55,7 @@ pub struct AiModel {
 /// # Examples
 ///
 /// ```
-/// use modeldb::{AiModel, ModelRepository};
+/// use modeldb::{AiModel, Capability, ModelRepository};
 ///
 /// let mut repo = ModelRepository::new();
 /// repo.add_model(AiModel {
@@ -46,6 +63,7 @@ pub struct AiModel {
 ///     supports_images: true,
 ///     speed: None,
 ///     cost_per_token: None,
+///     capabilities: vec![Capability::ChatCompletion],
 /// });
 /// let model = repo.find("gpt4").unwrap();
 /// assert!(model.supports_images);
@@ -87,30 +105,35 @@ pub fn ollama_models() -> ModelRepository {
         supports_images: false,
         speed: None,
         cost_per_token: None,
+        capabilities: vec![Capability::ChatCompletion],
     });
     repo.add_model(AiModel {
         name: "llama3:70b".into(),
         supports_images: false,
         speed: None,
         cost_per_token: None,
+        capabilities: vec![Capability::ChatCompletion],
     });
     repo.add_model(AiModel {
         name: "phi3:mini".into(),
         supports_images: false,
         speed: None,
         cost_per_token: None,
+        capabilities: vec![Capability::ChatCompletion],
     });
     repo.add_model(AiModel {
         name: "codellama:34b".into(),
         supports_images: false,
         speed: None,
         cost_per_token: None,
+        capabilities: vec![Capability::InstructionFollowing, Capability::ChatCompletion],
     });
     repo.add_model(AiModel {
         name: "llava:34b".into(),
         supports_images: true,
         speed: None,
         cost_per_token: None,
+        capabilities: vec![Capability::ChatCompletion],
     });
     repo
 }
@@ -127,6 +150,7 @@ mod tests {
             supports_images: true,
             speed: Some(1.0),
             cost_per_token: Some(0.01),
+            capabilities: vec![Capability::ChatCompletion],
         });
         assert!(repo.find("gpt4").is_some());
     }
@@ -134,6 +158,7 @@ mod tests {
     #[test]
     fn default_ollama_models_present() {
         let repo = ollama_models();
-        assert!(repo.find("gemma3").is_some());
+        let gemma = repo.find("gemma3").unwrap();
+        assert!(gemma.capabilities.contains(&Capability::ChatCompletion));
     }
 }
