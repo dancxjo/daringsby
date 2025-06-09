@@ -99,6 +99,8 @@ struct SchedulerEntry {
     model: Option<String>,
     queue_len: usize,
     due_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -154,6 +156,11 @@ where
             let model = (&w.scheduler as &dyn Any)
                 .downcast_ref::<ProcessorScheduler<OllamaProcessor>>()
                 .map(|ps| ps.processor.model.clone());
+            let last = w
+                .memory
+                .all()
+                .last()
+                .map(|s| serde_json::to_value(&s.what).unwrap());
             SchedulerEntry {
                 index: i,
                 name: w.name.clone(),
@@ -161,6 +168,7 @@ where
                 model,
                 queue_len: w.queue.len(),
                 due_ms: w.interval.saturating_sub(w.last_tick.elapsed()).as_millis() as u64,
+                last,
             }
         })
         .collect();
@@ -344,5 +352,31 @@ mod tests {
         assert_eq!(val["wits"][0]["queue_len"], 1);
         let due = val["wits"][0]["due_ms"].as_u64().unwrap();
         assert!(due <= 100);
+    }
+
+    #[tokio::test]
+    async fn scheduler_endpoint_reports_last_memory() {
+        let heart = Heart::new(vec![Wit::with_config(
+            JoinScheduler::default(),
+            Echo,
+            None,
+            std::time::Duration::from_secs(0),
+        )]);
+        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
+
+        {
+            let mut p = psyche.lock().await;
+            p.heart.wits[0].push(Experience::new("hello"));
+            p.heart.tick();
+        }
+
+        let resp = scheduler_handler::<JoinScheduler, Echo>(psyche.clone())
+            .await
+            .unwrap();
+        let body = resp.into_response();
+        assert_eq!(body.status(), 200);
+        let bytes = warp::hyper::body::to_bytes(body.into_body()).await.unwrap();
+        let val: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(val["wits"][0]["last"], "hello");
     }
 }
