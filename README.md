@@ -113,7 +113,7 @@ Run `cargo check` in the repository root to verify that all crates compile. CI o
 | --- | --- |
 | `OLLAMA_URL` | Base URL of the primary Ollama server |
 | `OLLAMA_URLS` | Comma separated list of Ollama hosts for load balancing |
-| `OLLAMA_MODEL` | LLM model identifier |
+| `OLLAMA_MODEL` | LLM model identifier (default `gemma3:27b`) |
 | `COQUI_URL` | Base URL of the Coqui TTS server |
 | `SPEAKER` | Coqui speaker name |
 | `QDRANT_URL` | Address of the Qdrant vector database |

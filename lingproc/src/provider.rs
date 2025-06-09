@@ -124,6 +124,7 @@ impl ModelRunnerProvider for OllamaProvider {
     }
 
     async fn processor_for(&self, model: &str) -> anyhow::Result<Box<dyn Processor + Send + Sync>> {
+        crate::ensure_model_available(model).await?;
         let proc = crate::OllamaProcessor::new(model);
         let proc = ProfilingProcessor::new(proc);
         Ok(Box::new(ManagedProcessor::new(

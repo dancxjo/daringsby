@@ -23,27 +23,28 @@ async fn main() -> Result<()> {
         Box::new(psyche::sensors::ConnectionSensor::default()),
     ];
 
+    let model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "gemma3:27b".into());
     let heart = psyche::Heart::new(vec![
         psyche::Wit::with_config(
-            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new("llama2")),
+            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
             Echo,
             Some("fond".into()),
             std::time::Duration::from_secs(1),
         ),
         psyche::Wit::with_config(
-            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new("llama2")),
+            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
             Echo,
             Some("wit2".into()),
             std::time::Duration::from_secs(2),
         ),
         psyche::Wit::with_config(
-            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new("llama2")),
+            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
             Echo,
             Some("wit3".into()),
             std::time::Duration::from_secs(4),
         ),
         psyche::Wit::with_config(
-            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new("llama2")),
+            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
             Echo,
             Some("quick".into()),
             std::time::Duration::from_secs(8),
