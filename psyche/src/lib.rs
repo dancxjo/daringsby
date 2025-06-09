@@ -175,20 +175,30 @@ where
         });
 
         let handle = tokio::runtime::Handle::current();
-        let text = tokio::task::block_in_place(|| {
-            let mut stream = handle.block_on(self.processor.process(task)).ok()?;
-            let mut text = String::new();
-            while let Some(chunk) = handle.block_on(stream.next()) {
-                match chunk.ok()? {
-                    TaskOutput::TextChunk(t) => {
-                        log::info!("llm chunk: {}", t);
-                        text.push_str(&t)
+        let text =
+            tokio::task::block_in_place(|| match handle.block_on(self.processor.process(task)) {
+                Ok(mut stream) => {
+                    let mut text = String::new();
+                    while let Some(chunk) = handle.block_on(stream.next()) {
+                        match chunk {
+                            Ok(TaskOutput::TextChunk(t)) => {
+                                log::info!("llm chunk: {}", t);
+                                text.push_str(&t);
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                log::error!("processor stream error: {e}");
+                                return None;
+                            }
+                        }
                     }
-                    _ => {}
+                    Some(text)
                 }
-            }
-            Some(text)
-        })?;
+                Err(e) => {
+                    log::error!("processor execution error: {e}");
+                    None
+                }
+            })?;
         log::info!("processor scheduler finished");
         Some(Sensation::new(text))
     }
@@ -629,8 +639,8 @@ mod tests {
     async fn processor_scheduler_runs_llm() {
         use async_stream::stream;
         use async_trait::async_trait;
-        use futures::{StreamExt, stream::BoxStream};
-        use lingproc::{InstructionFollowingTask, Processor, Task, TaskKind, TaskOutput};
+        use futures::stream::BoxStream;
+        use lingproc::{Processor, Task, TaskKind, TaskOutput};
 
         struct MockProcessor;
 
@@ -662,5 +672,34 @@ mod tests {
         let exp = wit.tick().unwrap();
         assert!(exp.how.starts_with("processed"));
         assert!(wit.memory.all()[0].what.starts_with("processed"));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn processor_scheduler_handles_errors() {
+        use async_trait::async_trait;
+        use futures::stream::BoxStream;
+        use lingproc::{Processor, Task, TaskKind, TaskOutput};
+
+        struct FailProcessor;
+
+        #[async_trait]
+        impl Processor for FailProcessor {
+            fn capabilities(&self) -> Vec<TaskKind> {
+                vec![TaskKind::InstructionFollowing]
+            }
+
+            async fn process(
+                &self,
+                _task: Task,
+            ) -> anyhow::Result<BoxStream<'static, anyhow::Result<TaskOutput>>> {
+                Err(anyhow::anyhow!("boom"))
+            }
+        }
+
+        let scheduler = ProcessorScheduler::new(FailProcessor);
+        let mut wit = Wit::with_config(scheduler, Echo, None, std::time::Duration::from_secs(0));
+        wit.push(Experience::new("one"));
+        assert!(wit.tick().is_none());
+        assert!(wit.memory.all().is_empty());
     }
 }
