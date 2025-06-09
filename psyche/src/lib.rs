@@ -147,6 +147,14 @@ impl<P> ProcessorScheduler<P> {
     pub fn new(processor: P) -> Self {
         Self { processor }
     }
+
+    /// Capabilities advertised by the underlying processor.
+    pub fn capabilities(&self) -> Vec<lingproc::TaskKind>
+    where
+        P: lingproc::Processor,
+    {
+        self.processor.capabilities()
+    }
 }
 
 impl<P> Scheduler for ProcessorScheduler<P>

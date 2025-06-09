@@ -104,7 +104,7 @@ impl OllamaProcessor {
 #[async_trait]
 impl Processor for OllamaProcessor {
     fn capabilities(&self) -> Vec<TaskKind> {
-        vec![TaskKind::ChatCompletion]
+        vec![TaskKind::ChatCompletion, TaskKind::InstructionFollowing]
     }
 
     async fn process(
@@ -124,6 +124,23 @@ impl Processor for OllamaProcessor {
                     .collect::<Vec<_>>()
                     .join("\n");
                 let req = GenerationRequest::new(self.model.clone(), prompt);
+                let mut resp = self.client.generate_stream(req).await?;
+                let s = stream! {
+                    while let Some(chunk) = resp.next().await {
+                        let chunk = chunk?;
+                        for c in chunk {
+                            yield Ok(TaskOutput::TextChunk(c.response));
+                        }
+                    }
+                };
+                Ok(Box::pin(s))
+            }
+            Task::InstructionFollowing(i) => {
+                use async_stream::stream;
+                use futures::StreamExt;
+                use ollama_rs::generation::completion::request::GenerationRequest;
+
+                let req = GenerationRequest::new(self.model.clone(), i.instruction);
                 let mut resp = self.client.generate_stream(req).await?;
                 let s = stream! {
                     while let Some(chunk) = resp.next().await {
@@ -261,6 +278,10 @@ pub fn default_repository() -> ModelRepository {
         supports_images: true,
         speed: Some(1.0),
         cost_per_token: Some(0.03),
+        capabilities: vec![
+            modeldb::Capability::ChatCompletion,
+            modeldb::Capability::InstructionFollowing,
+        ],
     });
     repo
 }
