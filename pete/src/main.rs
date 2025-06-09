@@ -67,7 +67,7 @@ async fn main() -> Result<()> {
     {
         let psyche = psyche.clone();
         tokio::spawn(async move {
-            use tokio::time::{sleep, Duration};
+            use tokio::time::{Duration, sleep};
             loop {
                 {
                     let mut p = psyche.lock().await;
