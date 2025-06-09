@@ -5,16 +5,22 @@
     <title>Pete Logs</title>
 </head>
 <body>
-<pre id="log"></pre>
 <form id="chat-form">
     <input id="chat-input" type="text" autocomplete="off" />
     <button type="submit">Send</button>
 </form>
+<pre id="log"></pre>
 <script>
 const ws = new WebSocket(`ws://${location.host}/ws`);
 ws.onmessage = (ev) => {
     const pre = document.getElementById('log');
-    pre.textContent += ev.data + '\n';
+    const wasAtTop = pre.scrollTop === 0;
+    pre.textContent = ev.data + '\n' + pre.textContent;
+    if (wasAtTop) {
+        pre.scrollTop = 0;
+    } else {
+        pre.scrollTop += ev.data.length + 1; // +1 for the newline
+    }
 };
 document.getElementById('chat-form').addEventListener('submit', (ev) => {
     ev.preventDefault();

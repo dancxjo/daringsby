@@ -1,3 +1,6 @@
 /target
 **/*.rs.bk
 Cargo.lock
+/neo4j_data
+/qdrant_data
+/tts
