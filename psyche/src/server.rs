@@ -1,12 +1,13 @@
 use crate::bus::{Event, EventBus};
-use crate::{Psyche, Sensor, Scheduler};
-use tokio::sync::Mutex;
-use serde::Serialize;
+use crate::{ProcessorScheduler, Psyche, Scheduler, Sensor};
 use futures::{SinkExt, StreamExt};
+use lingproc::OllamaProcessor;
 use log::info;
 use serde::Deserialize;
+use serde::Serialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use warp::{
     Filter,
     ws::{Message, WebSocket},
@@ -34,8 +35,8 @@ async fn handle_ws(bus: Arc<EventBus>, ws: WebSocket, peer: Option<SocketAddr>) 
         while let Ok(event) = rx.recv().await {
             let text = match event {
                 Event::Log(line) | Event::Chat(line) => line,
-                Event::Connected(addr) => format!("[connected {addr}]") ,
-                Event::Disconnected(addr) => format!("[disconnected {addr}]") ,
+                Event::Connected(addr) => format!("[connected {addr}]"),
+                Event::Disconnected(addr) => format!("[disconnected {addr}]"),
             };
             if tx.send(Message::text(text)).await.is_err() {
                 break;
@@ -76,6 +77,92 @@ pub async fn run(bus: Arc<EventBus>, addr: impl Into<SocketAddr>) {
     warp::serve(html.or(ws_route)).run(addr).await;
 }
 
+#[derive(Serialize)]
+struct WitInfo {
+    name: Option<String>,
+    interval_ms: u64,
+    memory: usize,
+}
+
+#[derive(Serialize)]
+struct PsycheInfo {
+    wits: Vec<WitInfo>,
+    sensors: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct SchedulerEntry {
+    index: usize,
+    name: Option<String>,
+    scheduler: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SchedulerInfo {
+    wits: Vec<SchedulerEntry>,
+}
+
+async fn psyche_handler<S, P>(
+    psyche: Arc<Mutex<Psyche<S, P>>>,
+) -> Result<impl warp::Reply, warp::Rejection>
+where
+    S: Scheduler + Send + Sync,
+    P: Sensor<Input = S::Output> + Send + Sync,
+    S::Output: Serialize + Clone,
+{
+    use std::any::type_name_of_val;
+    let psyche = psyche.lock().await;
+    let wits = psyche
+        .heart
+        .wits
+        .iter()
+        .map(|w| WitInfo {
+            name: w.name.clone(),
+            interval_ms: w.interval.as_millis() as u64,
+            memory: w.memory.all().len(),
+        })
+        .collect();
+    let sensors = psyche
+        .sensors
+        .iter()
+        .map(|s| type_name_of_val(&**s).to_string())
+        .collect();
+    Ok(warp::reply::json(&PsycheInfo { wits, sensors }))
+}
+
+async fn scheduler_handler<S, P>(
+    psyche: Arc<Mutex<Psyche<S, P>>>,
+) -> Result<impl warp::Reply, warp::Rejection>
+where
+    S: Scheduler + Send + Sync + 'static,
+    P: Sensor<Input = S::Output> + Send + Sync + 'static,
+    S::Output: Serialize + Clone,
+{
+    use std::any::{Any, type_name};
+    let psyche = psyche.lock().await;
+    let sched_type = type_name::<S>().to_string();
+    let wits = psyche
+        .heart
+        .wits
+        .iter()
+        .enumerate()
+        .map(|(i, w)| {
+            let model = (&w.scheduler as &dyn Any)
+                .downcast_ref::<ProcessorScheduler<OllamaProcessor>>()
+                .map(|ps| ps.processor.model.clone());
+            SchedulerEntry {
+                index: i,
+                name: w.name.clone(),
+                scheduler: sched_type.clone(),
+                model,
+            }
+        })
+        .collect();
+    Ok(warp::reply::json(&SchedulerInfo { wits }))
+}
+
 async fn wit_handler<S, P>(
     name: String,
     psyche: Arc<Mutex<Psyche<S, P>>>,
@@ -112,7 +199,6 @@ pub async fn run_with_psyche<S, P>(
     P: Sensor<Input = S::Output> + Send + Sync + 'static,
     S::Output: Serialize + Clone + Send + Sync + 'static,
 {
-
     let html = warp::path::end().map(|| warp::reply::html(INDEX_HTML));
     let ws_route = warp::path("ws")
         .and(warp::ws())
@@ -124,18 +210,33 @@ pub async fn run_with_psyche<S, P>(
 
     let psyche_filter = warp::any().map(move || psyche.clone());
     let wit_route = warp::path!("wit" / String)
-        .and(psyche_filter)
+        .and(psyche_filter.clone())
         .and_then(wit_handler::<S, P>);
 
-    warp::serve(html.or(ws_route).or(wit_route)).run(addr).await;
+    let psyche_route = warp::path("psyche")
+        .and(psyche_filter.clone())
+        .and_then(psyche_handler::<S, P>);
+
+    let scheduler_route = warp::path("scheduler")
+        .and(psyche_filter)
+        .and_then(scheduler_handler::<S, P>);
+
+    warp::serve(
+        html.or(ws_route)
+            .or(wit_route)
+            .or(psyche_route)
+            .or(scheduler_route),
+    )
+    .run(addr)
+    .await;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Experience, Heart, JoinScheduler, Sensation, Wit};
     use serde_json::Value;
     use warp::Reply;
-    use crate::{Experience, JoinScheduler, Sensation, Heart, Wit};
 
     struct Echo;
 
@@ -153,7 +254,9 @@ mod tests {
 
         {
             let mut p = psyche.lock().await;
-            p.heart.wits[0].memory.remember(Sensation::new("hello".to_string()));
+            p.heart.wits[0]
+                .memory
+                .remember(Sensation::new("hello".to_string()));
         }
 
         let resp = wit_handler::<JoinScheduler, Echo>("0".into(), psyche.clone())
@@ -164,5 +267,49 @@ mod tests {
         let bytes = warp::hyper::body::to_bytes(body.into_body()).await.unwrap();
         let val: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(val.as_array().unwrap()[0]["what"], "hello");
+    }
+
+    #[tokio::test]
+    async fn psyche_endpoint_lists_wits() {
+        let heart = Heart::new(vec![Wit::with_config(
+            ProcessorScheduler::new(OllamaProcessor::new("model")),
+            Echo,
+            Some("w1".into()),
+            std::time::Duration::from_secs(0),
+        )]);
+        let psyche = Arc::new(Mutex::new(Psyche::new(
+            heart,
+            vec![Box::new(crate::sensors::ChatSensor::default())],
+        )));
+
+        let resp = psyche_handler::<ProcessorScheduler<OllamaProcessor>, Echo>(psyche.clone())
+            .await
+            .unwrap();
+        let body = resp.into_response();
+        assert_eq!(body.status(), 200);
+        let bytes = warp::hyper::body::to_bytes(body.into_body()).await.unwrap();
+        let val: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(val["wits"][0]["name"], "w1");
+        assert_eq!(val["sensors"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn scheduler_endpoint_reports_model() {
+        let heart = Heart::new(vec![Wit::with_config(
+            ProcessorScheduler::new(OllamaProcessor::new("llama-test")),
+            Echo,
+            None,
+            std::time::Duration::from_secs(0),
+        )]);
+        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
+
+        let resp = scheduler_handler::<ProcessorScheduler<OllamaProcessor>, Echo>(psyche.clone())
+            .await
+            .unwrap();
+        let body = resp.into_response();
+        assert_eq!(body.status(), 200);
+        let bytes = warp::hyper::body::to_bytes(body.into_body()).await.unwrap();
+        let val: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(val["wits"][0]["model"], "llama-test");
     }
 }
