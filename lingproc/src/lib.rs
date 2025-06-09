@@ -225,7 +225,7 @@ impl Processor for OpenAIProcessor {
 ///
 /// ```no_run
 /// # tokio_test::block_on(async {
-/// lingproc::ensure_model_available("gemma3:27b").await.unwrap();
+/// lingproc::ensure_model_available("gemma3").await.unwrap();
 /// # });
 /// ```
 pub async fn ensure_model_available(model: &str) -> anyhow::Result<()> {
@@ -315,7 +315,7 @@ mod tests {
     async fn repo_has_models() {
         let repo = default_repository();
         assert!(repo.find("gpt4").is_some());
-        assert!(repo.find("gemma3:27b").is_some());
+        assert!(repo.find("gemma3").is_some());
     }
     #[tokio::test]
     async fn profiler_records_time() {

@@ -78,12 +78,12 @@ impl ModelRepository {
 ///
 /// ```
 /// let repo = modeldb::ollama_models();
-/// assert!(repo.find("gemma3:27b").is_some());
+/// assert!(repo.find("gemma3").is_some());
 /// ```
 pub fn ollama_models() -> ModelRepository {
     let mut repo = ModelRepository::new();
     repo.add_model(AiModel {
-        name: "gemma3:27b".into(),
+        name: "gemma3".into(),
         supports_images: false,
         speed: None,
         cost_per_token: None,
@@ -134,6 +134,6 @@ mod tests {
     #[test]
     fn default_ollama_models_present() {
         let repo = ollama_models();
-        assert!(repo.find("gemma3:27b").is_some());
+        assert!(repo.find("gemma3").is_some());
     }
 }

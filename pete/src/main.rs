@@ -23,7 +23,7 @@ async fn main() -> Result<()> {
         Box::new(psyche::sensors::ConnectionSensor::default()),
     ];
 
-    let model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "gemma3:27b".into());
+    let model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "gemma3".into());
     lingproc::ensure_model_available(&model).await?;
     info!("model {model} ready");
     let heart = psyche::Heart::new(vec![
