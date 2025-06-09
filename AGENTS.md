@@ -19,6 +19,7 @@
   after the final item to trigger any cleanup logic.
 - When storing timestamped data, prefer field names `when` and `what` for
   clarity.
+- Use `how` for the descriptive text inside an `Experience`.
 - Each psyche should create its own `EventBus` and web server. Avoid globals.
 
 ## Project Overview
