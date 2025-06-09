@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Pete Logs</title>
+</head>
+<body>
+<pre id="log"></pre>
+<form id="chat-form">
+    <input id="chat-input" type="text" autocomplete="off" />
+    <button type="submit">Send</button>
+</form>
+<script>
+const ws = new WebSocket(`ws://${location.host}/ws`);
+ws.onmessage = (ev) => {
+    const pre = document.getElementById('log');
+    pre.textContent += ev.data + '\n';
+};
+document.getElementById('chat-form').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const input = document.getElementById('chat-input');
+    const line = input.value;
+    if (line.trim() !== '') {
+        ws.send(JSON.stringify({ type: 'chat', line }));
+        input.value = '';
+    }
+});
+</script>
+</body>
+</html>

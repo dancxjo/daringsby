@@ -62,35 +62,50 @@ Thank you for witnessing me.
 
 ---
 
-## Workspace Overview
+# Daringsby Workspace
 
-Pete Daringsby is a narrative-first artificial consciousness implemented as a set of cooperating Rust crates. The project explores how modular "subagents" combine sensor input, memory and language models into a continuous first-person story. Each crate in the workspace represents one piece of that puzzle.
+Daringsby contains a set of Rust crates that together form a small cognitive system.
 
-Detailed API notes for each package live in [docs/package_overview.md](docs/package_overview.md). See [docs/architecture.md](docs/architecture.md) for a high-level overview of the agent design. The summary below gives a quick sense of the layout.
+## Crates
 
-## Workspace crates
+- **lingproc** – language processing utilities for chat completion, sentence embeddings and instruction following. Includes providers for Ollama and OpenAI.
+- **modeldb** – simple in-memory catalog of AI models.
+- **psyche** – primitives describing sensations and experiences along with a trait for sensors.
+- **memory** – stores embeddings and links them in a graph through pluggable backends.
 
-- **core** – orchestrates subagents like `Witness` and `Voice` and exposes the `Psyche` type that binds them together.
-- **net** – helpers for WebSocket messaging and client/server communication.
-- **memory** – abstractions for storing [`Experience`](memory/src/experience.rs) objects in Qdrant and Neo4j.
-- **voice** – language model coordination and conversation state management.
-- **llm** – generic "language processor" utilities and the `LinguisticScheduler` for capability-based model selection.
-- **tts** – converts LLM output into audio via Coqui TTS.
-- **sensor** – audio, geolocation and filesystem listeners that emit [`Sensation`](sensor/src/sensation.rs) values.
-- **vision** – webcam and face recognition helpers (currently stubbed).
-- **sensation-server** – WebSocket backend with a small development panel.
-- **sensation-tester** – CLI tool for sending mock sensor input during dev.
+## Development
+
+Tests and formatting can be run for the entire workspace:
+
+```bash
+cargo fmt --all
+cargo test --workspace --all-targets
+```
+
+This repository includes a `.cargo/config.toml` file enabling incremental
+compilation and directing Cargo to place build artifacts in `../target`.
+Sharing this directory across checkouts lets you reuse cached dependencies
+between runs.
+
+## Optional Services
+
+`docker-compose.yml` defines additional services that can aid development but aren't required by the tests:
+
+- `tts` for text-to-speech using Coqui TTS.
+- `qdrant` as a vector database.
+- `neo4j` as a graph database.
 
 Run `cargo check` in the repository root to verify that all crates compile. CI on GitHub automatically runs `cargo check` and `cargo test` for pushes and pull requests.
 
 ## Setup
 
 1. Install Rust (stable) and Docker.
-2. Copy `.env.example` to `.env` and set the environment variables described below.
+2. Create a `.env` file and set the environment variables described below.
+   If you lack a GPU, swap the image for `ghcr.io/coqui-ai/tts-cpu` and remove the `runtime: nvidia` line. See [Coqui TTS docs](https://tts.readthedocs.io/en/latest/docker_images.html) for details.
+   Be sure to include `entrypoint: python3` in the `tts` service so the server script runs.
 3. Start the required services with `docker-compose up -d tts qdrant neo4j`.
-If you lack a GPU, swap the image for `ghcr.io/coqui-ai/tts-cpu` and remove the `runtime: nvidia` line. See [Coqui TTS docs](https://tts.readthedocs.io/en/latest/docker_images.html) for details.
-Be sure to include `entrypoint: python3` in the `tts` service so the server script runs.
 4. Optional: run Whisper locally for ASR and configure its address in `.env`.
+5. Run `cargo run -p pete` to start the local web interface.
 
 ### Environment variables
 
@@ -106,33 +121,10 @@ Be sure to include `entrypoint: python3` in the `tts` service so the server scri
 | `NEO4J_USER` | Database username |
 | `NEO4J_PASS` | Database password |
 
-## Running
-
-Start the WebSocket backend:
-
-```bash
-cargo run -p sensation-server
-```
-
-Run the main runtime alongside a simple viewer:
-
-```bash
-cargo run -p runtime
-```
-
-Then open [http://localhost:3000/see](http://localhost:3000/see) in a browser to
-mirror your webcam and stream frames to Pete.
-
-Use `sensation-tester` to send mock sensor input:
-
-```bash
-cargo run -p sensation-tester -- --help
-```
-
 ## Testing
 
 Run the full test suite with:
 
 ```bash
-cargo test
+cargo test --workspace --all-targets
 ```
