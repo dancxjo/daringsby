@@ -584,8 +584,8 @@ mod tests {
         assert!(!heart.quick().unwrap().memory.all().is_empty());
     }
 
-    #[test]
-    fn processor_scheduler_runs_llm() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn processor_scheduler_runs_llm() {
         use async_stream::stream;
         use async_trait::async_trait;
         use futures::{StreamExt, stream::BoxStream};
