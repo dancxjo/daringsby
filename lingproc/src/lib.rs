@@ -233,11 +233,23 @@ pub async fn ensure_model_available(model: &str) -> anyhow::Result<()> {
 }
 
 async fn ensure_model_with_client(client: &ollama_rs::Ollama, model: &str) -> anyhow::Result<()> {
+    use futures::StreamExt;
     let models = client.list_local_models().await.unwrap_or_default();
     if models.iter().any(|m| m.name == model) {
         return Ok(());
     }
-    client.pull_model(model.to_string(), false).await?;
+    let mut stream = client.pull_model_stream(model.to_string(), false).await?;
+    let pb = indicatif::ProgressBar::new_spinner();
+    pb.enable_steady_tick(std::time::Duration::from_millis(100));
+    while let Some(status) = stream.next().await {
+        let status = status?;
+        if let (Some(total), Some(completed)) = (status.total, status.completed) {
+            pb.set_length(total);
+            pb.set_position(completed);
+        }
+        pb.set_message(status.message);
+    }
+    pb.finish_with_message("model ready");
     Ok(())
 }
 

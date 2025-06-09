@@ -58,6 +58,8 @@ impl<T> Sensation<T> {
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Experience {
+    /// Time when the sensation was interpreted.
+    pub when: std::time::SystemTime,
     /// Text describing how the sensation feels.
     pub how: String,
 }
@@ -126,9 +128,13 @@ pub struct ProcessorScheduler<P> {
 }
 
 fn narrative_prompt(identity: &str, batch: &[Experience]) -> String {
+    use chrono::{DateTime, Utc};
     let experiences = batch
         .iter()
-        .map(|e| e.how.clone())
+        .map(|e| {
+            let dt: DateTime<Utc> = e.when.into();
+            format!("{} {}", dt.to_rfc3339(), e.how)
+        })
         .collect::<Vec<_>>()
         .join(" ");
     format!(
@@ -157,6 +163,8 @@ where
             return None;
         }
 
+        log::info!("processor scheduler starting");
+
         let instruction = narrative_prompt("unknown", &batch);
         log::info!("llm prompt: {}", instruction);
         drop(batch);
@@ -178,6 +186,7 @@ where
                 _ => {}
             }
         }
+        log::info!("processor scheduler finished");
         Some(Sensation::new(text))
     }
 }
@@ -387,7 +396,18 @@ pub trait Sensor {
 impl Experience {
     /// Create a new experience from a descriptive phrase.
     pub fn new(how: impl Into<String>) -> Self {
-        Self { how: how.into() }
+        Self {
+            when: std::time::SystemTime::now(),
+            how: how.into(),
+        }
+    }
+
+    /// Create a new experience with a specific timestamp.
+    pub fn with_timestamp(how: impl Into<String>, when: std::time::SystemTime) -> Self {
+        Self {
+            when,
+            how: how.into(),
+        }
     }
 }
 

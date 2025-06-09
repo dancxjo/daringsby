@@ -24,6 +24,8 @@ async fn main() -> Result<()> {
     ];
 
     let model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "gemma3:27b".into());
+    lingproc::ensure_model_available(&model).await?;
+    info!("model {model} ready");
     let heart = psyche::Heart::new(vec![
         psyche::Wit::with_config(
             psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
