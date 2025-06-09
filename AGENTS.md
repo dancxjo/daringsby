@@ -21,6 +21,7 @@
   clarity.
 - Use `how` for the descriptive text inside an `Experience`.
 - Each psyche should create its own `EventBus` and web server. Avoid globals.
+- Keep `README.md` in sync with `docker-compose.yml` whenever services change.
 
 ## Project Overview
 Daringsby houses several Rust crates forming a model cognitive system named Pete. Events flow through sensors into a `Heart` of `Wit`s which summarize and store experiences.
