@@ -51,6 +51,7 @@ async function refresh() {
     const pinfo = psyche.wits[i] || {};
     const pct = pinfo.interval_ms ? Math.min(100, Math.round(100 * (pinfo.interval_ms - w.due_ms) / pinfo.interval_ms)) : 0;
     const det = document.createElement('details');
+    det.open = true;
     const name = w.name ?? `Processor ${i}`;
     det.innerHTML = `<summary>${name}</summary>` +
       `<blockquote>${w.last ?? ''}</blockquote>` +
