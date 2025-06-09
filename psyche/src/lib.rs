@@ -643,6 +643,20 @@ mod tests {
         assert!(!heart.wits[1].memory.all().is_empty());
     }
 
+    #[test]
+    fn heart_flows_across_three_wits() {
+        use std::time::Duration;
+        let w1 = Wit::with_config(JoinScheduler::default(), Echo, None, Duration::from_secs(0));
+        let w2 = Wit::with_config(JoinScheduler::default(), Echo, None, Duration::from_secs(0));
+        let w3 = Wit::with_config(JoinScheduler::default(), Echo, None, Duration::from_secs(0));
+        let mut heart = Heart::new(vec![w1, w2, w3]);
+        heart.push(Experience::new("a"));
+        heart.push(Experience::new("b"));
+        heart.run_serial();
+        assert_eq!(heart.wits[0].memory.all()[0].what, "a b");
+        assert_eq!(heart.wits[2].memory.all()[0].what, "a b");
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn processor_scheduler_runs_llm() {
         use async_stream::stream;
