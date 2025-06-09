@@ -221,15 +221,29 @@ impl Processor for OpenAIProcessor {
     }
 }
 
+/// Ensure a model exists on the local Ollama server, pulling it if necessary.
+///
+/// ```no_run
+/// # tokio_test::block_on(async {
+/// lingproc::ensure_model_available("gemma3:27b").await.unwrap();
+/// # });
+/// ```
+pub async fn ensure_model_available(model: &str) -> anyhow::Result<()> {
+    ensure_model_with_client(&ollama_rs::Ollama::default(), model).await
+}
+
+async fn ensure_model_with_client(client: &ollama_rs::Ollama, model: &str) -> anyhow::Result<()> {
+    let models = client.list_local_models().await.unwrap_or_default();
+    if models.iter().any(|m| m.name == model) {
+        return Ok(());
+    }
+    client.pull_model(model.to_string(), false).await?;
+    Ok(())
+}
+
 /// Default model repository used by examples and tests.
 pub fn default_repository() -> ModelRepository {
-    let mut repo = ModelRepository::new();
-    repo.add_model(AiModel {
-        name: "gemma3:27b".into(),
-        supports_images: true,
-        speed: None,
-        cost_per_token: None,
-    });
+    let mut repo = modeldb::ollama_models();
     repo.add_model(AiModel {
         name: "gpt4".into(),
         supports_images: true,
@@ -306,5 +320,33 @@ mod tests {
         let d = proc.durations();
         assert_eq!(d.len(), 1);
         assert!(d[0] > Duration::from_secs(0));
+    }
+
+    #[tokio::test]
+    async fn pulls_if_missing() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        use warp::Filter;
+
+        let pulled = Arc::new(AtomicUsize::new(0));
+        let pulled_c = pulled.clone();
+        let tags = warp::path("api")
+            .and(warp::path("tags"))
+            .map(|| warp::reply::json(&serde_json::json!({ "models": [] })));
+        let pull = warp::path("api").and(warp::path("pull")).map(move || {
+            pulled_c.fetch_add(1, Ordering::SeqCst);
+            warp::reply::json(&serde_json::json!({"status":"ok"}))
+        });
+        let routes = tags.or(pull);
+        let (addr, server) = warp::serve(routes).bind_ephemeral(([127, 0, 0, 1], 0));
+        tokio::task::spawn(server);
+
+        let client = ollama_rs::Ollama::new(format!("http://{}", addr.ip()), addr.port());
+        super::ensure_model_with_client(&client, "missing")
+            .await
+            .unwrap();
+        assert_eq!(pulled.load(Ordering::SeqCst), 1);
     }
 }
