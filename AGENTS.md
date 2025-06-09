@@ -9,6 +9,7 @@
 - During day‑to‑day coding, prefer targeted tests (e.g. `cargo test -p <crate>`)
   to avoid long waits. Save the full `--all` runs for just before a commit.
 - Keep dependency caches around between runs to reduce network activity.
+- Each crate folder has its own terse `AGENTS.md` with more tips.
 
 ## Development
 - Follow BDD/TDD principles; add tests alongside new features.
