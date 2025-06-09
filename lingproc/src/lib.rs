@@ -1,3 +1,7 @@
+//! Language processing primitives including processors, providers and schedulers.
+//! Processors implement chat completion, instruction following or embedding.
+//! Providers manage processor instances, while a [`scheduler::Scheduler`]
+//! distributes tasks across available providers.
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use modeldb::{AiModel, ModelRepository};

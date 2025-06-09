@@ -1,3 +1,6 @@
+//! Core types for Pete's cognitive loop including the event bus, sensors,
+//! schedulers and the `Heart`/`Wit` abstractions.
+//! The accompanying web server streams bus events over WebSockets.
 use std::time::SystemTime;
 use serde::Serialize;
 
