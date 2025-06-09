@@ -97,6 +97,8 @@ struct SchedulerEntry {
     scheduler: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     model: Option<String>,
+    queue_len: usize,
+    due_ms: u64,
 }
 
 #[derive(Serialize)]
@@ -157,6 +159,8 @@ where
                 name: w.name.clone(),
                 scheduler: sched_type.clone(),
                 model,
+                queue_len: w.queue.len(),
+                due_ms: w.interval.saturating_sub(w.last_tick.elapsed()).as_millis() as u64,
             }
         })
         .collect();
@@ -311,5 +315,34 @@ mod tests {
         let bytes = warp::hyper::body::to_bytes(body.into_body()).await.unwrap();
         let val: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(val["wits"][0]["model"], "llama-test");
+    }
+
+    #[tokio::test]
+    async fn scheduler_endpoint_reports_queue_and_due() {
+        let heart = Heart::new(vec![Wit::with_config(
+            JoinScheduler::default(),
+            Echo,
+            Some("q".into()),
+            std::time::Duration::from_millis(100),
+        )]);
+        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
+
+        {
+            let mut p = psyche.lock().await;
+            p.heart.wits[0].push(Experience::new("hi"));
+            p.heart.wits[0].last_tick =
+                std::time::Instant::now() - std::time::Duration::from_millis(50);
+        }
+
+        let resp = scheduler_handler::<JoinScheduler, Echo>(psyche.clone())
+            .await
+            .unwrap();
+        let body = resp.into_response();
+        assert_eq!(body.status(), 200);
+        let bytes = warp::hyper::body::to_bytes(body.into_body()).await.unwrap();
+        let val: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(val["wits"][0]["queue_len"], 1);
+        let due = val["wits"][0]["due_ms"].as_u64().unwrap();
+        assert!(due <= 100);
     }
 }

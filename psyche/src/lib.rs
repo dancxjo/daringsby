@@ -244,6 +244,26 @@ where
         self.queue.push(exp);
     }
 
+    /// Current number of queued experiences.
+    ///
+    /// ```
+    /// use psyche::{Wit, JoinScheduler, Experience, Sensor, Sensation};
+    /// struct Echo;
+    /// impl Sensor for Echo {
+    ///     type Input = String;
+    ///     fn feel(&mut self, s: Sensation<Self::Input>) -> Option<Experience> {
+    ///         Some(Experience::new(s.what))
+    ///     }
+    /// }
+    /// let mut wit = Wit::new(JoinScheduler::default(), Echo);
+    /// assert_eq!(wit.queue_len(), 0);
+    /// wit.push(Experience::new("test"));
+    /// assert_eq!(wit.queue_len(), 1);
+    /// ```
+    pub fn queue_len(&self) -> usize {
+        self.queue.len()
+    }
+
     /// Process queued experiences and return a summary experience.
     pub fn tick(&mut self) -> Option<Experience> {
         let batch = std::mem::take(&mut self.queue);
