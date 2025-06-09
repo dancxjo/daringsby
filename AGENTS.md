@@ -29,3 +29,4 @@ Daringsby houses several Rust crates forming a model cognitive system named Pete
 - `psyche/`   – sensors, event bus, heart/wit logic and web server
 - `memory/`   – graph and vector memory abstractions
 - `pete/`     – binary launching the web interface
+- After running `cargo fmt`, check `git status` and revert unrelated changes before committing.
