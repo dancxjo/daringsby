@@ -23,12 +23,7 @@
     <button id="refresh" class="button secondary" style="margin-bottom:0.5rem;">Refresh</button>
     <pre id="info" class="callout" style="height:150px; overflow:auto;"></pre>
     <h3>Scheduler</h3>
-    <table id="sched-table" class="hover" style="font-size:0.9rem;">
-      <thead>
-        <tr><th>Wit</th><th>Queue</th><th>Next ms</th><th style="width:40%">Progress</th></tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+    <div id="sched-details"></div>
   </div>
 </div>
 <script>
@@ -50,16 +45,19 @@ async function refresh() {
   const psyche = await (await fetch('/psyche')).json();
   const sched = await (await fetch('/scheduler')).json();
   document.getElementById('info').textContent = JSON.stringify({psyche, sched}, null, 2);
-  const body = document.querySelector('#sched-table tbody');
+  const body = document.getElementById('sched-details');
   body.innerHTML = '';
   sched.wits.forEach((w, i) => {
     const pinfo = psyche.wits[i] || {};
     const pct = pinfo.interval_ms ? Math.min(100, Math.round(100 * (pinfo.interval_ms - w.due_ms) / pinfo.interval_ms)) : 0;
-    const row = document.createElement('tr');
-    row.innerHTML = `<td>${w.name ?? i}</td><td>${w.queue_len}</td><td>${w.due_ms}</td>` +
-      `<td><div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">` +
-      `<div class="progress-meter" style="width:${pct}%"></div></div></td>`;
-    body.appendChild(row);
+    const det = document.createElement('details');
+    const name = w.name ?? `Processor ${i}`;
+    det.innerHTML = `<summary>${name}</summary>` +
+      `<blockquote>${w.last ?? ''}</blockquote>` +
+      `<div>Queue: ${w.queue_len}, due: ${w.due_ms}ms</div>` +
+      `<div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">` +
+      `<div class="progress-meter" style="width:${pct}%"></div></div>`;
+    body.appendChild(det);
   });
 }
 document.getElementById('refresh').addEventListener('click', refresh);
