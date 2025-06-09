@@ -350,6 +350,25 @@ where
         }
     }
 
+    /// Run ticks in serial until no wit produces output.
+    pub fn run_serial(&mut self) {
+        loop {
+            let mut progressed = false;
+            for i in 0..self.wits.len() {
+                let output = self.wits[i].tick();
+                if let Some(exp) = output {
+                    progressed = true;
+                    if let Some(next) = self.wits.get_mut(i + 1) {
+                        next.push(exp);
+                    }
+                }
+            }
+            if !progressed {
+                break;
+            }
+        }
+    }
+
     /// Continuously run ticks respecting each wit's interval.
     pub fn run_scheduled(&mut self, cycles: usize) {
         use std::{
@@ -586,7 +605,28 @@ mod tests {
     }
 
     #[test]
-    fn processor_scheduler_runs_llm() {
+    fn run_serial_processes_until_idle() {
+        let w1 = Wit::with_config(
+            JoinScheduler::default(),
+            Echo,
+            None,
+            std::time::Duration::from_secs(0),
+        );
+        let w2 = Wit::with_config(
+            JoinScheduler::default(),
+            Echo,
+            None,
+            std::time::Duration::from_secs(0),
+        );
+        let mut heart = Heart::new(vec![w1, w2]);
+        heart.push(Experience::new("hello"));
+        heart.run_serial();
+        assert_eq!(heart.wits[0].memory.all().len(), 1);
+        assert!(!heart.wits[1].memory.all().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn processor_scheduler_runs_llm() {
         use async_stream::stream;
         use async_trait::async_trait;
         use futures::{StreamExt, stream::BoxStream};
