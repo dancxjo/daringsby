@@ -2,6 +2,7 @@
 //! Processors implement chat completion, instruction following or embedding.
 //! Providers manage processor instances, while a [`scheduler::Scheduler`]
 //! distributes tasks across available providers.
+use anyhow::Context;
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use modeldb::{AiModel, ModelRepository};
@@ -272,7 +273,14 @@ async fn ensure_model_with_client(client: &ollama_rs::Ollama, model: &str) -> an
     if models.iter().any(|m| m.name == model) {
         return Ok(());
     }
-    let mut stream = client.pull_model_stream(model.to_string(), false).await?;
+    let mut stream = client
+        .pull_model_stream(model.to_string(), false)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to connect to Ollama server while pulling model `{model}`. Are the servers running?"
+            )
+        })?;
     let pb = indicatif::ProgressBar::new_spinner();
     pb.enable_steady_tick(std::time::Duration::from_millis(100));
     while let Some(status) = stream.next().await {
