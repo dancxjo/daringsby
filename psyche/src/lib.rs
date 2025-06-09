@@ -270,10 +270,11 @@ where
     /// Process queued experiences and return a summary experience.
     pub fn tick(&mut self) -> Option<Experience> {
         let batch = std::mem::take(&mut self.queue);
-        log::info!("processing {} queued", batch.len());
         if batch.is_empty() {
             return None;
         }
+        log::info!("processing {} queued", batch.len());
+
         let sensation = self.scheduler.schedule(batch)?;
         self.memory.remember(sensation.clone());
         self.sensor.feel(sensation)
@@ -338,7 +339,7 @@ where
             self.wits[i].last_tick = now;
             let output = {
                 let wit = &mut self.wits[i];
-                log::info!("wit {i} tick");
+                log::trace!("wit {i} tick");
                 wit.tick()
             };
             if let Some(exp) = output {
