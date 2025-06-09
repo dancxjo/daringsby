@@ -174,18 +174,21 @@ where
             images: vec![],
         });
 
-        let rt = tokio::runtime::Runtime::new().ok()?;
-        let mut stream = rt.block_on(self.processor.process(task)).ok()?;
-        let mut text = String::new();
-        while let Some(chunk) = rt.block_on(stream.next()) {
-            match chunk.ok()? {
-                TaskOutput::TextChunk(t) => {
-                    log::info!("llm chunk: {}", t);
-                    text.push_str(&t)
+        let handle = tokio::runtime::Handle::current();
+        let text = tokio::task::block_in_place(|| {
+            let mut stream = handle.block_on(self.processor.process(task)).ok()?;
+            let mut text = String::new();
+            while let Some(chunk) = handle.block_on(stream.next()) {
+                match chunk.ok()? {
+                    TaskOutput::TextChunk(t) => {
+                        log::info!("llm chunk: {}", t);
+                        text.push_str(&t)
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
-        }
+            Some(text)
+        })?;
         log::info!("processor scheduler finished");
         Some(Sensation::new(text))
     }
