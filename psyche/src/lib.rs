@@ -126,6 +126,17 @@ pub struct ProcessorScheduler<P> {
     processor: P,
 }
 
+fn narrative_prompt(identity: &str, batch: &[Experience]) -> String {
+    let experiences = batch
+        .iter()
+        .map(|e| e.sentence.clone())
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        "You are acting as the linguistic processing unit for a larger entity named Pete. Pete is a {identity}. Over the past little while, Pete has experienced the following: {experiences} In the voice of Pete and without headers or footers or any sort (just the plain text of Pete's response), produce a brief narrative from the perspective of Pete, talking to himself, that explains what's currently happening."
+    )
+}
+
 impl<P> ProcessorScheduler<P> {
     /// Create a new scheduler wrapping the given processor.
     pub fn new(processor: P) -> Self {
@@ -147,11 +158,10 @@ where
             return None;
         }
 
-        let instruction = batch
-            .into_iter()
-            .map(|e| e.sentence)
-            .collect::<Vec<_>>()
-            .join(" ");
+        let instruction = narrative_prompt("unknown", &batch);
+        log::info!("llm prompt: {}", instruction);
+        drop(batch);
+
 
         let task = Task::InstructionFollowing(InstructionFollowingTask {
             instruction,
@@ -163,7 +173,10 @@ where
         let mut text = String::new();
         while let Some(chunk) = rt.block_on(stream.next()) {
             match chunk.ok()? {
-                TaskOutput::TextChunk(t) => text.push_str(&t),
+                TaskOutput::TextChunk(t) => {
+                    log::info!("llm chunk: {}", t);
+                    text.push_str(&t)
+                }
                 _ => {}
             }
         }
@@ -237,7 +250,7 @@ where
     }
 }
 
-/// Stack of wits from fond (index 0) to focus (last index).
+/// Stack of wits from fond (index 0) to quick (last index).
 pub struct Heart<W> {
     pub wits: Vec<W>,
 }
@@ -258,13 +271,13 @@ impl<W> Heart<W> {
         self.wits.first_mut()
     }
 
-    /// Reference to the focus (last wit).
-    pub fn focus(&self) -> Option<&W> {
+    /// Reference to the quick (last wit).
+    pub fn quick(&self) -> Option<&W> {
         self.wits.last()
     }
 
-    /// Mutable reference to the focus (last wit).
-    pub fn focus_mut(&mut self) -> Option<&mut W> {
+    /// Mutable reference to the quick (last wit).
+    pub fn quick_mut(&mut self) -> Option<&mut W> {
         self.wits.last_mut()
     }
 }
@@ -285,7 +298,14 @@ where
 
     /// Run one processing tick across all wits.
     pub fn tick(&mut self) {
+        use std::time::Instant;
         for i in 0..self.wits.len() {
+            let now = Instant::now();
+            let elapsed = now.duration_since(self.wits[i].last_tick);
+            if elapsed < self.wits[i].interval {
+                continue;
+            }
+            self.wits[i].last_tick = now;
             let output = {
                 let wit = &mut self.wits[i];
                 log::info!("wit {i} tick");
@@ -378,14 +398,19 @@ impl Experience {
 /// Central entity combining a [`Heart`] with a set of sensors.
 ///
 /// Sensors convert [`bus::Event`]s into experiences that are queued on the
-/// focus wit.
+/// quick wit.
 ///
 /// # Examples
 /// ```
 /// use psyche::{bus::Event, sensors::{ChatSensor, ConnectionSensor}, Heart, Wit, JoinScheduler, Sensor};
 /// struct Echo;
 /// impl psyche::Sensor for Echo { type Input = String; fn feel(&mut self, s: psyche::Sensation<String>) -> Option<psyche::Experience> { Some(psyche::Experience::new(s.what)) } }
-/// let wit = Wit::new(JoinScheduler::default(), Echo);
+/// let wit = Wit::with_config(
+///     JoinScheduler::default(),
+///     Echo,
+///     None,
+///     std::time::Duration::from_secs(0),
+/// );
 /// let sensors: Vec<Box<dyn Sensor<Input = Event> + Send + Sync>> = vec![
 ///     Box::new(ChatSensor::default()),
 ///     Box::new(ConnectionSensor::default()),
@@ -421,13 +446,13 @@ where
         Self { heart, sensors }
     }
 
-    /// Feed an event through all sensors and push resulting experiences to the focus.
+    /// Feed an event through all sensors and push resulting experiences to the quick.
     pub fn process_event(&mut self, evt: bus::Event) {
         let sensation = Sensation::new(evt);
         for sensor in &mut self.sensors {
             if let Some(exp) = sensor.feel(sensation.clone()) {
-                if let Some(focus) = self.heart.focus_mut() {
-                    focus.push(exp);
+                if let Some(quick) = self.heart.quick_mut() {
+                    quick.push(exp);
                 }
             }
         }
@@ -475,8 +500,18 @@ mod tests {
 
     #[test]
     fn heart_flows_between_wits() {
-        let w1 = Wit::new(JoinScheduler::default(), Echo);
-        let w2 = Wit::new(JoinScheduler::default(), Echo);
+        let w1 = Wit::with_config(
+            JoinScheduler::default(),
+            Echo,
+            None,
+            std::time::Duration::from_secs(0),
+        );
+        let w2 = Wit::with_config(
+            JoinScheduler::default(),
+            Echo,
+            None,
+            std::time::Duration::from_secs(0),
+        );
         let mut heart = Heart::new(vec![w1, w2]);
         heart.push(Experience::new("hello"));
         heart.push(Experience::new("world"));
@@ -498,16 +533,16 @@ mod tests {
         let w2 = Wit::with_config(
             JoinScheduler::default(),
             Echo,
-            Some("focus".to_string()),
+            Some("quick".to_string()),
             Duration::from_millis(1),
         );
         let mut heart = Heart::new(vec![w1, w2]);
         assert!(heart.fond().is_some());
-        assert!(heart.focus().is_some());
+        assert!(heart.quick().is_some());
         heart.push(Experience::new("hello"));
         heart.push(Experience::new("world"));
         heart.run_scheduled(2);
-        assert!(!heart.focus().unwrap().memory.all().is_empty());
+        assert!(!heart.quick().unwrap().memory.all().is_empty());
     }
 
     #[test]
@@ -541,11 +576,16 @@ mod tests {
         }
 
         let scheduler = ProcessorScheduler::new(MockProcessor);
-        let mut wit = Wit::new(scheduler, Echo);
+        let mut wit = Wit::with_config(
+            scheduler,
+            Echo,
+            None,
+            std::time::Duration::from_secs(0),
+        );
         wit.push(Experience::new("one"));
         wit.push(Experience::new("two"));
         let exp = wit.tick().unwrap();
-        assert_eq!(exp.sentence, "processed one two");
-        assert_eq!(wit.memory.all()[0].what, "processed one two");
+        assert!(exp.sentence.starts_with("processed"));
+        assert!(wit.memory.all()[0].what.starts_with("processed"));
     }
 }

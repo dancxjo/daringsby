@@ -25,16 +25,28 @@ async fn main() -> Result<()> {
 
     let heart = psyche::Heart::new(vec![
         psyche::Wit::with_config(
-            psyche::JoinScheduler::default(),
+            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new("llama2")),
             Echo,
             Some("fond".into()),
             std::time::Duration::from_secs(1),
         ),
         psyche::Wit::with_config(
-            psyche::JoinScheduler::default(),
+            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new("llama2")),
             Echo,
-            Some("focus".into()),
-            std::time::Duration::from_secs(1),
+            Some("wit2".into()),
+            std::time::Duration::from_secs(2),
+        ),
+        psyche::Wit::with_config(
+            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new("llama2")),
+            Echo,
+            Some("wit3".into()),
+            std::time::Duration::from_secs(4),
+        ),
+        psyche::Wit::with_config(
+            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new("llama2")),
+            Echo,
+            Some("quick".into()),
+            std::time::Duration::from_secs(8),
         ),
     ]);
 

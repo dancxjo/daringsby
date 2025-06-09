@@ -8,3 +8,4 @@ psyche = { path = "../psyche" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 anyhow = "1"
 log = { version = "0.4.27", features = ["std"] }
+lingproc = { path = "../lingproc" }
