@@ -105,21 +105,21 @@ pub fn ollama_models() -> ModelRepository {
         supports_images: false,
         speed: None,
         cost_per_token: None,
-        capabilities: vec![Capability::ChatCompletion],
+        capabilities: vec![Capability::ChatCompletion, Capability::InstructionFollowing],
     });
     repo.add_model(AiModel {
         name: "llama3:70b".into(),
         supports_images: false,
         speed: None,
         cost_per_token: None,
-        capabilities: vec![Capability::ChatCompletion],
+        capabilities: vec![Capability::ChatCompletion, Capability::InstructionFollowing],
     });
     repo.add_model(AiModel {
         name: "phi3:mini".into(),
         supports_images: false,
         speed: None,
         cost_per_token: None,
-        capabilities: vec![Capability::ChatCompletion],
+        capabilities: vec![Capability::ChatCompletion, Capability::InstructionFollowing],
     });
     repo.add_model(AiModel {
         name: "codellama:34b".into(),

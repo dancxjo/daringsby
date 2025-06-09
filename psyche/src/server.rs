@@ -97,6 +97,8 @@ struct SchedulerEntry {
     scheduler: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    capabilities: Option<Vec<String>>,
     queue_len: usize,
     due_ms: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -153,9 +155,15 @@ where
         .iter()
         .enumerate()
         .map(|(i, w)| {
-            let model = (&w.scheduler as &dyn Any)
-                .downcast_ref::<ProcessorScheduler<OllamaProcessor>>()
-                .map(|ps| ps.processor.model.clone());
+            let proc_sched =
+                (&w.scheduler as &dyn Any).downcast_ref::<ProcessorScheduler<OllamaProcessor>>();
+            let model = proc_sched.map(|ps| ps.processor.model.clone());
+            let capabilities = proc_sched.map(|ps| {
+                ps.capabilities()
+                    .into_iter()
+                    .map(|c| format!("{:?}", c))
+                    .collect::<Vec<_>>()
+            });
             let last = w
                 .memory
                 .all()
@@ -166,6 +174,7 @@ where
                 name: w.name.clone(),
                 scheduler: sched_type.clone(),
                 model,
+                capabilities,
                 queue_len: w.queue.len(),
                 due_ms: w.interval.saturating_sub(w.last_tick.elapsed()).as_millis() as u64,
                 last,

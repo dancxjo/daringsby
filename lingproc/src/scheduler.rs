@@ -23,7 +23,13 @@ use futures::stream::BoxStream;
 /// #[async_trait]
 /// impl ModelRunnerProvider for EchoProvider {
 ///     async fn models(&self) -> anyhow::Result<Vec<modeldb::AiModel>> {
-///         Ok(vec![modeldb::AiModel { name: "echo".into(), supports_images: false, speed: None, cost_per_token: None }])
+///         Ok(vec![modeldb::AiModel {
+///             name: "echo".into(),
+///             supports_images: false,
+///             speed: None,
+///             cost_per_token: None,
+///             capabilities: vec![modeldb::Capability::InstructionFollowing],
+///         }])
 ///     }
 ///     async fn processor_for(&self, _model: &str) -> anyhow::Result<Box<dyn Processor + Send + Sync>> {
 ///         struct Echo;
@@ -137,6 +143,7 @@ mod tests {
                 supports_images: false,
                 speed: None,
                 cost_per_token: None,
+                capabilities: vec![modeldb::Capability::InstructionFollowing],
             }])
         }
 
