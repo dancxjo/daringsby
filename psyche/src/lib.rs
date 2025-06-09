@@ -138,7 +138,7 @@ fn narrative_prompt(identity: &str, batch: &[Experience]) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     format!(
-        "You are acting as the linguistic processing unit for a larger entity named Pete. Pete is a {identity}. Over the past little while, Pete has experienced the following: {experiences} In the voice of Pete and without headers or footers or any sort (just the plain text of Pete's response), produce a brief narrative from the perspective of Pete, talking to himself, that explains what's currently happening."
+        "You are acting as the linguistic processing unit for a larger entity named Pete. Pete is a {identity}. Over the past little while, Pete has experienced the following: {experiences} In the voice of Pete and without headers or footers or any sort (just the plain text of Pete's response), produce a brief narrative from the perspective of Pete, talking to himself, that explains what's currently happening. Be succinct but thorough. Aim for one or two sentences at most. Do not use bullet points or lists, just a single paragraph of text.",
     )
 }
 
