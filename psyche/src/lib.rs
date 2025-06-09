@@ -1,8 +1,8 @@
 //! Core types for Pete's cognitive loop including the event bus, sensors,
 //! schedulers and the `Heart`/`Wit` abstractions.
 //! The accompanying web server streams bus events over WebSockets.
-use std::time::SystemTime;
 use serde::Serialize;
+use std::time::SystemTime;
 
 pub mod bus;
 pub mod logging;
@@ -21,8 +21,7 @@ pub mod server;
 /// assert_eq!(s.what, 42);
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Sensation<T>
-{
+pub struct Sensation<T> {
     /// Time when the data was perceived.
     pub when: SystemTime,
     /// Arbitrary data representing the perception.
@@ -49,18 +48,18 @@ impl<T> Sensation<T> {
 
 /// Linguistic interpretation of a sensation.
 ///
-/// `Experience` is meant to be one sentence describing the input.
+/// `Experience` describes how a [`Sensation`] feels.
 ///
 /// # Examples
 /// ```
 /// use psyche::Experience;
 /// let e = Experience::new("I see a cat.");
-/// assert_eq!(e.sentence, "I see a cat.");
+/// assert_eq!(e.how, "I see a cat.");
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Experience {
-    /// The explanatory sentence.
-    pub sentence: String,
+    /// Text describing how the sensation feels.
+    pub how: String,
 }
 
 /// A collection of timestamped memories.
@@ -102,7 +101,7 @@ pub trait Scheduler {
     fn schedule(&mut self, batch: Vec<Experience>) -> Option<Sensation<Self::Output>>;
 }
 
-/// Join all sentences together.
+/// Join all experience descriptions together.
 #[derive(Default)]
 pub struct JoinScheduler;
 
@@ -114,14 +113,14 @@ impl Scheduler for JoinScheduler {
         }
         let text = batch
             .into_iter()
-            .map(|e| e.sentence)
+            .map(|e| e.how)
             .collect::<Vec<_>>()
             .join(" ");
         Some(Sensation::new(text))
     }
 }
 
-/// Scheduler using an LLM processor to summarize sentences.
+/// Scheduler using an LLM processor to summarize experience text.
 pub struct ProcessorScheduler<P> {
     processor: P,
 }
@@ -129,7 +128,7 @@ pub struct ProcessorScheduler<P> {
 fn narrative_prompt(identity: &str, batch: &[Experience]) -> String {
     let experiences = batch
         .iter()
-        .map(|e| e.sentence.clone())
+        .map(|e| e.how.clone())
         .collect::<Vec<_>>()
         .join(" ");
     format!(
@@ -161,7 +160,6 @@ where
         let instruction = narrative_prompt("unknown", &batch);
         log::info!("llm prompt: {}", instruction);
         drop(batch);
-
 
         let task = Task::InstructionFollowing(InstructionFollowingTask {
             instruction,
@@ -233,7 +231,7 @@ where
 
     /// Queue an experience for later processing.
     pub fn push(&mut self, exp: Experience) {
-        log::info!("queued experience: {}", exp.sentence);
+        log::info!("queued experience: {}", exp.how);
         self.queue.push(exp);
     }
 
@@ -290,7 +288,7 @@ where
 {
     /// Push a new experience into the fond.
     pub fn push(&mut self, exp: Experience) {
-        log::info!("heart push to fond: {}", exp.sentence);
+        log::info!("heart push to fond: {}", exp.how);
         if let Some(first) = self.wits.first_mut() {
             first.push(exp);
         }
@@ -376,7 +374,7 @@ where
 /// }
 /// let mut sensor = Echo;
 /// let exp = sensor.feel(Sensation::new("hello".to_string())).unwrap();
-/// assert_eq!(exp.sentence, "hello");
+/// assert_eq!(exp.how, "hello");
 /// ```
 pub trait Sensor {
     /// Type of data this sensor accepts.
@@ -387,11 +385,9 @@ pub trait Sensor {
 }
 
 impl Experience {
-    /// Create a new experience from a sentence.
-    pub fn new(sentence: impl Into<String>) -> Self {
-        Self {
-            sentence: sentence.into(),
-        }
+    /// Create a new experience from a descriptive phrase.
+    pub fn new(how: impl Into<String>) -> Self {
+        Self { how: how.into() }
     }
 }
 
@@ -481,14 +477,14 @@ mod tests {
     #[test]
     fn create_experience() {
         let e = Experience::new("just a test");
-        assert_eq!(e.sentence, "just a test");
+        assert_eq!(e.how, "just a test");
     }
 
     #[test]
     fn echo_sensor() {
         let mut sensor = Echo;
         let exp = sensor.feel(Sensation::new("hi".to_string())).unwrap();
-        assert_eq!(exp.sentence, "hi");
+        assert_eq!(exp.how, "hi");
     }
 
     #[test]
@@ -576,16 +572,11 @@ mod tests {
         }
 
         let scheduler = ProcessorScheduler::new(MockProcessor);
-        let mut wit = Wit::with_config(
-            scheduler,
-            Echo,
-            None,
-            std::time::Duration::from_secs(0),
-        );
+        let mut wit = Wit::with_config(scheduler, Echo, None, std::time::Duration::from_secs(0));
         wit.push(Experience::new("one"));
         wit.push(Experience::new("two"));
         let exp = wit.tick().unwrap();
-        assert!(exp.sentence.starts_with("processed"));
+        assert!(exp.how.starts_with("processed"));
         assert!(wit.memory.all()[0].what.starts_with("processed"));
     }
 }

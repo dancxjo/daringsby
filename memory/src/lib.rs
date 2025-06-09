@@ -82,7 +82,7 @@ where
     ) -> anyhow::Result<()> {
         let vector = Self::encode_face(&sensation.what).await;
         let face_id = memory.faces.insert(vector);
-        memory.graph.link_face(&experience.sentence, face_id);
+        memory.graph.link_face(&experience.how, face_id);
         Ok(())
     }
 }
@@ -133,6 +133,6 @@ mod tests {
             .unwrap();
 
         assert_eq!(memory.faces.vectors.len(), 1);
-        assert_eq!(memory.graph.links, vec![(exp.sentence, 0)]);
+        assert_eq!(memory.graph.links, vec![(exp.how, 0)]);
     }
 }
