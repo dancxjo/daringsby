@@ -89,11 +89,12 @@ between runs.
 
 ## Optional Services
 
-`docker-compose.yml` defines additional services that can aid development but aren't required by the tests:
+`docker-compose.yml` defines optional services useful during local development:
 
 - `tts` for text-to-speech using Coqui TTS.
 - `qdrant` as a vector database.
 - `neo4j` as a graph database.
+- `ollama` hosting local language models.
 
 Run `cargo check` in the repository root to verify that all crates compile. CI on GitHub automatically runs `cargo check` and `cargo test` for pushes and pull requests.
 
@@ -103,7 +104,7 @@ Run `cargo check` in the repository root to verify that all crates compile. CI o
 2. Create a `.env` file and set the environment variables described below.
    If you lack a GPU, swap the image for `ghcr.io/coqui-ai/tts-cpu` and remove the `runtime: nvidia` line. See [Coqui TTS docs](https://tts.readthedocs.io/en/latest/docker_images.html) for details.
    Be sure to include `entrypoint: python3` in the `tts` service so the server script runs.
-3. Start the required services with `docker-compose up -d tts qdrant neo4j`.
+3. Start the required services with `docker-compose up -d tts qdrant neo4j ollama`.
 4. Optional: run Whisper locally for ASR and configure its address in `.env`.
 5. Run `cargo run -p pete` to start the local web interface.
 
@@ -111,7 +112,7 @@ Run `cargo check` in the repository root to verify that all crates compile. CI o
 
 | Name | Purpose |
 | --- | --- |
-| `OLLAMA_URL` | Base URL of the primary Ollama server |
+| `OLLAMA_URL` | Base URL of the primary Ollama server (default `http://localhost:11434`) |
 | `OLLAMA_URLS` | Comma separated list of Ollama hosts for load balancing |
 | `OLLAMA_MODEL` | LLM model identifier (default `gemma3:27b`) |
 | `COQUI_URL` | Base URL of the Coqui TTS server |
