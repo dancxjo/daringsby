@@ -18,9 +18,10 @@
   after the final item to trigger any cleanup logic.
 - When storing timestamped data, prefer field names `when` and `what` for
   clarity.
+- Each psyche should create its own `EventBus` and web server. Avoid globals.
 
 ## Project Overview
-Daringsby houses several Rust crates forming a toy cognitive system named Pete. Events flow through sensors into a `Heart` of `Wit`s which summarize and store experiences.
+Daringsby houses several Rust crates forming a model cognitive system named Pete. Events flow through sensors into a `Heart` of `Wit`s which summarize and store experiences.
 
 ### Layout
 - `lingproc/` – LLM processors, providers and scheduler

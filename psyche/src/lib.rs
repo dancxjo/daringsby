@@ -2,6 +2,7 @@
 //! schedulers and the `Heart`/`Wit` abstractions.
 //! The accompanying web server streams bus events over WebSockets.
 use std::time::SystemTime;
+use serde::Serialize;
 
 pub mod bus;
 pub mod logging;
@@ -19,8 +20,9 @@ pub mod server;
 /// let s = Sensation::new(42);
 /// assert_eq!(s.what, 42);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct Sensation<T> {
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Sensation<T>
+{
     /// Time when the data was perceived.
     pub when: SystemTime,
     /// Arbitrary data representing the perception.
@@ -55,7 +57,7 @@ impl<T> Sensation<T> {
 /// let e = Experience::new("I see a cat.");
 /// assert_eq!(e.sentence, "I see a cat.");
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Experience {
     /// The explanatory sentence.
     pub sentence: String,
@@ -384,7 +386,7 @@ impl Experience {
 /// struct Echo;
 /// impl psyche::Sensor for Echo { type Input = String; fn feel(&mut self, s: psyche::Sensation<String>) -> Option<psyche::Experience> { Some(psyche::Experience::new(s.what)) } }
 /// let wit = Wit::new(JoinScheduler::default(), Echo);
-/// let sensors: Vec<Box<dyn Sensor<Input = Event>>> = vec![
+/// let sensors: Vec<Box<dyn Sensor<Input = Event> + Send + Sync>> = vec![
 ///     Box::new(ChatSensor::default()),
 ///     Box::new(ConnectionSensor::default()),
 /// ];
@@ -402,7 +404,7 @@ where
 {
     /// Internal heart managing wits.
     pub heart: Heart<Wit<Sched, Percept>>,
-    sensors: Vec<Box<dyn Sensor<Input = bus::Event>>>,
+    sensors: Vec<Box<dyn Sensor<Input = bus::Event> + Send + Sync>>,
 }
 
 impl<Sched, Percept> Psyche<Sched, Percept>
@@ -414,7 +416,7 @@ where
     /// Create a new psyche from a heart and sensors.
     pub fn new(
         heart: Heart<Wit<Sched, Percept>>,
-        sensors: Vec<Box<dyn Sensor<Input = bus::Event>>>,
+        sensors: Vec<Box<dyn Sensor<Input = bus::Event> + Send + Sync>>,
     ) -> Self {
         Self { heart, sensors }
     }
