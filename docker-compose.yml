@@ -38,3 +38,10 @@ services:
       - NEO4J_AUTH=neo4j/password
     volumes:
       - ./neo4j_data:/data
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./ollama:/root/.ollama
