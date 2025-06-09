@@ -5,3 +5,4 @@ Cargo.lock
 /qdrant_data
 /tts
 /ollama
+.env
