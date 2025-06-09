@@ -99,12 +99,22 @@ impl OllamaProcessor {
             model: model.to_string(),
         }
     }
+
+    async fn encode_sentence(&self, text: &str) -> Vec<f32> {
+        text.split_whitespace()
+            .map(|w| w.bytes().map(|b| b as f32).sum::<f32>())
+            .collect()
+    }
 }
 
 #[async_trait]
 impl Processor for OllamaProcessor {
     fn capabilities(&self) -> Vec<TaskKind> {
-        vec![TaskKind::ChatCompletion, TaskKind::InstructionFollowing]
+        vec![
+            TaskKind::ChatCompletion,
+            TaskKind::InstructionFollowing,
+            TaskKind::SentenceEmbedding,
+        ]
     }
 
     async fn process(
@@ -152,7 +162,14 @@ impl Processor for OllamaProcessor {
                 };
                 Ok(Box::pin(s))
             }
-            _ => Err(anyhow::anyhow!("task not supported")),
+            Task::SentenceEmbedding(e) => {
+                use async_stream::stream;
+                let vec = self.encode_sentence(&e.sentence).await;
+                let s = stream! {
+                    yield Ok(TaskOutput::Embedding(vec));
+                };
+                Ok(Box::pin(s))
+            }
         }
     }
 }
@@ -337,6 +354,21 @@ mod tests {
         let repo = default_repository();
         assert!(repo.find("gpt4").is_some());
         assert!(repo.find("gemma3").is_some());
+    }
+
+    #[tokio::test]
+    async fn embedding_task_returns_vector() {
+        let proc = OllamaProcessor::new("nomic-embed-text");
+        let task = Task::SentenceEmbedding(SentenceEmbeddingTask {
+            sentence: "hello world".into(),
+            images: vec![],
+        });
+        let mut stream = proc.process(task).await.unwrap();
+        let first = stream.next().await.unwrap().unwrap();
+        match first {
+            TaskOutput::Embedding(v) => assert!(!v.is_empty()),
+            _ => panic!("wrong output"),
+        }
     }
     #[tokio::test]
     async fn profiler_records_time() {

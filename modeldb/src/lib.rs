@@ -97,6 +97,7 @@ impl ModelRepository {
 /// ```
 /// let repo = modeldb::ollama_models();
 /// assert!(repo.find("gemma3").is_some());
+/// assert!(repo.find("nomic-embed-text").is_some());
 /// ```
 pub fn ollama_models() -> ModelRepository {
     let mut repo = ModelRepository::new();
@@ -135,6 +136,20 @@ pub fn ollama_models() -> ModelRepository {
         cost_per_token: None,
         capabilities: vec![Capability::ChatCompletion],
     });
+    repo.add_model(AiModel {
+        name: "nomic-embed-text".into(),
+        supports_images: false,
+        speed: None,
+        cost_per_token: None,
+        capabilities: vec![Capability::SentenceEmbedding],
+    });
+    repo.add_model(AiModel {
+        name: "bge-base".into(),
+        supports_images: false,
+        speed: None,
+        cost_per_token: None,
+        capabilities: vec![Capability::SentenceEmbedding],
+    });
     repo
 }
 
@@ -160,5 +175,8 @@ mod tests {
         let repo = ollama_models();
         let gemma = repo.find("gemma3").unwrap();
         assert!(gemma.capabilities.contains(&Capability::ChatCompletion));
+        assert!(repo.find("nomic-embed-text").is_some());
+        let embed = repo.find("bge-base").unwrap();
+        assert!(embed.capabilities.contains(&Capability::SentenceEmbedding));
     }
 }

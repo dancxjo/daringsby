@@ -65,6 +65,48 @@ impl FaceMemory {
     }
 }
 
+/// Component remembering short sentences as embeddings.
+#[derive(Default)]
+pub struct SentenceMemory;
+
+impl SentenceMemory {
+    /// Encode a sentence into a simple vector.
+    ///
+    /// ```
+    /// use memory::SentenceMemory;
+    /// # tokio_test::block_on(async {
+    /// let v = SentenceMemory::encode_sentence("hello world").await;
+    /// assert!(!v.is_empty());
+    /// # });
+    /// ```
+    pub async fn encode_sentence(text: &str) -> Vec<f32> {
+        text.split_whitespace()
+            .map(|w| w.bytes().map(|b| b as f32).sum::<f32>())
+            .collect()
+    }
+}
+
+#[async_trait]
+impl<G, F, S> MemoryComponent<G, F, S> for SentenceMemory
+where
+    G: Graph + Send,
+    F: VectorDb + Send,
+    S: VectorDb + Send,
+{
+    type Input = String;
+
+    async fn remember(
+        &mut self,
+        memory: &mut Memory<G, F, S>,
+        sensation: Sensation<Self::Input>,
+        _experience: Experience,
+    ) -> anyhow::Result<()> {
+        let vec = Self::encode_sentence(&sensation.what).await;
+        memory.sentences.insert(vec);
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl<G, F, S> MemoryComponent<G, F, S> for FaceMemory
 where
@@ -134,5 +176,20 @@ mod tests {
 
         assert_eq!(memory.faces.vectors.len(), 1);
         assert_eq!(memory.graph.links, vec![(exp.how, 0)]);
+    }
+
+    #[tokio::test]
+    async fn sentence_memory_stores_vector() {
+        let mut memory = Memory::new(
+            MockGraph::default(),
+            MockVectorDb::default(),
+            MockVectorDb::default(),
+        );
+        let mut sm = SentenceMemory::default();
+        let s = Sensation::new("hello there".to_string());
+        sm.remember(&mut memory, s, Experience::new("bob"))
+            .await
+            .unwrap();
+        assert_eq!(memory.sentences.vectors.len(), 1);
     }
 }
