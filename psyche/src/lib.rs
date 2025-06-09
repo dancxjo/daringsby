@@ -346,8 +346,11 @@ where
     }
 
     /// Run one processing tick across all wits.
-    pub fn tick(&mut self) {
+    ///
+    /// Returns any experience produced by the highest level wit.
+    pub fn tick(&mut self) -> Option<Experience> {
         use std::time::Instant;
+        let mut last_output = None;
         for i in 0..self.wits.len() {
             let now = Instant::now();
             let elapsed = now.duration_since(self.wits[i].last_tick);
@@ -363,38 +366,45 @@ where
             if let Some(exp) = output {
                 if let Some(next) = self.wits.get_mut(i + 1) {
                     next.push(exp);
+                } else {
+                    last_output = Some(exp);
                 }
             }
         }
+        last_output
     }
 
     /// Run ticks in serial until no wit produces output.
-    pub fn run_serial(&mut self) {
+    pub fn run_serial(&mut self) -> Option<Experience> {
         loop {
             let mut progressed = false;
+            let mut last_output = None;
             for i in 0..self.wits.len() {
                 let output = self.wits[i].tick();
                 if let Some(exp) = output {
                     progressed = true;
                     if let Some(next) = self.wits.get_mut(i + 1) {
                         next.push(exp);
+                    } else {
+                        last_output = Some(exp);
                     }
                 }
             }
             if !progressed {
-                break;
+                return last_output;
             }
         }
     }
 
     /// Continuously run ticks respecting each wit's interval.
-    pub fn run_scheduled(&mut self, cycles: usize) {
+    pub fn run_scheduled(&mut self, cycles: usize) -> Option<Experience> {
         use std::{
             thread,
             time::{Duration, Instant},
         };
         log::info!("running scheduled for {cycles} cycles");
         let mut completed = 0usize;
+        let mut last_output = None;
         while completed < cycles {
             let now = Instant::now();
             let mut next_wait: Option<Duration> = None;
@@ -406,6 +416,8 @@ where
                     if let Some(exp) = output {
                         if let Some(next) = self.wits.get_mut(i + 1) {
                             next.push(exp);
+                        } else {
+                            last_output = Some(exp);
                         }
                     }
                     completed += 1;
@@ -424,9 +436,10 @@ where
                     thread::sleep(wait);
                 }
             } else {
-                break;
+                return last_output;
             }
         }
+        last_output
     }
 }
 
@@ -592,8 +605,8 @@ mod tests {
         let mut heart = Heart::new(vec![w1, w2]);
         heart.push(Experience::new("hello"));
         heart.push(Experience::new("world"));
-        heart.tick();
-        heart.tick();
+        let _ = heart.tick();
+        let _ = heart.tick();
         assert_eq!(heart.wits[0].memory.all().len(), 1);
         assert_eq!(heart.wits[1].memory.all()[0].what, "hello world");
     }
@@ -618,7 +631,7 @@ mod tests {
         assert!(heart.quick().is_some());
         heart.push(Experience::new("hello"));
         heart.push(Experience::new("world"));
-        heart.run_scheduled(2);
+        let _ = heart.run_scheduled(2);
         assert!(!heart.quick().unwrap().memory.all().is_empty());
     }
 
@@ -638,7 +651,7 @@ mod tests {
         );
         let mut heart = Heart::new(vec![w1, w2]);
         heart.push(Experience::new("hello"));
-        heart.run_serial();
+        let _ = heart.run_serial();
         assert_eq!(heart.wits[0].memory.all().len(), 1);
         assert!(!heart.wits[1].memory.all().is_empty());
     }
@@ -652,9 +665,24 @@ mod tests {
         let mut heart = Heart::new(vec![w1, w2, w3]);
         heart.push(Experience::new("a"));
         heart.push(Experience::new("b"));
-        heart.run_serial();
+        let _ = heart.run_serial();
         assert_eq!(heart.wits[0].memory.all()[0].what, "a b");
         assert_eq!(heart.wits[2].memory.all()[0].what, "a b");
+    }
+
+    #[test]
+    fn tick_clears_queue_and_returns_output() {
+        let mut wit = Wit::with_config(
+            JoinScheduler::default(),
+            Echo,
+            None,
+            std::time::Duration::from_secs(0),
+        );
+        wit.push(Experience::new("hello"));
+        assert_eq!(wit.queue_len(), 1);
+        let exp = wit.tick().unwrap();
+        assert_eq!(exp.how, "hello");
+        assert_eq!(wit.queue_len(), 0);
     }
 
     #[tokio::test(flavor = "multi_thread")]

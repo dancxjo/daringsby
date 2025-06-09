@@ -376,7 +376,7 @@ mod tests {
         {
             let mut p = psyche.lock().await;
             p.heart.wits[0].push(Experience::new("hello"));
-            p.heart.tick();
+            let _ = p.heart.tick();
         }
 
         let resp = scheduler_handler::<JoinScheduler, Echo>(psyche.clone())
