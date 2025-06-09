@@ -3,23 +3,25 @@
 <head>
     <meta charset="utf-8">
     <title>Pete Dashboard</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/foundation-sites@6.7.5/dist/css/foundation.min.css">
 </head>
-<body class="container my-3">
-<h1 class="mb-4">Pete Dashboard</h1>
-<div class="row">
-  <div class="col-md-6">
+<body class="grid-container" style="margin-top:1rem;">
+<h1 style="margin-bottom:1rem;">Pete Dashboard</h1>
+<div class="grid-x grid-margin-x">
+  <div class="cell medium-6">
     <h2>Logs</h2>
-    <form id="chat-form" class="input-group mb-2">
-      <input id="chat-input" type="text" class="form-control" autocomplete="off">
-      <button class="btn btn-primary" type="submit">Send</button>
+    <form id="chat-form" class="input-group" style="margin-bottom:0.5rem;">
+      <input id="chat-input" type="text" class="input-group-field" autocomplete="off">
+      <div class="input-group-button">
+        <button class="button primary" type="submit">Send</button>
+      </div>
     </form>
-    <pre id="log" class="border p-2" style="height:300px; overflow:auto;"></pre>
+    <pre id="log" class="callout" style="height:300px; overflow:auto;"></pre>
   </div>
-  <div class="col-md-6">
+  <div class="cell medium-6">
     <h2>System Info</h2>
-    <button id="refresh" class="btn btn-secondary mb-2">Refresh</button>
-    <pre id="info" class="border p-2" style="height:300px; overflow:auto;"></pre>
+    <button id="refresh" class="button secondary" style="margin-bottom:0.5rem;">Refresh</button>
+    <pre id="info" class="callout" style="height:300px; overflow:auto;"></pre>
   </div>
 </div>
 <script>
