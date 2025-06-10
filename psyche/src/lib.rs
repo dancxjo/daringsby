@@ -3,6 +3,7 @@
 //! The accompanying web server streams bus events over WebSockets.
 use serde::Serialize;
 use std::time::SystemTime;
+use tokio::sync::Semaphore;
 
 pub mod bus;
 pub mod logging;
@@ -125,6 +126,7 @@ impl Scheduler for JoinScheduler {
 /// Scheduler using an LLM processor to summarize experience text.
 pub struct ProcessorScheduler<P> {
     processor: P,
+    semaphore: std::sync::Arc<Semaphore>,
 }
 
 fn narrative_prompt(identity: &str, batch: &[Experience]) -> String {
@@ -145,7 +147,18 @@ fn narrative_prompt(identity: &str, batch: &[Experience]) -> String {
 impl<P> ProcessorScheduler<P> {
     /// Create a new scheduler wrapping the given processor.
     pub fn new(processor: P) -> Self {
-        Self { processor }
+        Self {
+            processor,
+            semaphore: std::sync::Arc::new(Semaphore::new(1)),
+        }
+    }
+
+    /// Create a scheduler with a custom concurrency limit.
+    pub fn with_limit(processor: P, limit: usize) -> Self {
+        Self {
+            processor,
+            semaphore: std::sync::Arc::new(Semaphore::new(limit)),
+        }
     }
 
     /// Capabilities advertised by the underlying processor.
@@ -183,6 +196,8 @@ where
         });
 
         let handle = tokio::runtime::Handle::current();
+        let permit = tokio::task::block_in_place(|| handle.block_on(self.semaphore.acquire()));
+        let _permit = permit.ok()?;
         let text =
             tokio::task::block_in_place(|| match handle.block_on(self.processor.process(task)) {
                 Ok(mut stream) => {
@@ -228,6 +243,8 @@ where
     /// Interval between ticks.
     pub interval: std::time::Duration,
     last_tick: std::time::Instant,
+    /// When the queue reaches this length, trigger an immediate tick.
+    max_queue: Option<usize>,
 }
 
 impl<S, P> Wit<S, P>
@@ -256,13 +273,28 @@ where
             name,
             interval,
             last_tick: std::time::Instant::now(),
+            max_queue: None,
         }
+    }
+
+    /// Set the maximum queue length before a tick is triggered.
+    pub fn set_max_queue(&mut self, max: usize) {
+        self.max_queue = Some(max);
     }
 
     /// Queue an experience for later processing.
     pub fn push(&mut self, exp: Experience) {
         log::info!("queued experience: {}", exp.how);
         self.queue.push(exp);
+        if let Some(limit) = self.max_queue {
+            if self.queue.len() >= limit {
+                // prevent overwhelming by respecting half the interval
+                if self.last_tick.elapsed() >= self.interval / 2 {
+                    self.last_tick = std::time::Instant::now();
+                    let _ = self.tick();
+                }
+            }
+        }
     }
 
     /// Current number of queued experiences.
@@ -751,5 +783,16 @@ mod tests {
         wit.push(Experience::new("one"));
         assert!(wit.tick().is_none());
         assert!(wit.memory.all().is_empty());
+    }
+
+    #[tokio::test]
+    async fn push_triggers_auto_tick() {
+        let mut wit = Wit::with_config(JoinScheduler::default(), Echo, None, std::time::Duration::from_secs(10));
+        wit.set_max_queue(2);
+        wit.push(Experience::new("a"));
+        assert_eq!(wit.queue_len(), 1);
+        wit.push(Experience::new("b"));
+        assert_eq!(wit.queue_len(), 0); // auto-tick cleared queue
+        assert_eq!(wit.memory.all().len(), 1);
     }
 }
