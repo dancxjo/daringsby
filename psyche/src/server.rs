@@ -251,7 +251,7 @@ pub async fn run_with_psyche<S>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Experience, Heart, JoinScheduler, Sensation, Wit};
+    use crate::{Experience, Heart, JoinScheduler, Sensation, Wit, Sensor};
     use serde_json::Value;
     use warp::Reply;
 
@@ -348,7 +348,7 @@ mod tests {
 
         {
             let mut p = psyche.lock().await;
-            p.heart.wits[0].push(Experience::new("hi"));
+            p.heart.wits[0].feel(Sensation::new(Experience::new("hi")));
             p.heart.wits[0].last_tick =
                 std::time::Instant::now() - std::time::Duration::from_millis(50);
         }
@@ -377,7 +377,7 @@ mod tests {
 
         {
             let mut p = psyche.lock().await;
-            p.heart.wits[0].push(Experience::new("hello"));
+            p.heart.wits[0].feel(Sensation::new(Experience::new("hello")));
             let _ = p.heart.tick();
         }
 

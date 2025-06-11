@@ -1,4 +1,4 @@
-use crate::{Experience, Memory, Scheduler};
+use crate::{Experience, Memory, Scheduler, Sensation, Sensor};
 
 /// Timed loop processing experiences.
 pub struct Wit<S>
@@ -46,27 +46,21 @@ where
         }
     }
 
-    /// Queue an experience for later processing.
-    pub fn push(&mut self, exp: Experience) {
-        log::info!("queued experience: {}", exp.how);
-        self.queue.push(exp);
-    }
-
     /// Current number of queued experiences.
     ///
     /// ```
-    /// use psyche::{Wit, JoinScheduler, Experience};
+    /// use psyche::{Wit, JoinScheduler, Experience, Sensation, Sensor};
     /// let mut wit = Wit::new(JoinScheduler::default(), "prompt");
     /// assert_eq!(wit.queue_len(), 0);
-    /// wit.push(Experience::new("test"));
+    /// wit.feel(Sensation::new(Experience::new("test")));
     /// assert_eq!(wit.queue_len(), 1);
     /// ```
     pub fn queue_len(&self) -> usize {
         self.queue.len()
     }
 
-    /// Process queued experiences and return a summary experience.
-    pub fn tick(&mut self) -> Option<Experience> {
+    /// Process queued sensations into an experience using the scheduler.
+    fn process(&mut self) -> Option<Experience> {
         let batch = std::mem::take(&mut self.queue);
         if batch.is_empty() {
             return None;
@@ -76,5 +70,25 @@ where
         let sensation = self.scheduler.schedule(&self.prompt, batch)?;
         self.memory.remember(sensation.clone());
         Some(Experience::with_timestamp(sensation.what, sensation.when))
+    }
+}
+
+impl<S> Sensor for Wit<S>
+where
+    S: Scheduler,
+    S::Output: Clone + Into<String>,
+{
+    type Input = Experience;
+
+    fn feel(&mut self, sensation: Sensation<Self::Input>) {
+        log::info!("queued experience: {}", sensation.what.how);
+        self.queue.push(sensation.what);
+    }
+
+    fn experience(&mut self) -> Vec<Experience> {
+        match self.process() {
+            Some(exp) => vec![exp],
+            None => Vec::new(),
+        }
     }
 }
