@@ -19,18 +19,52 @@
     <pre id="log" class="callout" style="height:300px; overflow:auto;"></pre>
   </div>
   <div class="cell medium-6">
-    <h2>System Info</h2>
-    <button id="refresh" class="button secondary" style="margin-bottom:0.5rem;">Refresh</button>
-    <pre id="info" class="callout" style="height:150px; overflow:auto;"></pre>
-    <h3>Scheduler</h3>
-    <div id="sched-details"></div>
+    <h2>Scheduler</h2>
+    <div id="sched"></div>
+    <h2>Heart</h2>
+    <pre id="heart" class="callout" style="height:150px; overflow:auto;"></pre>
   </div>
 </div>
 <script>
 const ws = new WebSocket(`ws://${location.host}/ws`);
+const procs = {};
+function procDom(name) {
+  if(!procs[name]) {
+    const det = document.createElement('details');
+    det.open = true;
+    const summary = document.createElement('summary');
+    det.appendChild(summary);
+    const prompt = document.createElement('pre');
+    prompt.className = 'callout';
+    const chunks = document.createElement('pre');
+    chunks.className = 'callout';
+    det.appendChild(prompt);
+    det.appendChild(chunks);
+    document.getElementById('sched').appendChild(det);
+    procs[name] = {det, summary, prompt, chunks};
+  }
+  return procs[name];
+}
+
 ws.onmessage = ev => {
   const pre = document.getElementById('log');
   pre.textContent = ev.data + '\n' + pre.textContent;
+  if(ev.data.startsWith('prompt:')) {
+    const rest = ev.data.slice(7);
+    const idx = rest.indexOf(':');
+    const name = rest.slice(0, idx);
+    const prompt = rest.slice(idx + 1);
+    const dom = procDom(name);
+    dom.prompt.textContent = prompt;
+    dom.chunks.textContent = '';
+  } else if(ev.data.startsWith('chunk:')) {
+    const rest = ev.data.slice(6);
+    const idx = rest.indexOf(':');
+    const name = rest.slice(0, idx);
+    const chunk = rest.slice(idx + 1);
+    const dom = procDom(name);
+    dom.chunks.textContent += chunk;
+  }
 };
 document.getElementById('chat-form').addEventListener('submit', ev => {
   ev.preventDefault();
@@ -44,26 +78,19 @@ document.getElementById('chat-form').addEventListener('submit', ev => {
 async function refresh() {
   const psyche = await (await fetch('/psyche')).json();
   const sched = await (await fetch('/scheduler')).json();
-  document.getElementById('info').textContent = JSON.stringify({psyche, sched}, null, 2);
-  const body = document.getElementById('sched-details');
-  body.innerHTML = '';
+  document.getElementById('heart').textContent = JSON.stringify({
+    instant: psyche.instant,
+    moment: psyche.moment,
+    context: psyche.context
+  }, null, 2);
   sched.wits.forEach((w, i) => {
-    const pinfo = psyche.wits[i] || {};
-    const pct = pinfo.interval_ms ? Math.min(100, Math.round(100 * (pinfo.interval_ms - w.due_ms) / pinfo.interval_ms)) : 0;
-    const det = document.createElement('details');
-    det.open = true;
     const name = w.name ?? `Processor ${i}`;
-    det.innerHTML = `<summary>${name}</summary>` +
-      `<blockquote>${w.last ?? ''}</blockquote>` +
-      `<div>Queue: ${w.queue_len}, due: ${w.due_ms}ms</div>` +
-      `<div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">` +
-      `<div class="progress-meter" style="width:${pct}%"></div></div>`;
-    body.appendChild(det);
+    const dom = procDom(name);
+    dom.summary.textContent = `${name} (queue: ${w.queue_len}, due: ${w.due_ms}ms)`;
   });
 }
-document.getElementById('refresh').addEventListener('click', refresh);
 refresh();
-setInterval(refresh, 100);
+setInterval(refresh, 1000);
 </script>
 </body>
 </html>

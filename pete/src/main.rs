@@ -21,7 +21,23 @@ async fn main() -> Result<()> {
     let model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "gemma3".into());
     lingproc::ensure_model_available(&model).await?;
     info!("model {model} ready");
-    let make_sched = || psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model));
+    let mut idx = 0;
+    let bus_clone = bus.clone();
+    let model_clone = model.clone();
+    let make_sched = move || {
+        idx += 1;
+        let name = match idx {
+            1 => "quick",
+            2 => "combobulator",
+            3 => "contextualizer",
+            _ => "proc",
+        };
+        psyche::ProcessorScheduler::new(
+            lingproc::OllamaProcessor::new(&model_clone),
+            bus_clone.clone(),
+            name,
+        )
+    };
     let psyche = Arc::new(Mutex::new(psyche::Psyche::new(
         make_sched,
         external_sensors,

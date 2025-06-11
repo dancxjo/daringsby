@@ -11,6 +11,10 @@ pub enum Event {
     Connected(std::net::SocketAddr),
     /// WebSocket client disconnected.
     Disconnected(std::net::SocketAddr),
+    /// A processor started handling a prompt.
+    ProcessorPrompt { name: String, prompt: String },
+    /// A processor produced a chunk of output.
+    ProcessorChunk { name: String, chunk: String },
 }
 
 /// Simple broadcast bus for sending [`Event`]s to multiple listeners.
@@ -60,6 +64,34 @@ mod tests {
         bus.send(Event::Connected(addr));
         match rx.recv().await {
             Ok(Event::Connected(a)) => assert_eq!(a, addr),
+            other => panic!("unexpected event: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn send_and_receive_processor_events() {
+        let bus = EventBus::new();
+        let mut rx = bus.subscribe();
+        bus.send(Event::ProcessorPrompt {
+            name: "p".into(),
+            prompt: "hi".into(),
+        });
+        match rx.recv().await {
+            Ok(Event::ProcessorPrompt { name, prompt }) => {
+                assert_eq!(name, "p");
+                assert_eq!(prompt, "hi");
+            }
+            other => panic!("unexpected event: {:?}", other),
+        }
+        bus.send(Event::ProcessorChunk {
+            name: "p".into(),
+            chunk: "c".into(),
+        });
+        match rx.recv().await {
+            Ok(Event::ProcessorChunk { name, chunk }) => {
+                assert_eq!(name, "p");
+                assert_eq!(chunk, "c");
+            }
             other => panic!("unexpected event: {:?}", other),
         }
     }

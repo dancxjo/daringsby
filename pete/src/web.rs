@@ -117,6 +117,8 @@ async fn handle_ws(ws: warp::ws::WebSocket, addr: Option<SocketAddr>, bus: Arc<E
                 Event::Chat(l) => format!("chat: {l}"),
                 Event::Connected(a) => format!("connected {a}"),
                 Event::Disconnected(a) => format!("disconnected {a}"),
+                Event::ProcessorPrompt { name, prompt } => format!("prompt:{name}:{prompt}"),
+                Event::ProcessorChunk { name, chunk } => format!("chunk:{name}:{chunk}"),
             };
             if sender.send(Message::text(line)).await.is_err() {
                 break;
