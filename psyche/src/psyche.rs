@@ -26,7 +26,7 @@ where
     Sched::Output: Clone + Into<String>,
 {
     /// Internal heart managing the quick wit.
-    pub heart: Heart<Wit<Sched>>,
+    pub heart: Heart<Sched>,
     pub(crate) external_sensors: Vec<Box<dyn Sensor<Input = bus::Event> + Send + Sync>>,
 }
 
@@ -47,12 +47,25 @@ where
         F: FnMut() -> Sched,
     {
         use std::time::Duration;
-        let heart = Heart::new(Wit::with_config(
+        let quick = Wit::with_config(
             scheduler_factory(),
             Some("quick".into()),
             Duration::from_secs(1),
             "quick",
-        ));
+        );
+        let combobulator = Wit::with_config(
+            scheduler_factory(),
+            Some("combobulator".into()),
+            Duration::from_secs(1),
+            "combobulator",
+        );
+        let contextualizer = Wit::with_config(
+            scheduler_factory(),
+            Some("contextualizer".into()),
+            Duration::from_secs(1),
+            "contextualizer",
+        );
+        let heart = Heart::new(quick, combobulator, contextualizer);
         Self {
             heart,
             external_sensors,
@@ -61,7 +74,7 @@ where
 
     /// Create a psyche from a prebuilt [`Heart`].
     pub fn with_heart(
-        heart: Heart<Wit<Sched>>,
+        heart: Heart<Sched>,
         external_sensors: Vec<Box<dyn Sensor<Input = bus::Event> + Send + Sync>>,
     ) -> Self {
         Self {

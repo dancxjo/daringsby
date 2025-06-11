@@ -13,6 +13,8 @@ where
     pub name: Option<String>,
     /// Prompt passed to the scheduler when summarizing experiences.
     pub prompt: String,
+    /// Additional context inserted into the prompt on each tick.
+    pub context: String,
     /// Interval between ticks.
     pub interval: std::time::Duration,
     pub(crate) last_tick: std::time::Instant,
@@ -41,6 +43,7 @@ where
             memory: Memory::new(),
             name,
             prompt: prompt.into(),
+            context: String::new(),
             interval,
             last_tick: std::time::Instant::now(),
         }
@@ -59,6 +62,11 @@ where
         self.queue.len()
     }
 
+    /// Update the context string used when processing experiences.
+    pub fn set_context(&mut self, ctx: impl Into<String>) {
+        self.context = ctx.into();
+    }
+
     /// Process queued sensations into an experience using the scheduler.
     fn process(&mut self) -> Option<Experience> {
         let batch = std::mem::take(&mut self.queue);
@@ -67,7 +75,15 @@ where
         }
         log::info!("processing {} queued", batch.len());
 
-        let sensation = self.scheduler.schedule(&self.prompt, batch)?;
+        let full_prompt = if self.context.is_empty() {
+            self.prompt.clone()
+        } else {
+            format!(
+                "{} Here's Pete's current situation: {}",
+                self.prompt, self.context
+            )
+        };
+        let sensation = self.scheduler.schedule(&full_prompt, batch)?;
         self.memory.remember(sensation.clone());
         Some(Experience::with_timestamp(sensation.what, sensation.when))
     }
