@@ -51,19 +51,27 @@ where
         Some(&mut self.quick)
     }
 
+    /// Milliseconds until the next wit is due for a tick.
+    pub fn due_ms(&self) -> u64 {
+        self.quick
+            .due_ms()
+            .min(self.combobulator.due_ms())
+            .min(self.contextualizer.due_ms())
+    }
+
     /// Propagate experiences through all wits updating instant, moment and context.
     pub fn beat(&mut self) {
-        if let Some(inst) = self.quick.experience().pop() {
+        if let Some(inst) = self.quick.tick() {
             self.instant = Some(inst.clone());
             self.combobulator.feel(Sensation::new(inst));
         }
 
-        if let Some(mom) = self.combobulator.experience().pop() {
+        if let Some(mom) = self.combobulator.tick() {
             self.moment = Some(mom.clone());
             self.contextualizer.feel(Sensation::new(mom));
         }
 
-        if let Some(ctx) = self.contextualizer.experience().pop() {
+        if let Some(ctx) = self.contextualizer.tick() {
             let c = ctx.how.clone();
             self.context = Some(c.clone());
             self.quick.set_context(c.clone());
@@ -114,5 +122,19 @@ mod tests {
         assert_eq!(heart.context.as_deref(), Some("hi"));
         assert_eq!(heart.quick.context, "hi");
         assert_eq!(heart.combobulator.context, "hi");
+    }
+
+    #[test]
+    fn due_ms_is_min_of_wits() {
+        let make = |ms| {
+            Wit::with_config(
+                JoinScheduler::default(),
+                None,
+                std::time::Duration::from_millis(ms),
+                "w",
+            )
+        };
+        let heart = Heart::new(make(100), make(50), make(200));
+        assert!(heart.due_ms() <= 50);
     }
 }

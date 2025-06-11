@@ -129,7 +129,7 @@ mod tests {
         let mut wit = Wit::with_config(scheduler, None, std::time::Duration::from_secs(0), "mock");
         wit.feel(Sensation::new(Experience::new("one")));
         wit.feel(Sensation::new(Experience::new("two")));
-        let exp = wit.experience().pop().unwrap();
+        let exp = wit.tick().unwrap();
         assert!(exp.how.starts_with("processed"));
         assert!(wit.memory.all()[0].what.starts_with("processed"));
     }
@@ -155,7 +155,7 @@ mod tests {
         let scheduler = ProcessorScheduler::new(FailProcessor);
         let mut wit = Wit::with_config(scheduler, None, std::time::Duration::from_secs(0), "fail");
         wit.feel(Sensation::new(Experience::new("one")));
-        assert!(wit.experience().is_empty());
+        assert!(wit.tick().is_none());
         assert!(wit.memory.all().is_empty());
     }
 }
