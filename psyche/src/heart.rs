@@ -1,6 +1,10 @@
 use crate::{Experience, Scheduler, Sensation, Sensor, Wit};
 
 /// Stack of wits from fond (index 0) to quick (last index).
+///
+/// `Heart` implements [`Sensor`] so experiences can be fed into the fond wit
+/// via [`Sensor::feel`] and processed through each wit using
+/// [`Sensor::experience`].
 pub struct Heart<W> {
     pub wits: Vec<W>,
 }
@@ -37,43 +41,6 @@ where
     S: Scheduler,
     S::Output: Clone + Into<String>,
 {
-    /// Feed a new experience into the fond wit.
-    pub fn push(&mut self, exp: Experience) {
-        log::info!("heart push to fond: {}", exp.how);
-        if let Some(first) = self.wits.first_mut() {
-            first.feel(Sensation::new(exp));
-        }
-    }
-
-    /// Run one processing tick across all wits.
-    ///
-    /// Returns any experience produced by the highest level wit.
-    pub fn tick(&mut self) -> Option<Experience> {
-        use std::time::Instant;
-        let mut last_output = None;
-        for i in 0..self.wits.len() {
-            let now = Instant::now();
-            let elapsed = now.duration_since(self.wits[i].last_tick);
-            if elapsed < self.wits[i].interval {
-                continue;
-            }
-            self.wits[i].last_tick = now;
-            let outputs = {
-                let wit = &mut self.wits[i];
-                log::trace!("wit {i} tick");
-                wit.experience()
-            };
-            for exp in outputs {
-                if let Some(next) = self.wits.get_mut(i + 1) {
-                    next.feel(Sensation::new(exp));
-                } else {
-                    last_output = Some(exp);
-                }
-            }
-        }
-        last_output
-    }
-
     /// Run ticks in serial until no wit produces output.
     pub fn run_serial(&mut self) -> Option<Experience> {
         loop {
@@ -145,10 +112,52 @@ where
     }
 }
 
+impl<S> Sensor for Heart<Wit<S>>
+where
+    S: Scheduler,
+    S::Output: Clone + Into<String>,
+{
+    type Input = Experience;
+
+    fn feel(&mut self, sensation: Sensation<Self::Input>) {
+        let msg = sensation.what.how.clone();
+        log::info!("heart feel to fond: {}", msg);
+        if let Some(first) = self.wits.first_mut() {
+            first.feel(sensation);
+        }
+    }
+
+    fn experience(&mut self) -> Vec<Experience> {
+        use std::time::Instant;
+        let mut outputs = Vec::new();
+        for i in 0..self.wits.len() {
+            let now = Instant::now();
+            let elapsed = now.duration_since(self.wits[i].last_tick);
+            if elapsed < self.wits[i].interval {
+                continue;
+            }
+            self.wits[i].last_tick = now;
+            let wit_outputs = {
+                let wit = &mut self.wits[i];
+                log::trace!("wit {i} experience");
+                wit.experience()
+            };
+            for exp in wit_outputs {
+                if let Some(next) = self.wits.get_mut(i + 1) {
+                    next.feel(Sensation::new(exp));
+                } else {
+                    outputs.push(exp);
+                }
+            }
+        }
+        outputs
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{JoinScheduler, Wit};
+    use crate::{JoinScheduler, Sensation, Sensor, Wit};
 
     #[test]
     fn heart_flows_between_wits() {
@@ -165,10 +174,10 @@ mod tests {
             "p2",
         );
         let mut heart = Heart::new(vec![w1, w2]);
-        heart.push(Experience::new("hello"));
-        heart.push(Experience::new("world"));
-        let _ = heart.tick();
-        let _ = heart.tick();
+        heart.feel(Sensation::new(Experience::new("hello")));
+        heart.feel(Sensation::new(Experience::new("world")));
+        let _ = heart.experience();
+        let _ = heart.experience();
         assert_eq!(heart.wits[0].memory.all().len(), 1);
         assert_eq!(heart.wits[1].memory.all()[0].what, "hello world");
     }
@@ -191,8 +200,8 @@ mod tests {
         let mut heart = Heart::new(vec![w1, w2]);
         assert!(heart.fond().is_some());
         assert!(heart.quick().is_some());
-        heart.push(Experience::new("hello"));
-        heart.push(Experience::new("world"));
+        heart.feel(Sensation::new(Experience::new("hello")));
+        heart.feel(Sensation::new(Experience::new("world")));
         let _ = heart.run_scheduled(2);
         assert!(!heart.quick().unwrap().memory.all().is_empty());
     }
@@ -212,7 +221,7 @@ mod tests {
             "r2",
         );
         let mut heart = Heart::new(vec![w1, w2]);
-        heart.push(Experience::new("hello"));
+        heart.feel(Sensation::new(Experience::new("hello")));
         let _ = heart.run_serial();
         assert_eq!(heart.wits[0].memory.all().len(), 1);
         assert!(!heart.wits[1].memory.all().is_empty());
@@ -225,8 +234,8 @@ mod tests {
         let w2 = Wit::with_config(JoinScheduler::default(), None, Duration::from_secs(0), "r2");
         let w3 = Wit::with_config(JoinScheduler::default(), None, Duration::from_secs(0), "r3");
         let mut heart = Heart::new(vec![w1, w2, w3]);
-        heart.push(Experience::new("a"));
-        heart.push(Experience::new("b"));
+        heart.feel(Sensation::new(Experience::new("a")));
+        heart.feel(Sensation::new(Experience::new("b")));
         let _ = heart.run_serial();
         assert_eq!(heart.wits[0].memory.all()[0].what, "a b");
         assert_eq!(heart.wits[2].memory.all()[0].what, "a b");
