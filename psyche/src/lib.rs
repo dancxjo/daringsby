@@ -431,23 +431,30 @@ where
 /// # Examples
 /// ```
 /// use psyche::{Experience, Sensation, Sensor};
-/// struct Echo;
+/// struct Echo { last: Option<String> };
 /// impl Sensor for Echo {
 ///     type Input = String;
-///     fn feel(&mut self, s: Sensation<Self::Input>) -> Option<Experience> {
-///         Some(Experience::new(s.what))
+///     fn feel(&mut self, s: Sensation<Self::Input>) {
+///         self.last = Some(s.what);
+///     }
+///     fn experience(&mut self) -> Experience {
+///         Experience::new(self.last.take().unwrap())
 ///     }
 /// }
-/// let mut sensor = Echo;
-/// let exp = sensor.feel(Sensation::new("hello".to_string())).unwrap();
+/// let mut sensor = Echo { last: None };
+/// sensor.feel(Sensation::new("hello".to_string()));
+/// let exp = sensor.experience();
 /// assert_eq!(exp.how, "hello");
 /// ```
 pub trait Sensor {
     /// Type of data this sensor accepts.
     type Input;
 
-    /// Convert a sensation into an experience, if possible.
-    fn feel(&mut self, sensation: Sensation<Self::Input>) -> Option<Experience>;
+    /// Record a sensation for later interpretation.
+    fn feel(&mut self, sensation: Sensation<Self::Input>);
+
+    /// Produce an experience from recorded sensations.
+    fn experience(&mut self) -> Experience;
 }
 
 impl Experience {
@@ -518,10 +525,10 @@ where
     pub fn process_event(&mut self, evt: bus::Event) {
         let sensation = Sensation::new(evt);
         for sensor in &mut self.sensors {
-            if let Some(exp) = sensor.feel(sensation.clone()) {
-                if let Some(quick) = self.heart.quick_mut() {
-                    quick.push(exp);
-                }
+            sensor.feel(sensation.clone());
+            let exp = sensor.experience();
+            if let Some(quick) = self.heart.quick_mut() {
+                quick.push(exp);
             }
         }
     }
@@ -531,12 +538,18 @@ where
 mod tests {
     use super::*;
 
-    struct Echo;
+    struct Echo {
+        last: Option<String>,
+    }
 
     impl Sensor for Echo {
         type Input = String;
-        fn feel(&mut self, s: Sensation<Self::Input>) -> Option<Experience> {
-            Some(Experience::new(s.what))
+        fn feel(&mut self, s: Sensation<Self::Input>) {
+            self.last = Some(s.what);
+        }
+
+        fn experience(&mut self) -> Experience {
+            Experience::new(self.last.take().unwrap())
         }
     }
 
@@ -554,8 +567,9 @@ mod tests {
 
     #[test]
     fn echo_sensor() {
-        let mut sensor = Echo;
-        let exp = sensor.feel(Sensation::new("hi".to_string())).unwrap();
+        let mut sensor = Echo { last: None };
+        sensor.feel(Sensation::new("hi".to_string()));
+        let exp = sensor.experience();
         assert_eq!(exp.how, "hi");
     }
 

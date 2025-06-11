@@ -255,12 +255,18 @@ mod tests {
     use serde_json::Value;
     use warp::Reply;
 
-    struct Echo;
+    struct Echo {
+        last: Option<String>,
+    }
 
     impl crate::Sensor for Echo {
         type Input = String;
-        fn feel(&mut self, s: Sensation<Self::Input>) -> Option<Experience> {
-            Some(Experience::new(s.what))
+        fn feel(&mut self, s: Sensation<Self::Input>) {
+            self.last = Some(s.what);
+        }
+
+        fn experience(&mut self) -> Experience {
+            Experience::new(self.last.take().unwrap())
         }
     }
 
