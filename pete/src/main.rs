@@ -2,6 +2,7 @@
 use anyhow::Result;
 use log::info;
 use std::sync::Arc;
+use tokio::signal;
 use tokio::sync::Mutex;
 
 #[tokio::main]
@@ -48,7 +49,7 @@ async fn main() -> Result<()> {
         });
     }
 
-    info!("starting pete webserver");
-    psyche::server::run_with_psyche(bus, psyche, ([127, 0, 0, 1], 8080)).await;
+    info!("pete running without web server");
+    signal::ctrl_c().await?;
     Ok(())
 }

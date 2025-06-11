@@ -106,7 +106,7 @@ Run `cargo check` in the repository root to verify that all crates compile. CI o
    Be sure to include `entrypoint: python3` in the `tts` service so the server script runs.
 3. Start the required services with `docker-compose up -d tts qdrant neo4j ollama`.
 4. Optional: run Whisper locally for ASR and configure its address in `.env`.
-5. Run `cargo run -p pete` to start the local web interface.
+5. Run `cargo run -p pete` to start Pete without a web interface.
 
 ### Environment variables
 
