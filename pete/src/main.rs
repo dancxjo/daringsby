@@ -4,15 +4,6 @@ use log::info;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-struct Echo;
-
-impl psyche::Sensor for Echo {
-    type Input = String;
-    fn feel(&mut self, s: psyche::Sensation<Self::Input>) -> Option<psyche::Experience> {
-        Some(psyche::Experience::new(s.what))
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let bus = Arc::new(psyche::bus::EventBus::new());
@@ -29,25 +20,21 @@ async fn main() -> Result<()> {
     let heart = psyche::Heart::new(vec![
         psyche::Wit::with_config(
             psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
-            Echo,
             Some("fond".into()),
             std::time::Duration::from_secs(1),
         ),
         psyche::Wit::with_config(
             psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
-            Echo,
             Some("wit2".into()),
             std::time::Duration::from_secs(2),
         ),
         psyche::Wit::with_config(
             psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
-            Echo,
             Some("wit3".into()),
             std::time::Duration::from_secs(4),
         ),
         psyche::Wit::with_config(
             psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
-            Echo,
             Some("quick".into()),
             std::time::Duration::from_secs(8),
         ),
