@@ -4,6 +4,8 @@ use log::info;
 use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::Mutex;
+// bring trait into scope so we can call `experience()` on `Heart`
+use psyche::Sensor;
 
 #[tokio::main]
 async fn main() -> Result<()> {
