@@ -1,5 +1,5 @@
 use crate::bus::{Event, EventBus};
-use crate::{ProcessorScheduler, Psyche, Scheduler, Sensor};
+use crate::{ProcessorScheduler, Psyche, Scheduler};
 use futures::{SinkExt, StreamExt};
 use lingproc::OllamaProcessor;
 use log::info;
@@ -110,13 +110,12 @@ struct SchedulerInfo {
     wits: Vec<SchedulerEntry>,
 }
 
-async fn psyche_handler<S, P>(
-    psyche: Arc<Mutex<Psyche<S, P>>>,
+async fn psyche_handler<S>(
+    psyche: Arc<Mutex<Psyche<S>>>,
 ) -> Result<impl warp::Reply, warp::Rejection>
 where
     S: Scheduler + Send + Sync,
-    P: Sensor<Input = S::Output> + Send + Sync,
-    S::Output: Serialize + Clone,
+    S::Output: Serialize + Clone + Into<String>,
 {
     use std::any::type_name_of_val;
     let psyche = psyche.lock().await;
@@ -138,13 +137,12 @@ where
     Ok(warp::reply::json(&PsycheInfo { wits, sensors }))
 }
 
-async fn scheduler_handler<S, P>(
-    psyche: Arc<Mutex<Psyche<S, P>>>,
+async fn scheduler_handler<S>(
+    psyche: Arc<Mutex<Psyche<S>>>,
 ) -> Result<impl warp::Reply, warp::Rejection>
 where
     S: Scheduler + Send + Sync + 'static,
-    P: Sensor<Input = S::Output> + Send + Sync + 'static,
-    S::Output: Serialize + Clone,
+    S::Output: Serialize + Clone + Into<String>,
 {
     use std::any::{Any, type_name};
     let psyche = psyche.lock().await;
@@ -184,14 +182,13 @@ where
     Ok(warp::reply::json(&SchedulerInfo { wits }))
 }
 
-async fn wit_handler<S, P>(
+async fn wit_handler<S>(
     name: String,
-    psyche: Arc<Mutex<Psyche<S, P>>>,
+    psyche: Arc<Mutex<Psyche<S>>>,
 ) -> Result<impl warp::Reply, warp::Rejection>
 where
     S: Scheduler + Send + Sync,
-    P: Sensor<Input = S::Output> + Send + Sync,
-    S::Output: Serialize + Clone,
+    S::Output: Serialize + Clone + Into<String>,
 {
     let psyche = psyche.lock().await;
     let idx = name.parse::<usize>().ok();
@@ -211,14 +208,13 @@ where
 }
 
 /// Start the webserver with access to a [`Psyche`].
-pub async fn run_with_psyche<S, P>(
+pub async fn run_with_psyche<S>(
     bus: Arc<EventBus>,
-    psyche: Arc<Mutex<Psyche<S, P>>>,
+    psyche: Arc<Mutex<Psyche<S>>>,
     addr: impl Into<SocketAddr>,
 ) where
     S: Scheduler + Send + Sync + 'static,
-    P: Sensor<Input = S::Output> + Send + Sync + 'static,
-    S::Output: Serialize + Clone + Send + Sync + 'static,
+    S::Output: Serialize + Clone + Into<String> + Send + Sync + 'static,
 {
     let html = warp::path::end().map(|| warp::reply::html(INDEX_HTML));
     let ws_route = warp::path("ws")
@@ -232,15 +228,15 @@ pub async fn run_with_psyche<S, P>(
     let psyche_filter = warp::any().map(move || psyche.clone());
     let wit_route = warp::path!("wit" / String)
         .and(psyche_filter.clone())
-        .and_then(wit_handler::<S, P>);
+        .and_then(wit_handler::<S>);
 
     let psyche_route = warp::path("psyche")
         .and(psyche_filter.clone())
-        .and_then(psyche_handler::<S, P>);
+        .and_then(psyche_handler::<S>);
 
     let scheduler_route = warp::path("scheduler")
         .and(psyche_filter)
-        .and_then(scheduler_handler::<S, P>);
+        .and_then(scheduler_handler::<S>);
 
     warp::serve(
         html.or(ws_route)
@@ -270,7 +266,7 @@ mod tests {
 
     #[tokio::test]
     async fn wit_endpoint_returns_memory() {
-        let heart = Heart::new(vec![Wit::new(JoinScheduler::default(), Echo)]);
+        let heart = Heart::new(vec![Wit::new(JoinScheduler::default())]);
         let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
 
         {
@@ -280,7 +276,7 @@ mod tests {
                 .remember(Sensation::new("hello".to_string()));
         }
 
-        let resp = wit_handler::<JoinScheduler, Echo>("0".into(), psyche.clone())
+        let resp = wit_handler::<JoinScheduler>("0".into(), psyche.clone())
             .await
             .unwrap();
         let body = resp.into_response();
@@ -294,7 +290,6 @@ mod tests {
     async fn psyche_endpoint_lists_wits() {
         let heart = Heart::new(vec![Wit::with_config(
             ProcessorScheduler::new(OllamaProcessor::new("model")),
-            Echo,
             Some("w1".into()),
             std::time::Duration::from_secs(0),
         )]);
@@ -303,7 +298,7 @@ mod tests {
             vec![Box::new(crate::sensors::ChatSensor::default())],
         )));
 
-        let resp = psyche_handler::<ProcessorScheduler<OllamaProcessor>, Echo>(psyche.clone())
+        let resp = psyche_handler::<ProcessorScheduler<OllamaProcessor>>(psyche.clone())
             .await
             .unwrap();
         let body = resp.into_response();
@@ -318,13 +313,12 @@ mod tests {
     async fn scheduler_endpoint_reports_model() {
         let heart = Heart::new(vec![Wit::with_config(
             ProcessorScheduler::new(OllamaProcessor::new("llama-test")),
-            Echo,
             None,
             std::time::Duration::from_secs(0),
         )]);
         let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
 
-        let resp = scheduler_handler::<ProcessorScheduler<OllamaProcessor>, Echo>(psyche.clone())
+        let resp = scheduler_handler::<ProcessorScheduler<OllamaProcessor>>(psyche.clone())
             .await
             .unwrap();
         let body = resp.into_response();
@@ -338,7 +332,6 @@ mod tests {
     async fn scheduler_endpoint_reports_queue_and_due() {
         let heart = Heart::new(vec![Wit::with_config(
             JoinScheduler::default(),
-            Echo,
             Some("q".into()),
             std::time::Duration::from_millis(100),
         )]);
@@ -351,7 +344,7 @@ mod tests {
                 std::time::Instant::now() - std::time::Duration::from_millis(50);
         }
 
-        let resp = scheduler_handler::<JoinScheduler, Echo>(psyche.clone())
+        let resp = scheduler_handler::<JoinScheduler>(psyche.clone())
             .await
             .unwrap();
         let body = resp.into_response();
@@ -367,7 +360,6 @@ mod tests {
     async fn scheduler_endpoint_reports_last_memory() {
         let heart = Heart::new(vec![Wit::with_config(
             JoinScheduler::default(),
-            Echo,
             None,
             std::time::Duration::from_secs(0),
         )]);
@@ -379,7 +371,7 @@ mod tests {
             let _ = p.heart.tick();
         }
 
-        let resp = scheduler_handler::<JoinScheduler, Echo>(psyche.clone())
+        let resp = scheduler_handler::<JoinScheduler>(psyche.clone())
             .await
             .unwrap();
         let body = resp.into_response();

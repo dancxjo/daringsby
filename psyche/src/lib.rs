@@ -213,14 +213,12 @@ where
 }
 
 /// Timed loop processing experiences.
-pub struct Wit<S, P>
+pub struct Wit<S>
 where
     S: Scheduler,
-    P: Sensor<Input = S::Output>,
-    S::Output: Clone,
+    S::Output: Clone + Into<String>,
 {
     scheduler: S,
-    sensor: P,
     queue: Vec<Experience>,
     pub memory: Memory<S::Output>,
     /// Optional human readable identifier.
@@ -230,27 +228,20 @@ where
     last_tick: std::time::Instant,
 }
 
-impl<S, P> Wit<S, P>
+impl<S> Wit<S>
 where
     S: Scheduler,
-    P: Sensor<Input = S::Output>,
-    S::Output: Clone,
+    S::Output: Clone + Into<String>,
 {
-    /// Create a new wit from a scheduler and sensor with default settings.
-    pub fn new(scheduler: S, sensor: P) -> Self {
-        Self::with_config(scheduler, sensor, None, std::time::Duration::from_secs(1))
+    /// Create a new wit from a scheduler with default settings.
+    pub fn new(scheduler: S) -> Self {
+        Self::with_config(scheduler, None, std::time::Duration::from_secs(1))
     }
 
     /// Create a new wit with a custom name and tick interval.
-    pub fn with_config(
-        scheduler: S,
-        sensor: P,
-        name: Option<String>,
-        interval: std::time::Duration,
-    ) -> Self {
+    pub fn with_config(scheduler: S, name: Option<String>, interval: std::time::Duration) -> Self {
         Self {
             scheduler,
-            sensor,
             queue: Vec::new(),
             memory: Memory::new(),
             name,
@@ -268,15 +259,8 @@ where
     /// Current number of queued experiences.
     ///
     /// ```
-    /// use psyche::{Wit, JoinScheduler, Experience, Sensor, Sensation};
-    /// struct Echo;
-    /// impl Sensor for Echo {
-    ///     type Input = String;
-    ///     fn feel(&mut self, s: Sensation<Self::Input>) -> Option<Experience> {
-    ///         Some(Experience::new(s.what))
-    ///     }
-    /// }
-    /// let mut wit = Wit::new(JoinScheduler::default(), Echo);
+    /// use psyche::{Wit, JoinScheduler, Experience};
+    /// let mut wit = Wit::new(JoinScheduler::default());
     /// assert_eq!(wit.queue_len(), 0);
     /// wit.push(Experience::new("test"));
     /// assert_eq!(wit.queue_len(), 1);
@@ -295,7 +279,7 @@ where
 
         let sensation = self.scheduler.schedule(batch)?;
         self.memory.remember(sensation.clone());
-        self.sensor.feel(sensation)
+        Some(Experience::with_timestamp(sensation.what, sensation.when))
     }
 }
 
@@ -331,11 +315,10 @@ impl<W> Heart<W> {
     }
 }
 
-impl<S, P> Heart<Wit<S, P>>
+impl<S> Heart<Wit<S>>
 where
     S: Scheduler,
-    P: Sensor<Input = S::Output>,
-    S::Output: Clone,
+    S::Output: Clone + Into<String>,
 {
     /// Push a new experience into the fond.
     pub fn push(&mut self, exp: Experience) {
@@ -493,11 +476,8 @@ impl Experience {
 /// # Examples
 /// ```
 /// use psyche::{bus::Event, sensors::{ChatSensor, ConnectionSensor}, Heart, Wit, JoinScheduler, Sensor};
-/// struct Echo;
-/// impl psyche::Sensor for Echo { type Input = String; fn feel(&mut self, s: psyche::Sensation<String>) -> Option<psyche::Experience> { Some(psyche::Experience::new(s.what)) } }
 /// let wit = Wit::with_config(
 ///     JoinScheduler::default(),
-///     Echo,
 ///     None,
 ///     std::time::Duration::from_secs(0),
 /// );
@@ -511,26 +491,24 @@ impl Experience {
 /// psyche.heart.tick();
 /// assert_eq!(psyche.heart.wits[0].memory.all().len(), 1);
 /// ```
-pub struct Psyche<Sched, Percept>
+pub struct Psyche<Sched>
 where
     Sched: Scheduler,
-    Percept: Sensor<Input = Sched::Output>,
-    Sched::Output: Clone,
+    Sched::Output: Clone + Into<String>,
 {
     /// Internal heart managing wits.
-    pub heart: Heart<Wit<Sched, Percept>>,
+    pub heart: Heart<Wit<Sched>>,
     sensors: Vec<Box<dyn Sensor<Input = bus::Event> + Send + Sync>>,
 }
 
-impl<Sched, Percept> Psyche<Sched, Percept>
+impl<Sched> Psyche<Sched>
 where
     Sched: Scheduler,
-    Percept: Sensor<Input = Sched::Output>,
-    Sched::Output: Clone,
+    Sched::Output: Clone + Into<String>,
 {
     /// Create a new psyche from a heart and sensors.
     pub fn new(
-        heart: Heart<Wit<Sched, Percept>>,
+        heart: Heart<Wit<Sched>>,
         sensors: Vec<Box<dyn Sensor<Input = bus::Event> + Send + Sync>>,
     ) -> Self {
         Self { heart, sensors }
@@ -592,13 +570,11 @@ mod tests {
     fn heart_flows_between_wits() {
         let w1 = Wit::with_config(
             JoinScheduler::default(),
-            Echo,
             None,
             std::time::Duration::from_secs(0),
         );
         let w2 = Wit::with_config(
             JoinScheduler::default(),
-            Echo,
             None,
             std::time::Duration::from_secs(0),
         );
@@ -616,13 +592,11 @@ mod tests {
         use std::time::Duration;
         let w1 = Wit::with_config(
             JoinScheduler::default(),
-            Echo,
             Some("fond".to_string()),
             Duration::from_millis(1),
         );
         let w2 = Wit::with_config(
             JoinScheduler::default(),
-            Echo,
             Some("quick".to_string()),
             Duration::from_millis(1),
         );
@@ -639,13 +613,11 @@ mod tests {
     fn run_serial_processes_until_idle() {
         let w1 = Wit::with_config(
             JoinScheduler::default(),
-            Echo,
             None,
             std::time::Duration::from_secs(0),
         );
         let w2 = Wit::with_config(
             JoinScheduler::default(),
-            Echo,
             None,
             std::time::Duration::from_secs(0),
         );
@@ -659,9 +631,9 @@ mod tests {
     #[test]
     fn heart_flows_across_three_wits() {
         use std::time::Duration;
-        let w1 = Wit::with_config(JoinScheduler::default(), Echo, None, Duration::from_secs(0));
-        let w2 = Wit::with_config(JoinScheduler::default(), Echo, None, Duration::from_secs(0));
-        let w3 = Wit::with_config(JoinScheduler::default(), Echo, None, Duration::from_secs(0));
+        let w1 = Wit::with_config(JoinScheduler::default(), None, Duration::from_secs(0));
+        let w2 = Wit::with_config(JoinScheduler::default(), None, Duration::from_secs(0));
+        let w3 = Wit::with_config(JoinScheduler::default(), None, Duration::from_secs(0));
         let mut heart = Heart::new(vec![w1, w2, w3]);
         heart.push(Experience::new("a"));
         heart.push(Experience::new("b"));
@@ -674,7 +646,6 @@ mod tests {
     fn tick_clears_queue_and_returns_output() {
         let mut wit = Wit::with_config(
             JoinScheduler::default(),
-            Echo,
             None,
             std::time::Duration::from_secs(0),
         );
@@ -716,7 +687,7 @@ mod tests {
         }
 
         let scheduler = ProcessorScheduler::new(MockProcessor);
-        let mut wit = Wit::with_config(scheduler, Echo, None, std::time::Duration::from_secs(0));
+        let mut wit = Wit::with_config(scheduler, None, std::time::Duration::from_secs(0));
         wit.push(Experience::new("one"));
         wit.push(Experience::new("two"));
         let exp = wit.tick().unwrap();
@@ -747,7 +718,7 @@ mod tests {
         }
 
         let scheduler = ProcessorScheduler::new(FailProcessor);
-        let mut wit = Wit::with_config(scheduler, Echo, None, std::time::Duration::from_secs(0));
+        let mut wit = Wit::with_config(scheduler, None, std::time::Duration::from_secs(0));
         wit.push(Experience::new("one"));
         assert!(wit.tick().is_none());
         assert!(wit.memory.all().is_empty());
