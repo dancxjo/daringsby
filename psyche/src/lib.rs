@@ -1,11 +1,9 @@
 //! Core types for Pete's cognitive loop including the event bus, sensors,
-//! schedulers and the `Heart`/`Wit` abstractions. The accompanying web server
-//! streams bus events over WebSockets.
+//! schedulers and the `Heart`/`Wit` abstractions.
 
 pub mod bus;
 pub mod logging;
 pub mod sensors;
-pub mod server;
 pub mod wit;
 
 mod experience;
