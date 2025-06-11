@@ -3,4 +3,4 @@
 pub mod sensors;
 pub mod web;
 
-pub use sensors::{ChatSensor, ConnectionSensor};
+pub use sensors::{ChatSensor, ConnectionSensor, HeartbeatSensor};

@@ -17,6 +17,7 @@ async fn main() -> Result<()> {
     let external_sensors: Vec<Box<dyn psyche::Sensor<Input = psyche::bus::Event> + Send + Sync>> = vec![
         Box::new(pete::sensors::ChatSensor::default()),
         Box::new(pete::sensors::ConnectionSensor::default()),
+        Box::new(pete::sensors::HeartbeatSensor::default()),
     ];
 
     let model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "gemma3".into());

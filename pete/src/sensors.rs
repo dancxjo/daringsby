@@ -72,6 +72,56 @@ impl Sensor for ConnectionSensor {
     }
 }
 
+/// Periodic sensor announcing the local time and that Pete is alive.
+///
+/// # Examples
+/// ```
+/// use std::time::Duration;
+/// use psyche::Sensor;
+/// use pete::sensors::HeartbeatSensor;
+/// let mut sensor = HeartbeatSensor::new(Duration::from_secs(0));
+/// let exps = sensor.experience();
+/// assert!(exps[0].how.contains("still beating"));
+/// ```
+pub struct HeartbeatSensor {
+    interval: std::time::Duration,
+    next: Option<std::time::Instant>,
+}
+
+impl HeartbeatSensor {
+    /// Create a sensor that emits every `interval` seconds.
+    pub fn new(interval: std::time::Duration) -> Self {
+        Self {
+            interval,
+            next: None,
+        }
+    }
+}
+
+impl Default for HeartbeatSensor {
+    fn default() -> Self {
+        Self::new(std::time::Duration::from_secs(30))
+    }
+}
+
+impl Sensor for HeartbeatSensor {
+    type Input = Event;
+    fn feel(&mut self, _s: Sensation<Self::Input>) {}
+
+    fn experience(&mut self) -> Vec<Experience> {
+        let now = std::time::Instant::now();
+        if self.next.map_or(true, |next| now >= next) {
+            self.next = Some(now + self.interval);
+            let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+            vec![Experience::new(format!(
+                "It's {ts} and Pete's heart is still beating."
+            ))]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,5 +144,13 @@ mod tests {
         sensor.feel(Sensation::new(Event::Disconnected(addr)));
         let exps = sensor.experience();
         assert_eq!(exps[0].how, "Connection from 127.0.0.1:80 closed.");
+    }
+
+    #[test]
+    fn heartbeat_emits_message() {
+        let mut sensor = HeartbeatSensor::new(std::time::Duration::from_secs(1));
+        let exps = sensor.experience();
+        assert!(exps[0].how.contains("still beating"));
+        assert!(sensor.experience().is_empty());
     }
 }
