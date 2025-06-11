@@ -100,10 +100,10 @@ where
         log::info!("processing {} queued", batch.len());
 
         let full_prompt = if self.context.is_empty() {
-            self.prompt.clone()
+            format!("{} Pete is an artificial consciousness.", self.prompt)
         } else {
             format!(
-                "{} Here's Pete's current situation: {}",
+                "{} Pete is an artificial consciousness. Here's his present situation: {}",
                 self.prompt, self.context
             )
         };
