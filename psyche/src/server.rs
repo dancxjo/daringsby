@@ -273,7 +273,7 @@ mod tests {
     #[tokio::test]
     async fn wit_endpoint_returns_memory() {
         let heart = Heart::new(vec![Wit::new(JoinScheduler::default(), "test")]);
-        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
+        let psyche = Arc::new(Mutex::new(Psyche::with_heart(heart, vec![])));
 
         {
             let mut p = psyche.lock().await;
@@ -300,7 +300,7 @@ mod tests {
             std::time::Duration::from_secs(0),
             "test",
         )]);
-        let psyche = Arc::new(Mutex::new(Psyche::new(
+        let psyche = Arc::new(Mutex::new(Psyche::with_heart(
             heart,
             vec![Box::new(crate::sensors::ChatSensor::default())],
         )));
@@ -324,7 +324,7 @@ mod tests {
             std::time::Duration::from_secs(0),
             "test",
         )]);
-        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
+        let psyche = Arc::new(Mutex::new(Psyche::with_heart(heart, vec![])));
 
         let resp = scheduler_handler::<ProcessorScheduler<OllamaProcessor>>(psyche.clone())
             .await
@@ -344,7 +344,7 @@ mod tests {
             std::time::Duration::from_millis(100),
             "test",
         )]);
-        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
+        let psyche = Arc::new(Mutex::new(Psyche::with_heart(heart, vec![])));
 
         {
             let mut p = psyche.lock().await;
@@ -373,7 +373,7 @@ mod tests {
             std::time::Duration::from_secs(0),
             "test",
         )]);
-        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
+        let psyche = Arc::new(Mutex::new(Psyche::with_heart(heart, vec![])));
 
         {
             let mut p = psyche.lock().await;
