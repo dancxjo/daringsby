@@ -4,8 +4,6 @@ use log::info;
 use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::Mutex;
-// bring trait into scope so we can call `experience()` on `Heart`
-use psyche::Sensor;
 
 use pete::web;
 
@@ -45,11 +43,12 @@ async fn main() -> Result<()> {
         let psyche = psyche.clone();
         tokio::spawn(async move {
             loop {
-                {
+                let sleep = {
                     let mut p = psyche.lock().await;
-                    let _ = p.heart.experience();
-                }
-                tokio::task::yield_now().await;
+                    p.heart.beat();
+                    std::time::Duration::from_millis(p.heart.due_ms())
+                };
+                tokio::time::sleep(sleep).await;
             }
         });
     }

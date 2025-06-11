@@ -74,6 +74,23 @@ where
         self.context = ctx.into();
     }
 
+    /// Process queued sensations if the interval has elapsed since the last tick.
+    ///
+    /// ```
+    /// use psyche::{Wit, JoinScheduler, Experience, Sensation, Sensor};
+    /// let mut wit = Wit::with_config(JoinScheduler::default(), None, std::time::Duration::from_secs(0), "tick");
+    /// wit.feel(Sensation::new(Experience::new("hello")));
+    /// assert!(wit.tick().is_some());
+    /// ```
+    pub fn tick(&mut self) -> Option<Experience> {
+        if self.last_tick.elapsed() >= self.interval {
+            self.last_tick = std::time::Instant::now();
+            self.process()
+        } else {
+            None
+        }
+    }
+
     /// Process queued sensations into an experience using the scheduler.
     fn process(&mut self) -> Option<Experience> {
         let batch = std::mem::take(&mut self.queue);
@@ -109,7 +126,7 @@ where
     }
 
     fn experience(&mut self) -> Vec<Experience> {
-        match self.process() {
+        match self.tick() {
             Some(exp) => vec![exp],
             None => Vec::new(),
         }
@@ -131,7 +148,7 @@ mod tests {
         );
         wit.feel(Sensation::new(Experience::new("hello")));
         assert_eq!(wit.queue_len(), 1);
-        let exp = wit.experience().pop().unwrap();
+        let exp = wit.tick().unwrap();
         assert_eq!(exp.how, "hello");
         assert_eq!(wit.queue_len(), 0);
     }

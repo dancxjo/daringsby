@@ -17,7 +17,7 @@ use crate::{Heart, Scheduler, Sensation, Sensor, Wit, bus};
 /// let mut psyche = Psyche::new(make, external_sensors);
 /// use std::net::SocketAddr;
 /// psyche.process_event(Event::Connected("127.0.0.1:1".parse().unwrap()));
-/// let _ = psyche.heart.experience();
+/// psyche.heart.beat();
 /// assert_eq!(psyche.heart.quick().unwrap().memory.all().len(), 1);
 /// ```
 pub struct Psyche<Sched>
