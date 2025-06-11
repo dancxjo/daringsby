@@ -67,7 +67,7 @@ impl Sensor for ConnectionSensor {
             Some(Event::Disconnected(addr)) => {
                 vec![Experience::new(format!("Connection from {addr} closed."))]
             }
-            _ => vec![Experience::new("No connection events.")],
+            _ => Vec::new(),
         }
     }
 }
@@ -144,6 +144,12 @@ mod tests {
         sensor.feel(Sensation::new(Event::Disconnected(addr)));
         let exps = sensor.experience();
         assert_eq!(exps[0].how, "Connection from 127.0.0.1:80 closed.");
+    }
+
+    #[test]
+    fn no_connection_event_yields_empty() {
+        let mut sensor = ConnectionSensor::default();
+        assert!(sensor.experience().is_empty());
     }
 
     #[test]
