@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
             loop {
                 {
                     let mut p = psyche.lock().await;
-                    let _ = p.heart.tick();
+                    let _ = p.heart.experience();
                 }
                 tokio::task::yield_now().await;
             }

@@ -6,3 +6,5 @@
 - Display queue lengths and timing progress on the scheduler dashboard.
 - Prefer `Heart::run_serial` for background loops instead of timer sleeps.
 - Log processor errors instead of dropping them.
+- `Heart` implements `Sensor`; use `feel` and `experience` in place of
+  `push` and `tick`.
