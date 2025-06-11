@@ -1375,10 +1375,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "futures-util",
  "lingproc",
  "log",
  "psyche",
+ "serde",
+ "serde_json",
  "tokio",
+ "warp",
 ]
 
 [[package]]

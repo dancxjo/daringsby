@@ -9,6 +9,10 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 anyhow = "1"
 log = { version = "0.4.27", features = ["std"] }
 lingproc = { path = "../lingproc" }
+warp = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+futures-util = "0.3"
 
 [dev-dependencies]
 assert_cmd = "2"
