@@ -27,7 +27,7 @@ impl Sensor for ChatSensor {
     fn experience(&mut self) -> Vec<Experience> {
         match self.last.take() {
             Some(line) => vec![Experience::new(format!("I heard someone say: {line}"))],
-            None => vec![Experience::new("I heard nothing.")],
+            None => vec![],
         }
     }
 }
