@@ -1,9 +1,8 @@
-//! Core types for Pete's cognitive loop including the event bus, sensors,
+//! Core types for Pete's cognitive loop including the event bus,
 //! schedulers and the `Heart`/`Wit` abstractions.
 
 pub mod bus;
 pub mod logging;
-pub mod sensors;
 pub mod wit;
 
 mod experience;

@@ -18,6 +18,7 @@
 - Log errors instead of silently discarding them.
 - Include tests that verify the heart passes experiences across multiple wits.
 - Sensors should return a vector of experiences.
+- External sensors belong to each psyche's crate, not the `psyche` library.
 - When testing streams created with `async_stream`, ensure you poll once more
   after the final item to trigger any cleanup logic.
 - When storing timestamped data, prefer field names `when` and `what` for
@@ -34,7 +35,7 @@ Daringsby houses several Rust crates forming a model cognitive system named Pete
 ### Layout
 - `lingproc/` – LLM processors, providers and scheduler
 - `modeldb/`  – catalog of available models
-- `psyche/`   – sensors, event bus, heart/wit logic and web server
+- `psyche/`   – sensor trait, event bus, heart/wit logic and web server
 - `memory/`   – graph and vector memory abstractions
 - `pete/`     – binary launching the web interface
 - After running `cargo fmt`, check `git status` and revert unrelated changes before committing.
