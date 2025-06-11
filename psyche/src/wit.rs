@@ -62,6 +62,13 @@ where
         self.queue.len()
     }
 
+    /// Milliseconds until the next tick based on [`Self::interval`].
+    pub fn due_ms(&self) -> u64 {
+        self.interval
+            .saturating_sub(self.last_tick.elapsed())
+            .as_millis() as u64
+    }
+
     /// Update the context string used when processing experiences.
     pub fn set_context(&mut self, ctx: impl Into<String>) {
         self.context = ctx.into();

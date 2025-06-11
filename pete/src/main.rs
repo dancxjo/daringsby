@@ -7,6 +7,8 @@ use tokio::sync::Mutex;
 // bring trait into scope so we can call `experience()` on `Heart`
 use psyche::Sensor;
 
+use pete::web;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let bus = Arc::new(psyche::bus::EventBus::new());
@@ -51,7 +53,17 @@ async fn main() -> Result<()> {
         });
     }
 
-    info!("pete running without web server");
+    {
+        let bus = bus.clone();
+        let psyche = psyche.clone();
+        tokio::spawn(async move {
+            if let Err(e) = web::serve(bus, psyche).await {
+                log::error!("web server error: {e}");
+            }
+        });
+    }
+
+    info!("pete running on http://localhost:8080");
     signal::ctrl_c().await?;
     Ok(())
 }
