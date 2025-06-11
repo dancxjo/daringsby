@@ -95,4 +95,15 @@ where
             }
         }
     }
+
+    /// Poll external sensors for new experiences.
+    pub fn poll_sensors(&mut self) {
+        for sensor in &mut self.external_sensors {
+            for exp in sensor.experience() {
+                if let Some(quick) = self.heart.quick_mut() {
+                    quick.feel(Sensation::new(exp));
+                }
+            }
+        }
+    }
 }
