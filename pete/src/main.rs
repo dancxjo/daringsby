@@ -26,34 +26,55 @@ async fn main() -> Result<()> {
     let model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "gemma3".into());
     lingproc::ensure_model_available(&model).await?;
     info!("model {model} ready");
+    let identity = std::sync::Arc::new(std::sync::Mutex::new(String::from("unknown")));
     let heart = psyche::Heart::new(vec![
         psyche::Wit::with_config(
-            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
+            psyche::ProcessorScheduler::new(
+                lingproc::OllamaProcessor::new(&model),
+                identity.clone(),
+            ),
             Echo,
+            psyche::PromptStyle::Identity,
             Some("fond".into()),
             std::time::Duration::from_secs(1),
         ),
         psyche::Wit::with_config(
-            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
+            psyche::ProcessorScheduler::new(
+                lingproc::OllamaProcessor::new(&model),
+                identity.clone(),
+            ),
             Echo,
+            psyche::PromptStyle::Reflective,
             Some("wit2".into()),
             std::time::Duration::from_secs(2),
         ),
         psyche::Wit::with_config(
-            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
+            psyche::ProcessorScheduler::new(
+                lingproc::OllamaProcessor::new(&model),
+                identity.clone(),
+            ),
             Echo,
+            psyche::PromptStyle::Objective,
             Some("wit3".into()),
             std::time::Duration::from_secs(4),
         ),
         psyche::Wit::with_config(
-            psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
+            psyche::ProcessorScheduler::new(
+                lingproc::OllamaProcessor::new(&model),
+                identity.clone(),
+            ),
             Echo,
+            psyche::PromptStyle::Objective,
             Some("quick".into()),
             std::time::Duration::from_secs(8),
         ),
     ]);
 
-    let psyche = Arc::new(Mutex::new(psyche::Psyche::new(heart, sensors)));
+    let psyche = Arc::new(Mutex::new(psyche::Psyche::new(
+        heart,
+        sensors,
+        identity.clone(),
+    )));
 
     {
         let bus = bus.clone();
@@ -73,7 +94,7 @@ async fn main() -> Result<()> {
             loop {
                 {
                     let mut p = psyche.lock().await;
-                    let _ = p.heart.tick();
+                    let _ = p.tick();
                 }
                 tokio::task::yield_now().await;
             }

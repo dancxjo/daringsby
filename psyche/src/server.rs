@@ -1,5 +1,7 @@
+#[cfg(test)]
+use crate::PromptStyle;
 use crate::bus::{Event, EventBus};
-use crate::{ProcessorScheduler, Psyche, Scheduler, Sensor};
+use crate::{ProcessorScheduler, Psyche, Scheduler, Sensor, Styleable};
 use futures::{SinkExt, StreamExt};
 use lingproc::OllamaProcessor;
 use log::info;
@@ -114,7 +116,7 @@ async fn psyche_handler<S, P>(
     psyche: Arc<Mutex<Psyche<S, P>>>,
 ) -> Result<impl warp::Reply, warp::Rejection>
 where
-    S: Scheduler + Send + Sync,
+    S: Scheduler + Styleable + Send + Sync,
     P: Sensor<Input = S::Output> + Send + Sync,
     S::Output: Serialize + Clone,
 {
@@ -142,7 +144,7 @@ async fn scheduler_handler<S, P>(
     psyche: Arc<Mutex<Psyche<S, P>>>,
 ) -> Result<impl warp::Reply, warp::Rejection>
 where
-    S: Scheduler + Send + Sync + 'static,
+    S: Scheduler + Styleable + Send + Sync + 'static,
     P: Sensor<Input = S::Output> + Send + Sync + 'static,
     S::Output: Serialize + Clone,
 {
@@ -189,7 +191,7 @@ async fn wit_handler<S, P>(
     psyche: Arc<Mutex<Psyche<S, P>>>,
 ) -> Result<impl warp::Reply, warp::Rejection>
 where
-    S: Scheduler + Send + Sync,
+    S: Scheduler + Styleable + Send + Sync,
     P: Sensor<Input = S::Output> + Send + Sync,
     S::Output: Serialize + Clone,
 {
@@ -216,7 +218,7 @@ pub async fn run_with_psyche<S, P>(
     psyche: Arc<Mutex<Psyche<S, P>>>,
     addr: impl Into<SocketAddr>,
 ) where
-    S: Scheduler + Send + Sync + 'static,
+    S: Scheduler + Styleable + Send + Sync + 'static,
     P: Sensor<Input = S::Output> + Send + Sync + 'static,
     S::Output: Serialize + Clone + Send + Sync + 'static,
 {
@@ -270,8 +272,13 @@ mod tests {
 
     #[tokio::test]
     async fn wit_endpoint_returns_memory() {
-        let heart = Heart::new(vec![Wit::new(JoinScheduler::default(), Echo)]);
-        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
+        let heart = Heart::new(vec![Wit::new(
+            JoinScheduler::default(),
+            Echo,
+            PromptStyle::Objective,
+        )]);
+        let id = std::sync::Arc::new(std::sync::Mutex::new("unknown".into()));
+        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![], id)));
 
         {
             let mut p = psyche.lock().await;
@@ -292,15 +299,18 @@ mod tests {
 
     #[tokio::test]
     async fn psyche_endpoint_lists_wits() {
+        let id = std::sync::Arc::new(std::sync::Mutex::new("unknown".into()));
         let heart = Heart::new(vec![Wit::with_config(
-            ProcessorScheduler::new(OllamaProcessor::new("model")),
+            ProcessorScheduler::new(OllamaProcessor::new("model"), id.clone()),
             Echo,
+            PromptStyle::Objective,
             Some("w1".into()),
             std::time::Duration::from_secs(0),
         )]);
         let psyche = Arc::new(Mutex::new(Psyche::new(
             heart,
             vec![Box::new(crate::sensors::ChatSensor::default())],
+            id.clone(),
         )));
 
         let resp = psyche_handler::<ProcessorScheduler<OllamaProcessor>, Echo>(psyche.clone())
@@ -316,13 +326,15 @@ mod tests {
 
     #[tokio::test]
     async fn scheduler_endpoint_reports_model() {
+        let id = std::sync::Arc::new(std::sync::Mutex::new("unknown".into()));
         let heart = Heart::new(vec![Wit::with_config(
-            ProcessorScheduler::new(OllamaProcessor::new("llama-test")),
+            ProcessorScheduler::new(OllamaProcessor::new("llama-test"), id.clone()),
             Echo,
+            PromptStyle::Objective,
             None,
             std::time::Duration::from_secs(0),
         )]);
-        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
+        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![], id.clone())));
 
         let resp = scheduler_handler::<ProcessorScheduler<OllamaProcessor>, Echo>(psyche.clone())
             .await
@@ -339,10 +351,12 @@ mod tests {
         let heart = Heart::new(vec![Wit::with_config(
             JoinScheduler::default(),
             Echo,
+            PromptStyle::Objective,
             Some("q".into()),
             std::time::Duration::from_millis(100),
         )]);
-        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
+        let id = std::sync::Arc::new(std::sync::Mutex::new("unknown".into()));
+        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![], id)));
 
         {
             let mut p = psyche.lock().await;
@@ -368,10 +382,12 @@ mod tests {
         let heart = Heart::new(vec![Wit::with_config(
             JoinScheduler::default(),
             Echo,
+            PromptStyle::Objective,
             None,
             std::time::Duration::from_secs(0),
         )]);
-        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
+        let id = std::sync::Arc::new(std::sync::Mutex::new("unknown".into()));
+        let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![], id)));
 
         {
             let mut p = psyche.lock().await;

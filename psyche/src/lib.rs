@@ -103,6 +103,12 @@ pub trait Scheduler {
     fn schedule(&mut self, batch: Vec<Experience>) -> Option<Sensation<Self::Output>>;
 }
 
+/// Optional ability for a scheduler to accept prompt styles.
+pub trait Styleable {
+    /// Update the prompt style if supported.
+    fn set_style(&mut self, _style: PromptStyle) {}
+}
+
 /// Join all experience descriptions together.
 #[derive(Default)]
 pub struct JoinScheduler;
@@ -122,12 +128,28 @@ impl Scheduler for JoinScheduler {
     }
 }
 
+impl Styleable for JoinScheduler {}
+
+/// Scheduler using an LLM processor to summarize experience text.
+/// Prompt style for the [`ProcessorScheduler`].
+#[derive(Clone, Copy)]
+pub enum PromptStyle {
+    /// Summarize events as objectively as possible.
+    Objective,
+    /// Reflect on the meaning of recent events.
+    Reflective,
+    /// Consider how events influence Pete's identity.
+    Identity,
+}
+
 /// Scheduler using an LLM processor to summarize experience text.
 pub struct ProcessorScheduler<P> {
     processor: P,
+    style: PromptStyle,
+    identity: std::sync::Arc<std::sync::Mutex<String>>,
 }
 
-fn narrative_prompt(identity: &str, batch: &[Experience]) -> String {
+fn narrative_prompt(style: PromptStyle, identity: &str, batch: &[Experience]) -> String {
     use chrono::{DateTime, Utc};
     let experiences = batch
         .iter()
@@ -137,15 +159,38 @@ fn narrative_prompt(identity: &str, batch: &[Experience]) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ");
+    let instruction = match style {
+        PromptStyle::Objective => {
+            "Summarize what is happening right now as objectively as possible.".to_string()
+        }
+        PromptStyle::Reflective => "Consider what these events might mean for Pete.".to_string(),
+        PromptStyle::Identity => "Explain how these events shape Pete's sense of self.".to_string(),
+    };
     format!(
-        "You are acting as the linguistic processing unit for a larger entity named Pete. Pete is a {identity}. Over the past little while, Pete has experienced the following: {experiences} In the voice of Pete and without headers or footers or any sort (just the plain text of Pete's response), produce a brief narrative from the perspective of Pete, talking to himself, that explains what's currently happening. Be succinct but thorough. Aim for one or two sentences at most. Do not use bullet points or lists, just a single paragraph of text.",
+        "You are acting as the linguistic processing unit for a larger entity named Pete. Pete is a {identity}. Over the past little while, Pete has experienced the following: {experiences} {instruction} Respond in one sentence from Pete's perspective without extra headers or lists.",
     )
 }
 
 impl<P> ProcessorScheduler<P> {
     /// Create a new scheduler wrapping the given processor.
-    pub fn new(processor: P) -> Self {
-        Self { processor }
+    pub fn new(processor: P, identity: std::sync::Arc<std::sync::Mutex<String>>) -> Self {
+        Self {
+            processor,
+            style: PromptStyle::Objective,
+            identity,
+        }
+    }
+
+    /// Update the prompt style.
+    pub fn set_style(&mut self, style: PromptStyle) {
+        self.style = style;
+    }
+
+    /// Update the identity string used in prompts.
+    pub fn set_identity(&mut self, id: impl Into<String>) {
+        if let Ok(mut ident) = self.identity.lock() {
+            *ident = id.into();
+        }
     }
 
     /// Capabilities advertised by the underlying processor.
@@ -154,6 +199,12 @@ impl<P> ProcessorScheduler<P> {
         P: lingproc::Processor,
     {
         self.processor.capabilities()
+    }
+}
+
+impl<P> Styleable for ProcessorScheduler<P> {
+    fn set_style(&mut self, style: PromptStyle) {
+        self.style = style;
     }
 }
 
@@ -173,7 +224,8 @@ where
 
         log::info!("processor scheduler starting");
 
-        let instruction = narrative_prompt("unknown", &batch);
+        let id = self.identity.lock().map(|s| s.clone()).unwrap_or_default();
+        let instruction = narrative_prompt(self.style, &id, &batch);
         log::info!("llm prompt: {}", instruction);
         drop(batch);
 
@@ -223,6 +275,8 @@ where
     sensor: P,
     queue: Vec<Experience>,
     pub memory: Memory<S::Output>,
+    /// Prompt style controlling summarization.
+    pub style: PromptStyle,
     /// Optional human readable identifier.
     pub name: Option<String>,
     /// Interval between ticks.
@@ -232,27 +286,36 @@ where
 
 impl<S, P> Wit<S, P>
 where
-    S: Scheduler,
+    S: Scheduler + Styleable,
     P: Sensor<Input = S::Output>,
     S::Output: Clone,
 {
     /// Create a new wit from a scheduler and sensor with default settings.
-    pub fn new(scheduler: S, sensor: P) -> Self {
-        Self::with_config(scheduler, sensor, None, std::time::Duration::from_secs(1))
+    pub fn new(scheduler: S, sensor: P, style: PromptStyle) -> Self {
+        Self::with_config(
+            scheduler,
+            sensor,
+            style,
+            None,
+            std::time::Duration::from_secs(1),
+        )
     }
 
     /// Create a new wit with a custom name and tick interval.
     pub fn with_config(
-        scheduler: S,
+        mut scheduler: S,
         sensor: P,
+        style: PromptStyle,
         name: Option<String>,
         interval: std::time::Duration,
     ) -> Self {
+        scheduler.set_style(style);
         Self {
             scheduler,
             sensor,
             queue: Vec::new(),
             memory: Memory::new(),
+            style,
             name,
             interval,
             last_tick: std::time::Instant::now(),
@@ -276,7 +339,8 @@ where
     ///         Some(Experience::new(s.what))
     ///     }
     /// }
-    /// let mut wit = Wit::new(JoinScheduler::default(), Echo);
+    /// use psyche::PromptStyle;
+    /// let mut wit = Wit::new(JoinScheduler::default(), Echo, PromptStyle::Objective);
     /// assert_eq!(wit.queue_len(), 0);
     /// wit.push(Experience::new("test"));
     /// assert_eq!(wit.queue_len(), 1);
@@ -292,6 +356,8 @@ where
             return None;
         }
         log::info!("processing {} queued", batch.len());
+
+        self.scheduler.set_style(self.style);
 
         let sensation = self.scheduler.schedule(batch)?;
         self.memory.remember(sensation.clone());
@@ -333,7 +399,7 @@ impl<W> Heart<W> {
 
 impl<S, P> Heart<Wit<S, P>>
 where
-    S: Scheduler,
+    S: Scheduler + Styleable,
     P: Sensor<Input = S::Output>,
     S::Output: Clone,
 {
@@ -495,9 +561,11 @@ impl Experience {
 /// use psyche::{bus::Event, sensors::{ChatSensor, ConnectionSensor}, Heart, Wit, JoinScheduler, Sensor};
 /// struct Echo;
 /// impl psyche::Sensor for Echo { type Input = String; fn feel(&mut self, s: psyche::Sensation<String>) -> Option<psyche::Experience> { Some(psyche::Experience::new(s.what)) } }
+/// use psyche::PromptStyle;
 /// let wit = Wit::with_config(
 ///     JoinScheduler::default(),
 ///     Echo,
+///     PromptStyle::Objective,
 ///     None,
 ///     std::time::Duration::from_secs(0),
 /// );
@@ -505,7 +573,8 @@ impl Experience {
 ///     Box::new(ChatSensor::default()),
 ///     Box::new(ConnectionSensor::default()),
 /// ];
-/// let mut psyche = psyche::Psyche::new(Heart::new(vec![wit]), sensors);
+/// let identity = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+/// let mut psyche = psyche::Psyche::new(Heart::new(vec![wit]), sensors, identity.clone());
 /// use std::net::SocketAddr;
 /// psyche.process_event(Event::Connected("127.0.0.1:1".parse().unwrap()));
 /// psyche.heart.tick();
@@ -513,18 +582,20 @@ impl Experience {
 /// ```
 pub struct Psyche<Sched, Percept>
 where
-    Sched: Scheduler,
+    Sched: Scheduler + Styleable,
     Percept: Sensor<Input = Sched::Output>,
     Sched::Output: Clone,
 {
     /// Internal heart managing wits.
     pub heart: Heart<Wit<Sched, Percept>>,
+    /// Current identity used for summarization prompts.
+    pub identity: std::sync::Arc<std::sync::Mutex<String>>,
     sensors: Vec<Box<dyn Sensor<Input = bus::Event> + Send + Sync>>,
 }
 
 impl<Sched, Percept> Psyche<Sched, Percept>
 where
-    Sched: Scheduler,
+    Sched: Scheduler + Styleable,
     Percept: Sensor<Input = Sched::Output>,
     Sched::Output: Clone,
 {
@@ -532,8 +603,13 @@ where
     pub fn new(
         heart: Heart<Wit<Sched, Percept>>,
         sensors: Vec<Box<dyn Sensor<Input = bus::Event> + Send + Sync>>,
+        identity: std::sync::Arc<std::sync::Mutex<String>>,
     ) -> Self {
-        Self { heart, sensors }
+        Self {
+            heart,
+            identity,
+            sensors,
+        }
     }
 
     /// Feed an event through all sensors and push resulting experiences to the quick.
@@ -546,6 +622,19 @@ where
                 }
             }
         }
+    }
+
+    /// Run one tick of the heart and update identity from the result.
+    pub fn tick(&mut self) -> Option<Experience> {
+        let out = self.heart.tick();
+        if let Some(ref exp) = out {
+            if let Ok(mut id) = self.identity.lock() {
+                *id = exp.how.clone();
+            }
+            // Schedulers share the identity via an `Arc`, so no per-wit update
+            // is required here.
+        }
+        out
     }
 }
 
@@ -593,12 +682,14 @@ mod tests {
         let w1 = Wit::with_config(
             JoinScheduler::default(),
             Echo,
+            PromptStyle::Objective,
             None,
             std::time::Duration::from_secs(0),
         );
         let w2 = Wit::with_config(
             JoinScheduler::default(),
             Echo,
+            PromptStyle::Objective,
             None,
             std::time::Duration::from_secs(0),
         );
@@ -617,12 +708,14 @@ mod tests {
         let w1 = Wit::with_config(
             JoinScheduler::default(),
             Echo,
+            PromptStyle::Objective,
             Some("fond".to_string()),
             Duration::from_millis(1),
         );
         let w2 = Wit::with_config(
             JoinScheduler::default(),
             Echo,
+            PromptStyle::Objective,
             Some("quick".to_string()),
             Duration::from_millis(1),
         );
@@ -640,12 +733,14 @@ mod tests {
         let w1 = Wit::with_config(
             JoinScheduler::default(),
             Echo,
+            PromptStyle::Objective,
             None,
             std::time::Duration::from_secs(0),
         );
         let w2 = Wit::with_config(
             JoinScheduler::default(),
             Echo,
+            PromptStyle::Objective,
             None,
             std::time::Duration::from_secs(0),
         );
@@ -659,9 +754,27 @@ mod tests {
     #[test]
     fn heart_flows_across_three_wits() {
         use std::time::Duration;
-        let w1 = Wit::with_config(JoinScheduler::default(), Echo, None, Duration::from_secs(0));
-        let w2 = Wit::with_config(JoinScheduler::default(), Echo, None, Duration::from_secs(0));
-        let w3 = Wit::with_config(JoinScheduler::default(), Echo, None, Duration::from_secs(0));
+        let w1 = Wit::with_config(
+            JoinScheduler::default(),
+            Echo,
+            PromptStyle::Objective,
+            None,
+            Duration::from_secs(0),
+        );
+        let w2 = Wit::with_config(
+            JoinScheduler::default(),
+            Echo,
+            PromptStyle::Objective,
+            None,
+            Duration::from_secs(0),
+        );
+        let w3 = Wit::with_config(
+            JoinScheduler::default(),
+            Echo,
+            PromptStyle::Objective,
+            None,
+            Duration::from_secs(0),
+        );
         let mut heart = Heart::new(vec![w1, w2, w3]);
         heart.push(Experience::new("a"));
         heart.push(Experience::new("b"));
@@ -675,6 +788,7 @@ mod tests {
         let mut wit = Wit::with_config(
             JoinScheduler::default(),
             Echo,
+            PromptStyle::Objective,
             None,
             std::time::Duration::from_secs(0),
         );
@@ -715,8 +829,15 @@ mod tests {
             }
         }
 
-        let scheduler = ProcessorScheduler::new(MockProcessor);
-        let mut wit = Wit::with_config(scheduler, Echo, None, std::time::Duration::from_secs(0));
+        let identity = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let scheduler = ProcessorScheduler::new(MockProcessor, identity);
+        let mut wit = Wit::with_config(
+            scheduler,
+            Echo,
+            PromptStyle::Objective,
+            None,
+            std::time::Duration::from_secs(0),
+        );
         wit.push(Experience::new("one"));
         wit.push(Experience::new("two"));
         let exp = wit.tick().unwrap();
@@ -746,10 +867,45 @@ mod tests {
             }
         }
 
-        let scheduler = ProcessorScheduler::new(FailProcessor);
-        let mut wit = Wit::with_config(scheduler, Echo, None, std::time::Duration::from_secs(0));
+        let identity = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let scheduler = ProcessorScheduler::new(FailProcessor, identity);
+        let mut wit = Wit::with_config(
+            scheduler,
+            Echo,
+            PromptStyle::Objective,
+            None,
+            std::time::Duration::from_secs(0),
+        );
         wit.push(Experience::new("one"));
         assert!(wit.tick().is_none());
         assert!(wit.memory.all().is_empty());
+    }
+
+    #[test]
+    fn psyche_tick_updates_identity() {
+        let id = std::sync::Arc::new(std::sync::Mutex::new(String::from("start")));
+        let heart = Heart::new(vec![Wit::with_config(
+            JoinScheduler::default(),
+            Echo,
+            PromptStyle::Objective,
+            None,
+            std::time::Duration::from_secs(0),
+        )]);
+        let mut psyche = Psyche::new(heart, vec![], id.clone());
+        psyche.heart.push(Experience::new("hello"));
+        let exp = psyche.tick().unwrap();
+        assert_eq!(exp.how, "hello");
+        assert_eq!(id.lock().unwrap().as_str(), "hello");
+    }
+
+    #[test]
+    fn narrative_prompt_variation() {
+        let batch = vec![Experience::new("something happened")];
+        let obj = narrative_prompt(PromptStyle::Objective, "me", &batch);
+        assert!(obj.contains("objectively"));
+        let refl = narrative_prompt(PromptStyle::Reflective, "me", &batch);
+        assert!(refl.contains("mean for Pete"));
+        let ident = narrative_prompt(PromptStyle::Identity, "me", &batch);
+        assert!(ident.contains("sense of self"));
     }
 }
