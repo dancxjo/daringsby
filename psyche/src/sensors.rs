@@ -7,8 +7,8 @@ use crate::{Experience, Sensation, Sensor, bus::Event};
 /// use psyche::{bus::Event, sensors::ChatSensor, Sensation, Sensor};
 /// let mut sensor = ChatSensor::default();
 /// sensor.feel(Sensation::new(Event::Chat("hi".into())));
-/// let exp = sensor.experience();
-/// assert_eq!(exp.how, "I heard someone say: hi");
+/// let exps = sensor.experience();
+/// assert_eq!(exps[0].how, "I heard someone say: hi");
 /// ```
 #[derive(Default)]
 pub struct ChatSensor {
@@ -23,10 +23,10 @@ impl Sensor for ChatSensor {
         }
     }
 
-    fn experience(&mut self) -> Experience {
+    fn experience(&mut self) -> Vec<Experience> {
         match self.last.take() {
-            Some(line) => Experience::new(format!("I heard someone say: {line}")),
-            None => Experience::new("I heard nothing."),
+            Some(line) => vec![Experience::new(format!("I heard someone say: {line}"))],
+            None => vec![Experience::new("I heard nothing.")],
         }
     }
 }
@@ -40,8 +40,8 @@ impl Sensor for ChatSensor {
 /// let mut sensor = ConnectionSensor::default();
 /// let addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
 /// sensor.feel(Sensation::new(Event::Connected(addr)));
-/// let exp = sensor.experience();
-/// assert!(exp.how.contains("127.0.0.1"));
+/// let exps = sensor.experience();
+/// assert!(exps[0].how.contains("127.0.0.1"));
 /// ```
 #[derive(Default)]
 pub struct ConnectionSensor {
@@ -57,15 +57,15 @@ impl Sensor for ConnectionSensor {
         }
     }
 
-    fn experience(&mut self) -> Experience {
+    fn experience(&mut self) -> Vec<Experience> {
         match self.last.take() {
             Some(Event::Connected(addr)) => {
-                Experience::new(format!("Someone at {addr} connected."))
+                vec![Experience::new(format!("Someone at {addr} connected."))]
             }
             Some(Event::Disconnected(addr)) => {
-                Experience::new(format!("Connection from {addr} closed."))
+                vec![Experience::new(format!("Connection from {addr} closed."))]
             }
-            _ => Experience::new("No connection events."),
+            _ => vec![Experience::new("No connection events.")],
         }
     }
 }
@@ -78,8 +78,8 @@ mod tests {
     fn chat_event_to_experience() {
         let mut sensor = ChatSensor::default();
         sensor.feel(Sensation::new(Event::Chat("hello".into())));
-        let exp = sensor.experience();
-        assert_eq!(exp.how, "I heard someone say: hello");
+        let exps = sensor.experience();
+        assert_eq!(exps[0].how, "I heard someone say: hello");
     }
 
     #[test]
@@ -87,10 +87,10 @@ mod tests {
         let addr: std::net::SocketAddr = "127.0.0.1:80".parse().unwrap();
         let mut sensor = ConnectionSensor::default();
         sensor.feel(Sensation::new(Event::Connected(addr)));
-        let exp = sensor.experience();
-        assert_eq!(exp.how, "Someone at 127.0.0.1:80 connected.");
+        let exps = sensor.experience();
+        assert_eq!(exps[0].how, "Someone at 127.0.0.1:80 connected.");
         sensor.feel(Sensation::new(Event::Disconnected(addr)));
-        let exp = sensor.experience();
-        assert_eq!(exp.how, "Connection from 127.0.0.1:80 closed.");
+        let exps = sensor.experience();
+        assert_eq!(exps[0].how, "Connection from 127.0.0.1:80 closed.");
     }
 }

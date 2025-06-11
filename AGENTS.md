@@ -17,6 +17,7 @@
 - Prefer doc tests and examples for public APIs to aid understanding.
 - Log errors instead of silently discarding them.
 - Include tests that verify the heart passes experiences across multiple wits.
+- Sensors should return a vector of experiences.
 - When testing streams created with `async_stream`, ensure you poll once more
   after the final item to trigger any cleanup logic.
 - When storing timestamped data, prefer field names `when` and `what` for

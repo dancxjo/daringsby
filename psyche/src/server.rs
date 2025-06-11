@@ -130,7 +130,7 @@ where
         })
         .collect();
     let sensors = psyche
-        .sensors
+        .external_sensors
         .iter()
         .map(|s| type_name_of_val(&**s).to_string())
         .collect();
@@ -265,14 +265,14 @@ mod tests {
             self.last = Some(s.what);
         }
 
-        fn experience(&mut self) -> Experience {
-            Experience::new(self.last.take().unwrap())
+        fn experience(&mut self) -> Vec<Experience> {
+            vec![Experience::new(self.last.take().unwrap())]
         }
     }
 
     #[tokio::test]
     async fn wit_endpoint_returns_memory() {
-        let heart = Heart::new(vec![Wit::new(JoinScheduler::default())]);
+        let heart = Heart::new(vec![Wit::new(JoinScheduler::default(), "test")]);
         let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
 
         {
@@ -298,6 +298,7 @@ mod tests {
             ProcessorScheduler::new(OllamaProcessor::new("model")),
             Some("w1".into()),
             std::time::Duration::from_secs(0),
+            "test",
         )]);
         let psyche = Arc::new(Mutex::new(Psyche::new(
             heart,
@@ -321,6 +322,7 @@ mod tests {
             ProcessorScheduler::new(OllamaProcessor::new("llama-test")),
             None,
             std::time::Duration::from_secs(0),
+            "test",
         )]);
         let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
 
@@ -340,6 +342,7 @@ mod tests {
             JoinScheduler::default(),
             Some("q".into()),
             std::time::Duration::from_millis(100),
+            "test",
         )]);
         let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
 
@@ -368,6 +371,7 @@ mod tests {
             JoinScheduler::default(),
             None,
             std::time::Duration::from_secs(0),
+            "test",
         )]);
         let psyche = Arc::new(Mutex::new(Psyche::new(heart, vec![])));
 

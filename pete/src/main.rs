@@ -9,7 +9,7 @@ async fn main() -> Result<()> {
     let bus = Arc::new(psyche::bus::EventBus::new());
     psyche::logging::init(bus.clone())?;
 
-    let sensors: Vec<Box<dyn psyche::Sensor<Input = psyche::bus::Event> + Send + Sync>> = vec![
+    let external_sensors: Vec<Box<dyn psyche::Sensor<Input = psyche::bus::Event> + Send + Sync>> = vec![
         Box::new(psyche::sensors::ChatSensor::default()),
         Box::new(psyche::sensors::ConnectionSensor::default()),
     ];
@@ -22,25 +22,29 @@ async fn main() -> Result<()> {
             psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
             Some("fond".into()),
             std::time::Duration::from_secs(1),
+            "fond",
         ),
         psyche::Wit::with_config(
             psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
             Some("wit2".into()),
             std::time::Duration::from_secs(2),
+            "wit2",
         ),
         psyche::Wit::with_config(
             psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
             Some("wit3".into()),
             std::time::Duration::from_secs(4),
+            "wit3",
         ),
         psyche::Wit::with_config(
             psyche::ProcessorScheduler::new(lingproc::OllamaProcessor::new(&model)),
             Some("quick".into()),
             std::time::Duration::from_secs(8),
+            "quick",
         ),
     ]);
 
-    let psyche = Arc::new(Mutex::new(psyche::Psyche::new(heart, sensors)));
+    let psyche = Arc::new(Mutex::new(psyche::Psyche::new(heart, external_sensors)));
 
     {
         let bus = bus.clone();
