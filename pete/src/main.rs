@@ -41,16 +41,7 @@ async fn main() -> Result<()> {
 
     {
         let psyche = psyche.clone();
-        tokio::spawn(async move {
-            loop {
-                let sleep = {
-                    let mut p = psyche.lock().await;
-                    p.heart.beat();
-                    std::time::Duration::from_millis(p.heart.due_ms())
-                };
-                tokio::time::sleep(sleep).await;
-            }
-        });
+        psyche::spawn_heartbeat(psyche);
     }
 
     {
