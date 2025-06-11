@@ -253,11 +253,11 @@ where
     S: Scheduler,
     S::Output: Clone + Into<String>,
 {
-    /// Push a new experience into the fond.
+    /// Feed a new experience into the fond wit.
     pub fn push(&mut self, exp: Experience) {
         log::info!("heart push to fond: {}", exp.how);
         if let Some(first) = self.wits.first_mut() {
-            first.push(exp);
+            first.feel(Sensation::new(exp));
         }
     }
 
@@ -274,14 +274,14 @@ where
                 continue;
             }
             self.wits[i].last_tick = now;
-            let output = {
+            let outputs = {
                 let wit = &mut self.wits[i];
                 log::trace!("wit {i} tick");
-                wit.tick()
+                wit.experience()
             };
-            if let Some(exp) = output {
+            for exp in outputs {
                 if let Some(next) = self.wits.get_mut(i + 1) {
-                    next.push(exp);
+                    next.feel(Sensation::new(exp));
                 } else {
                     last_output = Some(exp);
                 }
@@ -296,11 +296,13 @@ where
             let mut progressed = false;
             let mut last_output = None;
             for i in 0..self.wits.len() {
-                let output = self.wits[i].tick();
-                if let Some(exp) = output {
+                let outputs = self.wits[i].experience();
+                if !outputs.is_empty() {
                     progressed = true;
+                }
+                for exp in outputs {
                     if let Some(next) = self.wits.get_mut(i + 1) {
-                        next.push(exp);
+                        next.feel(Sensation::new(exp));
                     } else {
                         last_output = Some(exp);
                     }
@@ -328,10 +330,10 @@ where
                 let elapsed = now.duration_since(self.wits[i].last_tick);
                 if elapsed >= self.wits[i].interval {
                     self.wits[i].last_tick = now;
-                    let output = self.wits[i].tick();
-                    if let Some(exp) = output {
+                    let outputs = self.wits[i].experience();
+                    for exp in outputs {
                         if let Some(next) = self.wits.get_mut(i + 1) {
-                            next.push(exp);
+                            next.feel(Sensation::new(exp));
                         } else {
                             last_output = Some(exp);
                         }
@@ -504,7 +506,7 @@ where
             sensor.feel(sensation.clone());
             for exp in sensor.experience() {
                 if let Some(quick) = self.heart.quick_mut() {
-                    quick.push(exp);
+                    quick.feel(Sensation::new(exp));
                 }
             }
         }
@@ -647,9 +649,9 @@ mod tests {
             std::time::Duration::from_secs(0),
             "queue",
         );
-        wit.push(Experience::new("hello"));
+        wit.feel(Sensation::new(Experience::new("hello")));
         assert_eq!(wit.queue_len(), 1);
-        let exp = wit.tick().unwrap();
+        let exp = wit.experience().pop().unwrap();
         assert_eq!(exp.how, "hello");
         assert_eq!(wit.queue_len(), 0);
     }
@@ -686,9 +688,9 @@ mod tests {
 
         let scheduler = ProcessorScheduler::new(MockProcessor);
         let mut wit = Wit::with_config(scheduler, None, std::time::Duration::from_secs(0), "mock");
-        wit.push(Experience::new("one"));
-        wit.push(Experience::new("two"));
-        let exp = wit.tick().unwrap();
+        wit.feel(Sensation::new(Experience::new("one")));
+        wit.feel(Sensation::new(Experience::new("two")));
+        let exp = wit.experience().pop().unwrap();
         assert!(exp.how.starts_with("processed"));
         assert!(wit.memory.all()[0].what.starts_with("processed"));
     }
@@ -717,8 +719,8 @@ mod tests {
 
         let scheduler = ProcessorScheduler::new(FailProcessor);
         let mut wit = Wit::with_config(scheduler, None, std::time::Duration::from_secs(0), "fail");
-        wit.push(Experience::new("one"));
-        assert!(wit.tick().is_none());
+        wit.feel(Sensation::new(Experience::new("one")));
+        assert!(wit.experience().is_empty());
         assert!(wit.memory.all().is_empty());
     }
 }
