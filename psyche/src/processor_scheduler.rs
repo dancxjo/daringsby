@@ -5,7 +5,7 @@ pub struct ProcessorScheduler<P> {
     pub(crate) processor: P,
 }
 
-fn narrative_prompt(identity: &str, batch: &[Experience]) -> String {
+fn narrative_prompt(context: &str, batch: &[Experience]) -> String {
     use chrono::{DateTime, Utc};
     let experiences = batch
         .iter()
@@ -16,7 +16,7 @@ fn narrative_prompt(identity: &str, batch: &[Experience]) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     format!(
-        "You are acting as the linguistic processing unit for a larger entity named Pete. Pete is a {identity}. Over the past little while, Pete has experienced the following: {experiences} In the voice of Pete and without headers or footers or any sort (just the plain text of Pete's response), produce a brief narrative from the perspective of Pete, talking to himself, that explains what's currently happening. Be succinct but thorough. Aim for one or two sentences at most. Do not use bullet points or lists, just a single paragraph of text.",
+        "You are acting as the linguistic processing unit for a larger entity named Pete. Pete is an artificial consciousness. Here's his present situation: {context} Over the past little while, Pete has experienced the following: {experiences} In the voice of Pete and without headers or footers or any sort (just the plain text of Pete's response), produce a brief narrative from the perspective of Pete, talking to himself, that explains what's currently happening. Be succinct but thorough. Aim for one or two sentences at most. Do not use bullet points or lists, just a single paragraph of text.",
     )
 }
 
@@ -157,5 +157,12 @@ mod tests {
         wit.feel(Sensation::new(Experience::new("one")));
         assert!(wit.tick().is_none());
         assert!(wit.memory.all().is_empty());
+    }
+
+    #[test]
+    fn narrative_prompt_mentions_context() {
+        let prompt = narrative_prompt("thinking", &[Experience::new("hi")]);
+        assert!(prompt.contains("artificial consciousness"));
+        assert!(prompt.contains("Here's his present situation: thinking"));
     }
 }
