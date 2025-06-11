@@ -70,7 +70,7 @@ Daringsby contains a set of Rust crates that together form a small cognitive sys
 
 - **lingproc** – language processing utilities for chat completion, sentence embeddings and instruction following. Includes providers for Ollama and OpenAI.
 - **modeldb** – simple in-memory catalog of AI models.
-- **psyche** – primitives describing sensations and experiences along with a trait for sensors.
+- **psyche** – primitives describing sensations and experiences plus the sensor trait.
 - **memory** – stores embeddings and links them in a graph through pluggable backends.
 
 ## Development

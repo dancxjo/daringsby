@@ -1,10 +1,11 @@
-use crate::{Experience, Sensation, Sensor, bus::Event};
+use psyche::{Experience, Sensation, Sensor, bus::Event};
 
 /// Sensor interpreting chat events from the bus.
 ///
 /// # Examples
 /// ```
-/// use psyche::{bus::Event, sensors::ChatSensor, Sensation, Sensor};
+/// use psyche::{bus::Event, Sensation, Sensor};
+/// use pete::sensors::ChatSensor;
 /// let mut sensor = ChatSensor::default();
 /// sensor.feel(Sensation::new(Event::Chat("hi".into())));
 /// let exps = sensor.experience();
@@ -36,7 +37,8 @@ impl Sensor for ChatSensor {
 /// # Examples
 /// ```
 /// use std::net::SocketAddr;
-/// use psyche::{bus::Event, sensors::ConnectionSensor, Sensation, Sensor};
+/// use psyche::{bus::Event, Sensation, Sensor};
+/// use pete::sensors::ConnectionSensor;
 /// let mut sensor = ConnectionSensor::default();
 /// let addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
 /// sensor.feel(Sensation::new(Event::Connected(addr)));

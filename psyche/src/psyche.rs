@@ -6,8 +6,9 @@ use crate::{Heart, Scheduler, Sensation, Sensor, Wit, bus};
 /// quick wit.
 ///
 /// # Examples
-/// ```
-/// use psyche::{bus::Event, sensors::{ChatSensor, ConnectionSensor}, JoinScheduler, Sensor, Psyche};
+/// ```ignore
+/// use pete::sensors::{ChatSensor, ConnectionSensor};
+/// use psyche::{bus::Event, JoinScheduler, Sensor, Psyche};
 /// let make = || JoinScheduler::default();
 /// let external_sensors: Vec<Box<dyn Sensor<Input = Event> + Send + Sync>> = vec![
 ///     Box::new(ChatSensor::default()),
