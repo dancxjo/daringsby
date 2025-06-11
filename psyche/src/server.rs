@@ -251,7 +251,7 @@ pub async fn run_with_psyche<S>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Experience, Heart, JoinScheduler, Sensation, Wit, Sensor};
+    use crate::{Experience, Heart, JoinScheduler, Sensation, Sensor, Wit};
     use serde_json::Value;
     use warp::Reply;
 

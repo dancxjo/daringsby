@@ -92,3 +92,24 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::JoinScheduler;
+
+    #[test]
+    fn tick_clears_queue_and_returns_output() {
+        let mut wit = Wit::with_config(
+            JoinScheduler::default(),
+            None,
+            std::time::Duration::from_secs(0),
+            "queue",
+        );
+        wit.feel(Sensation::new(Experience::new("hello")));
+        assert_eq!(wit.queue_len(), 1);
+        let exp = wit.experience().pop().unwrap();
+        assert_eq!(exp.how, "hello");
+        assert_eq!(wit.queue_len(), 0);
+    }
+}
