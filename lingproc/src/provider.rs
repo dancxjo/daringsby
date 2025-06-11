@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use crate::{Processor, Task, TaskKind, TaskOutput, profiling::ProfilingProcessor};
 use futures::StreamExt;
 use futures::stream::BoxStream;
-use modeldb::AiModel;
+use modeldb::{AiModel, ModelRepository};
 
 /// Aggregated profile information for a provider.
 #[derive(Default, Debug, Clone)]
@@ -101,31 +101,53 @@ impl<P: Processor + Send + Sync + 'static> Processor for ManagedProcessor<Profil
 
 /// Simple provider implementation for an Ollama server.
 pub struct OllamaProvider {
-    models: Vec<AiModel>,
+    servers: Vec<crate::ollama_server::OllamaServer>,
+    repo: ModelRepository,
     profile: Arc<Mutex<ProviderProfile>>,
     active: Arc<Mutex<usize>>,
 }
 
 impl OllamaProvider {
-    /// Create a new provider with the given models.
-    pub fn new(models: Vec<AiModel>) -> Self {
+    /// Create a new provider using the supplied servers and model repository.
+    pub fn new(servers: Vec<crate::ollama_server::OllamaServer>, repo: ModelRepository) -> Self {
         Self {
-            models,
+            servers,
+            repo,
             profile: Arc::new(Mutex::new(ProviderProfile::default())),
             active: Arc::new(Mutex::new(0)),
         }
+    }
+
+    async fn find_server_with_model(
+        &self,
+        model: &str,
+    ) -> anyhow::Result<&crate::ollama_server::OllamaServer> {
+        for s in &self.servers {
+            if s.list_models().await?.iter().any(|m| m == model) {
+                return Ok(s);
+            }
+        }
+        Err(anyhow::anyhow!("model not available on any server"))
     }
 }
 
 #[async_trait]
 impl ModelRunnerProvider for OllamaProvider {
     async fn models(&self) -> anyhow::Result<Vec<AiModel>> {
-        Ok(self.models.clone())
+        let mut all = Vec::new();
+        for s in &self.servers {
+            let mut m = s.models(&self.repo).await?;
+            all.append(&mut m);
+        }
+        all.sort_by(|a, b| a.name.cmp(&b.name));
+        all.dedup_by(|a, b| a.name == b.name);
+        Ok(all)
     }
 
     async fn processor_for(&self, model: &str) -> anyhow::Result<Box<dyn Processor + Send + Sync>> {
-        crate::ensure_model_available(model).await?;
-        let proc = crate::OllamaProcessor::new(model);
+        let server = self.find_server_with_model(model).await?;
+        server.pull_model(model).await?;
+        let proc = crate::OllamaProcessor::with_client(server.client.clone(), model);
         let proc = ProfilingProcessor::new(proc);
         Ok(Box::new(ManagedProcessor::new(
             proc,

@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 pub mod provider;
 pub use provider::{ModelRunnerProvider, OllamaProvider, OpenAIProvider, ProviderProfile};
 
+pub mod ollama_server;
 pub mod profiling;
 pub mod scheduler;
 /// Role of a chat participant.
@@ -93,9 +94,21 @@ pub struct OllamaProcessor {
 }
 
 impl OllamaProcessor {
+    /// Create a processor using the default Ollama client.
     pub fn new(model: &str) -> Self {
+        Self::with_client(ollama_rs::Ollama::default(), model)
+    }
+
+    /// Create a processor backed by a custom Ollama client.
+    ///
+    /// ```no_run
+    /// let client = ollama_rs::Ollama::new("http://localhost", 11434);
+    /// let proc = lingproc::OllamaProcessor::with_client(client, "gemma3");
+    /// assert_eq!(proc.model, "gemma3");
+    /// ```
+    pub fn with_client(client: ollama_rs::Ollama, model: &str) -> Self {
         Self {
-            client: ollama_rs::Ollama::default(),
+            client,
             model: model.to_string(),
         }
     }
