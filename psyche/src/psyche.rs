@@ -17,7 +17,7 @@ use crate::{Heart, Scheduler, Sensation, Sensor, Wit, bus};
 /// let mut psyche = Psyche::new(make, external_sensors);
 /// use std::net::SocketAddr;
 /// psyche.process_event(Event::Connected("127.0.0.1:1".parse().unwrap()));
-/// psyche.heart.run_serial();
+/// let _ = psyche.heart.experience();
 /// assert_eq!(psyche.heart.quick().unwrap().memory.all().len(), 1);
 /// ```
 pub struct Psyche<Sched>
@@ -25,7 +25,7 @@ where
     Sched: Scheduler,
     Sched::Output: Clone + Into<String>,
 {
-    /// Internal heart managing wits.
+    /// Internal heart managing the quick wit.
     pub heart: Heart<Wit<Sched>>,
     pub(crate) external_sensors: Vec<Box<dyn Sensor<Input = bus::Event> + Send + Sync>>,
 }
@@ -35,10 +35,10 @@ where
     Sched: Scheduler,
     Sched::Output: Clone + Into<String>,
 {
-    /// Create a new psyche with the standard set of wits.
+    /// Create a new psyche with a single quick wit.
     ///
-    /// `scheduler_factory` is called once per wit, allowing callers to
-    /// configure the underlying scheduler implementation.
+    /// `scheduler_factory` is used to configure the underlying scheduler
+    /// implementation.
     pub fn new<F>(
         mut scheduler_factory: F,
         external_sensors: Vec<Box<dyn Sensor<Input = bus::Event> + Send + Sync>>,
@@ -47,32 +47,12 @@ where
         F: FnMut() -> Sched,
     {
         use std::time::Duration;
-        let heart = Heart::new(vec![
-            Wit::with_config(
-                scheduler_factory(),
-                Some("fond".into()),
-                Duration::from_secs(1),
-                "fond",
-            ),
-            Wit::with_config(
-                scheduler_factory(),
-                Some("wit2".into()),
-                Duration::from_secs(2),
-                "wit2",
-            ),
-            Wit::with_config(
-                scheduler_factory(),
-                Some("wit3".into()),
-                Duration::from_secs(4),
-                "wit3",
-            ),
-            Wit::with_config(
-                scheduler_factory(),
-                Some("quick".into()),
-                Duration::from_secs(8),
-                "quick",
-            ),
-        ]);
+        let heart = Heart::new(Wit::with_config(
+            scheduler_factory(),
+            Some("quick".into()),
+            Duration::from_secs(1),
+            "quick",
+        ));
         Self {
             heart,
             external_sensors,
