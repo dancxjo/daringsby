@@ -44,12 +44,11 @@ pub struct ChatCompletionTask {
     pub messages: Vec<Message>,
 }
 
-/// Produce embeddings for a single sentence.
+/// Produce embeddings for a single sentence. Images are currently only
+/// supported for [`InstructionFollowingTask`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SentenceEmbeddingTask {
     pub sentence: String,
-    #[serde(default)]
-    pub images: Vec<Vec<u8>>,
 }
 
 /// Follow a natural language instruction and return textual output.
@@ -369,7 +368,6 @@ mod tests {
         let proc = OllamaProcessor::new("nomic-embed-text");
         let task = Task::SentenceEmbedding(SentenceEmbeddingTask {
             sentence: "hello world".into(),
-            images: vec![],
         });
         let mut stream = proc.process(task).await.unwrap();
         let first = stream.next().await.unwrap().unwrap();
