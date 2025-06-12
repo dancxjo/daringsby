@@ -33,3 +33,14 @@ async fn scheduler_reports_queue_and_memory() {
     assert_eq!(info["wits"][0]["queue_len"], 1);
     assert_eq!(info["wits"][0]["memory_len"], 0);
 }
+
+#[tokio::test]
+async fn psyche_reports_beat() {
+    let bus = Arc::new(EventBus::new());
+    let psyche = Arc::new(Mutex::new(Psyche::new(|| JoinScheduler::default(), vec![])));
+    let filter = web::routes(bus.clone(), psyche);
+    let resp = request().method("GET").path("/psyche").reply(&filter).await;
+    assert_eq!(resp.status(), 200);
+    let info: serde_json::Value = serde_json::from_slice(resp.body()).unwrap();
+    assert!(info["beat"].as_u64().is_some());
+}
