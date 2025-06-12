@@ -30,6 +30,7 @@ struct PsycheInfo {
 struct WitRuntimeInfo {
     name: Option<String>,
     queue_len: usize,
+    memory_len: usize,
     last: Option<String>,
 }
 
@@ -81,6 +82,7 @@ where
     WitRuntimeInfo {
         name: w.name.clone(),
         queue_len: w.queue_len(),
+        memory_len: w.memory.all().len(),
         last,
     }
 }
