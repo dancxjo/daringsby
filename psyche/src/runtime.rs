@@ -1,13 +1,14 @@
 use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
+use tokio::time::{Duration, sleep};
 
 use crate::{Psyche, Scheduler};
 
-/// Spawn a background task that continuously polls external sensors and drives
-/// the heart.
+/// Spawn a background task that polls sensors and advances the heart.
 ///
-/// The returned handle can be awaited or aborted when shutting down. The loop
-/// does not sleep; sensors themselves decide when to emit experiences.
+/// The task only triggers a beat when new experiences are waiting so that just
+/// one linguistic task is dispatched per beat. When idle, the loop briefly
+/// sleeps to avoid a tight spin.
 ///
 /// # Examples
 /// ```ignore
@@ -31,7 +32,13 @@ where
         loop {
             let mut p = psyche.lock().await;
             p.poll_sensors();
-            p.heart.beat();
+            if p.heart.quick.queue_len() > 0 {
+                p.heart.beat();
+            } else {
+                drop(p);
+                sleep(Duration::from_millis(10)).await;
+                continue;
+            }
         }
     })
 }
