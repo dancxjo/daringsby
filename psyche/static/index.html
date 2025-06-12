@@ -86,7 +86,7 @@ async function refresh() {
   sched.wits.forEach((w, i) => {
     const name = w.name ?? `Processor ${i}`;
     const dom = procDom(name);
-    dom.summary.textContent = `${name} (queue: ${w.queue_len}, due: ${w.due_ms}ms)`;
+    dom.summary.textContent = `${name} (queue: ${w.queue_len})`;
   });
 }
 refresh();

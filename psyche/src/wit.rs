@@ -1,6 +1,6 @@
 use crate::{Experience, Memory, Scheduler, Sensation, Sensor};
 
-/// Timed loop processing experiences.
+/// Processes queued experiences when ticked by the `Heart`.
 pub struct Wit<S>
 where
     S: Scheduler,
@@ -15,9 +15,6 @@ where
     pub prompt: String,
     /// Additional context inserted into the prompt on each tick.
     pub context: String,
-    /// Interval between ticks.
-    pub interval: std::time::Duration,
-    pub(crate) last_tick: std::time::Instant,
 }
 
 impl<S> Wit<S>
@@ -25,18 +22,13 @@ where
     S: Scheduler,
     S::Output: Clone + Into<String>,
 {
-    /// Create a new wit from a scheduler with default settings.
+    /// Create a new wit from a scheduler with an optional name.
     pub fn new(scheduler: S, prompt: impl Into<String>) -> Self {
-        Self::with_config(scheduler, None, std::time::Duration::from_secs(1), prompt)
+        Self::with_config(scheduler, None, prompt)
     }
 
-    /// Create a new wit with a custom name and tick interval.
-    pub fn with_config(
-        scheduler: S,
-        name: Option<String>,
-        interval: std::time::Duration,
-        prompt: impl Into<String>,
-    ) -> Self {
+    /// Create a new wit with a custom name.
+    pub fn with_config(scheduler: S, name: Option<String>, prompt: impl Into<String>) -> Self {
         Self {
             scheduler,
             queue: Vec::new(),
@@ -44,8 +36,6 @@ where
             name,
             prompt: prompt.into(),
             context: String::new(),
-            interval,
-            last_tick: std::time::Instant::now(),
         }
     }
 
@@ -62,33 +52,21 @@ where
         self.queue.len()
     }
 
-    /// Milliseconds until the next tick based on [`Self::interval`].
-    pub fn due_ms(&self) -> u64 {
-        self.interval
-            .saturating_sub(self.last_tick.elapsed())
-            .as_millis() as u64
-    }
-
     /// Update the context string used when processing experiences.
     pub fn set_context(&mut self, ctx: impl Into<String>) {
         self.context = ctx.into();
     }
 
-    /// Process queued sensations if the interval has elapsed since the last tick.
+    /// Process queued sensations if any are waiting.
     ///
     /// ```
     /// use psyche::{Wit, JoinScheduler, Experience, Sensation, Sensor};
-    /// let mut wit = Wit::with_config(JoinScheduler::default(), None, std::time::Duration::from_secs(0), "tick");
+    /// let mut wit = Wit::with_config(JoinScheduler::default(), None, "tick");
     /// wit.feel(Sensation::new(Experience::new("hello")));
     /// assert!(wit.tick().is_some());
     /// ```
     pub fn tick(&mut self) -> Option<Experience> {
-        if self.last_tick.elapsed() >= self.interval {
-            self.last_tick = std::time::Instant::now();
-            self.process()
-        } else {
-            None
-        }
+        self.process()
     }
 
     /// Process queued sensations into an experience using the scheduler.
@@ -140,12 +118,7 @@ mod tests {
 
     #[test]
     fn tick_clears_queue_and_returns_output() {
-        let mut wit = Wit::with_config(
-            JoinScheduler::default(),
-            None,
-            std::time::Duration::from_secs(0),
-            "queue",
-        );
+        let mut wit = Wit::with_config(JoinScheduler::default(), None, "queue");
         wit.feel(Sensation::new(Experience::new("hello")));
         assert_eq!(wit.queue_len(), 1);
         let exp = wit.tick().unwrap();

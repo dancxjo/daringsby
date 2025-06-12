@@ -46,23 +46,15 @@ where
     where
         F: FnMut() -> Sched,
     {
-        use std::time::Duration;
-        let quick = Wit::with_config(
-            scheduler_factory(),
-            Some("quick".into()),
-            Duration::from_secs(1),
-            "quick",
-        );
+        let quick = Wit::with_config(scheduler_factory(), Some("quick".into()), "quick");
         let combobulator = Wit::with_config(
             scheduler_factory(),
             Some("combobulator".into()),
-            Duration::from_secs(1),
             "combobulator",
         );
         let contextualizer = Wit::with_config(
             scheduler_factory(),
             Some("contextualizer".into()),
-            Duration::from_secs(1),
             "contextualizer",
         );
         let heart = Heart::new(quick, combobulator, contextualizer);

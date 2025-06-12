@@ -146,7 +146,7 @@ mod tests {
     async fn processor_scheduler_runs_llm() {
         let bus = Arc::new(EventBus::new());
         let scheduler = ProcessorScheduler::new(MockProcessor, bus, "mock");
-        let mut wit = Wit::with_config(scheduler, None, std::time::Duration::from_secs(0), "mock");
+        let mut wit = Wit::with_config(scheduler, None, "mock");
         wit.feel(Sensation::new(Experience::new("one")));
         wit.feel(Sensation::new(Experience::new("two")));
         let exp = wit.tick().unwrap();
@@ -174,7 +174,7 @@ mod tests {
     async fn processor_scheduler_handles_errors() {
         let bus = Arc::new(EventBus::new());
         let scheduler = ProcessorScheduler::new(FailProcessor, bus, "fail");
-        let mut wit = Wit::with_config(scheduler, None, std::time::Duration::from_secs(0), "fail");
+        let mut wit = Wit::with_config(scheduler, None, "fail");
         wit.feel(Sensation::new(Experience::new("one")));
         assert!(wit.tick().is_none());
         assert!(wit.memory.all().is_empty());
