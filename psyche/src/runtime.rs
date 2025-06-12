@@ -1,5 +1,5 @@
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use tokio::sync::Mutex as TokioMutex;
 
 use crate::{Psyche, Scheduler};
 
@@ -20,7 +20,7 @@ use crate::{Psyche, Scheduler};
 /// let handle = spawn_heartbeat(psyche.clone());
 /// handle.abort();
 /// ```
-pub fn spawn_heartbeat<S>(psyche: Arc<Mutex<Psyche<S>>>) -> tokio::task::JoinHandle<()>
+pub fn spawn_heartbeat<S>(psyche: Arc<TokioMutex<Psyche<S>>>) -> tokio::task::JoinHandle<()>
 where
     S: Scheduler + Send + 'static,
     S::Output: Clone + Into<String> + Send + 'static,
@@ -34,6 +34,25 @@ where
                 std::time::Duration::from_millis(p.heart.due_ms())
             };
             tokio::time::sleep(sleep).await;
+        }
+    })
+}
+
+/// Start a blocking thread driving the heart in a loop.
+pub fn start_heartbeat_thread<S>(psyche: Arc<Mutex<Psyche<S>>>) -> std::thread::JoinHandle<()>
+where
+    S: Scheduler + Send + 'static,
+    S::Output: Clone + Into<String> + Send + 'static,
+{
+    std::thread::spawn(move || {
+        loop {
+            let sleep = {
+                let mut p = psyche.lock().unwrap();
+                p.poll_sensors();
+                p.heart.beat();
+                std::time::Duration::from_millis(p.heart.due_ms())
+            };
+            std::thread::sleep(sleep);
         }
     })
 }
