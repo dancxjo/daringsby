@@ -33,6 +33,7 @@ struct WitRuntimeInfo {
     queue_len: usize,
     memory_len: usize,
     last: Option<String>,
+    last_prompt: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -81,11 +82,13 @@ where
     S::Output: Clone + Into<String>,
 {
     let last = w.memory.all().last().map(|s| s.what.clone().into());
+    let last_prompt = w.last_prompt.clone();
     WitRuntimeInfo {
         name: w.name.clone(),
         queue_len: w.queue_len(),
         memory_len: w.memory.all().len(),
         last,
+        last_prompt,
     }
 }
 

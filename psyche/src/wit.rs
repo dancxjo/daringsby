@@ -15,6 +15,16 @@ where
     pub prompt: String,
     /// Additional context inserted into the prompt on each tick.
     pub context: String,
+    /// Last prompt dispatched to the scheduler.
+    ///
+    /// ```
+    /// use psyche::{Wit, JoinScheduler, Experience, Sensation, Sensor};
+    /// let mut wit = Wit::with_config(JoinScheduler::default(), None, "store");
+    /// wit.feel(Sensation::new(Experience::new("hello")));
+    /// wit.tick();
+    /// assert!(wit.last_prompt.as_ref().unwrap().contains("hello"));
+    /// ```
+    pub last_prompt: Option<String>,
 }
 
 impl<S> Wit<S>
@@ -36,6 +46,7 @@ where
             name,
             prompt: prompt.into(),
             context: String::new(),
+            last_prompt: None,
         }
     }
 
@@ -86,6 +97,7 @@ where
             )
         };
         let instruction = narrative_prompt(&full_prompt, &batch);
+        self.last_prompt = Some(instruction.clone());
         let sensation = self.scheduler.schedule(&instruction, batch)?;
         self.memory.remember(sensation.clone());
         Some(Experience::with_timestamp(sensation.what, sensation.when))
@@ -125,5 +137,14 @@ mod tests {
         let exp = wit.tick().unwrap();
         assert_eq!(exp.how, "hello");
         assert_eq!(wit.queue_len(), 0);
+    }
+
+    #[test]
+    fn last_prompt_records_instruction() {
+        let mut wit = Wit::with_config(JoinScheduler::default(), None, "rec");
+        wit.feel(Sensation::new(Experience::new("hi")));
+        wit.tick();
+        let prompt = wit.last_prompt.unwrap();
+        assert!(prompt.contains("hi"));
     }
 }
