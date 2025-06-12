@@ -22,6 +22,8 @@ where
     pub moment: Option<Experience>,
     /// Latest context string from the contextualizer.
     pub context: Option<String>,
+    /// Running count of beats executed.
+    pub beat: u64,
 }
 
 impl<S> Heart<S>
@@ -38,6 +40,7 @@ where
             instant: None,
             moment: None,
             context: None,
+            beat: 0,
         }
     }
 
@@ -59,25 +62,39 @@ where
             .min(self.contextualizer.due_ms())
     }
 
-    /// Propagate experiences through all wits updating instant, moment and context.
+    /// Advance the heart one beat running wits based on the beat counter.
+    ///
+    /// - On even beats the `quick` wit ticks.
+    /// - Beats divisible by 7 tick the `combobulator`.
+    /// - Beats divisible by 11 tick the `contextualizer`.
+    ///
+    /// The beat counter starts at zero and increments after each call.
     pub fn beat(&mut self) {
-        if let Some(inst) = self.quick.tick() {
-            self.instant = Some(inst.clone());
-            self.combobulator.feel(Sensation::new(inst));
+        if self.beat % 2 == 0 {
+            if let Some(inst) = self.quick.tick() {
+                self.instant = Some(inst.clone());
+                self.combobulator.feel(Sensation::new(inst));
+            }
         }
 
-        if let Some(mom) = self.combobulator.tick() {
-            self.moment = Some(mom.clone());
-            self.contextualizer.feel(Sensation::new(mom));
+        if self.beat % 7 == 0 {
+            if let Some(mom) = self.combobulator.tick() {
+                self.moment = Some(mom.clone());
+                self.contextualizer.feel(Sensation::new(mom));
+            }
         }
 
-        if let Some(ctx) = self.contextualizer.tick() {
-            let c = ctx.how.clone();
-            self.context = Some(c.clone());
-            self.quick.set_context(c.clone());
-            self.combobulator.set_context(c.clone());
-            self.contextualizer.set_context(c);
+        if self.beat % 11 == 0 {
+            if let Some(ctx) = self.contextualizer.tick() {
+                let c = ctx.how.clone();
+                self.context = Some(c.clone());
+                self.quick.set_context(c.clone());
+                self.combobulator.set_context(c.clone());
+                self.contextualizer.set_context(c);
+            }
         }
+
+        self.beat = self.beat.wrapping_add(1);
     }
 }
 
@@ -136,5 +153,26 @@ mod tests {
         };
         let heart = Heart::new(make(100), make(50), make(200));
         assert!(heart.due_ms() <= 50);
+    }
+
+    #[test]
+    fn beat_follows_schedule() {
+        let make = || {
+            Wit::with_config(
+                JoinScheduler::default(),
+                None,
+                std::time::Duration::from_secs(0),
+                "w",
+            )
+        };
+        let mut heart = Heart::new(make(), make(), make());
+        for i in 0..15 {
+            heart.feel(Sensation::new(Experience::new(format!("{i}"))));
+            heart.beat();
+        }
+        assert_eq!(heart.beat, 15);
+        assert_eq!(heart.quick.memory.all().len(), 8); // even beats
+        assert_eq!(heart.combobulator.memory.all().len(), 3); // multiples of 7
+        assert_eq!(heart.contextualizer.memory.all().len(), 2); // multiples of 11
     }
 }
