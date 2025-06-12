@@ -109,7 +109,10 @@ async fn handle_ws(ws: warp::ws::WebSocket, addr: Option<SocketAddr>, bus: Arc<E
         while let Ok(evt) = bus_rx.recv().await {
             let line = match evt {
                 Event::Log(l) => l,
-                Event::Chat(l) => format!("chat: {l}"),
+                Event::Chat { line: l, addr } => match addr {
+                    Some(a) => format!("chat:{a}:{l}"),
+                    None => format!("chat:{l}"),
+                },
                 Event::Connected(a) => format!("connected {a}"),
                 Event::Disconnected(a) => format!("disconnected {a}"),
                 Event::ProcessorPrompt { name, prompt } => format!("prompt:{name}:{prompt}"),
@@ -126,7 +129,10 @@ async fn handle_ws(ws: warp::ws::WebSocket, addr: Option<SocketAddr>, bus: Arc<E
             if msg.is_text() {
                 if let Ok(chat) = serde_json::from_str::<ChatMsg>(msg.to_str().unwrap()) {
                     if chat.kind == "chat" {
-                        bus_send.send(Event::Chat(chat.line));
+                        bus_send.send(Event::Chat {
+                            line: chat.line,
+                            addr,
+                        });
                     }
                 }
             }

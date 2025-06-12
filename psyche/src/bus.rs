@@ -5,8 +5,11 @@ use tokio::sync::broadcast;
 pub enum Event {
     /// Log line created via [`log`].
     Log(String),
-    /// Chat line submitted from a user.
-    Chat(String),
+    /// Chat line submitted from a user along with their address when known.
+    Chat {
+        line: String,
+        addr: Option<std::net::SocketAddr>,
+    },
     /// WebSocket client connected from an address.
     Connected(std::net::SocketAddr),
     /// WebSocket client disconnected.
@@ -48,9 +51,15 @@ mod tests {
     async fn send_and_receive_chat() {
         let bus = EventBus::new();
         let mut rx = bus.subscribe();
-        bus.send(Event::Chat("hi".into()));
+        bus.send(Event::Chat {
+            line: "hi".into(),
+            addr: None,
+        });
         match rx.recv().await {
-            Ok(Event::Chat(line)) => assert_eq!(line, "hi"),
+            Ok(Event::Chat { line, addr }) => {
+                assert_eq!(line, "hi");
+                assert!(addr.is_none());
+            }
             other => panic!("unexpected event: {:?}", other),
         }
     }
