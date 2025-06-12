@@ -107,6 +107,9 @@ async function refresh() {
     const name = w.name ?? `Processor ${i}`;
     const dom = procDom(name);
     dom.summary.textContent = `${name} (queue: ${w.queue_len}, mem: ${w.memory_len})`;
+    if(w.last_prompt){
+      dom.prompt.textContent = 'Prompt: ' + w.last_prompt;
+    }
   });
 }
 refresh();

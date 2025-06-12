@@ -12,3 +12,4 @@
 - Log processor errors instead of dropping them.
 - `Heart` implements `Sensor`; use `feel` and `experience` in place of
   `push` and `tick`.
+- Keep `Wit::last_prompt` updated so dashboard refreshes show recent prompts.

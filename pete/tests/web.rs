@@ -35,6 +35,32 @@ async fn scheduler_reports_queue_and_memory() {
 }
 
 #[tokio::test]
+async fn scheduler_includes_last_prompt() {
+    use psyche::{Experience, Sensation, Sensor};
+    let bus = Arc::new(EventBus::new());
+    let psyche = Arc::new(Mutex::new(Psyche::new(|| JoinScheduler::default(), vec![])));
+    {
+        let mut p = psyche.lock().await;
+        p.heart.quick.feel(Sensation::new(Experience::new("hi")));
+        p.heart.beat();
+    }
+    let filter = web::routes(bus.clone(), psyche);
+    let resp = request()
+        .method("GET")
+        .path("/scheduler")
+        .reply(&filter)
+        .await;
+    assert_eq!(resp.status(), 200);
+    let info: serde_json::Value = serde_json::from_slice(resp.body()).unwrap();
+    assert!(
+        info["wits"][0]["last_prompt"]
+            .as_str()
+            .unwrap()
+            .contains("hi")
+    );
+}
+
+#[tokio::test]
 async fn psyche_reports_beat() {
     let bus = Arc::new(EventBus::new());
     let psyche = Arc::new(Mutex::new(Psyche::new(|| JoinScheduler::default(), vec![])));
