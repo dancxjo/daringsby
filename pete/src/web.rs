@@ -23,6 +23,7 @@ struct PsycheInfo {
     instant: Option<String>,
     moment: Option<String>,
     context: Option<String>,
+    beat: u64,
     wits: Vec<WitStaticInfo>,
 }
 
@@ -65,6 +66,7 @@ where
         instant: p.heart.instant.as_ref().map(|e| e.how.clone()),
         moment: p.heart.moment.as_ref().map(|e| e.how.clone()),
         context: p.heart.context.clone(),
+        beat: p.heart.beat,
         wits: vec![
             wit_static(&p.heart.quick),
             wit_static(&p.heart.combobulator),
