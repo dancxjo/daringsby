@@ -4,6 +4,7 @@
 - Sensor trait only; add sensors in binary crates.
 - Use Foundation for any dashboard styling; avoid Bootstrap.
 - Display queue lengths and timing progress on the scheduler dashboard.
+- List wits in the dashboard using `<p>` tags labeled `Prompt:` and `Response:`.
 - Prefer `Heart::beat` for background loops instead of timer sleeps.
 - Wits do not track timers; the heart decides when to tick them.
 - Heartbeat loops run continuously without sleeps; sensors manage intervals.
