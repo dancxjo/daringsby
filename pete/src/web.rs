@@ -16,7 +16,6 @@ static INDEX_HTML: &str = include_str!("../../psyche/static/index.html");
 #[derive(Serialize)]
 struct WitStaticInfo {
     name: Option<String>,
-    interval_ms: u64,
 }
 
 #[derive(Serialize)]
@@ -31,7 +30,6 @@ struct PsycheInfo {
 struct WitRuntimeInfo {
     name: Option<String>,
     queue_len: usize,
-    due_ms: u64,
     last: Option<String>,
 }
 
@@ -54,7 +52,6 @@ where
 {
     WitStaticInfo {
         name: w.name.clone(),
-        interval_ms: w.interval.as_millis() as u64,
     }
 }
 
@@ -80,12 +77,10 @@ where
     S: Scheduler,
     S::Output: Clone + Into<String>,
 {
-    let due = w.due_ms();
     let last = w.memory.all().last().map(|s| s.what.clone().into());
     WitRuntimeInfo {
         name: w.name.clone(),
         queue_len: w.queue_len(),
-        due_ms: due,
         last,
     }
 }

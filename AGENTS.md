@@ -28,6 +28,7 @@
 - Keep `README.md` in sync with `docker-compose.yml` whenever services change.
 - When mocking Ollama endpoints in tests, include all fields the client expects
   (e.g. `modified_at`, `size`) to avoid parsing errors.
+- Remove unused code to keep builds clean.
 
 ## Project Overview
 Daringsby houses several Rust crates forming a model cognitive system named Pete. Events flow through sensors into a `Heart` of `Wit`s which summarize and store experiences.

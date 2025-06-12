@@ -54,14 +54,6 @@ where
         Some(&mut self.quick)
     }
 
-    /// Milliseconds until the next wit is due for a tick.
-    pub fn due_ms(&self) -> u64 {
-        self.quick
-            .due_ms()
-            .min(self.combobulator.due_ms())
-            .min(self.contextualizer.due_ms())
-    }
-
     /// Advance the heart one beat running wits based on the beat counter.
     ///
     /// - On even beats the `quick` wit ticks.
@@ -123,14 +115,7 @@ mod tests {
 
     #[test]
     fn passes_experiences_through_layers() {
-        let make = || {
-            Wit::with_config(
-                JoinScheduler::default(),
-                None,
-                std::time::Duration::from_secs(0),
-                "w",
-            )
-        };
+        let make = || Wit::with_config(JoinScheduler::default(), None, "w");
         let mut heart = Heart::new(make(), make(), make());
         heart.feel(Sensation::new(Experience::new("hi")));
         heart.beat();
@@ -142,29 +127,8 @@ mod tests {
     }
 
     #[test]
-    fn due_ms_is_min_of_wits() {
-        let make = |ms| {
-            Wit::with_config(
-                JoinScheduler::default(),
-                None,
-                std::time::Duration::from_millis(ms),
-                "w",
-            )
-        };
-        let heart = Heart::new(make(100), make(50), make(200));
-        assert!(heart.due_ms() <= 50);
-    }
-
-    #[test]
     fn beat_follows_schedule() {
-        let make = || {
-            Wit::with_config(
-                JoinScheduler::default(),
-                None,
-                std::time::Duration::from_secs(0),
-                "w",
-            )
-        };
+        let make = || Wit::with_config(JoinScheduler::default(), None, "w");
         let mut heart = Heart::new(make(), make(), make());
         for i in 0..15 {
             heart.feel(Sensation::new(Experience::new(format!("{i}"))));

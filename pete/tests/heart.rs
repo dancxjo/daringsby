@@ -13,7 +13,6 @@ async fn heart_beats_continuously() {
         Wit::with_config(
             JoinScheduler::default(),
             None,
-            std::time::Duration::from_millis(0),
             "w",
         )
     };
