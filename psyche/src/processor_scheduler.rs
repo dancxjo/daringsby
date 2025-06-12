@@ -66,7 +66,7 @@ where
                     while let Some(chunk) = handle.block_on(stream.next()) {
                         match chunk {
                             Ok(TaskOutput::TextChunk(t)) => {
-                                log::info!("llm chunk: {}", t);
+                                log::trace!("llm chunk: {}", t);
                                 self.bus.send(Event::ProcessorChunk {
                                     name: self.name.clone(),
                                     chunk: t.clone(),
