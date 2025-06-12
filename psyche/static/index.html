@@ -5,11 +5,11 @@
     <title>Pete Dashboard</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/foundation-sites@6.7.5/dist/css/foundation.min.css">
 <style>
-  body { margin:0; background:#202020; color:#f0f0f0; }
+  body { margin:0; }
   #log { list-style:none; padding:0; margin:0; max-height:40vh; overflow:auto; }
   #log li { white-space:pre-wrap; word-break:break-word; }
   #heart { height:25vh; overflow:auto; }
-  #sched { max-height:40vh; overflow:auto; }
+  #wits { max-height:40vh; overflow:auto; }
   details { margin-bottom:0.5rem; }
   .card { margin-bottom:1rem; }
 </style>
@@ -32,8 +32,8 @@
   </div>
   <div class="cell">
     <div class="card callout secondary">
-      <h2>Scheduler</h2>
-      <div id="sched"></div>
+      <h2>Wits</h2>
+      <div id="wits"></div>
       <h2>Heart</h2>
       <pre id="heart"></pre>
     </div>
@@ -48,13 +48,15 @@ function procDom(name) {
     det.open = true;
     const summary = document.createElement('summary');
     det.appendChild(summary);
-    const prompt = document.createElement('pre');
-    prompt.className = 'callout';
-    const chunks = document.createElement('pre');
-    chunks.className = 'callout';
+    const prompt = document.createElement('p');
+    prompt.className = 'callout primary';
+    const chunks = document.createElement('p');
+    chunks.className = 'callout secondary';
+    prompt.textContent = 'Prompt: ';
+    chunks.textContent = 'Response: ';
     det.appendChild(prompt);
     det.appendChild(chunks);
-    document.getElementById('sched').appendChild(det);
+    document.getElementById('wits').appendChild(det);
     procs[name] = {det, summary, prompt, chunks};
   }
   return procs[name];
@@ -71,8 +73,8 @@ ws.onmessage = ev => {
     const name = rest.slice(0, idx);
     const prompt = rest.slice(idx + 1);
     const dom = procDom(name);
-    dom.prompt.textContent = prompt;
-    dom.chunks.textContent = '';
+    dom.prompt.textContent = 'Prompt: ' + prompt;
+    dom.chunks.textContent = 'Response: ';
   } else if(ev.data.startsWith('chunk:')) {
     const rest = ev.data.slice(6);
     const idx = rest.indexOf(':');
