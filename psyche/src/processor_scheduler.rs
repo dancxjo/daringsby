@@ -11,21 +11,6 @@ pub struct ProcessorScheduler<P> {
     name: String,
 }
 
-fn narrative_prompt(context: &str, batch: &[Experience]) -> String {
-    use chrono::{DateTime, Utc};
-    let experiences = batch
-        .iter()
-        .map(|e| {
-            let dt: DateTime<Utc> = e.when.into();
-            format!("{} {}", dt.to_rfc3339(), e.how)
-        })
-        .collect::<Vec<_>>()
-        .join(" ");
-    format!(
-        "You are acting as the linguistic processing unit for a larger entity named Pete. Pete is an artificial consciousness, new to the world, so he should expect to sense new information slowly but surely. Just keep swimming. Here's his present situation: {context}\n\nOver the past little while, Pete has experienced the following: {experiences}\n\nIn the voice of Pete and without headers or footers or any sort (just the plain text of Pete's response), produce a brief narrative from the perspective of Pete, talking to himself, that compresses what's currently happening. Be succinct but thorough. Aim for one paragraph. Do not use bullet points or lists, just a single paragraph. Make sure to pass on the most important information from the experiences, but do not repeat them verbatim. Do not use any special formatting or markdown, just plain text.",
-    )
-}
-
 impl<P> ProcessorScheduler<P> {
     /// Create a new scheduler wrapping the given processor.
     pub fn new(processor: P, bus: Arc<EventBus>, name: impl Into<String>) -> Self {
@@ -61,16 +46,15 @@ where
 
         log::info!("processor scheduler starting");
 
-        let instruction = narrative_prompt(prompt, &batch);
         self.bus.send(Event::ProcessorPrompt {
             name: self.name.clone(),
-            prompt: instruction.clone(),
+            prompt: prompt.to_string(),
         });
-        log::info!("llm prompt: {}", instruction);
+        log::info!("llm prompt: {}", prompt);
         drop(batch);
 
         let task = Task::InstructionFollowing(InstructionFollowingTask {
-            instruction,
+            instruction: prompt.to_string(),
             images: vec![],
         });
 
@@ -178,12 +162,5 @@ mod tests {
         wit.feel(Sensation::new(Experience::new("one")));
         assert!(wit.tick().is_none());
         assert!(wit.memory.all().is_empty());
-    }
-
-    #[test]
-    fn narrative_prompt_mentions_context() {
-        let prompt = narrative_prompt("thinking", &[Experience::new("hi")]);
-        assert!(prompt.contains("artificial consciousness"));
-        assert!(prompt.contains("Here's his present situation: thinking"));
     }
 }

@@ -1,4 +1,4 @@
-use crate::{Experience, Memory, Scheduler, Sensation, Sensor};
+use crate::{Experience, Memory, Scheduler, Sensation, Sensor, narrative_prompt};
 
 /// Processes queued experiences when ticked by the `Heart`.
 pub struct Wit<S>
@@ -85,7 +85,8 @@ where
                 self.prompt, self.context
             )
         };
-        let sensation = self.scheduler.schedule(&full_prompt, batch)?;
+        let instruction = narrative_prompt(&full_prompt, &batch);
+        let sensation = self.scheduler.schedule(&instruction, batch)?;
         self.memory.remember(sensation.clone());
         Some(Experience::with_timestamp(sensation.what, sensation.when))
     }
