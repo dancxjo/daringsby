@@ -1,30 +1,19 @@
 import { Subject, Subscription } from "npm:rxjs";
 import { Sensation } from "./Sensation.ts";
+import { Experience } from "./Experience.ts";
 
 /**
- * Sensor is an observable source of sensations using RxJS. A filter predicate
- * can be provided to ignore certain sensations.
+ * Sensor is an observable source of sensations using RxJS. 
  */
 
-export class Sensor<X> {
+export abstract class Sensor<X> {
     protected subject = new Subject<Sensation<X>>();
 
-    constructor(private filter: (s: Sensation<X>) => boolean = () => true) { }
-
-    /** Emit a new sensation if it passes the filter. */
-    feel(what: X): void {
-        console.log(`Sensor felt: ${what}`);
-        const sensation: Sensation<X> = {
-            when: new Date(),
-            what,
-        };
-        if (this.filter(sensation)) {
-            this.subject.next(sensation);
-        }
-    }
+    /** Injest a new sensation */
+    abstract feel(what: X): void;
 
     /** Subscribe to the sensations produced by this sensor. */
-    subscribe(observer: (s: Sensation<X>) => void): Subscription {
+    subscribe(observer: (s: Experience<X>) => void): Subscription {
         return this.subject.subscribe(observer);
     }
 

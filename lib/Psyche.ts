@@ -1,25 +1,26 @@
 import { Sensor } from "./Sensor.ts";
 import { InstructionFollower } from "./InstructionFollower.ts";
 import { Sensation } from "./Sensation.ts";
+import { Experience } from "./Experience.ts";
 
 /**
  * Psyche holds a collection of sensors representing external stimuli.
  */
 
-export class Psyche<X = unknown> {
+export class Psyche {
     private beats = 0;
     private live = true;
-    private buffer: Sensation<X>[] = [];
+    private buffer: Experience<never>[] = [];
     public instant = "Pete has just been born.";
 
     constructor(
-        public externalSensors: Sensor<X>[] = [],
+        public externalSensors: Sensor<never>[] = [],
         private instructionFollower: InstructionFollower,
         private onStream?: (chunk: string) => Promise<void>,
     ) {
         for (const sensor of this.externalSensors) {
-            sensor.subscribe((s) => {
-                this.buffer.push(s);
+            sensor.subscribe((e) => {
+                this.buffer.push(e);
             });
         }
     }
@@ -42,7 +43,7 @@ export class Psyche<X = unknown> {
     /** Increment the internal beat counter. */
     async beat(): Promise<void> {
         this.beats++;
-        console.log(`Beat ${this.beats} at ${new Date().toLocaleTimeString()}`);
+        // console.log(`Beat ${this.beats} at ${new Date().toLocaleTimeString()}`);
         await this.integrate_sensory_input();
     }
 
@@ -53,8 +54,7 @@ export class Psyche<X = unknown> {
     async integrate_sensory_input(): Promise<void> {
         if (this.buffer.length === 0) return;
         const happenings = this.buffer.map((s) => {
-            const when = s.when.toLocaleString();
-            return `[${when}] ${s.what}`;
+            return `[${s.what[0]?.when}] ${s.how}`;
         }).join("\n");
         const prompt =
             "You are the linguistic processor for an artificial entity named Pete. Speak in Pete's voice on his behalf.\n" +
