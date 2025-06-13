@@ -15,7 +15,7 @@ Deno.test("replaces every word with Malkovitch", async () => {
 Deno.test("calls onChunk with the replaced text", async () => {
   const follower = new MockInstructionFollower();
   let chunk = "";
-  const result = await follower.instruct("Hi", (c) => chunk = c);
+  const result = await follower.instruct("Hi", async (c) => { chunk = c });
   assertEquals(result, "Malkovitch");
   assertEquals(chunk, "Malkovitch");
 });
