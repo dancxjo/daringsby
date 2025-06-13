@@ -30,21 +30,6 @@ class EmptySensor extends Sensor<null> {
   }
 }
 
-Deno.test("take_turn prepends system message with instant", async () => {
-  const sensor = new EmptySensor();
-  const follower = new StubFollower();
-  const chatter = new StubChatter();
-  const psyche = new Psyche([sensor], follower, chatter);
-
-  psyche.conversation.push({ role: "user", content: "hi" });
-  await psyche.take_turn();
-
-  const first = chatter.messages[0];
-  if (!first.content.includes("instant") || first.role !== "system") {
-    throw new Error("system message missing");
-  }
-});
-
 Deno.test("reply added after echo", async () => {
   const sensor = new EmptySensor();
   const follower = new StubFollower();

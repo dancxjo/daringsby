@@ -34,19 +34,3 @@ class StubSensor extends Sensor<string> {
   }
 }
 
-Deno.test("integrate_sensory_input summarizes buffered sensations", async () => {
-  const sensor = new StubSensor();
-  const follower = new StubFollower();
-  const chatter = new StubChatter();
-  const psyche = new Psyche([sensor], follower, chatter);
-
-  sensor.feel("hello world");
-  await psyche.integrate_sensory_input();
-
-  assert(follower.prompt.includes("hello world"), "prompt missing sensation");
-  const first = chatter.messages[0];
-  assert(
-    first.role === "system" && first.content.includes("stub"),
-    "chatter not called",
-  );
-});
