@@ -26,3 +26,4 @@ be run with `deno run pete/main.ts`.
 - Ensure `integrate_sensory_input` runs each beat even when speaking. Only
   `take_turn` may be skipped while speech is in progress.
 - Index page should log all websocket messages and echo `pete-says` once displayed.
+- Use Tailwind CSS for styling the index page.
