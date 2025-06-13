@@ -54,7 +54,9 @@ export class Psyche {
         this.beats++;
         // console.log(`Beat ${this.beats} at ${new Date().toLocaleTimeString()}`);
         await this.integrate_sensory_input();
-        await this.take_turn();
+        if (!this.speaking) {
+            await this.take_turn();
+        }
     }
 
     /**

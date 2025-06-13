@@ -33,3 +33,5 @@ be run with `deno run pete/main.ts`.
 - Cache server dependencies with `deno cache server.ts` before tests.
 - Keep WebSocket sensor tests in sync with any new event types or message
   flows.
+- Ensure `integrate_sensory_input` runs each beat even when speaking. Only
+  `take_turn` may be skipped while speech is in progress.
