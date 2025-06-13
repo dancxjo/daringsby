@@ -9,6 +9,7 @@ mod experience;
 mod heart;
 mod join_scheduler;
 mod memory;
+mod perception;
 mod processor_scheduler;
 mod prompt;
 mod psyche;
@@ -21,6 +22,10 @@ pub use experience::Experience;
 pub use heart::Heart;
 pub use join_scheduler::JoinScheduler;
 pub use memory::Memory;
+pub use perception::{
+    Experience as ReactiveExperience, Sensation as ReactiveSensation, Sensor as ReactiveSensor,
+    SubjectSensor,
+};
 pub use processor_scheduler::ProcessorScheduler;
 pub use prompt::narrative_prompt;
 pub use psyche::Psyche;
