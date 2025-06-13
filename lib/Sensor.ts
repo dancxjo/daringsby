@@ -1,5 +1,4 @@
 import { Subject, Subscription } from "npm:rxjs";
-import { Sensation } from "./Sensation.ts";
 import { Experience } from "./Experience.ts";
 
 /**
@@ -7,7 +6,7 @@ import { Experience } from "./Experience.ts";
  */
 
 export abstract class Sensor<X> {
-    protected subject = new Subject<Sensation<X>>();
+    protected subject = new Subject<Experience<X>>();
 
     /** Injest a new sensation */
     abstract feel(what: X): void;
