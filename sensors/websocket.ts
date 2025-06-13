@@ -34,10 +34,10 @@ export class WebSocketSensor extends Sensor<WebSocketWhat> {
         how = `${what.name} says: ${what.message}`;
         break;
       case "self":
-        how = `I feel myself wanting to say: ${what.message}`;
+        how = `I feel myself on the verge of saying: ${what.message}`;
         break;
       case "echo":
-        how = `I heard myself speak on ${what.remote}: ${what.message}`;
+        how = `I heard myself speak the following: ${what.message}`;
         break;
     }
     const exp: Experience<WebSocketWhat> = {
