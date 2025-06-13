@@ -1,10 +1,14 @@
 {
   "version": "5",
   "specifiers": {
+    "npm:dotenv@*": "16.5.0",
     "npm:ollama@*": "0.5.16",
     "npm:rxjs@*": "7.8.2"
   },
   "npm": {
+    "dotenv@16.5.0": {
+      "integrity": "sha512-m/C+AwOAr9/W1UOIZUo232ejMNnJAJtYQjUbHoNTBNTJSvqzzDh7vnrei3o3r3m9blf6ZoDkvcw0VmozNRFJxg=="
+    },
     "ollama@0.5.16": {
       "integrity": "sha512-OEbxxOIUZtdZgOaTPAULo051F5y+Z1vosxEYOoABPnQKeW7i4O8tJNlxCB+xioyoorVqgjkdj+TA1f1Hy2ug/w==",
       "dependencies": [

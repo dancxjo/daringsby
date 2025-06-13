@@ -2,10 +2,12 @@ import { HeartbeatSensor } from "./sensors/heartbeat.ts";
 import { WebSocketSensor } from "./sensors/websocket.ts";
 import { Psyche } from "./lib/Psyche.ts";
 import { Ollama } from "npm:ollama";
+
 import {
   OllamaChatter,
   OllamaInstructionFollower,
 } from "./providers/ollama.ts";
+import 'npm:dotenv/config'
 
 const wsSensor = new WebSocketSensor();
 const clients = new Set<WebSocket>();
@@ -15,8 +17,8 @@ const pete = new Psyche(
     //new HeartbeatSensor(),
     wsSensor
   ],
-  new OllamaInstructionFollower(new Ollama(), "gemma3:27b"),
-  new OllamaChatter(new Ollama(), "gemma3:27b"),
+  new OllamaInstructionFollower(new Ollama({ host: Deno.env.get('OLLAMA_URL') }), "gemma3:27b"),
+  new OllamaChatter(new Ollama(), "gemma3"),
   {
     onSay: async (text: string) => {
       const payload = JSON.stringify({ type: "pete-says", text });
