@@ -41,14 +41,13 @@
     </div>
     <script>
       function chat() {
-        const state = {
-          lines: [],
-          prompt: "",
-          reply: "",
-          name: "",
-          input: "",
-          streamLineId: null,
-          send() {
+          const state = {
+            lines: [],
+            prompt: "",
+            reply: "",
+            name: "",
+            input: "",
+            send() {
             if (!this.name) {
               alert("Please enter your name");
               return;
@@ -72,21 +71,9 @@
               case "pete-prompt":
                 state.prompt = data.text;
                 state.reply = "";
-                state.lines.push({
-                  id: Date.now(),
-                  text: `Prompt: ${data.text}`,
-                });
-                state.streamLineId = null;
                 break;
               case "pete-stream":
                 state.reply += data.text;
-                if (!state.streamLineId) {
-                  state.streamLineId = Date.now();
-                  state.lines.push({ id: state.streamLineId, text: data.text });
-                } else {
-                  const line = state.lines.find((l) => l.id === state.streamLineId);
-                  if (line) line.text += data.text;
-                }
                 break;
               case "pete-says":
                 state.lines.push({
@@ -96,13 +83,13 @@
                 ws.send(
                   JSON.stringify({ type: "echo", message: data.text }),
                 );
-                state.streamLineId = null;
                 break;
               default:
-                state.lines.push({ id: Date.now(), text: e.data });
+                // ignore other message types
+                break;
             }
           } catch (_) {
-            state.lines.push({ id: Date.now(), text: String(e.data) });
+            // ignore parse errors
           }
           const log = document.getElementById("log");
           log.scrollTop = log.scrollHeight;
