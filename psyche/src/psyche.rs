@@ -47,17 +47,7 @@ where
         F: FnMut() -> Sched,
     {
         let quick = Wit::with_config(scheduler_factory(), Some("quick".into()), "quick");
-        let combobulator = Wit::with_config(
-            scheduler_factory(),
-            Some("combobulator".into()),
-            "combobulator",
-        );
-        let contextualizer = Wit::with_config(
-            scheduler_factory(),
-            Some("contextualizer".into()),
-            "contextualizer",
-        );
-        let heart = Heart::new(quick, combobulator, contextualizer);
+        let heart = Heart::new(quick);
         Self {
             heart,
             external_sensors,

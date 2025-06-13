@@ -99,9 +99,7 @@ async function refresh() {
   document.getElementById('beat').textContent = `beat ${psyche.beat}`;
   document.getElementById('heart').textContent = JSON.stringify({
     beat: psyche.beat,
-    instant: psyche.instant,
-    moment: psyche.moment,
-    context: psyche.context
+    instant: psyche.instant
   }, null, 2);
   sched.wits.forEach((w, i) => {
     const name = w.name ?? `Processor ${i}`;

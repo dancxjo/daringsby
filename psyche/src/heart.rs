@@ -1,10 +1,9 @@
 use crate::{Experience, Scheduler, Sensation, Sensor, Wit};
 
-/// Multi-layer heart chaining a quick wit, combobulator and contextualizer.
+/// Minimal heart managing a single quick wit.
 ///
 /// `Heart` implements [`Sensor`], forwarding sensations to the quick wit. Call
-/// [`Heart::beat`] to propagate experiences through the wits and update the
-/// current instant, moment and context.
+/// [`Heart::beat`] to process queued experiences and update the current instant.
 pub struct Heart<S>
 where
     S: Scheduler,
@@ -12,16 +11,8 @@ where
 {
     /// First layer reflecting raw experiences.
     pub quick: Wit<S>,
-    /// Wit buffering instants into moments.
-    pub combobulator: Wit<S>,
-    /// Wit summarizing moments into context.
-    pub contextualizer: Wit<S>,
     /// Latest experience from the quick wit.
     pub instant: Option<Experience>,
-    /// Latest experience from the combobulator.
-    pub moment: Option<Experience>,
-    /// Latest context string from the contextualizer.
-    pub context: Option<String>,
     /// Running count of beats executed.
     pub beat: u64,
 }
@@ -31,15 +22,11 @@ where
     S: Scheduler,
     S::Output: Clone + Into<String>,
 {
-    /// Create a new heart from three wits.
-    pub fn new(quick: Wit<S>, combobulator: Wit<S>, contextualizer: Wit<S>) -> Self {
+    /// Create a new heart from a quick wit.
+    pub fn new(quick: Wit<S>) -> Self {
         Self {
             quick,
-            combobulator,
-            contextualizer,
             instant: None,
-            moment: None,
-            context: None,
             beat: 0,
         }
     }
@@ -54,39 +41,16 @@ where
         Some(&mut self.quick)
     }
 
-    /// Advance the heart one beat running wits based on the beat counter.
+    /// Advance the heart one beat.
     ///
-    /// - On even beats the `quick` wit ticks.
-    /// - Beats divisible by 7 tick the `combobulator`.
-    /// - Beats divisible by 11 tick the `contextualizer`.
-    ///
-    /// The beat counter starts at zero and increments after each call.
+    /// The beat counter increments first and then the quick wit processes its
+    /// queued experiences. The resulting experience becomes the latest
+    /// `instant`.
     pub fn beat(&mut self) {
-        if self.beat % 2 == 0 {
-            if let Some(inst) = self.quick.tick() {
-                self.instant = Some(inst.clone());
-                self.combobulator.feel(Sensation::new(inst));
-            }
-        }
-
-        if self.beat % 7 == 0 {
-            if let Some(mom) = self.combobulator.tick() {
-                self.moment = Some(mom.clone());
-                self.contextualizer.feel(Sensation::new(mom));
-            }
-        }
-
-        if self.beat % 11 == 0 {
-            if let Some(ctx) = self.contextualizer.tick() {
-                let c = ctx.how.clone();
-                self.context = Some(c.clone());
-                self.quick.set_context(c.clone());
-                self.combobulator.set_context(c.clone());
-                self.contextualizer.set_context(c);
-            }
-        }
-
         self.beat = self.beat.wrapping_add(1);
+        if let Some(inst) = self.quick.tick() {
+            self.instant = Some(inst);
+        }
     }
 }
 
@@ -114,29 +78,22 @@ mod tests {
     use crate::{JoinScheduler, Sensation, Sensor};
 
     #[test]
-    fn passes_experiences_through_layers() {
+    fn beat_processes_quick() {
         let make = || Wit::with_config(JoinScheduler::default(), None, "w");
-        let mut heart = Heart::new(make(), make(), make());
+        let mut heart = Heart::new(make());
         heart.feel(Sensation::new(Experience::new("hi")));
         heart.beat();
+        assert_eq!(heart.beat, 1);
         assert_eq!(heart.instant.as_ref().unwrap().how, "hi");
-        assert_eq!(heart.moment.as_ref().unwrap().how, "hi");
-        assert_eq!(heart.context.as_deref(), Some("hi"));
-        assert_eq!(heart.quick.context, "hi");
-        assert_eq!(heart.combobulator.context, "hi");
+        assert_eq!(heart.quick.memory.all().len(), 1);
     }
 
     #[test]
-    fn beat_follows_schedule() {
+    fn beat_runs_even_when_idle() {
         let make = || Wit::with_config(JoinScheduler::default(), None, "w");
-        let mut heart = Heart::new(make(), make(), make());
-        for i in 0..15 {
-            heart.feel(Sensation::new(Experience::new(format!("{i}"))));
-            heart.beat();
-        }
-        assert_eq!(heart.beat, 15);
-        assert_eq!(heart.quick.memory.all().len(), 8); // even beats
-        assert_eq!(heart.combobulator.memory.all().len(), 3); // multiples of 7
-        assert_eq!(heart.contextualizer.memory.all().len(), 2); // multiples of 11
+        let mut heart = Heart::new(make());
+        heart.beat();
+        assert_eq!(heart.beat, 1);
+        assert!(heart.instant.is_none());
     }
 }

@@ -26,12 +26,7 @@ async fn main() -> Result<()> {
     let model_clone = model.clone();
     let make_sched = move || {
         idx += 1;
-        let name = match idx {
-            1 => "quick",
-            2 => "combobulator",
-            3 => "contextualizer",
-            _ => "proc",
-        };
+        let name = if idx == 1 { "quick" } else { "proc" };
         psyche::ProcessorScheduler::new(
             lingproc::OllamaProcessor::new(&model_clone),
             bus_clone.clone(),
