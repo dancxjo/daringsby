@@ -30,15 +30,11 @@ where
 {
     tokio::spawn(async move {
         loop {
+            // log::info!("Tick");
             let mut p = psyche.lock().await;
             p.poll_sensors();
-            if p.heart.quick.queue_len() > 0 {
-                p.heart.beat();
-            } else {
-                drop(p);
-                sleep(Duration::from_millis(10)).await;
-                continue;
-            }
+            p.heart.beat();
+            drop(p);
         }
     })
 }
