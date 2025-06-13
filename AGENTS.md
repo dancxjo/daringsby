@@ -28,3 +28,5 @@ be run with `deno run pete/main.ts`.
 
 - Update tests whenever constructor parameters change, especially for `Psyche`.
 - Cache server dependencies with `deno cache server.ts` before tests.
+- Keep WebSocket sensor tests in sync with any new event types or message
+  flows.

@@ -14,14 +14,18 @@ const pete = new Psyche(
   [new HeartbeatSensor(), wsSensor],
   new OllamaInstructionFollower(new Ollama(), "gemma3"),
   new OllamaChatter(new Ollama(), "gemma3"),
-  async (chunk: string) => {
-    for (const ws of clients) {
-      try {
-        ws.send(chunk);
-      } catch (_) {
-        // ignore failed sends
+  {
+    onSay: async (text: string) => {
+      const payload = JSON.stringify({ type: "pete-says", text });
+      for (const ws of clients) {
+        try {
+          ws.send(payload);
+        } catch (_) {
+          // ignore failed sends
+        }
       }
-    }
+    },
+    wsSensor,
   },
 );
 
@@ -48,7 +52,13 @@ Deno.serve({
       };
       socket.onmessage = (e) => {
         try {
-          const { name, message } = JSON.parse(String(e.data));
+          const data = JSON.parse(String(e.data));
+          if (data.type === "echo") {
+            wsSensor.echoed(remote, data.message);
+            pete.confirm_echo(data.message);
+            return;
+          }
+          const { name, message } = data;
           wsSensor.received(remote, name, message);
           pete.conversation.push({
             role: "user",

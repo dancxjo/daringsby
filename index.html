@@ -36,7 +36,16 @@
     <script>
       function chat() {
         const ws = new WebSocket("ws://" + location.host + "/ws");
-        ws.onmessage = () => {
+        ws.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.type === "pete-says") {
+              this.lines.push({ id: Date.now(), text: `Pete: ${data.text}` });
+              ws.send(JSON.stringify({ type: "echo", message: data.text }));
+            }
+          } catch (_) {
+            // ignore invalid payloads
+          }
           const log = document.getElementById("log");
           log.scrollTop = log.scrollHeight;
         };
