@@ -9,7 +9,11 @@
     ></script>
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
-  <body x-data="chat()" class="min-h-screen bg-gray-900 text-gray-100">
+  <body
+    x-data="chat()"
+    x-init="init()"
+    class="min-h-screen bg-gray-900 text-gray-100"
+  >
     <div class="max-w-3xl mx-auto p-4">
       <h1 class="text-2xl font-bold mb-4">Chat with Pete</h1>
 
@@ -20,7 +24,8 @@
             id="prompt"
             class="bg-gray-800 rounded p-2 h-32 overflow-y-auto"
             x-text="prompt"
-          ></div>
+          >
+          </div>
         </section>
         <section>
           <h2 class="text-lg font-semibold mb-1">Pete Stream</h2>
@@ -28,13 +33,18 @@
             id="reply"
             class="bg-gray-800 rounded p-2 h-32 overflow-y-auto"
             x-text="reply"
-          ></div>
+          >
+          </div>
         </section>
       </div>
 
       <section class="mt-4">
         <h2 class="text-lg font-semibold mb-1">Conversation Log</h2>
-        <div id="log" class="bg-gray-800 rounded p-2 h-64 overflow-y-auto space-y-1">
+        <div
+          id="log"
+          x-ref="log"
+          class="bg-gray-800 rounded p-2 h-64 overflow-y-auto space-y-1"
+        >
           <template x-for="line in lines" :key="line.id">
             <div x-text="line.text"></div>
           </template>
@@ -42,25 +52,72 @@
       </section>
 
       <form @submit.prevent="send" class="mt-4 flex flex-col md:flex-row gap-2">
-        <input x-model="name" placeholder="Your name" class="flex-1 rounded p-2 bg-gray-700 placeholder-gray-400" />
-        <input x-model="input" placeholder="Say something" class="flex-1 rounded p-2 bg-gray-700 placeholder-gray-400" />
-        <button type="submit" class="rounded bg-blue-600 px-4 py-2 text-white">Send</button>
+        <input
+          x-model="name"
+          placeholder="Your name"
+          class="flex-1 rounded p-2 bg-gray-700 placeholder-gray-400"
+        />
+        <input
+          x-model="input"
+          placeholder="Say something"
+          class="flex-1 rounded p-2 bg-gray-700 placeholder-gray-400"
+        />
+        <button type="submit" class="rounded bg-blue-600 px-4 py-2 text-white">
+          Send
+        </button>
       </form>
     </div>
     <script>
       function chat() {
-          const state = {
-            lines: [],
-            prompt: "",
-            reply: "",
-            name: "",
-            input: "",
-            send() {
+        return {
+          lines: [],
+          prompt: "",
+          reply: "",
+          name: "",
+          input: "",
+          init() {
+            this.ws = new WebSocket("ws://" + location.host + "/ws");
+            this.ws.onmessage = (e) => {
+              try {
+                const data = JSON.parse(e.data);
+                switch (data.type) {
+                  case "pete-prompt":
+                    this.prompt = data.text;
+                    this.reply = "";
+                    break;
+                  case "pete-stream":
+                    this.reply += data.text;
+                    break;
+                  case "pete-says":
+                    this.lines.push({
+                      id: Date.now(),
+                      text: `Pete: ${data.text}`,
+                    });
+                    this.ws.send(
+                      JSON.stringify({
+                        type: "echo",
+                        message: data.text,
+                      }),
+                    );
+                    break;
+                  default:
+                    // ignore other message types
+                    break;
+                }
+              } catch (_) {
+                // ignore parse errors
+              }
+              this.$nextTick(() => {
+                this.$refs.log.scrollTop = this.$refs.log.scrollHeight;
+              });
+            };
+          },
+          send() {
             if (!this.name) {
               alert("Please enter your name");
               return;
             }
-            ws.send(
+            this.ws.send(
               JSON.stringify({ name: this.name, message: this.input }),
             );
             this.lines.push({
@@ -70,40 +127,6 @@
             this.input = "";
           },
         };
-
-        const ws = new WebSocket("ws://" + location.host + "/ws");
-        ws.onmessage = (e) => {
-          try {
-            const data = JSON.parse(e.data);
-            switch (data.type) {
-              case "pete-prompt":
-                state.prompt = data.text;
-                state.reply = "";
-                break;
-              case "pete-stream":
-                state.reply += data.text;
-                break;
-              case "pete-says":
-                state.lines.push({
-                  id: Date.now(),
-                  text: `Pete: ${data.text}`,
-                });
-                ws.send(
-                  JSON.stringify({ type: "echo", message: data.text }),
-                );
-                break;
-              default:
-                // ignore other message types
-                break;
-            }
-          } catch (_) {
-            // ignore parse errors
-          }
-          const log = document.getElementById("log");
-          log.scrollTop = log.scrollHeight;
-        };
-
-        return state;
       }
     </script>
   </body>
