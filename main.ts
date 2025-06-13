@@ -1,8 +1,8 @@
-import { Psyche } from "./lib.ts";
-import { HeartbeatSensor } from "./heartbeat_sensor.ts";
+import { Psyche } from "./lib/Psyche.ts";
+import { HeartbeatSensor } from "./sensors/heartbeat.ts";
 
 /**
- * Pete is a psyche with a single heartbeat sensor.
+ * Pete is our main character.
  */
 export const Pete = new Psyche([
   new HeartbeatSensor(),
@@ -11,4 +11,3 @@ export const Pete = new Psyche([
 // Start Pete's life cycle.
 Pete.run();
 
-export default Pete;
