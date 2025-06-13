@@ -1,7 +1,7 @@
 export type WebSocketWhat =
   | { type: "connect"; remote: string }
   | { type: "disconnect"; remote: string }
-  | { type: "message"; remote: string; message: string };
+  | { type: "message"; remote: string; name: string; message: string };
 
 import { Sensor } from "../lib/Sensor.ts";
 import { Experience } from "../lib/Experience.ts";
@@ -26,7 +26,7 @@ export class WebSocketSensor extends Sensor<WebSocketWhat> {
         how = `Client ${what.remote} disconnected.`;
         break;
       case "message":
-        how = `Client ${what.remote} says: ${what.message}`;
+        how = `${what.name} says: ${what.message}`;
         break;
     }
     const exp: Experience<WebSocketWhat> = {
@@ -44,7 +44,7 @@ export class WebSocketSensor extends Sensor<WebSocketWhat> {
     this.feel({ type: "disconnect", remote });
   }
 
-  received(remote: string, message: string): void {
-    this.feel({ type: "message", remote, message });
+  received(remote: string, name: string, message: string): void {
+    this.feel({ type: "message", remote, name, message });
   }
 }
