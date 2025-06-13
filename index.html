@@ -46,6 +46,7 @@
           reply: "",
           name: "",
           input: "",
+          streamLineId: null,
           send() {
             if (!this.name) {
               alert("Please enter your name");
@@ -66,22 +67,41 @@
         ws.onmessage = (e) => {
           try {
             const data = JSON.parse(e.data);
-            if (data.type === "pete-prompt") {
-              state.prompt = data.text;
-              state.reply = "";
-            } else if (data.type === "pete-stream") {
-              state.reply += data.text;
-            } else if (data.type === "pete-says") {
-              state.lines.push({
-                id: Date.now(),
-                text: `Pete: ${data.text}`,
-              });
-              ws.send(
-                JSON.stringify({ type: "echo", message: data.text }),
-              );
+            switch (data.type) {
+              case "pete-prompt":
+                state.prompt = data.text;
+                state.reply = "";
+                state.lines.push({
+                  id: Date.now(),
+                  text: `Prompt: ${data.text}`,
+                });
+                state.streamLineId = null;
+                break;
+              case "pete-stream":
+                state.reply += data.text;
+                if (!state.streamLineId) {
+                  state.streamLineId = Date.now();
+                  state.lines.push({ id: state.streamLineId, text: data.text });
+                } else {
+                  const line = state.lines.find((l) => l.id === state.streamLineId);
+                  if (line) line.text += data.text;
+                }
+                break;
+              case "pete-says":
+                state.lines.push({
+                  id: Date.now(),
+                  text: `Pete: ${data.text}`,
+                });
+                ws.send(
+                  JSON.stringify({ type: "echo", message: data.text }),
+                );
+                state.streamLineId = null;
+                break;
+              default:
+                state.lines.push({ id: Date.now(), text: e.data });
             }
           } catch (_) {
-            // ignore invalid payloads
+            state.lines.push({ id: Date.now(), text: String(e.data) });
           }
           const log = document.getElementById("log");
           log.scrollTop = log.scrollHeight;
