@@ -18,6 +18,7 @@
 - Log errors instead of silently discarding them.
 - Include tests that verify the heart passes experiences across multiple wits.
 - Sensors should return a vector of experiences.
+- The `perception` module offers a reactive model broadcasting `Sensation`s to subscribers.
 - External sensors belong to each psyche's crate, not the `psyche` library.
 - When testing streams created with `async_stream`, ensure you poll once more
   after the final item to trigger any cleanup logic.
