@@ -2,6 +2,7 @@ import { Sensor } from "./Sensor.ts";
 import { InstructionFollower } from "./InstructionFollower.ts";
 import { Experience } from "./Experience.ts";
 import { ChatMessage, Chatter } from "./Chatter.ts";
+import { WebSocketSensor } from "../sensors/websocket.ts";
 
 /**
  * Psyche holds a collection of sensors representing external stimuli.
@@ -11,6 +12,8 @@ export class Psyche {
     private beats = 0;
     private live = true;
     private buffer: Experience<any>[] = [];
+    private speaking = false;
+    private pendingSpeech = "";
     public instant = "Pete has just been born.";
     public conversation: ChatMessage[] = [];
 
@@ -18,7 +21,11 @@ export class Psyche {
         public externalSensors: Sensor<any>[] = [],
         private instructionFollower: InstructionFollower,
         private chatter: Chatter,
-        private onStream?: (chunk: string) => Promise<void>,
+        private opts: {
+            onStream?: (chunk: string) => Promise<void>;
+            onSay?: (text: string) => Promise<void>;
+            wsSensor?: WebSocketSensor;
+        } = {},
     ) {
         for (const sensor of this.externalSensors) {
             sensor.subscribe((e) => {
@@ -67,7 +74,7 @@ export class Psyche {
             "Condense the happenings here into one sentence, emphasizing the most salient information and omitting irrelevant information. Speak only as Pete (who is not an LLM).";
         this.instant = await this.instructionFollower.instruct(
             prompt,
-            this.onStream,
+            this.opts.onStream,
         );
         this.buffer = [];
         console.log(
@@ -81,6 +88,8 @@ export class Psyche {
      * Engage in conversation based on the current instant and stored messages.
      */
     async take_turn(): Promise<void> {
+        if (this.speaking) return;
+
         const messages: ChatMessage[] = [
             {
                 role: "system",
@@ -88,8 +97,19 @@ export class Psyche {
             },
             ...this.conversation,
         ];
-        const reply = await this.chatter.chat(messages, this.onStream);
-        this.conversation.push({ role: "assistant", content: reply });
+        const reply = await this.chatter.chat(messages);
+        this.pendingSpeech = reply;
+        this.opts.wsSensor?.self(reply);
+        await this.opts.onSay?.(reply);
+        this.speaking = true;
+    }
+
+    confirm_echo(message: string): void {
+        if (this.pendingSpeech && message === this.pendingSpeech) {
+            this.conversation.push({ role: "assistant", content: message });
+            this.pendingSpeech = "";
+            this.speaking = false;
+        }
     }
 
     /**

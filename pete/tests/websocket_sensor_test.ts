@@ -35,3 +35,19 @@ Deno.test("how uses provided name", () => {
   sensor.received("ip", "Alice", "hello");
   assertEquals(how, "Alice says: hello");
 });
+
+Deno.test("self emits internal desire", () => {
+  const sensor = new WebSocketSensor();
+  let type = "";
+  sensor.subscribe((exp) => type = exp.what[0].what.type);
+  sensor.self("hi");
+  assertEquals(type, "self");
+});
+
+Deno.test("echoed emits echo event", () => {
+  const sensor = new WebSocketSensor();
+  let type = "";
+  sensor.subscribe((exp) => type = exp.what[0].what.type);
+  sensor.echoed("ip", "ok");
+  assertEquals(type, "echo");
+});

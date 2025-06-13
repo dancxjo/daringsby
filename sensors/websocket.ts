@@ -1,7 +1,9 @@
 export type WebSocketWhat =
   | { type: "connect"; remote: string }
   | { type: "disconnect"; remote: string }
-  | { type: "message"; remote: string; name: string; message: string };
+  | { type: "message"; remote: string; name: string; message: string }
+  | { type: "self"; message: string }
+  | { type: "echo"; remote: string; message: string };
 
 import { Sensor } from "../lib/Sensor.ts";
 import { Experience } from "../lib/Experience.ts";
@@ -28,6 +30,12 @@ export class WebSocketSensor extends Sensor<WebSocketWhat> {
       case "message":
         how = `${what.name} says: ${what.message}`;
         break;
+      case "self":
+        how = `I feel myself wanting to say: ${what.message}`;
+        break;
+      case "echo":
+        how = `Echo from ${what.remote}: ${what.message}`;
+        break;
     }
     const exp: Experience<WebSocketWhat> = {
       what: [{ when: new Date(), what }],
@@ -46,5 +54,13 @@ export class WebSocketSensor extends Sensor<WebSocketWhat> {
 
   received(remote: string, name: string, message: string): void {
     this.feel({ type: "message", remote, name, message });
+  }
+
+  self(message: string): void {
+    this.feel({ type: "self", message });
+  }
+
+  echoed(remote: string, message: string): void {
+    this.feel({ type: "echo", remote, message });
   }
 }
