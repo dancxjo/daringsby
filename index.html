@@ -76,7 +76,10 @@
           name: "",
           input: "",
           init() {
-            this.ws = new WebSocket("ws://" + location.host + "/ws");
+            if (!this.ws || this.ws.readyState > 1) {
+              // Avoid creating more than one connection if init() is called twice
+              this.ws = new WebSocket("ws://" + location.host + "/ws");
+            }
             this.ws.onmessage = (e) => {
               try {
                 const data = JSON.parse(e.data);
