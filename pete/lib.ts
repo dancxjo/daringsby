@@ -1,10 +1,10 @@
-// mod.ts - pete deno package
+// lib.ts - pete deno package
 //
 // This module exposes basic sensory primitives using RxJS for reactive streams.
 //
 // Example usage:
 //
-//     import { Sensor } from "./mod.ts";
+//     import { Sensor } from "./lib.ts";
 //     const sensor = new Sensor<string>();
 //     sensor.subscribe((s) => console.log(`felt ${s.what} at ${s.when}`));
 //     sensor.feel("warmth");
@@ -61,11 +61,48 @@ export class Sensor<X> {
   }
 }
 
-
 /**
  * Psyche holds a collection of sensors representing external stimuli.
  */
 export class Psyche<X = unknown> {
-  constructor(public externalSensors: Sensor<X>[] = []) {}
-}
+  private beats = 0;
+  private live = true;
 
+  constructor(public externalSensors: Sensor<X>[] = []) {}
+
+  /** How many beats have occurred. */
+  get beatCount(): number {
+    return this.beats;
+  }
+
+  /** Whether the psyche should keep running. */
+  isLive(): boolean {
+    return this.live;
+  }
+
+  /** Stop the psyche's run loop. */
+  stop(): void {
+    this.live = false;
+  }
+
+  /** Increment the internal beat counter. */
+  beat(): void {
+    this.beats++;
+  }
+
+  /**
+   * Continuously run while the psyche is live.
+   *
+   * ```ts
+   * const psyche = new Psyche();
+   * psyche.run();
+   * psyche.stop();
+   * ```
+   */
+  async run(): Promise<void> {
+    while (this.isLive()) {
+      this.beat();
+      await new Promise((res) => setTimeout(res, 0));
+    }
+  }
+}
