@@ -7,7 +7,7 @@ import {
   OllamaChatter,
   OllamaInstructionFollower,
 } from "./providers/ollama.ts";
-import 'npm:dotenv/config'
+import "npm:dotenv/config";
 
 const wsSensor = new WebSocketSensor();
 const clients = new Set<WebSocket>();
@@ -15,11 +15,24 @@ const clients = new Set<WebSocket>();
 const pete = new Psyche(
   [
     new HeartbeatSensor(),
-    wsSensor
+    wsSensor,
   ],
-  new OllamaInstructionFollower(new Ollama({ host: Deno.env.get('OLLAMA_URL') }), "gemma3:27b"),
+  new OllamaInstructionFollower(
+    new Ollama({ host: Deno.env.get("OLLAMA_URL") }),
+    "gemma3:27b",
+  ),
   new OllamaChatter(new Ollama(), "gemma3"),
   {
+    onPrompt: async (prompt: string) => {
+      const payload = JSON.stringify({ type: "pete-prompt", text: prompt });
+      for (const ws of clients) {
+        try {
+          ws.send(payload);
+        } catch (_) {
+          // ignore failed sends
+        }
+      }
+    },
     onSay: async (text: string) => {
       Deno.stdout.writeSync(
         new TextEncoder().encode(`>`),
@@ -33,10 +46,19 @@ const pete = new Psyche(
         }
       }
     },
+    onStream: async (chunk: string) => {
+      const payload = JSON.stringify({ type: "pete-stream", text: chunk });
+      for (const ws of clients) {
+        try {
+          ws.send(payload);
+        } catch (_) {
+          // ignore failed sends
+        }
+      }
+    },
     wsSensor,
   },
 );
-
 
 const pageHtml = Deno.readTextFileSync(
   new URL("./index.html", import.meta.url),
@@ -82,7 +104,9 @@ Deno.serve({
     }
 
     if (pathname === "/") {
-      return new Response(pageHtml, { headers: { "content-type": "text/html" } });
+      return new Response(pageHtml, {
+        headers: { "content-type": "text/html" },
+      });
     }
 
     return new Response("Not found", { status: 404 });
