@@ -21,7 +21,7 @@ export class HeartbeatSensor extends Sensor<string> {
     const delay = this.baseInterval + delta;
     this.timerId = setTimeout(() => {
       const timeoclock = new Date().toLocaleTimeString();
-      this.feel(`It's ${timeoclock}, and I feel my heart beat.`);
+      this.subject.next(`It's ${timeoclock}, and I feel my heart beat.`);
       this.schedule();
     }, delay);
   }

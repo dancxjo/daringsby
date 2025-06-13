@@ -7,12 +7,13 @@ import { Sensation } from "./Sensation.ts";
  */
 
 export class Sensor<X> {
-    private subject = new Subject<Sensation<X>>();
+    protected subject = new Subject<Sensation<X>>();
 
     constructor(private filter: (s: Sensation<X>) => boolean = () => true) { }
 
     /** Emit a new sensation if it passes the filter. */
     feel(what: X): void {
+        console.log(`Sensor felt: ${what}`);
         const sensation: Sensation<X> = {
             when: new Date(),
             what,

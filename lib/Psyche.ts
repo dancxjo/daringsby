@@ -18,7 +18,9 @@ export class Psyche<X = unknown> {
         private onStream?: (chunk: string) => Promise<void>,
     ) {
         for (const sensor of this.externalSensors) {
-            sensor.subscribe((s) => this.buffer.push(s));
+            sensor.subscribe((s) => {
+                this.buffer.push(s);
+            });
         }
     }
 
@@ -38,8 +40,10 @@ export class Psyche<X = unknown> {
     }
 
     /** Increment the internal beat counter. */
-    beat(): void {
+    async beat(): Promise<void> {
         this.beats++;
+        console.log(`Beat ${this.beats} at ${new Date().toLocaleTimeString()}`);
+        await this.integrate_sensory_input();
     }
 
     /**
@@ -74,8 +78,7 @@ export class Psyche<X = unknown> {
      */
     async run(): Promise<void> {
         while (this.isLive()) {
-            this.beat();
-            await this.integrate_sensory_input();
+            await this.beat();
             await new Promise((res) => setTimeout(res, 0));
         }
     }
