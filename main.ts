@@ -8,6 +8,9 @@ import { MockInstructionFollower } from "./lib/InstructionFollower.ts";
 export const Pete = new Psyche(
   [new HeartbeatSensor()],
   new MockInstructionFollower(),
+  async (chunk: string) => {
+    await Deno.stdout.write(new TextEncoder().encode(chunk));
+  },
 );
 
 // Start Pete's life cycle.

@@ -7,7 +7,7 @@ export abstract class InstructionFollower {
    */
   abstract instruct(
     prompt: string,
-    onChunk?: (chunk: string) => void,
+    onChunk?: (chunk: string) => Promise<void>,
   ): Promise<string>;
 }
 
@@ -23,10 +23,10 @@ export abstract class InstructionFollower {
 export class MockInstructionFollower extends InstructionFollower {
   async instruct(
     prompt: string,
-    onChunk?: (chunk: string) => void,
+    onChunk?: (chunk: string) => Promise<void>,
   ): Promise<string> {
     const result = prompt.replace(/\b\w+\b/g, "Malkovitch");
-    if (onChunk) onChunk(result);
+    if (onChunk) await onChunk(result);
     return result;
   }
 }
