@@ -25,6 +25,9 @@ class StubChatter extends Chatter {
 }
 
 class StubSensor extends Sensor<string> {
+  override describeSensor(): string {
+    return "StubSensor: A sensor that allows you to feel strings.";
+  }
   feel(what: string): void {
     const exp: Experience<string> = {
       what: [{ when: new Date(), what }],

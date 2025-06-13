@@ -9,11 +9,15 @@ export class HeartbeatSensor extends Sensor<null> {
   private running = true;
   private timerId?: number;
   constructor(
-    private readonly baseInterval = 10_000,
+    private readonly baseInterval = 1_000,
     private readonly jitter = 1_000,
   ) {
     super();
     this.schedule();
+  }
+
+  describeSensor(): string {
+    return `Heartbeat: Ticks about once every ${Math.floor(this.baseInterval / 1000)} seconds. Let's you know you're still alive.`;
   }
 
   private schedule() {
@@ -25,7 +29,7 @@ export class HeartbeatSensor extends Sensor<null> {
       const timeoclock = when.toLocaleTimeString();
       const experience: Experience<null> = {
         what: [{ when, what: null }],
-        how: `It's ${timeoclock}, and I feel my heart beat.`,
+        how: `It's ${timeoclock}, and I continue to process external stimuli.`,
       };
       this.subject.next(experience);
       this.schedule();

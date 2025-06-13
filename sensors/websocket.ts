@@ -18,6 +18,9 @@ import { Experience } from "../lib/Experience.ts";
  * ```
  */
 export class WebSocketSensor extends Sensor<WebSocketWhat> {
+  describeSensor(): string {
+    return "WebSocket: Allows your developers to communicate with you directly. This sensor tells you when clients connect, disconnect and speak to you (ASR support forthcoming). It also allows you to speak back to them.";
+  }
   feel(what: WebSocketWhat): void {
     let how: string;
     switch (what.type) {
@@ -34,7 +37,7 @@ export class WebSocketSensor extends Sensor<WebSocketWhat> {
         how = `I feel myself wanting to say: ${what.message}`;
         break;
       case "echo":
-        how = `Echo from ${what.remote}: ${what.message}`;
+        how = `I heard myself speak on ${what.remote}: ${what.message}`;
         break;
     }
     const exp: Experience<WebSocketWhat> = {

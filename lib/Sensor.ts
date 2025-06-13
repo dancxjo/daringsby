@@ -8,6 +8,8 @@ import { Experience } from "./Experience.ts";
 export abstract class Sensor<X> {
     protected subject = new Subject<Experience<X>>();
 
+    abstract describeSensor(): string;
+
     /** Injest a new sensation */
     abstract feel(what: X): void;
 

@@ -29,6 +29,9 @@ export class Psyche {
     ) {
         for (const sensor of this.externalSensors) {
             sensor.subscribe((e) => {
+                Deno.stdout.writeSync(
+                    new TextEncoder().encode(`x`),
+                );
                 this.buffer.push(e);
             });
         }
@@ -52,10 +55,12 @@ export class Psyche {
     /** Increment the internal beat counter. */
     async beat(): Promise<void> {
         this.beats++;
-        // console.log(`Beat ${this.beats} at ${new Date().toLocaleTimeString()}`);
         await this.integrate_sensory_input();
         if (!this.speaking) {
             await this.take_turn();
+        }
+        if (this.opts.wsSensor) {
+            this.opts.wsSensor.self(this.pendingSpeech);
         }
     }
 
@@ -70,7 +75,9 @@ export class Psyche {
         }).join("\n");
         const prompt =
             "You are the linguistic processor for an artificial entity named Pete. Speak in Pete's voice on his behalf.\n" +
-            "## Pete's Current Situation (as he understands it)\n" +
+            "## Pete's Senses\n* " +
+            this.externalSensors.map((s) => s.describeSensor()).join("\n* ") +
+            "\n## Pete's Current Situation (as he understands it)\n" +
             `${this.instant}\n` +
             "## What just happened in the last instant\n\n" +
             `${happenings}\n` +
@@ -84,9 +91,8 @@ export class Psyche {
             console.error("instruction follower failed", err);
         }
         this.buffer = [];
-        console.log(
-            `Beat ${this.beats} at ${new Date().toLocaleTimeString()
-            }: ${this.instant}`,
+        Deno.stdout.writeSync(
+            new TextEncoder().encode(`.`),
         );
     }
 
@@ -94,7 +100,12 @@ export class Psyche {
      * Engage in conversation based on the current instant and stored messages.
      */
     async take_turn(): Promise<void> {
-        if (this.speaking) return;
+        if (this.speaking) {
+            Deno.stdout.writeSync(
+                new TextEncoder().encode(`O`),
+            );
+            return;
+        }
 
         const messages: ChatMessage[] = [
             {

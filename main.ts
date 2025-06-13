@@ -14,13 +14,16 @@ const clients = new Set<WebSocket>();
 
 const pete = new Psyche(
   [
-    //new HeartbeatSensor(),
+    new HeartbeatSensor(),
     wsSensor
   ],
   new OllamaInstructionFollower(new Ollama({ host: Deno.env.get('OLLAMA_URL') }), "gemma3:27b"),
   new OllamaChatter(new Ollama(), "gemma3"),
   {
     onSay: async (text: string) => {
+      Deno.stdout.writeSync(
+        new TextEncoder().encode(`>`),
+      );
       const payload = JSON.stringify({ type: "pete-says", text });
       for (const ws of clients) {
         try {
