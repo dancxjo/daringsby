@@ -25,13 +25,13 @@ export class WebSocketSensor extends Sensor<WebSocketWhat> {
     let how: string;
     switch (what.type) {
       case "connect":
-        how = `Client ${what.remote} connected.`;
+        how = `I feel a Client ${what.remote} connected.`;
         break;
       case "disconnect":
-        how = `Client ${what.remote} disconnected.`;
+        how = `I feel a Client ${what.remote} disconnected.`;
         break;
       case "message":
-        how = `${what.name} says: ${what.message}`;
+        how = `I hear ${what.name} say: ${what.message}`;
         break;
       case "self":
         how = `I feel myself on the verge of saying: ${what.message}`;
