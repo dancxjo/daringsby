@@ -1,6 +1,0 @@
-[build]
-# Enable incremental compilation to speed up rebuilds
-incremental = true
-# Store build artifacts in a shared directory so cached dependencies persist
-# across container runs. Adjust the path to fit your environment.
-target-dir = "../target"
