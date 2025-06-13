@@ -1,7 +1,13 @@
 import { Sensor } from "./Sensor.ts";
 import { InstructionFollower } from "./InstructionFollower.ts";
-import { Sensation } from "./Sensation.ts";
 import { Experience } from "./Experience.ts";
+
+export class Message {
+    constructor(
+        public content: string,
+        public role: "assistant" | "user",
+    ) { }
+}
 
 /**
  * Psyche holds a collection of sensors representing external stimuli.
@@ -12,6 +18,7 @@ export class Psyche {
     private live = true;
     private buffer: Experience<unknown>[] = [];
     public instant = "Pete has just been born.";
+    public conversation: Message[] = [];
 
     constructor(
         public externalSensors: Sensor<unknown>[] = [],
