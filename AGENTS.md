@@ -11,8 +11,8 @@ If dependencies are missing, use the official install script or package manager
 before running tests. Cache dependencies with `deno cache` to speed up repeated
 runs.
 
-If network access is restricted, vendor remote modules with `deno vendor`
-so tests can run offline.
+If network access is restricted, prefetch dependencies with `deno cache --lock=deno.lock`.
+The old `deno vendor` command was removed in Deno 2.
 
 If commands fail due to environment limitations, mention that in the PR's test
 results section.

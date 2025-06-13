@@ -73,10 +73,14 @@ export class Psyche {
             "## What just happened in the last instant\n\n" +
             `${happenings}\n` +
             "Condense the happenings here into one sentence, emphasizing the most salient information and omitting irrelevant information. Speak only as Pete (who is not an LLM).";
-        this.instant = await this.instructionFollower.instruct(
-            prompt,
-            this.opts.onStream,
-        );
+        try {
+            this.instant = await this.instructionFollower.instruct(
+                prompt,
+                this.opts.onStream,
+            );
+        } catch (err) {
+            console.error("instruction follower failed", err);
+        }
         this.buffer = [];
         console.log(
             `Beat ${this.beats} at ${new Date().toLocaleTimeString()
@@ -97,11 +101,17 @@ export class Psyche {
             },
             ...this.conversation,
         ];
-        const reply = await this.chatter.chat(messages);
-        this.pendingSpeech = reply;
-        this.opts.wsSensor?.self(reply);
-        await this.opts.onSay?.(reply);
-        this.speaking = true;
+        try {
+            const reply = await this.chatter.chat(messages);
+            this.pendingSpeech = reply;
+            this.opts.wsSensor?.self(reply);
+            await this.opts.onSay?.(reply);
+        } catch (err) {
+            console.error("chatter failed", err);
+            this.pendingSpeech = "";
+        } finally {
+            this.speaking = true;
+        }
     }
 
     confirm_echo(message: string): void {
