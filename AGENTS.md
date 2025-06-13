@@ -27,3 +27,4 @@ be run with `deno run pete/main.ts`.
 ### Reminders
 
 - Update tests whenever constructor parameters change, especially for `Psyche`.
+- Cache server dependencies with `deno cache server.ts` before tests.
