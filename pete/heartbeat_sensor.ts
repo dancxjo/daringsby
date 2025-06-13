@@ -1,4 +1,4 @@
-import { Sensor } from "./mod.ts";
+import { Sensor } from "./lib.ts";
 
 /**
  * HeartbeatSensor emits a message every baseInterval milliseconds

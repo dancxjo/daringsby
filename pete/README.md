@@ -3,7 +3,7 @@
 A simple Deno module exposing sensory primitives powered by RxJS.
 
 ```ts
-import { Sensor } from "./mod.ts";
+import { Sensor } from "./lib.ts";
 
 const sensor = new Sensor<string>((s) => s.what.length > 0);
 
@@ -14,3 +14,8 @@ sensor.feel("warmth");
 
 Run tests with `deno test` (ensure you have Deno installed).
 
+Run the example Pete program:
+
+```sh
+deno run main.ts
+```

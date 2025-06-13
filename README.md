@@ -11,3 +11,8 @@ Run tests with:
 deno test
 ```
 
+Run Pete's main program:
+
+```sh
+deno run pete/main.ts
+```
