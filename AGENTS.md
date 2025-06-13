@@ -23,3 +23,7 @@ releases and place it in `/usr/local/bin`.
 
 `lib.ts` is the main library entry point. `main.ts` demonstrates usage and can
 be run with `deno run pete/main.ts`.
+
+### Reminders
+
+- Update tests whenever constructor parameters change, especially for `Psyche`.
