@@ -11,14 +11,27 @@ Deno.test("connected emits connection experience", () => {
   assertEquals(type, "connect");
 });
 
-Deno.test("received emits message experience", () => {
+Deno.test("received emits message experience with name", () => {
   const sensor = new WebSocketSensor();
-  let received = "";
+  let event;
   sensor.subscribe((exp) => {
     if (exp.what[0].what.type === "message") {
-      received = (exp.what[0].what as any).message;
+      event = exp;
     }
   });
-  sensor.received("ip", "hi");
-  assertEquals(received, "hi");
+  sensor.received("ip", "Bob", "hi");
+  assertEquals(event!.what[0].what.message, "hi");
+  assertEquals(event!.what[0].what.name, "Bob");
+});
+
+Deno.test("how uses provided name", () => {
+  const sensor = new WebSocketSensor();
+  let how = "";
+  sensor.subscribe((exp) => {
+    if (exp.what[0].what.type === "message") {
+      how = exp.how;
+    }
+  });
+  sensor.received("ip", "Alice", "hello");
+  assertEquals(how, "Alice says: hello");
 });
