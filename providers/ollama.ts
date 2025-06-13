@@ -10,7 +10,6 @@ export class OllamaInstructionFollower extends InstructionFollower {
     prompt: string,
     onChunk?: (chunk: string) => Promise<void>,
   ): Promise<string> {
-    console.log(`Prompt: ${prompt}`);
     const stream = await this.client.generate({
       stream: true,
       model: this.model,
