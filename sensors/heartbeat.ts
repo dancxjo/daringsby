@@ -21,9 +21,10 @@ export class HeartbeatSensor extends Sensor<null> {
     const delta = Math.floor(Math.random() * (this.jitter * 2)) - this.jitter;
     const delay = this.baseInterval + delta;
     this.timerId = setTimeout(() => {
-      const timeoclock = new Date().toLocaleTimeString();
+      const when = new Date();
+      const timeoclock = when.toLocaleTimeString();
       const experience: Experience<null> = {
-        what: [],
+        what: [{ when, what: null }],
         how: `It's ${timeoclock}, and I feel my heart beat.`,
       };
       this.subject.next(experience);

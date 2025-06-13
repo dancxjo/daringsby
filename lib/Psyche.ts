@@ -10,11 +10,11 @@ import { Experience } from "./Experience.ts";
 export class Psyche {
     private beats = 0;
     private live = true;
-    private buffer: Experience<never>[] = [];
+    private buffer: Experience<unknown>[] = [];
     public instant = "Pete has just been born.";
 
     constructor(
-        public externalSensors: Sensor<never>[] = [],
+        public externalSensors: Sensor<unknown>[] = [],
         private instructionFollower: InstructionFollower,
         private onStream?: (chunk: string) => Promise<void>,
     ) {
@@ -65,6 +65,7 @@ export class Psyche {
             "Condense the happenings here into one sentence, emphasizing the most salient information and omitting irrelevant information. Speak only as Pete (who is not an LLM).";
         this.instant = await this.instructionFollower.instruct(prompt, this.onStream);
         this.buffer = [];
+        console.log(`Beat ${this.beats} at ${new Date().toLocaleTimeString()}: ${this.instant}`);
     }
 
     /**
