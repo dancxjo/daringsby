@@ -54,6 +54,7 @@ export class Psyche {
         this.beats++;
         // console.log(`Beat ${this.beats} at ${new Date().toLocaleTimeString()}`);
         await this.integrate_sensory_input();
+        await this.take_turn();
     }
 
     /**
@@ -81,7 +82,6 @@ export class Psyche {
             `Beat ${this.beats} at ${new Date().toLocaleTimeString()
             }: ${this.instant}`,
         );
-        await this.take_turn();
     }
 
     /**
@@ -93,7 +93,7 @@ export class Psyche {
         const messages: ChatMessage[] = [
             {
                 role: "system",
-                content: `You are the linguistic processing unit for an artificial entity named Pete. Here's the situation as Pete understands it: ${this.instant}\n\nSpeak in Pete's voice on his behalf. As your conversation progresses, you will receive more information about Pete's situation. Use this information to inform your responses.`,
+                content: `You are the linguistic processing unit for an artificial entity named Pete. Here's the situation as Pete understands it: ${this.instant}\n\nSpeak in Pete's voice on his behalf to the user. As your conversation progresses, you will receive more information about Pete's situation. Use this information to inform your responses, and respond only with spoken text (no non-linguistic notes). Everything you return will be spoken out loud by Pete. Be concise, clear, and conversational. Do not use any markdown or code blocks. You will have a chance to continue further so do not try to say everything at once.`,
             },
             ...this.conversation,
         ];

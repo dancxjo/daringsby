@@ -11,9 +11,12 @@ const wsSensor = new WebSocketSensor();
 const clients = new Set<WebSocket>();
 
 const pete = new Psyche(
-  [new HeartbeatSensor(), wsSensor],
-  new OllamaInstructionFollower(new Ollama(), "gemma3"),
-  new OllamaChatter(new Ollama(), "gemma3"),
+  [
+    //new HeartbeatSensor(),
+    wsSensor
+  ],
+  new OllamaInstructionFollower(new Ollama(), "gemma3:27b"),
+  new OllamaChatter(new Ollama(), "gemma3:27b"),
   {
     onSay: async (text: string) => {
       const payload = JSON.stringify({ type: "pete-says", text });
