@@ -1,42 +1,16 @@
-# Repo Guidelines
+# AGENT Instructions
 
-## Programmatic Checks
-- Run `cargo test --all` before committing when feasible. If the full test
-  suite is too slow, run targeted tests (e.g. `cargo test -p <crate>` or
-  `cargo test <path>::<test_name>`).
+This repository contains Deno packages. Install Deno before running tests.
 
-## Development Tips
-- During day‑to‑day coding, prefer targeted tests (e.g. `cargo test -p <crate>`)
-  to avoid long waits. Save the full `--all` runs for just before a commit.
-- Keep dependency caches around between runs to reduce network activity.
-- Each crate folder has its own terse `AGENTS.md` with more tips.
+## Testing
 
-## Development
-- Follow BDD/TDD principles; add tests alongside new features.
-- Use concise commit messages.
-- Prefer doc tests and examples for public APIs to aid understanding.
-- Log errors instead of silently discarding them.
-- Include tests that verify the heart passes experiences across multiple wits.
-- Sensors should return a vector of experiences.
-- External sensors belong to each psyche's crate, not the `psyche` library.
-- When testing streams created with `async_stream`, ensure you poll once more
-  after the final item to trigger any cleanup logic.
-- When storing timestamped data, prefer field names `when` and `what` for
-  clarity.
-- Use `how` for the descriptive text inside an `Experience`.
-- Each psyche should create its own `EventBus` and web server. Avoid globals.
-- Keep `README.md` in sync with `docker-compose.yml` whenever services change.
-- When mocking Ollama endpoints in tests, include all fields the client expects
-  (e.g. `modified_at`, `size`) to avoid parsing errors.
-- Remove unused code to keep builds clean.
+Run `deno test` from the repository root. Tests reside in `pete/tests` and
+should follow BDD/TDD style using Deno's built-in testing tools.
 
-## Project Overview
-Daringsby houses several Rust crates forming a model cognitive system named Pete. Events flow through sensors into a `Heart` of `Wit`s which summarize and store experiences.
+If dependencies are missing, use the official install script or package manager
+before running tests. Cache dependencies with `deno cache` to speed up repeated
+runs.
 
-### Layout
-- `lingproc/` – LLM processors, providers and scheduler
-- `modeldb/`  – catalog of available models
-- `psyche/`   – sensor trait, event bus, heart/wit logic and web server
-- `memory/`   – graph and vector memory abstractions
-- `pete/`     – binary launching the web interface
-- After running `cargo fmt`, check `git status` and revert unrelated changes before committing.
+If commands fail due to environment limitations, mention that in the PR's test
+results section.
+

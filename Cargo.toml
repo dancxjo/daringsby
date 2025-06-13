@@ -1,3 +1,0 @@
-[workspace]
-members = ["lingproc", "modeldb", "psyche", "memory", "pete"]
-resolver = "2"
