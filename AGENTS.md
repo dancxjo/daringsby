@@ -14,3 +14,7 @@ runs.
 If commands fail due to environment limitations, mention that in the PR's test
 results section.
 
+
+### Environment setup
+If the standard install script is blocked, download the Deno binary from GitHub
+releases and place it in `/usr/local/bin`.

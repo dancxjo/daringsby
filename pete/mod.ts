@@ -61,3 +61,11 @@ export class Sensor<X> {
   }
 }
 
+
+/**
+ * Psyche holds a collection of sensors representing external stimuli.
+ */
+export class Psyche<X = unknown> {
+  constructor(public externalSensors: Sensor<X>[] = []) {}
+}
+
