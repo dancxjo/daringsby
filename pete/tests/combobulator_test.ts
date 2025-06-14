@@ -1,21 +1,19 @@
 import { Psyche } from "../../lib/Psyche.ts";
 import { InstructionFollower } from "../../lib/InstructionFollower.ts";
-import { Chatter, ChatMessage } from "../../lib/Chatter.ts";
+import { Chatter } from "../../lib/Chatter.ts";
 import { Sensor } from "../../lib/Sensor.ts";
 import { Experience } from "../../lib/Experience.ts";
 
-class CountingFollower extends InstructionFollower {
+class StubFollower extends InstructionFollower {
   calls = 0;
   async instruct(): Promise<string> {
     this.calls++;
-    return "instant";
+    return "moment";
   }
 }
 
 class SilentChatter extends Chatter {
-  async chat(_m: ChatMessage[]): Promise<string> {
-    return "reply";
-  }
+  async chat(): Promise<string> { return ""; }
 }
 
 class StubSensor extends Sensor<string> {
@@ -28,19 +26,17 @@ class StubSensor extends Sensor<string> {
   }
 }
 
-Deno.test("quick integrates each beat while speaking", async () => {
+Deno.test("combobulator summarizes instants", async () => {
   const sensor = new StubSensor();
-  const follower = new CountingFollower();
+  const follower = new StubFollower();
   const chatter = new SilentChatter();
   const psyche = new Psyche([sensor], follower, chatter);
-
-  sensor.feel("one");
-  await psyche.beat(); // start speaking
-
-  sensor.feel("two");
-  await psyche.beat(); // should integrate again even though speaking
-
-  if (follower.calls !== 4) {
-    throw new Error("expected wit processing on each beat");
+  sensor.feel("a");
+  await psyche.beat();
+  if (psyche.moment !== "moment") {
+    throw new Error("moment not set");
+  }
+  if (follower.calls !== 2) {
+    throw new Error("wit call count");
   }
 });
