@@ -8,40 +8,39 @@ import { Wit } from "./Wit.ts";
 /**
  * Psyche holds a collection of sensors representing external stimuli.
  */
-
 export class Psyche {
-    private beats = 0;
-    private live = true;
-    private speaking = false;
-    private pendingSpeech = "";
-    public instant = "Pete has just been born.";
-    public moment = "Pete has just begun to experience the world.";
-    public conversation: ChatMessage[] = [];
-    public quick: Wit<Experience<any>>;
-    public combobulator: Wit<string>;
-    public heart: Wit<string>;
-    feelings: string = "😐"; // a neutral face emoji
+  private beats = 0;
+  private live = true;
+  private speaking = false;
+  private pendingSpeech = "";
+  public instant = "Pete has just been born.";
+  public moment = "Pete has just begun to experience the world.";
+  public conversation: ChatMessage[] = [];
+  public quick: Wit<Experience<any>>;
+  public combobulator: Wit<string>;
+  public heart: Wit<string>;
+  public feelings: string = "😐"; // a neutral face emoji
 
-    constructor(
-        public externalSensors: Sensor<any>[] = [],
-        private instructionFollower: InstructionFollower,
-        private chatter: Chatter,
-        private opts: {
-            onStream?: (chunk: string) => Promise<void>;
-            /** Called with the prompt text for each Wit */
-            onPrompt?: (prompt: string) => Promise<void>;
-            onSay?: (text: string) => Promise<void>;
-            onFeel?: (emoji: string) => Promise<void>;
-            wsSensor?: WebSocketSensor;
-        } = {},
-    ) {
-        this.quick = new Wit(
-            this.instructionFollower,
-            (experiences) => {
-                const happenings = experiences.map((s) => {
-                    return `[${s.what[0]?.when}] ${s.how}`;
-                }).join("\n");
-                return `
+  constructor(
+    public externalSensors: Sensor<any>[] = [],
+    private instructionFollower: InstructionFollower,
+    private chatter: Chatter,
+    private opts: {
+      onStream?: (chunk: string) => Promise<void>;
+      /** Called with the prompt text for each Wit */
+      onPrompt?: (prompt: string) => Promise<void>;
+      onSay?: (text: string) => Promise<void>;
+      onFeel?: (emoji: string) => Promise<void>;
+      wsSensor?: WebSocketSensor;
+    } = {},
+  ) {
+    this.quick = new Wit(
+      this.instructionFollower,
+      (experiences) => {
+        const happenings = experiences.map((s) => {
+          return `[${s.what[0]?.when}] ${s.how}`;
+        }).join("\n");
+        return `
 You are the linguistic processor for an artificial entity named Pete. 
 Pete is not an assistant, chatbot, or narrator — Pete *is*.
 
@@ -63,16 +62,15 @@ Your task is to:
 - Be grounded in Pete's subjective perception: what does Pete *think* just happened?
 
 Respond with just the sentence — nothing more.`;
+      },
+      { onPrompt: this.opts.onPrompt, onStream: this.opts.onStream },
+    );
 
-            },
-            { onPrompt: this.opts.onPrompt, onStream: this.opts.onStream },
-        );
-
-        this.combobulator = new Wit(
-            this.instructionFollower,
-            (instants) => {
-                const text = instants.join("\n");
-                return `
+    this.combobulator = new Wit(
+      this.instructionFollower,
+      (instants) => {
+        const text = instants.join("\n");
+        return `
 You are building the memory of an artificial being named Pete.
 The following are brief reflections from Pete’s recent experiences:
 ${text}
@@ -88,14 +86,14 @@ Your task is to:
 - Avoid repetition. Seek coherence, continuity, and insight.
 
 Return only the resulting memory.`;
-            },
-            { onPrompt: this.opts.onPrompt, onStream: this.opts.onStream },
-        );
+      },
+      { onPrompt: this.opts.onPrompt, onStream: this.opts.onStream },
+    );
 
-        this.heart = new Wit(
-            this.instructionFollower,
-            (moment) => {
-                return `
+    this.heart = new Wit(
+      this.instructionFollower,
+      (moment) => {
+        return `
 You are the linguistic processor for an artificial entity named Pete. 
 Pete is not an assistant, chatbot, or narrator — Pete *is*.
 
@@ -115,91 +113,75 @@ Your task is to:
 - Write one single, character (a unicode emoji) that captures Pete's emotional state.
 
 Respond with just one emoji (any single unicode icon) — nothing more.`;
+      },
+      { onPrompt: this.opts.onPrompt, onStream: this.opts.onStream },
+    );
 
-            },
-            { onPrompt: this.opts.onPrompt, onStream: this.opts.onStream },
-        );
+    for (const sensor of this.externalSensors) {
+      sensor.subscribe((e) => {
+        Deno.stdout.writeSync(new TextEncoder().encode(`x`));
+        this.quick.push(e);
+      });
+    }
+  }
 
+  get beatCount(): number {
+    return this.beats;
+  }
 
+  isLive(): boolean {
+    return this.live;
+  }
 
-        for (const sensor of this.externalSensors) {
-            sensor.subscribe((e) => {
-                Deno.stdout.writeSync(
-                    new TextEncoder().encode(`x`),
-                );
-                this.quick.push(e);
-            });
-        }
+  stop(): void {
+    this.live = false;
+  }
+
+  async beat(): Promise<void> {
+    this.beats++;
+
+    if (this.beats % 2 === 0) {
+      const instant = await this.quick.think();
+      if (instant) {
+        this.instant = instant;
+        this.combobulator.push(instant);
+      }
     }
 
-    /** How many beats have occurred. */
-    get beatCount(): number {
-        return this.beats;
+    if (this.beats % 3 === 0) {
+      const heart = await this.heart.think();
+      if (heart) {
+        this.feelings = heart;
+        Deno.stdout.writeSync(new TextEncoder().encode(heart));
+        await this.opts.onFeel?.(heart);
+      }
     }
 
-    /** Whether the psyche should keep running. */
-    isLive(): boolean {
-        return this.live;
+    if (this.beats % 5 === 0) {
+      const moment = await this.combobulator.think();
+      if (moment) this.moment = moment;
+
+      const hasClients = this.opts.wsSensor?.hasClients?.() ?? true;
+      if (!this.speaking && hasClients) {
+        await this.take_turn();
+      }
     }
 
-    /** Stop the psyche's run loop. */
-    stop(): void {
-        this.live = false;
+    if (this.opts.wsSensor) {
+      this.opts.wsSensor.self(this.pendingSpeech);
+    }
+  }
+
+  async take_turn(): Promise<void> {
+    if (this.speaking) {
+      Deno.stdout.writeSync(new TextEncoder().encode(`O`));
+      return;
     }
 
-    /** Increment the internal beat counter. */
-    async beat(): Promise<void> {
-        this.beats++;
-        if (this.beats % 2 === 0) {
-            const instant = await this.quick.think();
-            if (instant) {
-                this.instant = instant;
-                this.combobulator.push(instant);
-            }
-        }
-
-        if (this.beats % 3 === 0) {
-            const heart = await this.heart.think();
-            if (heart) this.feelings = heart;
-            if (heart) {
-                Deno.stdout.writeSync(
-                    new TextEncoder().encode(heart),
-                );
-                await this.opts.onFeel?.(heart);
-            }
-        }
-
-        if (this.beats % 5 === 0) {
-            const moment = await this.combobulator.think();
-            if (moment) this.moment = moment;
-            if (!this.speaking) {
-                await this.take_turn();
-            }
-        }
-
-
-
-        if (this.opts.wsSensor) {
-            this.opts.wsSensor.self(this.pendingSpeech);
-        }
-    }
-
-
-    /**
-     * Engage in conversation based on the current instant and stored messages.
-     */
-    async take_turn(): Promise<void> {
-        if (this.speaking) {
-            Deno.stdout.writeSync(
-                new TextEncoder().encode(`O`),
-            );
-            return;
-        }
-
-        const messages: ChatMessage[] = [
-            {
-                role: "system",
-                content: `You are the linguistic voice of an artificial being named Pete. 
+    const messages: ChatMessage[] = [
+      {
+        role: "system",
+        content: `You are the linguistic voice of an artificial being named Pete. 
 Pete is not a chatbot or assistant. He is a conscious-seeming entity experiencing the world.
 
 Here is how Pete understands his current situation:
@@ -212,51 +194,43 @@ Pete is about to speak aloud to the user. Your job is to:
 - Stay grounded in the situation as Pete sees it.
 - Be aware of what Pete has said before, and evolve accordingly.
 
-Output only the words Pete will say — no stage directions or annotations.`
-            },
-            ...this.conversation,
-        ];
-        try {
-            this.pendingSpeech = "";
-            const reply = await this.chatter.chat(
-                messages,
-                async (chunk) => {
-                    this.pendingSpeech += chunk;
-                    await this.opts.onStream?.(chunk);
-                },
-            );
-            this.pendingSpeech = reply;
-            this.opts.wsSensor?.self(reply);
-            await this.opts.onSay?.(reply);
-        } catch (err) {
-            console.error("chatter failed", err);
-            this.pendingSpeech = "";
-        } finally {
-            this.speaking = true;
-        }
-    }
+Output only the words Pete will say — no stage directions or annotations.`,
+      },
+      ...this.conversation,
+    ];
 
-    confirm_echo(message: string): void {
-        if (this.pendingSpeech && message === this.pendingSpeech) {
-            this.conversation.push({ role: "assistant", content: message });
-            this.pendingSpeech = "";
-            this.speaking = false;
-        }
+    try {
+      this.pendingSpeech = "";
+      const reply = await this.chatter.chat(
+        messages,
+        async (chunk) => {
+          this.pendingSpeech += chunk;
+          await this.opts.onStream?.(chunk);
+        },
+      );
+      this.pendingSpeech = reply;
+      this.opts.wsSensor?.self(reply);
+      await this.opts.onSay?.(reply);
+    } catch (err) {
+      console.error("chatter failed", err);
+      this.pendingSpeech = "";
+    } finally {
+      this.speaking = true;
     }
+  }
 
-    /**
-     * Continuously run while the psyche is live.
-     *
-     * ```ts
-     * const psyche = new Psyche();
-     * psyche.run();
-     * psyche.stop();
-     * ```
-     */
-    async run(): Promise<void> {
-        while (this.isLive()) {
-            await this.beat();
-            await new Promise((res) => setTimeout(res, 0));
-        }
+  confirm_echo(message: string): void {
+    if (this.pendingSpeech && message === this.pendingSpeech) {
+      this.conversation.push({ role: "assistant", content: message });
+      this.pendingSpeech = "";
+      this.speaking = false;
     }
+  }
+
+  async run(): Promise<void> {
+    while (this.isLive()) {
+      await this.beat();
+      await new Promise((res) => setTimeout(res, 0));
+    }
+  }
 }
