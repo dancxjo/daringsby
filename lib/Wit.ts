@@ -1,9 +1,13 @@
 export class Wit<I> {
   private buffer: I[] = [];
   constructor(
+    private readonly name: string,
     private follower: import("./InstructionFollower.ts").InstructionFollower,
     private promptCb: (inputs: I[]) => string,
-    private opts: { onPrompt?: (prompt: string) => Promise<void>; onStream?: (chunk: string) => Promise<void> } = {},
+    private opts: {
+      onPrompt?: (name: string, prompt: string) => Promise<void>;
+      onStream?: (name: string, chunk: string) => Promise<void>;
+    } = {},
   ) {}
 
   push(input: I): void {
@@ -15,9 +19,14 @@ export class Wit<I> {
     const inputs = [...this.buffer];
     this.buffer = [];
     const prompt = this.promptCb(inputs);
-    await this.opts.onPrompt?.(prompt);
+    await this.opts.onPrompt?.(this.name, prompt);
     try {
-      return await this.follower.instruct(prompt, this.opts.onStream);
+      return await this.follower.instruct(
+        prompt,
+        this.opts.onStream
+          ? (c) => this.opts.onStream!(this.name, c)
+          : undefined,
+      );
     } catch (err) {
       console.error("wit failed", err);
       return null;
