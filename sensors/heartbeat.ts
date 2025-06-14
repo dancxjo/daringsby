@@ -9,7 +9,7 @@ export class HeartbeatSensor extends Sensor<null> {
   private running = true;
   private timerId?: number;
   constructor(
-    private readonly baseInterval = 1_000,
+    private readonly baseInterval = 60_000,
     private readonly jitter = 1_000,
   ) {
     super();

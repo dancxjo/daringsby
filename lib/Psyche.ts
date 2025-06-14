@@ -119,7 +119,7 @@ Respond with just one emoji (any single unicode icon) — nothing more.`;
 
         for (const sensor of this.externalSensors) {
             sensor.subscribe((e) => {
-                Deno.stdout.writeSync(new TextEncoder().encode(`x`));
+                Deno.stdout.writeSync(new TextEncoder().encode(`x ${e.how} `));
                 this.quick.push(e);
             });
         }
