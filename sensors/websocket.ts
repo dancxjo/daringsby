@@ -18,6 +18,8 @@ import { Experience } from "../lib/Experience.ts";
  * ```
  */
 export class WebSocketSensor extends Sensor<WebSocketWhat> {
+  private clients = new Set<string>();
+
   describeSensor(): string {
     return "WebSocket: Allows your developers to communicate with you directly. This sensor tells you when clients connect, disconnect and speak to you (ASR support forthcoming). It also allows you to speak back to them.";
   }
@@ -48,10 +50,12 @@ export class WebSocketSensor extends Sensor<WebSocketWhat> {
   }
 
   connected(remote: string): void {
+    this.clients.add(remote);
     this.feel({ type: "connect", remote });
   }
 
   disconnected(remote: string): void {
+    this.clients.delete(remote);
     this.feel({ type: "disconnect", remote });
   }
 
@@ -65,5 +69,10 @@ export class WebSocketSensor extends Sensor<WebSocketWhat> {
 
   echoed(remote: string, message: string): void {
     this.feel({ type: "echo", remote, message });
+  }
+
+  /** Whether at least one client is connected. */
+  hasClients(): boolean {
+    return this.clients.size > 0;
   }
 }
