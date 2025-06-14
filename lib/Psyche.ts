@@ -118,7 +118,7 @@ Your task is to:
 - Anticipate how Pete might feel about this moment.
 - Write one single, character (a unicode emoji) that captures Pete's emotional state.
 
-Respond with just one emoji (any single unicode icon) — nothing more.`;
+Respond with just one emoji (any single unicode emoji) — nothing more and nothing less.`;
             },
             {
                 onPrompt: (name, prompt) => this.opts.onPrompt?.("heart", prompt) ?? Promise.resolve(),
