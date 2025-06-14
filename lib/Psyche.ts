@@ -20,6 +20,7 @@ export class Psyche {
     public quick: Wit<Experience<any>>;
     public combobulator: Wit<string>;
     public heart: Wit<string>;
+    feelings: string = "😐"; // a neutral face emoji
 
     constructor(
         public externalSensors: Sensor<any>[] = [],
@@ -51,6 +52,9 @@ These are Pete's only connections to external reality.
 Below are the recent experiences Pete has just sensed:
 ${happenings}
 
+and this is how Pete was feeling a moment ago:
+${this.feelings}
+
 Your task is to:
 - Summarize these happenings into *one* concise, emotionally resonant sentence.
 - Emphasize what is most unusual, important, or affective.
@@ -71,6 +75,9 @@ Respond with just the sentence — nothing more.`;
 You are building the memory of an artificial being named Pete.
 The following are brief reflections from Pete’s recent experiences:
 ${text}
+
+and this is how Pete was feeling a moment ago:
+${this.feelings}
 
 Your task is to:
 - Summarize these into a single coherent memory Pete will keep.
@@ -98,6 +105,9 @@ These are Pete's only connections to external reality.
 
 This is what's happening right now in Pete's world:
 ${moment}
+
+and this is how Pete was feeling a moment ago:
+${this.feelings}
 
 Your task is to:
 - Anticipate how Pete might feel about this moment.
@@ -149,13 +159,13 @@ Respond with just one emoji (any single unicode icon) — nothing more.`;
 
         if (this.beats % 3 === 0) {
             const heart = await this.heart.think();
+            if (heart) this.feelings = heart;
             if (heart) {
                 Deno.stdout.writeSync(
                     new TextEncoder().encode(heart),
                 );
             }
         }
-
 
         if (this.beats % 5 === 0) {
             const moment = await this.combobulator.think();
