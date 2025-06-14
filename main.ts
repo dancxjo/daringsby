@@ -56,6 +56,16 @@ const pete = new Psyche(
         }
       }
     },
+    onFeel: async (emoji: string) => {
+      const payload = JSON.stringify({ type: "pete-feels", text: emoji });
+      for (const ws of clients) {
+        try {
+          ws.send(payload);
+        } catch (_) {
+          // ignore failed sends
+        }
+      }
+    },
     wsSensor,
   },
 );
