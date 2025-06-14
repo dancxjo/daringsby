@@ -1,5 +1,10 @@
 import { WebSocketSensor } from "../../sensors/websocket.ts";
-import { assertEquals } from "jsr:@std/assert";
+
+function assertEquals(actual: unknown, expected: unknown) {
+  if (actual !== expected) {
+    throw new Error(`Expected ${expected}, got ${actual}`);
+  }
+}
 
 Deno.test("connected emits connection experience", () => {
   const sensor = new WebSocketSensor();
