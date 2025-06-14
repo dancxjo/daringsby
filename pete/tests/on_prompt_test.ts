@@ -33,15 +33,15 @@ Deno.test("onPrompt receives prompt text", async () => {
   const follower = new StubFollower();
   const chatter = new StubChatter();
   const sensor = new DummySensor();
-  const prompts: string[] = [];
+  const prompts: { name: string; prompt: string }[] = [];
   const psyche = new Psyche([sensor], follower, chatter, {
-    onPrompt: async (p) => {
-      prompts.push(p);
+    onPrompt: async (name, p) => {
+      prompts.push({ name, prompt: p });
     },
   });
   sensor.feel("hi");
   await psyche.beat();
-  if (!prompts.some((p) => p.includes("hi"))) {
+  if (!prompts.some((p) => p.prompt.includes("hi") && p.name === "quick")) {
     throw new Error("prompt not forwarded");
   }
 });

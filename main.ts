@@ -25,8 +25,12 @@ const pete = new Psyche(
   ),
   new OllamaChatter(new Ollama({ host: Deno.env.get("OLLAMA_URL") }), "gemma3:27b"),
   {
-    onPrompt: async (prompt: string) => {
-      const payload = JSON.stringify({ type: "pete-prompt", text: prompt });
+    onPrompt: async (name: string, prompt: string) => {
+      const payload = JSON.stringify({
+        type: "pete-prompt",
+        name,
+        text: prompt,
+      });
       for (const ws of clients) {
         try {
           ws.send(payload);
@@ -48,8 +52,12 @@ const pete = new Psyche(
         }
       }
     },
-    onStream: async (chunk: string) => {
-      const payload = JSON.stringify({ type: "pete-stream", text: chunk });
+    onStream: async (name: string, chunk: string) => {
+      const payload = JSON.stringify({
+        type: "pete-stream",
+        name,
+        text: chunk,
+      });
       for (const ws of clients) {
         try {
           ws.send(payload);

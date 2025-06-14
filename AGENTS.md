@@ -27,11 +27,13 @@ be run with `deno run pete/main.ts`.
 - Update tests when adding or modifying Wits.
 - Index page should echo `pete-says` once displayed.
 - Prompts go to the prompt box and streams go to the stream box.
+- Forward each Wit name with its prompt or streamed chunk so the UI can show a
+  tab per Wit.
 - Only `pete-says` and user-sent messages belong in the chat log.
 - Use Tailwind CSS for styling the index page.
 - When using Alpine.js, register listeners in `init()` and mutate state via
   `this` to ensure reactivity.
-- Emit a `pete-feels` websocket event whenever Pete's feelings change and
-  update tests accordingly.
+- Emit a `pete-feels` websocket event whenever Pete's feelings change and update
+  tests accordingly.
 - Update Autologos sensor tests when output types change.
 - Skip `take_turn` when no websocket clients are connected.
