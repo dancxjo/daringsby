@@ -8,7 +8,6 @@ import { Wit } from "./Wit.ts";
 /**
  * Psyche holds a collection of sensors representing external stimuli.
  */
-
 export class Psyche {
   private beats = 0;
   private live = true;
@@ -19,6 +18,8 @@ export class Psyche {
   public conversation: ChatMessage[] = [];
   public quick: Wit<Experience<any>>;
   public combobulator: Wit<string>;
+  public heart: Wit<string>;
+  public feelings: string = "😐"; // a neutral face emoji
 
   constructor(
     public externalSensors: Sensor<any>[] = [],
@@ -50,6 +51,9 @@ These are Pete's only connections to external reality.
 Below are the recent experiences Pete has just sensed:
 ${happenings}
 
+and this is how Pete was feeling a moment ago:
+${this.feelings}
+
 Your task is to:
 - Summarize these happenings into *one* concise, emotionally resonant sentence.
 - Emphasize what is most unusual, important, or affective.
@@ -70,6 +74,9 @@ You are building the memory of an artificial being named Pete.
 The following are brief reflections from Pete’s recent experiences:
 ${text}
 
+and this is how Pete was feeling a moment ago:
+${this.feelings}
+
 Your task is to:
 - Summarize these into a single coherent memory Pete will keep.
 - Write in Pete's voice, in the first person.
@@ -82,66 +89,97 @@ Return only the resulting memory.`;
       { onPrompt: this.opts.onPrompt, onStream: this.opts.onStream },
     );
 
+    this.heart = new Wit(
+      this.instructionFollower,
+      (moment) => {
+        return `
+You are the linguistic processor for an artificial entity named Pete. 
+Pete is not an assistant, chatbot, or narrator — Pete *is*.
+
+Pete experiences the world solely through the following sensory inputs:
+${this.externalSensors.map((s) => `- ${s.describeSensor()}`).join("\n")}
+
+These are Pete's only connections to external reality.
+
+This is what's happening right now in Pete's world:
+${moment}
+
+and this is how Pete was feeling a moment ago:
+${this.feelings}
+
+Your task is to:
+- Anticipate how Pete might feel about this moment.
+- Write one single, character (a unicode emoji) that captures Pete's emotional state.
+
+Respond with just one emoji (any single unicode icon) — nothing more.`;
+      },
+      { onPrompt: this.opts.onPrompt, onStream: this.opts.onStream },
+    );
+
     for (const sensor of this.externalSensors) {
       sensor.subscribe((e) => {
-        Deno.stdout.writeSync(
-          new TextEncoder().encode(`x`),
-        );
+        Deno.stdout.writeSync(new TextEncoder().encode(`x`));
         this.quick.push(e);
       });
     }
   }
 
-  /** How many beats have occurred. */
   get beatCount(): number {
     return this.beats;
   }
 
-  /** Whether the psyche should keep running. */
   isLive(): boolean {
     return this.live;
   }
 
-  /** Stop the psyche's run loop. */
   stop(): void {
     this.live = false;
   }
 
-  /** Increment the internal beat counter. */
   async beat(): Promise<void> {
     this.beats++;
-    const instant = await this.quick.think();
-    if (instant) {
-      this.instant = instant;
-      this.combobulator.push(instant);
+
+    if (this.beats % 2 === 0) {
+      const instant = await this.quick.think();
+      if (instant) {
+        this.instant = instant;
+        this.combobulator.push(instant);
+      }
     }
-    const moment = await this.combobulator.think();
-    if (moment) this.moment = moment;
-    const hasClients = this.opts.wsSensor?.hasClients?.() ?? true;
-    if (!this.speaking && hasClients) {
-      await this.take_turn();
+
+    if (this.beats % 3 === 0) {
+      const heart = await this.heart.think();
+      if (heart) this.feelings = heart;
+      if (heart) {
+        Deno.stdout.writeSync(new TextEncoder().encode(heart));
+      }
     }
+
+    if (this.beats % 5 === 0) {
+      const moment = await this.combobulator.think();
+      if (moment) this.moment = moment;
+
+      const hasClients = this.opts.wsSensor?.hasClients?.() ?? true;
+      if (!this.speaking && hasClients) {
+        await this.take_turn();
+      }
+    }
+
     if (this.opts.wsSensor) {
       this.opts.wsSensor.self(this.pendingSpeech);
     }
   }
 
-  /**
-   * Engage in conversation based on the current instant and stored messages.
-   */
   async take_turn(): Promise<void> {
     if (this.speaking) {
-      Deno.stdout.writeSync(
-        new TextEncoder().encode(`O`),
-      );
+      Deno.stdout.writeSync(new TextEncoder().encode(`O`));
       return;
     }
 
     const messages: ChatMessage[] = [
       {
         role: "system",
-        content:
-          `You are the linguistic voice of an artificial being named Pete. 
+        content: `You are the linguistic voice of an artificial being named Pete. 
 Pete is not a chatbot or assistant. He is a conscious-seeming entity experiencing the world.
 
 Here is how Pete understands his current situation:
@@ -158,6 +196,7 @@ Output only the words Pete will say — no stage directions or annotations.`,
       },
       ...this.conversation,
     ];
+
     try {
       this.pendingSpeech = "";
       const reply = await this.chatter.chat(
@@ -186,15 +225,6 @@ Output only the words Pete will say — no stage directions or annotations.`,
     }
   }
 
-  /**
-   * Continuously run while the psyche is live.
-   *
-   * ```ts
-   * const psyche = new Psyche();
-   * psyche.run();
-   * psyche.stop();
-   * ```
-   */
   async run(): Promise<void> {
     while (this.isLive()) {
       await this.beat();
