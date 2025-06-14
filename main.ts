@@ -8,6 +8,7 @@ import {
   OllamaInstructionFollower,
 } from "./providers/ollama.ts";
 import "npm:dotenv/config";
+import { Autologos } from "./sensors/autologos.ts";
 
 const wsSensor = new WebSocketSensor();
 const clients = new Set<WebSocket>();
@@ -16,6 +17,7 @@ const pete = new Psyche(
   [
     new HeartbeatSensor(),
     wsSensor,
+    new Autologos(),
   ],
   new OllamaInstructionFollower(
     new Ollama({ host: Deno.env.get("OLLAMA_URL") }),
