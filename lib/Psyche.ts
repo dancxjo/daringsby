@@ -111,16 +111,24 @@ Return only the resulting memory.`;
     /** Increment the internal beat counter. */
     async beat(): Promise<void> {
         this.beats++;
-        const instant = await this.quick.think();
-        if (instant) {
-            this.instant = instant;
-            this.combobulator.push(instant);
+        if (this.beats % 2 === 0) {
+            const instant = await this.quick.think();
+            if (instant) {
+                this.instant = instant;
+                this.combobulator.push(instant);
+            }
         }
-        const moment = await this.combobulator.think();
-        if (moment) this.moment = moment;
-        if (!this.speaking) {
-            await this.take_turn();
+
+        if (this.beats % 5 === 0) {
+            const moment = await this.combobulator.think();
+            if (moment) this.moment = moment;
+            if (!this.speaking) {
+                await this.take_turn();
+            }
         }
+
+
+
         if (this.opts.wsSensor) {
             this.opts.wsSensor.self(this.pendingSpeech);
         }
