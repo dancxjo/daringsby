@@ -33,4 +33,5 @@ be run with `deno run pete/main.ts`.
   `this` to ensure reactivity.
 - Emit a `pete-feels` websocket event whenever Pete's feelings change and
   update tests accordingly.
+- Update Autologos sensor tests when output types change.
 - Skip `take_turn` when no websocket clients are connected.
