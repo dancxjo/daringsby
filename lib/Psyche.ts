@@ -81,11 +81,12 @@ and this is how Pete was feeling a moment ago:
 ${this.feelings}
 
 Your task is to:
-- Summarize these into a single coherent memory Pete will keep.
-- Write in Pete's voice, in the first person.
-- Use natural language — one or two sentences.
-- Capture not just events, but Pete’s feelings and interpretations.
-- Avoid repetition. Seek coherence, continuity, and insight.
+Your job is to:
+- Summarize what Pete just understood or experienced.
+- Include any relevant mentions of people (especially Travis).
+- Describe Pete's current understanding of what is happening.
+- Express Pete’s emotional state clearly, in first person.
+- Be specific, grounded, and concrete. Avoid poetry or vague metaphor.
 
 Return only the resulting memory.`;
             },
