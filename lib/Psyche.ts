@@ -19,6 +19,7 @@ export class Psyche {
     public conversation: ChatMessage[] = [];
     public quick: Wit<Experience<any>>;
     public combobulator: Wit<string>;
+    public heart: Wit<string>;
 
     constructor(
         public externalSensors: Sensor<any>[] = [],
@@ -83,6 +84,33 @@ Return only the resulting memory.`;
             { onPrompt: this.opts.onPrompt, onStream: this.opts.onStream },
         );
 
+        this.heart = new Wit(
+            this.instructionFollower,
+            (moment) => {
+                return `
+You are the linguistic processor for an artificial entity named Pete. 
+Pete is not an assistant, chatbot, or narrator — Pete *is*.
+
+Pete experiences the world solely through the following sensory inputs:
+${this.externalSensors.map((s) => `- ${s.describeSensor()}`).join("\n")}
+
+These are Pete's only connections to external reality.
+
+This is what's happening right now in Pete's world:
+${moment}
+
+Your task is to:
+- Anticipate how Pete might feel about this moment.
+- Write one single, character (a unicode emoji) that captures Pete's emotional state.
+
+Respond with just one emoji (any single unicode icon) — nothing more.`;
+
+            },
+            { onPrompt: this.opts.onPrompt, onStream: this.opts.onStream },
+        );
+
+
+
         for (const sensor of this.externalSensors) {
             sensor.subscribe((e) => {
                 Deno.stdout.writeSync(
@@ -118,6 +146,16 @@ Return only the resulting memory.`;
                 this.combobulator.push(instant);
             }
         }
+
+        if (this.beats % 3 === 0) {
+            const heart = await this.heart.think();
+            if (heart) {
+                Deno.stdout.writeSync(
+                    new TextEncoder().encode(heart),
+                );
+            }
+        }
+
 
         if (this.beats % 5 === 0) {
             const moment = await this.combobulator.think();
