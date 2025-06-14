@@ -10,10 +10,12 @@ export class OllamaInstructionFollower extends InstructionFollower {
     prompt: string,
     onChunk?: (chunk: string) => Promise<void>,
   ): Promise<string> {
+    const temperature = 0.7 + Math.random() * 0.3;
     const stream = await this.client.generate({
       stream: true,
       model: this.model,
-      prompt: prompt,
+      prompt,
+      options: { temperature },
     });
     let response = "";
     for await (const chunk of stream) {
@@ -39,10 +41,12 @@ export class OllamaChatter extends Chatter {
     onChunk?: (chunk: string) => Promise<void>,
   ): Promise<string> {
     console.log(`Messages: ${JSON.stringify(messages)}`);
+    const temperature = 0.7 + Math.random() * 0.3;
     const stream = await this.client.chat({
       stream: true,
       model: this.model,
       messages,
+      options: { temperature },
     });
     let response = "";
     for await (const chunk of stream) {
