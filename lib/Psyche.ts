@@ -31,6 +31,7 @@ export class Psyche {
             /** Called with the prompt text for each Wit */
             onPrompt?: (prompt: string) => Promise<void>;
             onSay?: (text: string) => Promise<void>;
+            onFeel?: (emoji: string) => Promise<void>;
             wsSensor?: WebSocketSensor;
         } = {},
     ) {
@@ -164,6 +165,7 @@ Respond with just one emoji (any single unicode icon) — nothing more.`;
                 Deno.stdout.writeSync(
                     new TextEncoder().encode(heart),
                 );
+                await this.opts.onFeel?.(heart);
             }
         }
 

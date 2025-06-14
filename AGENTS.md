@@ -31,3 +31,5 @@ be run with `deno run pete/main.ts`.
 - Use Tailwind CSS for styling the index page.
 - When using Alpine.js, register listeners in `init()` and mutate state via
   `this` to ensure reactivity.
+- Emit a `pete-feels` websocket event whenever Pete's feelings change and
+  update tests accordingly.
