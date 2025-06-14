@@ -116,15 +116,16 @@ Your task is to:
 - Write one single, character (a unicode emoji) that captures Pete's emotional state.
 
 Respond with just one emoji (any single unicode icon) — nothing more.`;
-      },
-      { onPrompt: this.opts.onPrompt, onStream: this.opts.onStream },
-    );
+          },
+          { onPrompt: this.opts.onPrompt, onStream: this.opts.onStream },
+      );
 
-    for (const sensor of this.externalSensors) {
-      sensor.subscribe((e) => {
-        Deno.stdout.writeSync(new TextEncoder().encode(`x`));
-        this.quick.push(e);
-      });
+      for (const sensor of this.externalSensors) {
+          sensor.subscribe((e) => {
+              Deno.stdout.writeSync(new TextEncoder().encode(`x ${e.how} `));
+              this.quick.push(e);
+          });
+      }
     }
   }
 
