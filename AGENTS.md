@@ -38,3 +38,5 @@ be run with `deno run pete/main.ts`.
 - Update Autologos sensor tests when output types change.
 - Skip `take_turn` when no websocket clients are connected.
 - Vary Ollama temperature between 0.7 and 1 on each request.
+- When adding a new environment variable, document it in `env.example` and update
+  related tests.

@@ -41,18 +41,19 @@ Deno.test("take_turn waits until a websocket client connects", async () => {
 
   dummy.feel("hi");
   await psyche.beat();
+  await psyche.speechBeat();
   if (chatter.calls !== 0) {
     throw new Error("took a turn without clients");
   }
 
   wsSensor.connected("ip");
-  await psyche.beat();
+  await psyche.speechBeat();
   if (chatter.calls !== 1) {
     throw new Error("did not take a turn after connection");
   }
 
   wsSensor.disconnected("ip");
-  await psyche.beat();
+  await psyche.speechBeat();
   if (chatter.calls !== 1) {
     throw new Error("took turn after all clients disconnected");
   }

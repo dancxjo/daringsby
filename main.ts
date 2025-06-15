@@ -23,7 +23,10 @@ const pete = new Psyche(
     new Ollama({ host: Deno.env.get("OLLAMA_URL") }),
     "gemma3:27b",
   ),
-  new OllamaChatter(new Ollama({ host: Deno.env.get("OLLAMA_URL") }), "gemma3:27b"),
+  new OllamaChatter(
+    new Ollama({ host: Deno.env.get("OLLAMA_CHATTER_URL") ?? Deno.env.get("OLLAMA_URL") }),
+    "gemma3:27b",
+  ),
   {
     onPrompt: async (name: string, prompt: string) => {
       const payload = JSON.stringify({
