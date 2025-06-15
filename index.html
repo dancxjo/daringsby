@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en" x-data="chatApp" x-init="init()" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pete Chat</title>
+  <!-- Tailwind CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.4/dist/tailwind.min.css" rel="stylesheet">
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="h-full flex items-center justify-center bg-gray-100">
+  <div class="w-full max-w-md p-4 bg-white rounded shadow-lg space-y-4">
+    <h1 class="text-2xl font-bold text-center">Chat with Pete</h1>
+    <div class="text-6xl text-center" x-text="feeling"></div>
+    <div class="h-48 overflow-y-auto border p-2" id="chat-log">
+      <template x-for="entry in log" :key="entry">
+        <div x-text="entry" class="mb-1"></div>
+      </template>
+    </div>
+    <form @submit.prevent="send" class="space-y-2">
+      <input type="text" x-model="name" placeholder="Name" class="w-full border p-1" />
+      <input type="text" x-model="input" placeholder="Message" class="w-full border p-1" />
+      <button type="submit" class="w-full bg-blue-500 text-white p-1 rounded">Send</button>
+    </form>
+  </div>
+
+<script>
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('chatApp', () => ({
+      ws: null,
+      name: '',
+      input: '',
+      feeling: '😐',
+      log: [],
+      init() {
+        this.ws = new WebSocket('ws://localhost:3000/ws');
+        this.ws.addEventListener('message', event => {
+          const data = JSON.parse(event.data);
+          if (data.type === 'pete-says') {
+            this.log.push(`Pete: ${data.text}`);
+          } else if (data.type === 'pete-feels') {
+            this.feeling = data.text;
+          }
+        });
+      },
+      send() {
+        if (!this.input) return;
+        const payload = { name: this.name, message: this.input };
+        this.ws.send(JSON.stringify(payload));
+        this.log.push(`${this.name || 'User'}: ${this.input}`);
+        this.input = '';
+      }
+    }));
+  });
+</script>
+</body>
+</html>
