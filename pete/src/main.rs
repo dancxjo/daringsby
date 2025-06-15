@@ -2,7 +2,7 @@ use psyche::{Psyche, PsycheEvent, PsycheInput};
 use psyche::ling::{Chatter, InstructionFollower, Message, Vectorizer};
 use async_trait::async_trait;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
     #[derive(Clone)]
     struct Dummy;
