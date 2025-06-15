@@ -113,8 +113,8 @@ impl Psyche {
         &self.conversation
     }
 
-    /// Run the conversation loop and return the updated [`Psyche`].
-    pub async fn run(mut self) -> Self {
+    /// Main loop that handles the conversation with the assistant.
+    async fn converse(mut self) -> Self {
         let mut turns = 0;
         while self.still_conversing(turns) {
             let history = self.conversation.tail(self.max_history);
@@ -143,6 +143,23 @@ impl Psyche {
             turns += 1;
         }
         self
+    }
+
+    /// Background task processing non-conversational experience.
+    async fn experience() {
+        // Placeholder for future sensory processing.
+        tokio::task::yield_now().await;
+    }
+
+    /// Run `converse` and `experience` concurrently and return the updated [`Psyche`].
+    pub async fn run(self) -> Self {
+        let converse_handle = tokio::spawn(self.converse());
+        let experience_handle = tokio::spawn(Self::experience());
+        let psyche = converse_handle.await.expect("converse task panicked");
+        experience_handle
+            .await
+            .expect("experience task panicked");
+        psyche
     }
 }
 
