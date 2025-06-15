@@ -35,4 +35,4 @@ Then send chat messages by POSTing JSON `{ "message": "hi" }` to `http://127.0.0
 
 ## Web Interface
 
-Open `index.html` in your browser after running the server. The page connects to `ws://localhost:3000/ws` and lets you chat with Pete in real time.
+After starting the server, visit `http://127.0.0.1:3000/` in your browser. The page connects to `ws://localhost:3000/ws` and lets you chat with Pete in real time.
