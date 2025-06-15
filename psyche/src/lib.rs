@@ -1,7 +1,8 @@
 pub mod ling;
 
 use ling::{Chatter, Doer, Message, Vectorizer};
-use tokio::sync::{broadcast, mpsc};
+use std::sync::Arc;
+use tokio::sync::{Mutex, broadcast, mpsc};
 
 /// Event types emitted by the [`Psyche`] during conversation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,7 +29,7 @@ pub struct Conversation {
 }
 
 impl Conversation {
-    fn add_user(&mut self, content: String) {
+    pub fn add_user(&mut self, content: String) {
         self.log.push(Message::user(content));
     }
 
@@ -58,7 +59,7 @@ pub struct Psyche {
     events_tx: broadcast::Sender<Event>,
     input_tx: mpsc::UnboundedSender<Sensation>,
     input_rx: mpsc::UnboundedReceiver<Sensation>,
-    conversation: Conversation,
+    conversation: Arc<Mutex<Conversation>>,
 }
 
 impl Psyche {
@@ -80,7 +81,7 @@ impl Psyche {
             events_tx,
             input_tx,
             input_rx,
-            conversation: Conversation::default(),
+            conversation: Arc::new(Mutex::new(Conversation::default())),
         }
     }
 
@@ -109,15 +110,18 @@ impl Psyche {
     }
 
     /// Access the conversation log.
-    pub fn conversation(&self) -> &Conversation {
-        &self.conversation
+    pub fn conversation(&self) -> Arc<Mutex<Conversation>> {
+        self.conversation.clone()
     }
 
     /// Main loop that handles the conversation with the assistant.
     async fn converse(mut self) -> Self {
         let mut turns = 0;
         while self.still_conversing(turns) {
-            let history = self.conversation.tail(self.max_history);
+            let history = {
+                let conv = self.conversation.lock().await;
+                conv.tail(self.max_history)
+            };
             if let Ok(resp) = self.voice.chat(&self.system_prompt, &history).await {
                 for chunk in resp.split_whitespace() {
                     let _ = self.events_tx.send(Event::StreamChunk(chunk.to_string()));
@@ -126,11 +130,13 @@ impl Psyche {
                 loop {
                     match self.input_rx.recv().await {
                         Some(Sensation::HeardOwnVoice(msg)) => {
-                            self.conversation.add_assistant(msg);
+                            let mut conv = self.conversation.lock().await;
+                            conv.add_assistant(msg);
                             break;
                         }
                         Some(Sensation::HeardUserVoice(msg)) => {
-                            self.conversation.add_user(msg);
+                            let mut conv = self.conversation.lock().await;
+                            conv.add_user(msg);
                         }
                         None => break,
                     }

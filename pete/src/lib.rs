@@ -11,11 +11,12 @@ use axum::{
 use psyche::ling::{Chatter, Doer, Message, Vectorizer};
 use psyche::{Event, Psyche, Sensation};
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{Mutex, broadcast, mpsc};
 
 #[derive(Clone)]
 pub struct AppState {
     pub input: mpsc::UnboundedSender<Sensation>,
+    pub user_input: mpsc::UnboundedSender<String>,
     pub events: Arc<broadcast::Receiver<Event>>,
 }
 
@@ -66,7 +67,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                 match msg {
                     Some(Ok(WsMessage::Text(text))) => {
                         if let Ok(req) = serde_json::from_str::<WsRequest>(&text) {
-                            let _ = state.input.send(Sensation::HeardUserVoice(req.message));
+                            let _ = state.user_input.send(req.message);
                         }
                     }
                     Some(Ok(WsMessage::Close(_))) | None => break,
@@ -74,6 +75,35 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                 }
             }
         }
+    }
+}
+
+/// Listen for user input messages and record them in the conversation.
+///
+/// Each received message is forwarded to the running [`Psyche`] via
+/// `Sensation::HeardUserVoice` and appended to the shared conversation log.
+///
+/// ```no_run
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// # use pete::{dummy_psyche, listen_user_input};
+/// # use tokio::sync::mpsc;
+/// let mut psyche = dummy_psyche();
+/// let input = psyche.input_sender();
+/// let conv = psyche.conversation();
+/// let (tx, rx) = mpsc::unbounded_channel();
+/// tokio::spawn(listen_user_input(rx, input, conv));
+/// # tx.send("hi".into()).unwrap();
+/// # });
+/// ```
+pub async fn listen_user_input(
+    mut rx: mpsc::UnboundedReceiver<String>,
+    forward: mpsc::UnboundedSender<Sensation>,
+    conversation: Arc<Mutex<psyche::Conversation>>, // use psyche::Conversation
+) {
+    while let Some(msg) = rx.recv().await {
+        let _ = forward.send(Sensation::HeardUserVoice(msg.clone()));
+        let mut conv = conversation.lock().await;
+        conv.add_user(msg);
     }
 }
 
