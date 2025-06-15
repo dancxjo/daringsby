@@ -4,7 +4,7 @@
 //! an `OllamaProvider` implementation using the [`ollama-rs`] crate.
 //!
 //! ```no_run
-//! use psyche::ling::{OllamaProvider, Narrator, Voice, Vectorizer};
+//! use psyche::ling::{OllamaProvider, InstructionFollower, Chatter, Vectorizer};
 //! use psyche::Psyche;
 //!
 //! # async fn try_it() -> anyhow::Result<()> {
@@ -12,7 +12,7 @@
 //! let voice = OllamaProvider::new("http://localhost:11434", "mistral")?;
 //! let vectorizer = OllamaProvider::new("http://localhost:11434", "mistral")?;
 //! let psyche = Psyche::new(Box::new(narrator), Box::new(voice), Box::new(vectorizer));
-//! psyche.run();
+//! psyche.run().await;
 //! # Ok(()) }
 //! ```
 use anyhow::Result;
