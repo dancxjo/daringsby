@@ -11,3 +11,4 @@ This repository is now a Rust workspace.
 - When adding binary arguments or library APIs, update tests accordingly.
 - Keep `index.html` minimal and updated to connect to `ws://localhost:3000/ws`.
 - Run `cargo fetch` before testing to warm the cache.
+- When embedding `index.html` in the `pete` crate, use `include_str!("../../index.html")`.
