@@ -16,7 +16,7 @@ let narrator = OllamaProvider::new("http://localhost:11434", "mistral").unwrap()
 let voice = OllamaProvider::new("http://localhost:11434", "mistral").unwrap();
 let vectorizer = OllamaProvider::new("http://localhost:11434", "mistral").unwrap();
 let psyche = Psyche::new(Box::new(narrator), Box::new(voice), Box::new(vectorizer));
-psyche.run();
+psyche.run().await;
 ```
 
 
