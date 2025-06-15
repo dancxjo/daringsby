@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 psyche = { path = "../psyche" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+anyhow = "1"
 
 [dev-dependencies]
 assert_cmd = "2"

@@ -1,15 +1,24 @@
+pub mod ling;
 use std::thread;
+use ling::{Narrator, Voice, Vectorizer};
 
 /// The core AI engine.
 ///
 /// Currently provides only a skeleton structure for experimentation.
-#[derive(Debug, Default)]
-pub struct Psyche;
+pub struct Psyche {
+    narrator: Box<dyn Narrator>,
+    voice: Box<dyn Voice>,
+    vectorizer: Box<dyn Vectorizer>,
+}
 
 impl Psyche {
     /// Construct a new [`Psyche`].
-    pub fn new() -> Self {
-        Self
+    pub fn new(
+        narrator: Box<dyn Narrator>,
+        voice: Box<dyn Voice>,
+        vectorizer: Box<dyn Vectorizer>,
+    ) -> Self {
+        Self { narrator, voice, vectorizer }
     }
 
     /// Spawn the conversation and experience threads and wait for them to finish.
@@ -34,10 +43,34 @@ impl Psyche {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+
+    struct Dummy;
+
+    #[async_trait]
+    impl Narrator for Dummy {
+        async fn follow(&self, _: &str) -> anyhow::Result<String> {
+            Ok("ok".into())
+        }
+    }
+
+    #[async_trait]
+    impl Voice for Dummy {
+        async fn chat(&self, _: &str, _: &[ling::Message]) -> anyhow::Result<String> {
+            Ok("ok".into())
+        }
+    }
+
+    #[async_trait]
+    impl Vectorizer for Dummy {
+        async fn vectorize(&self, _: &str) -> anyhow::Result<Vec<f32>> {
+            Ok(vec![1.0])
+        }
+    }
 
     #[test]
     fn psyche_runs() {
-        let psyche = Psyche::new();
+        let psyche = Psyche::new(Box::new(Dummy), Box::new(Dummy), Box::new(Dummy));
         psyche.run();
     }
 }
