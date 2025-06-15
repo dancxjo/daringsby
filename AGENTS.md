@@ -12,3 +12,4 @@ This repository is now a Rust workspace.
 - Keep `index.html` minimal and updated to connect to `ws://localhost:3000/ws`.
 - Run `cargo fetch` before testing to warm the cache.
 - When embedding `index.html` in the `pete` crate, use `include_str!("../../index.html")`.
+- Expose WebSocket chat at `/ws` that forwards psyche events.
