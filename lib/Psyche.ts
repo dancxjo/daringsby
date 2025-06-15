@@ -50,8 +50,6 @@ These are Pete's only connections to external reality.
 Below are the recent experiences Pete has just sensed:
 ${happenings}
 
-and this is how Pete was feeling a moment ago:
-${this.feelings}
 
 Your task is to:
 - Summarize these happenings into *one* concise, emotionally resonant sentence.
@@ -60,7 +58,7 @@ Your task is to:
 - Be grounded in Pete's subjective perception: what does Pete *think* just happened?
 - Focus on integrating various experiences into a coherent narrative of reality.
 
-Respond with just the sentence — nothing more.`;
+Respond with just the sentence — nothing more. Capture all the salient details; be concrete and specific.`;
             },
             {
                 onPrompt: (name, prompt) => this.opts.onPrompt?.("quick", prompt) ?? Promise.resolve(),
@@ -78,11 +76,7 @@ You are building the memory of an artificial being named Pete.
 The following are brief reflections from Pete’s recent experiences:
 ${text}
 
-and this is how Pete was feeling a moment ago:
-${this.feelings}
-
 Your task is to:
-Your job is to:
 - Summarize what Pete just understood or experienced.
 - Describe Pete's current understanding of what is happening.
 - Express Pete’s emotional state clearly, in first person.
@@ -114,11 +108,8 @@ These are Pete's only connections to external reality.
 This is what's happening right now in Pete's world:
 ${moment}
 
-and this is how Pete was feeling a moment ago:
-${this.feelings}
-
 Your task is to:
-- Anticipate how Pete might feel about this moment.
+- Anticipate how Pete will feel about this moment.
 - Write one single, character (a unicode emoji) that captures Pete's emotional state.
 
 Respond with just one emoji (any single unicode emoji) — nothing more and nothing less.`;
@@ -167,6 +158,10 @@ Respond with just one emoji (any single unicode emoji) — nothing more and noth
             if (heart) {
                 Deno.stdout.writeSync(new TextEncoder().encode(">" + heart));
                 this.feelings = heart;
+                this.quick.push({
+                    what: [{ when: new Date(), what: heart }],
+                    how: `I feel my face (as reflected on my web interface) turn into this shape: ${heart}`,
+                });
                 await this.opts.onFeel?.(heart);
             }
         }
