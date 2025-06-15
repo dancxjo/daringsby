@@ -25,7 +25,7 @@ const pete = new Psyche(
   ),
   new OllamaChatter(
     new Ollama({ host: Deno.env.get("OLLAMA_CHATTER_URL") ?? Deno.env.get("OLLAMA_URL") }),
-    "gemma3:27b",
+    "phi4",
   ),
   {
     onPrompt: async (name: string, prompt: string) => {
