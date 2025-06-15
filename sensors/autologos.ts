@@ -5,6 +5,7 @@ import { walk } from "https://deno.land/std/fs/walk.ts";
 /**
  * Autologos surfaces glimpses of its own code and runtime state.
  * It emits random messages roughly once every baseInterval milliseconds.
+ * Snippets include `snippetLines` number of lines from random source files.
  */
 export class Autologos extends Sensor<null> {
   private running = true;
@@ -13,6 +14,7 @@ export class Autologos extends Sensor<null> {
     private readonly baseInterval = 60_000,
     private readonly jitter = 10_000,
     private readonly root = ".",
+    private readonly snippetLines = 10,
   ) {
     super();
     this.schedule();
@@ -82,8 +84,11 @@ export class Autologos extends Sensor<null> {
     const file = files[Math.floor(Math.random() * files.length)];
     const text = await Deno.readTextFile(file);
     const lines = text.split(/\r?\n/);
-    const start = Math.max(0, Math.floor(Math.random() * lines.length - 3));
-    const snippet = lines.slice(start, start + 3).join("\n");
+    const start = Math.max(
+      0,
+      Math.floor(Math.random() * lines.length - this.snippetLines),
+    );
+    const snippet = lines.slice(start, start + this.snippetLines).join("\n");
     return `From ${file}:\n${snippet}`;
   }
 
