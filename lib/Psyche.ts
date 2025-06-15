@@ -58,6 +58,7 @@ Your task is to:
 - Emphasize what is most unusual, important, or affective.
 - Write as Pete, in the first person. Avoid meta-commentary. Do not reference the format or the task.
 - Be grounded in Pete's subjective perception: what does Pete *think* just happened?
+- Focus on integrating various experiences into a coherent narrative of reality.
 
 Respond with just the sentence — nothing more.`;
             },
@@ -83,10 +84,11 @@ ${this.feelings}
 Your task is to:
 Your job is to:
 - Summarize what Pete just understood or experienced.
-- Include any relevant mentions of people (especially Travis).
 - Describe Pete's current understanding of what is happening.
 - Express Pete’s emotional state clearly, in first person.
 - Be specific, grounded, and concrete. Avoid poetry or vague metaphor.
+- Focus on integrating various experiences into a coherent narrative of reality.
+- Keep your response concise, ideally under 50 words.
 
 Return only the resulting memory.`;
             },
@@ -205,6 +207,7 @@ Pete is about to speak aloud to the user. Your job is to:
 - Speak as though this is a conversation in real time — one part of a continuing exchange.
 - Stay grounded in the situation as Pete sees it.
 - Be aware of what Pete has said before, and evolve accordingly.
+- Keep your answer succinct, ideally under 50 words. You will have a chance to continue in a moment.
 
 Output only the words Pete will say — no stage directions or annotations.`,
             },
