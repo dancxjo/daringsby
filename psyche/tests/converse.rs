@@ -1,22 +1,28 @@
 use async_trait::async_trait;
-use psyche::{Psyche, PsycheEvent, PsycheInput};
-use psyche::ling::{Chatter, InstructionFollower, Message, Vectorizer};
+use psyche::ling::{Chatter, Doer, Message, Vectorizer};
+use psyche::{Event, Psyche, Sensation};
 
 struct Dummy;
 
 #[async_trait]
-impl InstructionFollower for Dummy {
-    async fn follow(&self, _: &str) -> anyhow::Result<String> { Ok("ok".into()) }
+impl Doer for Dummy {
+    async fn follow(&self, _: &str) -> anyhow::Result<String> {
+        Ok("ok".into())
+    }
 }
 
 #[async_trait]
 impl Chatter for Dummy {
-    async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<String> { Ok("hello world".into()) }
+    async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<String> {
+        Ok("hello world".into())
+    }
 }
 
 #[async_trait]
 impl Vectorizer for Dummy {
-    async fn vectorize(&self, _: &str) -> anyhow::Result<Vec<f32>> { Ok(vec![0.0]) }
+    async fn vectorize(&self, _: &str) -> anyhow::Result<Vec<f32>> {
+        Ok(vec![0.0])
+    }
 }
 
 #[tokio::test]
@@ -33,9 +39,9 @@ async fn adds_message_after_voice_heard() {
     let mut saw_chunk = false;
     while let Ok(evt) = events.recv().await {
         match evt {
-            PsycheEvent::StreamChunk(_) => saw_chunk = true,
-            PsycheEvent::IntentionToSay(msg) => {
-                input.send(PsycheInput::HeardOwnVoice(msg)).unwrap();
+            Event::StreamChunk(_) => saw_chunk = true,
+            Event::IntentionToSay(msg) => {
+                input.send(Sensation::HeardOwnVoice(msg)).unwrap();
                 break;
             }
         }
