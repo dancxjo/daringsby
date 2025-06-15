@@ -1,28 +1,18 @@
-# Daringsby Repository
+# Daringsby Workspace
 
-This repository hosts a Deno package called **pete**.
+This repository contains a Rust workspace with two crates:
 
-See `pete/README.md` for package details.
+- **psyche** – a library crate providing the `Psyche` type
+- **pete** – a binary crate depending on `psyche`
 
 Run tests with:
 
 ```sh
-# ensure deno is installed
-deno test
+cargo test
 ```
 
-Run Pete's main program:
+Run the program with:
 
 ```sh
-deno run pete/main.ts
+cargo run -p pete
 ```
-
-## Web Server
-
-Start a chat server with:
-
-```sh
-deno run --allow-net --allow-read server.ts
-```
-
-Open `http://localhost:8000` in your browser to chat with Pete.
