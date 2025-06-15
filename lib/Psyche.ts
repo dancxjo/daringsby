@@ -179,7 +179,7 @@ Respond with just one emoji (any single unicode emoji) — nothing more and noth
             }
         }
 
-        if (this.opts.wsSensor) {
+        if (this.opts.wsSensor && this.pendingSpeech) {
             this.opts.wsSensor.self(this.pendingSpeech);
         }
     }
