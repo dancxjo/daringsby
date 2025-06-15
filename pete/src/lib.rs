@@ -20,7 +20,7 @@ pub struct AppState {
 }
 
 #[derive(serde::Deserialize)]
-struct WsRequest {
+pub struct WsRequest {
     message: String,
     #[allow(dead_code)]
     name: Option<String>,
