@@ -16,6 +16,12 @@ Deno.test("codeSection returns snippet", async () => {
   sensor.stop();
   const section = await (sensor as any).codeSection();
   assert(section.includes("export"), "expected snippet with code");
+  const lines = section.split(/\r?\n/);
+  const expected = ((sensor as any).snippetLines as number) + 1;
+  assert(
+    lines.length >= expected,
+    `expected at least ${expected} lines but got ${lines.length}`,
+  );
 });
 
 Deno.test("stateInfo reports memory", () => {

@@ -40,3 +40,5 @@ be run with `deno run pete/main.ts`.
 - Vary Ollama temperature between 0.7 and 1 on each request.
 - When adding a new environment variable, document it in `env.example` and update
   related tests.
+- Cache Deno dependencies with `deno cache --lock=deno.lock` when network access is restricted.
+- Autologos snippets should include about 10 lines so Pete can read his own code.
