@@ -15,13 +15,17 @@
 //! psyche.run();
 //! # Ok(()) }
 //! ```
-use async_trait::async_trait;
 use anyhow::Result;
-use ollama_rs::{Ollama, generation::chat::{ChatMessage, request::ChatMessageRequest}, generation::embeddings::{request::{GenerateEmbeddingsRequest, EmbeddingsInput}}};
+use async_trait::async_trait;
+use ollama_rs::{
+    Ollama,
+    generation::chat::{ChatMessage, request::ChatMessageRequest},
+    generation::embeddings::request::{EmbeddingsInput, GenerateEmbeddingsRequest},
+};
 
 /// Processes instructions and returns textual responses.
 #[async_trait]
-pub trait Narrator: Send + Sync {
+pub trait InstructionFollower: Send + Sync {
     async fn follow(&self, instruction: &str) -> Result<String>;
 }
 
@@ -42,17 +46,23 @@ pub struct Message {
 impl Message {
     /// Create a new user message.
     pub fn user(content: impl Into<String>) -> Self {
-        Self { role: Role::User, content: content.into() }
+        Self {
+            role: Role::User,
+            content: content.into(),
+        }
     }
 
     /// Create a new assistant message.
     pub fn assistant(content: impl Into<String>) -> Self {
-        Self { role: Role::Assistant, content: content.into() }
+        Self {
+            role: Role::Assistant,
+            content: content.into(),
+        }
     }
 }
 
 #[async_trait]
-pub trait Voice: Send + Sync {
+pub trait Chatter: Send + Sync {
     async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<String>;
 }
 
@@ -73,12 +83,15 @@ impl OllamaProvider {
     /// Create a new provider for `model` hosted at `host`.
     pub fn new(host: impl AsRef<str>, model: impl Into<String>) -> Result<Self> {
         let client = Ollama::try_new(host.as_ref())?;
-        Ok(Self { client, model: model.into() })
+        Ok(Self {
+            client,
+            model: model.into(),
+        })
     }
 }
 
 #[async_trait]
-impl Narrator for OllamaProvider {
+impl InstructionFollower for OllamaProvider {
     async fn follow(&self, instruction: &str) -> Result<String> {
         let req = ChatMessageRequest::new(
             self.model.clone(),
@@ -90,7 +103,7 @@ impl Narrator for OllamaProvider {
 }
 
 #[async_trait]
-impl Voice for OllamaProvider {
+impl Chatter for OllamaProvider {
     async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<String> {
         let mut msgs = Vec::with_capacity(history.len() + 1);
         msgs.push(ChatMessage::system(system_prompt.to_string()));
@@ -123,14 +136,14 @@ mod tests {
     struct Dummy;
 
     #[async_trait]
-    impl Narrator for Dummy {
+    impl InstructionFollower for Dummy {
         async fn follow(&self, i: &str) -> Result<String> {
             Ok(format!("f:{i}"))
         }
     }
 
     #[async_trait]
-    impl Voice for Dummy {
+    impl Chatter for Dummy {
         async fn chat(&self, _s: &str, h: &[Message]) -> Result<String> {
             Ok(format!("c:{}", h.len()))
         }

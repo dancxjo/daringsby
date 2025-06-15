@@ -1,24 +1,28 @@
 pub mod ling;
+use ling::{Chatter, InstructionFollower, Vectorizer};
 use std::thread;
-use ling::{Narrator, Voice, Vectorizer};
 
 /// The core AI engine.
 ///
 /// Currently provides only a skeleton structure for experimentation.
 pub struct Psyche {
-    narrator: Box<dyn Narrator>,
-    voice: Box<dyn Voice>,
+    narrator: Box<dyn InstructionFollower>,
+    voice: Box<dyn Chatter>,
     vectorizer: Box<dyn Vectorizer>,
 }
 
 impl Psyche {
     /// Construct a new [`Psyche`].
     pub fn new(
-        narrator: Box<dyn Narrator>,
-        voice: Box<dyn Voice>,
+        narrator: Box<dyn InstructionFollower>,
+        voice: Box<dyn Chatter>,
         vectorizer: Box<dyn Vectorizer>,
     ) -> Self {
-        Self { narrator, voice, vectorizer }
+        Self {
+            narrator,
+            voice,
+            vectorizer,
+        }
     }
 
     /// Spawn the conversation and experience threads and wait for them to finish.
@@ -26,7 +30,9 @@ impl Psyche {
         let converse_handle = thread::spawn(Self::converse);
         let experience_handle = thread::spawn(Self::experience);
         converse_handle.join().expect("converse thread panicked");
-        experience_handle.join().expect("experience thread panicked");
+        experience_handle
+            .join()
+            .expect("experience thread panicked");
     }
 
     fn converse() {
@@ -48,14 +54,14 @@ mod tests {
     struct Dummy;
 
     #[async_trait]
-    impl Narrator for Dummy {
+    impl InstructionFollower for Dummy {
         async fn follow(&self, _: &str) -> anyhow::Result<String> {
             Ok("ok".into())
         }
     }
 
     #[async_trait]
-    impl Voice for Dummy {
+    impl Chatter for Dummy {
         async fn chat(&self, _: &str, _: &[ling::Message]) -> anyhow::Result<String> {
             Ok("ok".into())
         }

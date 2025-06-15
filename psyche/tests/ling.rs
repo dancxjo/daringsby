@@ -1,17 +1,17 @@
-use psyche::ling::{Narrator, Voice, Vectorizer, Message};
 use async_trait::async_trait;
+use psyche::ling::{Chatter, InstructionFollower, Message, Vectorizer};
 
 struct Dummy;
 
 #[async_trait]
-impl Narrator for Dummy {
+impl InstructionFollower for Dummy {
     async fn follow(&self, i: &str) -> anyhow::Result<String> {
         Ok(format!("do:{i}"))
     }
 }
 
 #[async_trait]
-impl Voice for Dummy {
+impl Chatter for Dummy {
     async fn chat(&self, _s: &str, h: &[Message]) -> anyhow::Result<String> {
         Ok(format!("say:{}", h.len()))
     }
