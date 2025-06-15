@@ -26,8 +26,9 @@ Run tests with:
 cargo test
 ```
 
-Run the program with:
+Run the web server with:
 
 ```sh
 cargo run -p pete
 ```
+Then send chat messages by POSTing JSON `{ "message": "hi" }` to `http://127.0.0.1:3000/chat`.
