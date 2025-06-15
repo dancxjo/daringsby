@@ -34,6 +34,7 @@
       feeling: '😐',
       log: [],
       init() {
+        if (this.ws) return;
         this.ws = new WebSocket('ws://localhost:3000/ws');
         this.ws.addEventListener('message', event => {
           const data = JSON.parse(event.data);
