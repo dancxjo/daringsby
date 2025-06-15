@@ -169,15 +169,6 @@ Respond with just one emoji (any single unicode emoji) — nothing more and noth
         if (this.beats % 5 === 0) {
             const moment = await this.combobulator.think();
             if (moment) this.moment = moment;
-
-            const hasClients = this.opts.wsSensor?.hasClients?.() ?? true;
-            if (!this.speaking && hasClients) {
-                await this.take_turn();
-            }
-        }
-
-        if (this.opts.wsSensor && this.pendingSpeech) {
-            this.opts.wsSensor.self(this.pendingSpeech);
         }
     }
 
@@ -237,7 +228,30 @@ Output only the words Pete will say — no stage directions or annotations.`,
         }
     }
 
+    /**
+     * Execute one iteration of the speech loop.
+     * Skips taking a turn when already speaking or no websocket clients are connected.
+     */
+    async speechBeat(): Promise<void> {
+        const hasClients = this.opts.wsSensor?.hasClients?.() ?? true;
+        if (!this.speaking && hasClients) {
+            await this.take_turn();
+        }
+        if (this.opts.wsSensor && this.pendingSpeech) {
+            this.opts.wsSensor.self(this.pendingSpeech);
+        }
+    }
+
+    private async speechLoop(): Promise<void> {
+        while (this.isLive()) {
+            await this.speechBeat();
+            await new Promise((res) => setTimeout(res, 0));
+        }
+    }
+
     async run(): Promise<void> {
+        // Start speech loop first so speech generation runs independently
+        void this.speechLoop();
         while (this.isLive()) {
             await this.beat();
             await new Promise((res) => setTimeout(res, 0));
