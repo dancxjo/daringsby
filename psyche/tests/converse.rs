@@ -49,5 +49,7 @@ async fn adds_message_after_voice_heard() {
 
     let psyche = handle.await.unwrap();
     assert!(saw_chunk);
-    assert_eq!(psyche.conversation().all().len(), 1);
+    let conv = psyche.conversation();
+    let log_len = { conv.lock().await.all().len() };
+    assert_eq!(log_len, 1);
 }
