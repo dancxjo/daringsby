@@ -4,7 +4,7 @@
 //! an `OllamaProvider` implementation using the [`ollama-rs`] crate.
 //!
 //! ```no_run
-//! use psyche::ling::{OllamaProvider, InstructionFollower, Chatter, Vectorizer};
+//! use psyche::ling::{OllamaProvider, Doer, Chatter, Vectorizer};
 //! use psyche::Psyche;
 //!
 //! # async fn try_it() -> anyhow::Result<()> {
@@ -25,7 +25,7 @@ use ollama_rs::{
 
 /// Processes instructions and returns textual responses.
 #[async_trait]
-pub trait InstructionFollower: Send + Sync {
+pub trait Doer: Send + Sync {
     async fn follow(&self, instruction: &str) -> Result<String>;
 }
 
@@ -91,7 +91,7 @@ impl OllamaProvider {
 }
 
 #[async_trait]
-impl InstructionFollower for OllamaProvider {
+impl Doer for OllamaProvider {
     async fn follow(&self, instruction: &str) -> Result<String> {
         let req = ChatMessageRequest::new(
             self.model.clone(),
@@ -136,7 +136,7 @@ mod tests {
     struct Dummy;
 
     #[async_trait]
-    impl InstructionFollower for Dummy {
+    impl Doer for Dummy {
         async fn follow(&self, i: &str) -> Result<String> {
             Ok(format!("f:{i}"))
         }

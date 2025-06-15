@@ -1,11 +1,11 @@
 pub mod ling;
 
-use ling::{Chatter, InstructionFollower, Message, Vectorizer};
+use ling::{Chatter, Doer, Message, Vectorizer};
 use tokio::sync::{broadcast, mpsc};
 
 /// Event types emitted by the [`Psyche`] during conversation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PsycheEvent {
+pub enum Event {
     /// A partial chunk of the assistant's response.
     StreamChunk(String),
     /// The assistant intends to say the given response.
@@ -14,7 +14,7 @@ pub enum PsycheEvent {
 
 /// Inputs that can be sent to a running [`Psyche`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PsycheInput {
+pub enum Sensation {
     /// The assistant's speech was heard.
     HeardOwnVoice(String),
     /// The user spoke to the assistant.
@@ -49,22 +49,22 @@ impl Conversation {
 
 /// The core AI engine.
 pub struct Psyche {
-    narrator: Box<dyn InstructionFollower>,
+    narrator: Box<dyn Doer>,
     voice: Box<dyn Chatter>,
     vectorizer: Box<dyn Vectorizer>,
     system_prompt: String,
     max_history: usize,
     max_turns: usize,
-    events_tx: broadcast::Sender<PsycheEvent>,
-    input_tx: mpsc::UnboundedSender<PsycheInput>,
-    input_rx: mpsc::UnboundedReceiver<PsycheInput>,
+    events_tx: broadcast::Sender<Event>,
+    input_tx: mpsc::UnboundedSender<Sensation>,
+    input_rx: mpsc::UnboundedReceiver<Sensation>,
     conversation: Conversation,
 }
 
 impl Psyche {
     /// Construct a new [`Psyche`].
     pub fn new(
-        narrator: Box<dyn InstructionFollower>,
+        narrator: Box<dyn Doer>,
         voice: Box<dyn Chatter>,
         vectorizer: Box<dyn Vectorizer>,
     ) -> Self {
@@ -95,12 +95,12 @@ impl Psyche {
     }
 
     /// Subscribe to conversation events.
-    pub fn subscribe(&self) -> broadcast::Receiver<PsycheEvent> {
+    pub fn subscribe(&self) -> broadcast::Receiver<Event> {
         self.events_tx.subscribe()
     }
 
     /// Sender for inputs to the running psyche.
-    pub fn input_sender(&self) -> mpsc::UnboundedSender<PsycheInput> {
+    pub fn input_sender(&self) -> mpsc::UnboundedSender<Sensation> {
         self.input_tx.clone()
     }
 
@@ -120,18 +120,16 @@ impl Psyche {
             let history = self.conversation.tail(self.max_history);
             if let Ok(resp) = self.voice.chat(&self.system_prompt, &history).await {
                 for chunk in resp.split_whitespace() {
-                    let _ = self
-                        .events_tx
-                        .send(PsycheEvent::StreamChunk(chunk.to_string()));
+                    let _ = self.events_tx.send(Event::StreamChunk(chunk.to_string()));
                 }
-                let _ = self.events_tx.send(PsycheEvent::IntentionToSay(resp.clone()));
+                let _ = self.events_tx.send(Event::IntentionToSay(resp.clone()));
                 loop {
                     match self.input_rx.recv().await {
-                        Some(PsycheInput::HeardOwnVoice(msg)) => {
+                        Some(Sensation::HeardOwnVoice(msg)) => {
                             self.conversation.add_assistant(msg);
                             break;
                         }
-                        Some(PsycheInput::HeardUserVoice(msg)) => {
+                        Some(Sensation::HeardUserVoice(msg)) => {
                             self.conversation.add_user(msg);
                         }
                         None => break,
@@ -156,9 +154,7 @@ impl Psyche {
         let converse_handle = tokio::spawn(self.converse());
         let experience_handle = tokio::spawn(Self::experience());
         let psyche = converse_handle.await.expect("converse task panicked");
-        experience_handle
-            .await
-            .expect("experience task panicked");
+        experience_handle.await.expect("experience task panicked");
         psyche
     }
 }
@@ -171,7 +167,7 @@ mod tests {
     struct Dummy;
 
     #[async_trait]
-    impl InstructionFollower for Dummy {
+    impl Doer for Dummy {
         async fn follow(&self, _: &str) -> anyhow::Result<String> {
             Ok("ok".into())
         }
@@ -190,5 +186,4 @@ mod tests {
             Ok(vec![1.0])
         }
     }
-
 }

@@ -1,10 +1,10 @@
 use async_trait::async_trait;
-use psyche::ling::{Chatter, InstructionFollower, Message, Vectorizer};
+use psyche::ling::{Chatter, Doer, Message, Vectorizer};
 
 struct Dummy;
 
 #[async_trait]
-impl InstructionFollower for Dummy {
+impl Doer for Dummy {
     async fn follow(&self, i: &str) -> anyhow::Result<String> {
         Ok(format!("do:{i}"))
     }
