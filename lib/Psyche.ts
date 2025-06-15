@@ -221,8 +221,10 @@ Output only the words Pete will say — no stage directions or annotations.`,
     }
 
     confirm_echo(message: string): void {
-        if (this.pendingSpeech && message === this.pendingSpeech) {
-            this.conversation.push({ role: "assistant", content: message });
+        const pending = this.pendingSpeech.trim();
+        const heard = message.trim();
+        if (pending && heard === pending) {
+            this.conversation.push({ role: "assistant", content: pending });
             this.pendingSpeech = "";
             this.speaking = false;
         }
