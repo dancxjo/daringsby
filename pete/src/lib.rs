@@ -1,31 +1,22 @@
 use async_trait::async_trait;
 use axum::{
-    Json, Router,
+    Router,
     extract::{
         State,
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
     },
-    response::{
-        Html, IntoResponse,
-        sse::{Event as SseEvent, Sse},
-    },
-    routing::{get, post},
+    response::{Html, IntoResponse},
+    routing::get,
 };
 use psyche::ling::{Chatter, Doer, Message, Vectorizer};
 use psyche::{Event, Psyche, Sensation};
-use std::{convert::Infallible, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
-use tokio_stream::{Stream, StreamExt as TokioStreamExt, wrappers::BroadcastStream};
 
 #[derive(Clone)]
 pub struct AppState {
     pub input: mpsc::UnboundedSender<Sensation>,
     pub events: Arc<broadcast::Receiver<Event>>,
-}
-
-#[derive(serde::Deserialize)]
-pub(crate) struct ChatRequest {
-    message: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -46,21 +37,6 @@ struct WsResponse<'a> {
 pub async fn index() -> Html<&'static str> {
     static INDEX: &str = include_str!("../../index.html");
     Html(INDEX)
-}
-
-pub async fn chat(
-    State(state): State<AppState>,
-    Json(payload): Json<ChatRequest>,
-) -> Sse<impl Stream<Item = Result<SseEvent, Infallible>>> {
-    let _ = state.input.send(Sensation::HeardUserVoice(payload.message));
-
-    let rx = state.events.resubscribe();
-    let stream = TokioStreamExt::filter_map(BroadcastStream::new(rx), |res| match res {
-        Ok(Event::StreamChunk(chunk)) => Some(Ok(SseEvent::default().data(chunk))),
-        _ => None,
-    });
-
-    Sse::new(stream)
 }
 
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
@@ -105,7 +81,6 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/", get(index))
-        .route("/chat", post(chat))
         .route("/ws", get(ws_handler))
         .with_state(state)
 }
