@@ -34,7 +34,11 @@ const SCRIPT: &str = r#"function chatApp() {
     append(role, text) {
       const el = this.$refs.log;
       const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
-      this.log.push({ role, text });
+      if (role === 'system' && this.log.length && this.log[this.log.length - 1].role === 'system') {
+        this.log[this.log.length - 1].text += text;
+      } else {
+        this.log.push({ role, text });
+      }
       this.$nextTick(() => {
         if (atBottom) el.scrollTop = el.scrollHeight;
         if (role !== 'user') this.ws.send(JSON.stringify({ type: 'displayed', text }));

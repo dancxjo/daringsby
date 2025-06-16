@@ -6,4 +6,8 @@ async fn serves_index_html() {
     assert!(resp.0.contains("ws://localhost:3000/ws"));
     assert!(resp.0.contains("WS:"));
     assert_eq!(resp.0.matches("new WebSocket").count(), 1);
+    assert!(
+        resp.0
+            .contains("this.log[this.log.length - 1].text += text")
+    );
 }
