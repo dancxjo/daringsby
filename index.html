@@ -12,6 +12,7 @@
 <body class="h-full flex items-center justify-center bg-gray-100">
   <div class="w-full max-w-md p-4 bg-white rounded shadow-lg space-y-4">
     <h1 class="text-2xl font-bold text-center">Chat with Pete</h1>
+    <div class="text-center text-sm text-gray-500" x-text="'WS: ' + status"></div>
     <div class="text-6xl text-center" x-text="feeling"></div>
     <div class="h-48 overflow-y-auto border p-2" id="chat-log">
       <template x-for="entry in log" :key="entry">
@@ -29,13 +30,36 @@
   document.addEventListener('alpine:init', () => {
     Alpine.data('chatApp', () => ({
       ws: null,
+      heartbeat: null,
       name: '',
       input: '',
       feeling: '😐',
       log: [],
+      status: 'connecting',
       init() {
+        this.connect();
+      },
+      connect() {
         if (this.ws) return;
+        this.status = 'connecting';
         this.ws = new WebSocket('ws://localhost:3000/ws');
+        this.ws.addEventListener('open', () => {
+          this.status = 'open';
+          this.heartbeat = setInterval(() => {
+            if (this.ws.readyState === WebSocket.OPEN) {
+              this.ws.send(JSON.stringify({ type: 'ping' }));
+            }
+          }, 30000);
+        });
+        this.ws.addEventListener('close', () => {
+          this.status = 'closed';
+          clearInterval(this.heartbeat);
+          this.ws = null;
+          setTimeout(() => this.connect(), 1000);
+        });
+        this.ws.addEventListener('error', () => {
+          this.status = 'error';
+        });
         this.ws.addEventListener('message', event => {
           const data = JSON.parse(event.data);
           if (data.type === 'pete-says') {
@@ -47,7 +71,7 @@
         });
       },
       send() {
-        if (!this.input) return;
+        if (!this.input || this.ws.readyState !== WebSocket.OPEN) return;
         const payload = { type: 'user', name: this.name, message: this.input };
         this.ws.send(JSON.stringify(payload));
         this.log.push(`${this.name || 'User'}: ${this.input}`);
