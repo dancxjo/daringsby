@@ -40,6 +40,9 @@ let psyche = Psyche::new(
     std::sync::Arc::new(DummyMouth),
     std::sync::Arc::new(DummyEar),
 );
+// replace the dummy mouth with your own implementation
+let mouth = std::sync::Arc::new(DummyMouth);
+psyche.set_mouth(mouth);
 psyche.set_echo_timeout(std::time::Duration::from_secs(1));
 psyche.run().await;
 assert!(!psyche.speaking());

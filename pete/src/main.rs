@@ -1,5 +1,5 @@
 use clap::Parser;
-use pete::{AppState, ChannelEar, app, listen_user_input, ollama_psyche};
+use pete::{AppState, ChannelEar, ChannelMouth, app, listen_user_input, ollama_psyche};
 use std::{
     net::SocketAddr,
     sync::{Arc, atomic::AtomicBool},
@@ -30,8 +30,10 @@ async fn main() -> anyhow::Result<()> {
     info!(%cli.addr, "starting server");
 
     let mut psyche = ollama_psyche(&cli.ollama_url, &cli.model)?;
-    let events = Arc::new(psyche.subscribe());
     let speaking = Arc::new(AtomicBool::new(false));
+    let mouth = Arc::new(ChannelMouth::new(psyche.event_sender(), speaking.clone()));
+    psyche.set_mouth(mouth.clone());
+    let events = Arc::new(psyche.subscribe());
     let ear = Arc::new(ChannelEar::new(
         psyche.input_sender(),
         psyche.conversation(),
