@@ -16,6 +16,8 @@ clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
 pragmatic-segmenter = "0.1"
+dioxus = { version = "0.4.3", default-features = false, features = ["html", "macro"] }
+dioxus-ssr = "0.4.3"
 
 [dev-dependencies]
 assert_cmd = "2"
