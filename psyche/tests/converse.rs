@@ -1,17 +1,31 @@
 use async_trait::async_trait;
 use psyche::ling::{Chatter, Doer, Message, Vectorizer};
 use psyche::{Ear, Event, Mouth, Psyche, Sensation};
+use std::sync::atomic::{AtomicBool, Ordering};
 
-struct Dummy;
+#[derive(Clone, Default)]
+struct Dummy {
+    speaking: std::sync::Arc<AtomicBool>,
+}
 
 #[async_trait]
 impl Mouth for Dummy {
-    async fn speak(&self, _t: &str) {}
+    async fn speak(&self, _t: &str) {
+        self.speaking.store(true, Ordering::SeqCst);
+    }
+    async fn interrupt(&self) {
+        self.speaking.store(false, Ordering::SeqCst);
+    }
+    fn speaking(&self) -> bool {
+        self.speaking.load(Ordering::SeqCst)
+    }
 }
 
 #[async_trait]
 impl Ear for Dummy {
-    async fn hear_self_say(&self, _t: &str) {}
+    async fn hear_self_say(&self, _t: &str) {
+        self.speaking.store(false, Ordering::SeqCst);
+    }
     async fn hear_user_say(&self, _t: &str) {}
 }
 
@@ -38,12 +52,12 @@ impl Vectorizer for Dummy {
 
 #[tokio::test]
 async fn adds_message_after_voice_heard() {
-    let mouth = std::sync::Arc::new(Dummy);
+    let mouth = std::sync::Arc::new(Dummy::default());
     let ear = mouth.clone();
     let mut psyche = Psyche::new(
-        Box::new(Dummy),
-        Box::new(Dummy),
-        Box::new(Dummy),
+        Box::new(Dummy::default()),
+        Box::new(Dummy::default()),
+        Box::new(Dummy::default()),
         mouth,
         ear,
     );
@@ -71,4 +85,36 @@ async fn adds_message_after_voice_heard() {
     let conv = psyche.conversation();
     let log_len = { conv.lock().await.all().len() };
     assert_eq!(log_len, 1);
+}
+
+#[tokio::test]
+async fn interrupts_when_user_speaks() {
+    let mouth = std::sync::Arc::new(Dummy::default());
+    let ear = mouth.clone();
+    let mut psyche = Psyche::new(
+        Box::new(Dummy::default()),
+        Box::new(Dummy::default()),
+        Box::new(Dummy::default()),
+        mouth.clone(),
+        ear,
+    );
+    psyche.set_turn_limit(1);
+    psyche.set_system_prompt("sys");
+
+    let mut events = psyche.subscribe();
+    let input = psyche.input_sender();
+
+    let handle = tokio::spawn(async move { psyche.run().await });
+
+    while let Ok(evt) = events.recv().await {
+        if let Event::IntentionToSay(msg) = evt {
+            assert!(mouth.speaking());
+            input.send(Sensation::HeardUserVoice("hi".into())).unwrap();
+            input.send(Sensation::HeardOwnVoice(msg)).unwrap();
+            break;
+        }
+    }
+
+    let _ = handle.await.unwrap();
+    assert!(!mouth.speaking());
 }

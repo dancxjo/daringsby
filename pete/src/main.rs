@@ -1,6 +1,9 @@
 use clap::Parser;
 use pete::{AppState, ChannelEar, app, dummy_psyche, listen_user_input};
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::SocketAddr,
+    sync::{Arc, atomic::AtomicBool},
+};
 use tokio::sync::mpsc;
 
 #[derive(Parser)]
@@ -17,9 +20,11 @@ async fn main() -> anyhow::Result<()> {
 
     let mut psyche = dummy_psyche();
     let events = Arc::new(psyche.subscribe());
+    let speaking = Arc::new(AtomicBool::new(false));
     let ear = Arc::new(ChannelEar::new(
         psyche.input_sender(),
         psyche.conversation(),
+        speaking.clone(),
     ));
     let (user_tx, user_rx) = mpsc::unbounded_channel();
 

@@ -13,7 +13,11 @@
 //! let vectorizer = OllamaProvider::new("http://localhost:11434", "mistral")?;
 //! # struct DummyMouth;
 //! # #[async_trait::async_trait]
-//! # impl psyche::Mouth for DummyMouth { async fn speak(&self, _t: &str) {} }
+//! # impl psyche::Mouth for DummyMouth {
+//! #     async fn speak(&self, _t: &str) {}
+//! #     async fn interrupt(&self) {}
+//! #     fn speaking(&self) -> bool { false }
+//! # }
 //! # struct DummyEar;
 //! # #[async_trait::async_trait]
 //! # impl psyche::Ear for DummyEar {
