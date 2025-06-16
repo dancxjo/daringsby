@@ -38,8 +38,8 @@ impl Doer for Dummy {
 
 #[async_trait]
 impl Chatter for Dummy {
-    async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<String> {
-        Ok("hello world".into())
+    async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+        Ok(Box::pin(tokio_stream::once(Ok("hello world".to_string()))))
     }
 }
 
