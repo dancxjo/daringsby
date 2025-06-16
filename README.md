@@ -40,6 +40,7 @@ let psyche = Psyche::new(
     std::sync::Arc::new(DummyMouth),
     std::sync::Arc::new(DummyEar),
 );
+psyche.set_echo_timeout(std::time::Duration::from_secs(1));
 psyche.run().await;
 ```
 
