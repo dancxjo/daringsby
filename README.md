@@ -48,6 +48,8 @@ psyche.set_mouth(mouth);
 // Customize or replace the default prompt if desired
 psyche.set_system_prompt("Respond with two sentences.");
 psyche.set_echo_timeout(std::time::Duration::from_secs(1));
+// make Pete wait for you to speak first
+psyche.set_speak_when_spoken_to(true);
 psyche.run().await;
 assert!(!psyche.speaking());
 ```
