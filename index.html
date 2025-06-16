@@ -19,7 +19,7 @@
     </div>
     <form class="flex gap-2"  @submit.prevent="send">
       <label for="input" class="sr-only">Message</label>
-      <input type="text" class="flex-grow border rounded px-3 py-2" placeholder="Say something..." x-model="input" />
+      <input type="text" autofocus class="flex-grow border rounded px-3 py-2" placeholder="Say something..." x-model="input" />
       <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Send</button>
     </form>
   </div>
