@@ -3,26 +3,19 @@
 <head>
   <meta charset="utf-8">
   <title>Pete Console</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.3.0/dist/themes/light.css">
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    #log { white-space: pre-wrap; }
+    #log.chat-log { white-space: pre-wrap; max-height: 60vh; overflow-y: auto; }
   </style>
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.3.0/dist/shoelace.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 </head>
-<body class="container">
-  <div x-data="chatApp()" x-init="init()" class="section">
-    <div id="status" x-text="status" class="mb-2 has-text-weight-bold"></div>
-    <pre id="log" x-text="log" class="box"></pre>
-    <div class="field has-addons">
-      <div class="control is-expanded">
-        <sl-input class="input" placeholder="Say something..." x-model="input"></sl-input>
-      </div>
-      <div class="control">
-        <sl-button variant="primary" @click.prevent="send">Send</sl-button>
-      </div>
+<body class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 font-sans text-gray-800">
+  <div x-data="chatApp()" x-init="init()" class="w-full max-w-xl p-6 space-y-4 bg-white rounded-xl shadow">
+    <div id="status" x-text="status" class="text-xs font-semibold text-gray-500"></div>
+    <pre id="log" x-ref="log" x-text="log" class="chat-log p-2 bg-gray-50 rounded"></pre>
+    <div class="flex gap-2">
+      <input type="text" class="flex-grow border rounded px-3 py-2" placeholder="Say something..." x-model="input" />
+      <button class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700" @click.prevent="send">Send</button>
     </div>
   </div>
   <script>
@@ -43,15 +36,21 @@
             try {
               const data = JSON.parse(ev.data);
               if (data.text) {
-                this.log += data.text;
-                this.$nextTick(() => {
-                  this.ws.send(JSON.stringify({ type: 'displayed', text: data.text }));
-                });
+                this.append(data.text);
               }
             } catch (_) {
-              this.log += ev.data;
+              this.append(ev.data);
             }
           };
+        },
+        append(text) {
+          const el = this.$refs.log;
+          const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+          this.log += text;
+          this.$nextTick(() => {
+            if (atBottom) el.scrollTop = el.scrollHeight;
+            this.ws.send(JSON.stringify({ type: 'displayed', text }));
+          });
         },
         send() {
           if (!this.input) return;
