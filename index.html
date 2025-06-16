@@ -55,7 +55,7 @@
         append(role, text) {
           const el = this.$refs.log;
           const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
-          if (role === 'system' && this.log.length && this.log[this.log.length - 1].role === 'system') {
+          if (this.log.length && this.log[this.log.length - 1].role === role) {
             this.log[this.log.length - 1].text += text;
           } else {
             this.log.push({ role, text });
