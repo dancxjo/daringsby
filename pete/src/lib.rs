@@ -10,7 +10,10 @@ use axum::{
 };
 use psyche::ling::{Chatter, Doer, Message, Vectorizer};
 use psyche::{Ear, Event, Mouth, Psyche, Sensation};
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use tokio::sync::{Mutex, broadcast, mpsc};
 
 #[derive(Clone)]
@@ -44,16 +47,19 @@ struct WsResponse<'a> {
 pub struct ChannelEar {
     forward: mpsc::UnboundedSender<Sensation>,
     conversation: Arc<Mutex<psyche::Conversation>>, // share log from psyche
+    speaking: Arc<AtomicBool>,
 }
 
 impl ChannelEar {
     pub fn new(
         forward: mpsc::UnboundedSender<Sensation>,
         conversation: Arc<Mutex<psyche::Conversation>>,
+        speaking: Arc<AtomicBool>,
     ) -> Self {
         Self {
             forward,
             conversation,
+            speaking,
         }
     }
 }
@@ -61,6 +67,7 @@ impl ChannelEar {
 #[async_trait]
 impl Ear for ChannelEar {
     async fn hear_self_say(&self, text: &str) {
+        self.speaking.store(false, Ordering::SeqCst);
         let _ = self
             .forward
             .send(Sensation::HeardOwnVoice(text.to_string()));
@@ -78,21 +85,48 @@ impl Ear for ChannelEar {
 #[derive(Clone)]
 pub struct ChannelMouth {
     events: broadcast::Sender<Event>,
+    speaking: Arc<AtomicBool>,
 }
 
 #[async_trait]
 impl Mouth for ChannelMouth {
     async fn speak(&self, text: &str) {
+        self.speaking.store(true, Ordering::SeqCst);
         let _ = self.events.send(Event::IntentionToSay(text.to_string()));
+    }
+    async fn interrupt(&self) {
+        self.speaking.store(false, Ordering::SeqCst);
+        let _ = self.events.send(Event::IntentionToSay(String::new()));
+    }
+    fn speaking(&self) -> bool {
+        self.speaking.load(Ordering::SeqCst)
     }
 }
 
 #[derive(Clone)]
-pub struct NoopMouth;
+pub struct NoopMouth {
+    speaking: Arc<AtomicBool>,
+}
+
+impl Default for NoopMouth {
+    fn default() -> Self {
+        Self {
+            speaking: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
 
 #[async_trait]
 impl Mouth for NoopMouth {
-    async fn speak(&self, _text: &str) {}
+    async fn speak(&self, _text: &str) {
+        self.speaking.store(true, Ordering::SeqCst);
+    }
+    async fn interrupt(&self) {
+        self.speaking.store(false, Ordering::SeqCst);
+    }
+    fn speaking(&self) -> bool {
+        self.speaking.load(Ordering::SeqCst)
+    }
 }
 
 #[derive(Clone)]
@@ -165,7 +199,8 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 /// # use tokio::sync::mpsc;
 /// let mut psyche = dummy_psyche();
 /// let conv = psyche.conversation();
-/// let ear = std::sync::Arc::new(ChannelEar::new(psyche.input_sender(), conv.clone()));
+/// let speaking = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+/// let ear = std::sync::Arc::new(ChannelEar::new(psyche.input_sender(), conv.clone(), speaking));
 /// let (tx, rx) = mpsc::unbounded_channel();
 /// tokio::spawn(listen_user_input(rx, ear));
 /// # tx.send("hi".into()).unwrap();
@@ -211,7 +246,7 @@ pub fn dummy_psyche() -> Psyche {
         }
     }
 
-    let mouth = Arc::new(NoopMouth);
+    let mouth = Arc::new(NoopMouth::default());
     let ear = Arc::new(NoopEar);
     let mut psyche = Psyche::new(
         Box::new(Dummy),

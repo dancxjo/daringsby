@@ -20,7 +20,11 @@ use async_trait::async_trait;
 
 struct DummyMouth;
 #[async_trait]
-impl Mouth for DummyMouth { async fn speak(&self, _t: &str) {} }
+impl Mouth for DummyMouth {
+    async fn speak(&self, _t: &str) {}
+    async fn interrupt(&self) {}
+    fn speaking(&self) -> bool { false }
+}
 
 struct DummyEar;
 #[async_trait]

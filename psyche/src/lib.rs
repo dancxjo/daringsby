@@ -28,6 +28,10 @@ pub enum Sensation {
 pub trait Mouth: Send + Sync {
     /// Speak the provided text.
     async fn speak(&self, text: &str);
+    /// Immediately stop saying anything queued or in progress.
+    async fn interrupt(&self);
+    /// Whether the mouth is currently speaking.
+    fn speaking(&self) -> bool;
 }
 
 /// Something that can register what was said.
@@ -160,6 +164,9 @@ impl Psyche {
                             break;
                         }
                         Some(Sensation::HeardUserVoice(msg)) => {
+                            if self.mouth.speaking() {
+                                self.mouth.interrupt().await;
+                            }
                             self.ear.hear_user_say(&msg).await;
                             let mut conv = self.conversation.lock().await;
                             conv.add_user(msg);
