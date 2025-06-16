@@ -55,31 +55,35 @@ const SCRIPT: &str = r#"function chatApp() {
 
 fn main() {
     let body = render_lazy(rsx! {
-        div { "x-data": "chatApp()", "x-init": "init()", class: "section",
-            div { id: "status", "x-text": "status", class: "mb-2 has-text-weight-bold" }
-            div { id: "log", "x-ref": "log", class: "box flex flex-col space-y-1",
-                template { "x-for": "msg in log", ":key": "msg.id",
-                    div { ":class": "msg.role === 'user' ? 'has-text-info has-text-right' : 'has-text-left'", "x-text": "msg.text" }
-                }
+        div { "x-data": "chatApp()", "x-init": "init()", class: "columns is-gapless is-fullheight",
+            aside { class: "column is-one-quarter p-4 has-background-grey-light",
+                div { id: "status", "x-text": "status", class: "has-text-weight-bold is-size-7" }
             }
-            div { class: "field has-addons",
-                div { class: "control is-expanded",
-                    sl-input {
-                      class: "input",
-                      placeholder: "Say something...",
-                      "x-model": "input",
-                      style: "width: 100%;"
+            main { class: "column is-flex is-flex-direction-column p-4",
+                div { id: "log", "x-ref": "log", class: "box is-flex is-flex-direction-column space-y-1 is-flex-grow-1",
+                    template { "x-for": "msg in log", ":key": "msg.id",
+                        div { ":class": "msg.role === 'user' ? 'has-text-info has-text-right' : 'has-text-left'", "x-text": "msg.text" }
                     }
                 }
-                div { class: "control",
-                    sl-button { r#type: "submit", variant: "primary", "@click.prevent": "send", "Send" }
+                div { class: "field has-addons mt-auto",
+                    div { class: "control is-expanded",
+                        sl-input {
+                          class: "input",
+                          placeholder: "Say something...",
+                          "x-model": "input",
+                          style: "width: 100%;",
+                        }
+                    }
+                    div { class: "control",
+                        sl-button { r#type: "submit", variant: "primary", "@click.prevent": "send", "Send" }
+                    }
                 }
             }
         }
     });
 
     let page = format!(
-        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <title>Pete Console</title>\n  <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css\">\n  <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css\">\n  <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.3.0/dist/themes/light.css\">\n  <style>#log.chat-log {{ white-space: pre-wrap; max-height: 60vh; overflow-y: auto; }}</style>\n  <script type=\"module\" src=\"https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.3.0/dist/shoelace.js\"></script>\n  <script src=\"https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js\" defer></script>\n</head>\n<body class=\"container\">\n  {body}\n  <script>{SCRIPT}</script>\n</body>\n</html>"
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <title>Pete Console</title>\n  <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css\">\n  <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css\">\n  <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.3.0/dist/themes/light.css\">\n  <style>#log.chat-log {{ white-space: pre-wrap; overflow-y: auto; }}</style>\n  <script type=\"module\" src=\"https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.3.0/dist/shoelace.js\"></script>\n  <script src=\"https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js\" defer></script>\n</head>\n<body class=\"container\">\n  {body}\n  <script>{SCRIPT}</script>\n</body>\n</html>"
     );
 
     let out = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
