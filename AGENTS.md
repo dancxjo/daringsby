@@ -19,3 +19,4 @@ This repository is now a Rust workspace.
    WebSocket-only.
 - Use `tracing` macros for all logging.
 - Initialize logging in binaries with `tracing_subscriber::fmt::init()`.
+- When files grow beyond roughly 200 lines, break them into logical modules.
