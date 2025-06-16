@@ -161,11 +161,18 @@ impl Ear for NoopEar {
     async fn hear_user_say(&self, _text: &str) {}
 }
 
-/// Serve the embedded `index.html`.
-pub async fn index() -> Html<&'static str> {
-    static INDEX: &str = include_str!("../../index.html");
-    info!("serving index page");
-    Html(INDEX)
+/// Serve the chat page rendered with Dioxus.
+pub async fn index() -> Html<String> {
+    use dioxus::prelude::*;
+    use dioxus_ssr::render_lazy;
+
+    info!("serving dioxus page");
+    let raw = render_lazy(rsx! { div { dangerous_inner_html: include_str!("../page.html") } });
+    let page = raw
+        .trim_start_matches("<div>")
+        .trim_end_matches("</div>")
+        .to_string();
+    Html(page)
 }
 
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
