@@ -17,12 +17,14 @@ pub enum Event {
 }
 
 /// Inputs that can be sent to a running [`Psyche`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum Sensation {
     /// The assistant's speech was heard.
     HeardOwnVoice(String),
     /// The user spoke to the assistant.
     HeardUserVoice(String),
+    /// Arbitrary input that the assistant can process
+    Of(Box<dyn std::any::Any + Send + Sync>),
 }
 
 /// Something that can vocalize text.
@@ -193,6 +195,10 @@ impl Psyche {
                             self.ear.hear_user_say(&msg).await;
                             let mut conv = self.conversation.lock().await;
                             conv.add_user(msg);
+                        }
+                        Ok(Some(Sensation::Of(_))) => {
+                            debug!("received non-voice sensation");
+                            // TODO: handle other sensations
                         }
                         Ok(None) => break,
                         Err(_) => {

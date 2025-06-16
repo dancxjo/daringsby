@@ -49,10 +49,15 @@ fn main() {
             pre { id: "log", "x-text": "log", class: "box" }
             div { class: "field has-addons",
                 div { class: "control is-expanded",
-                    sl-input { class: "input", placeholder: "Say something...", "x-model": "input" }
+                    sl-input {
+                      class: "input",
+                      placeholder: "Say something...",
+                      "x-model": "input",
+                      style: "width: 100%;"
+                    }
                 }
                 div { class: "control",
-                    sl-button { variant: "primary", "@click.prevent": "send", "Send" }
+                    sl-button { r#type: "submit", variant: "primary", "@click.prevent": "send", "Send" }
                 }
             }
         }
