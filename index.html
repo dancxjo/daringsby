@@ -34,6 +34,10 @@
         input: '',
         init() { this.connect(); },
         connect() {
+          if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+            return;
+          }
+          if (this.ws) { this.ws.close(); }
           this.status = 'WS: connecting';
           this.ws = new WebSocket('ws://localhost:3000/ws');
           this.ws.onopen = () => this.status = 'WS: open';

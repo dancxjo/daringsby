@@ -15,9 +15,11 @@ This repository is now a Rust workspace.
 - The chat page uses Alpine.js for binding; preserve this dependency when updating `index.html`.
 - Run `cargo fetch` before testing to warm the cache.
 - When embedding `index.html` in the `pete` crate, use `include_str!("../../index.html")`.
+- Keep the chat script in `index.html` and `pete/build.rs` in sync.
  - Expose WebSocket chat at `/ws` that forwards psyche events.
  - The server no longer exposes the `/chat` SSE endpoint; real-time events are
    WebSocket-only.
 - Use `tracing` macros for all logging.
 - Initialize logging in binaries with `tracing_subscriber::fmt::init()`.
 - When files grow beyond roughly 200 lines, break them into logical modules.
+- Avoid using `echo $?` to verify command success; rely on command output.
