@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Pete Console</title>
+  <style>
+    body { font-family: sans-serif; }
+    #log { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div id="status">WS: connecting</div>
+  <div id="log"></div>
+  <script>
+    const statusEl = document.getElementById('status');
+    const logEl = document.getElementById('log');
+    function connect() {
+      statusEl.textContent = 'WS: connecting';
+      const ws = new WebSocket('ws://localhost:3000/ws');
+      ws.onopen = () => statusEl.textContent = 'WS: open';
+      ws.onclose = () => { statusEl.textContent = 'WS: closed'; setTimeout(connect, 1000); };
+      ws.onerror = () => statusEl.textContent = 'WS: error';
+      ws.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.text) {
+            logEl.textContent += data.text;
+          }
+        } catch (_) {
+          logEl.textContent += ev.data;
+        }
+      };
+    }
+    connect();
+  </script>
+</body>
+</html>
