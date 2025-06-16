@@ -30,6 +30,8 @@
         status: 'WS: connecting',
         log: [],
         input: '',
+        audioQueue: [],
+        audio: null,
         init() { this.connect(); },
         connect() {
           if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
@@ -47,10 +49,25 @@
               if (data.text) {
                 this.append('system', data.text);
               }
+              if (data.audio) {
+                this.audioQueue.push({ audio: data.audio, text: data.text || '' });
+                this.playNext();
+              }
             } catch (_) {
               this.append('system', ev.data);
             }
           };
+        },
+        playNext() {
+          if (this.audio || this.audioQueue.length === 0) return;
+          const { audio, text } = this.audioQueue.shift();
+          this.audio = new Audio('data:audio/wav;base64,' + audio);
+          this.audio.onended = () => {
+            this.audio = null;
+            this.ws.send(JSON.stringify({ type: 'played', text }));
+            this.playNext();
+          };
+          this.audio.play();
         },
         append(role, text) {
           const el = this.$refs.log;

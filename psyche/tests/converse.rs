@@ -77,6 +77,7 @@ async fn adds_message_after_voice_heard() {
                 input.send(Sensation::HeardOwnVoice(msg)).unwrap();
                 break;
             }
+            Event::SpeechAudio(_) => {}
         }
     }
 

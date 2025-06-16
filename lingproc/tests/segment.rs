@@ -1,4 +1,3 @@
-use futures::StreamExt;
 use lingproc::{sentence_stream, word_stream};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 

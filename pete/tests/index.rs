@@ -10,4 +10,5 @@ async fn serves_index_html() {
         resp.0
             .contains("this.log[this.log.length - 1].text += text")
     );
+    assert!(resp.0.contains("audioQueue"));
 }

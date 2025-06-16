@@ -14,6 +14,8 @@ pub enum Event {
     StreamChunk(String),
     /// The assistant intends to say the given response.
     IntentionToSay(String),
+    /// Base64-encoded WAV audio representing the spoken sentence.
+    SpeechAudio(String),
 }
 
 /// Inputs that can be sent to a running [`Psyche`].
