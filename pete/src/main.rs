@@ -1,5 +1,5 @@
 use clap::Parser;
-use pete::{AppState, app, dummy_psyche, listen_user_input};
+use pete::{AppState, ChannelEar, app, dummy_psyche, listen_user_input};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::mpsc;
 
@@ -16,25 +16,23 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let mut psyche = dummy_psyche();
-    let input = psyche.input_sender();
-    let conversation = psyche.conversation();
     let events = Arc::new(psyche.subscribe());
+    let ear = Arc::new(ChannelEar::new(
+        psyche.input_sender(),
+        psyche.conversation(),
+    ));
     let (user_tx, user_rx) = mpsc::unbounded_channel();
 
-    tokio::spawn(listen_user_input(
-        user_rx,
-        input.clone(),
-        conversation.clone(),
-    ));
+    tokio::spawn(listen_user_input(user_rx, ear.clone()));
 
     tokio::spawn(async move {
         psyche.run().await;
     });
 
     let state = AppState {
-        input,
         user_input: user_tx,
         events: events.clone(),
+        ear: ear.clone(),
     };
     let app = app(state);
 
