@@ -3,6 +3,7 @@ pub mod ling;
 use async_trait::async_trait;
 use ling::{Chatter, Doer, Message, Vectorizer};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{Mutex, broadcast, mpsc};
 
 /// Event types emitted by the [`Psyche`] during conversation.
@@ -83,6 +84,7 @@ pub struct Psyche {
     input_tx: mpsc::UnboundedSender<Sensation>,
     input_rx: mpsc::UnboundedReceiver<Sensation>,
     conversation: Arc<Mutex<Conversation>>,
+    echo_timeout: Duration,
 }
 
 impl Psyche {
@@ -109,6 +111,7 @@ impl Psyche {
             input_tx,
             input_rx,
             conversation: Arc::new(Mutex::new(Conversation::default())),
+            echo_timeout: Duration::from_secs(1),
         }
     }
 
@@ -120,6 +123,11 @@ impl Psyche {
     /// Limit the number of turns for a run.
     pub fn set_turn_limit(&mut self, turns: usize) {
         self.max_turns = turns;
+    }
+
+    /// Set how long to wait for an echo of what was said.
+    pub fn set_echo_timeout(&mut self, dur: Duration) {
+        self.echo_timeout = dur;
     }
 
     /// Subscribe to conversation events.
@@ -156,14 +164,15 @@ impl Psyche {
                 let _ = self.events_tx.send(Event::IntentionToSay(resp.clone()));
                 self.mouth.speak(&resp).await;
                 loop {
-                    match self.input_rx.recv().await {
-                        Some(Sensation::HeardOwnVoice(msg)) => {
+                    let recv = self.input_rx.recv();
+                    match tokio::time::timeout(self.echo_timeout, recv).await {
+                        Ok(Some(Sensation::HeardOwnVoice(msg))) => {
                             self.ear.hear_self_say(&msg).await;
                             let mut conv = self.conversation.lock().await;
                             conv.add_assistant(msg);
                             break;
                         }
-                        Some(Sensation::HeardUserVoice(msg)) => {
+                        Ok(Some(Sensation::HeardUserVoice(msg))) => {
                             if self.mouth.speaking() {
                                 self.mouth.interrupt().await;
                             }
@@ -171,7 +180,13 @@ impl Psyche {
                             let mut conv = self.conversation.lock().await;
                             conv.add_user(msg);
                         }
-                        None => break,
+                        Ok(None) => break,
+                        Err(_) => {
+                            self.ear.hear_self_say(&resp).await;
+                            let mut conv = self.conversation.lock().await;
+                            conv.add_assistant(resp.clone());
+                            break;
+                        }
                     }
                 }
             } else {

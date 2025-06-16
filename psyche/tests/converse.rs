@@ -118,3 +118,25 @@ async fn interrupts_when_user_speaks() {
     let _ = handle.await.unwrap();
     assert!(!mouth.speaking());
 }
+
+#[tokio::test]
+async fn times_out_without_echo() {
+    let mouth = std::sync::Arc::new(Dummy::default());
+    let ear = mouth.clone();
+    let mut psyche = Psyche::new(
+        Box::new(Dummy::default()),
+        Box::new(Dummy::default()),
+        Box::new(Dummy::default()),
+        mouth,
+        ear,
+    );
+    psyche.set_turn_limit(1);
+    psyche.set_system_prompt("sys");
+    psyche.set_echo_timeout(std::time::Duration::from_millis(10));
+
+    let handle = tokio::spawn(async move { psyche.run().await });
+    let psyche = handle.await.unwrap();
+    let conv = psyche.conversation();
+    let log_len = { conv.lock().await.all().len() };
+    assert_eq!(log_len, 1);
+}
