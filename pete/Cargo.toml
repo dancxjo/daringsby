@@ -2,6 +2,7 @@
 name = "pete"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 
 [dependencies]
 psyche = { path = "../psyche" }
@@ -16,6 +17,10 @@ clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
 pragmatic-segmenter = "0.1"
+dioxus = { version = "0.4.3", default-features = false, features = ["html", "macro"] }
+dioxus-ssr = "0.4.3"
+
+[build-dependencies]
 dioxus = { version = "0.4.3", default-features = false, features = ["html", "macro"] }
 dioxus-ssr = "0.4.3"
 

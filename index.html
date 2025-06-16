@@ -3,20 +3,27 @@
 <head>
   <meta charset="utf-8">
   <title>Pete Console</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.3.0/dist/themes/light.css">
   <style>
-    body { font-family: sans-serif; }
     #log { white-space: pre-wrap; }
   </style>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.3.0/dist/shoelace.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 </head>
-<body>
-  <div x-data="chatApp()" x-init="init()">
-    <div id="status" x-text="status"></div>
-    <div id="log" x-text="log"></div>
-    <form @submit.prevent="send">
-      <input type="text" x-model="input" placeholder="Say something..." />
-      <button type="submit">Send</button>
-    </form>
+<body class="container">
+  <div x-data="chatApp()" x-init="init()" class="section">
+    <div id="status" x-text="status" class="mb-2 has-text-weight-bold"></div>
+    <pre id="log" x-text="log" class="box"></pre>
+    <div class="field has-addons">
+      <div class="control is-expanded">
+        <sl-input class="input" placeholder="Say something..." x-model="input"></sl-input>
+      </div>
+      <div class="control">
+        <sl-button variant="primary" @click.prevent="send">Send</sl-button>
+      </div>
+    </div>
   </div>
   <script>
     function chatApp() {
