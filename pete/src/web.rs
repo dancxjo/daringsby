@@ -41,18 +41,10 @@ struct WsResponse<'a> {
     text: String,
 }
 
-/// Serve the chat page rendered with Dioxus.
-pub async fn index() -> Html<String> {
-    use dioxus::prelude::*;
-    use dioxus_ssr::render_lazy;
-
-    info!("serving dioxus page");
-    let raw = render_lazy(rsx! { div { dangerous_inner_html: include_str!("../page.html") } });
-    let page = raw
-        .trim_start_matches("<div>")
-        .trim_end_matches("</div>")
-        .to_string();
-    Html(page)
+/// Serve the chat page.
+pub async fn index() -> Html<&'static str> {
+    info!("serving index page");
+    Html(include_str!("../../index.html"))
 }
 
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
