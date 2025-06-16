@@ -7,31 +7,52 @@
     body { font-family: sans-serif; }
     #log { white-space: pre-wrap; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 </head>
 <body>
-  <div id="status">WS: connecting</div>
-  <div id="log"></div>
+  <div x-data="chatApp()" x-init="init()">
+    <div id="status" x-text="status"></div>
+    <div id="log" x-text="log"></div>
+    <form @submit.prevent="send">
+      <input type="text" x-model="input" placeholder="Say something..." />
+      <button type="submit">Send</button>
+    </form>
+  </div>
   <script>
-    const statusEl = document.getElementById('status');
-    const logEl = document.getElementById('log');
-    function connect() {
-      statusEl.textContent = 'WS: connecting';
-      const ws = new WebSocket('ws://localhost:3000/ws');
-      ws.onopen = () => statusEl.textContent = 'WS: open';
-      ws.onclose = () => { statusEl.textContent = 'WS: closed'; setTimeout(connect, 1000); };
-      ws.onerror = () => statusEl.textContent = 'WS: error';
-      ws.onmessage = (ev) => {
-        try {
-          const data = JSON.parse(ev.data);
-          if (data.text) {
-            logEl.textContent += data.text;
-          }
-        } catch (_) {
-          logEl.textContent += ev.data;
+    function chatApp() {
+      return {
+        ws: null,
+        status: 'WS: connecting',
+        log: '',
+        input: '',
+        init() { this.connect(); },
+        connect() {
+          this.status = 'WS: connecting';
+          this.ws = new WebSocket('ws://localhost:3000/ws');
+          this.ws.onopen = () => this.status = 'WS: open';
+          this.ws.onclose = () => { this.status = 'WS: closed'; setTimeout(() => this.connect(), 1000); };
+          this.ws.onerror = () => this.status = 'WS: error';
+          this.ws.onmessage = (ev) => {
+            try {
+              const data = JSON.parse(ev.data);
+              if (data.text) {
+                this.log += data.text;
+                this.$nextTick(() => {
+                  this.ws.send(JSON.stringify({ type: 'displayed', text: data.text }));
+                });
+              }
+            } catch (_) {
+              this.log += ev.data;
+            }
+          };
+        },
+        send() {
+          if (!this.input) return;
+          this.ws.send(JSON.stringify({ type: 'user', message: this.input }));
+          this.input = '';
         }
-      };
+      }
     }
-    connect();
   </script>
 </body>
 </html>
