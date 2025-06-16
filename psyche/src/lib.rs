@@ -145,6 +145,16 @@ impl Psyche {
         self.input_tx.clone()
     }
 
+    /// Broadcast channel for conversation events.
+    pub fn event_sender(&self) -> broadcast::Sender<Event> {
+        self.events_tx.clone()
+    }
+
+    /// Replace the current [`Mouth`] implementation.
+    pub fn set_mouth(&mut self, mouth: Arc<dyn Mouth>) {
+        self.mouth = mouth;
+    }
+
     fn still_conversing(&self, turns: usize) -> bool {
         turns < self.max_turns
     }
