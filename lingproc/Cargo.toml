@@ -1,16 +1,16 @@
 [package]
-name = "psyche"
+name = "lingproc"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-async-trait = "0.1"
 anyhow = "1"
+async-trait = "0.1"
 ollama-rs = { version = "0.3", features = ["stream"] }
-tokio = { version = "1", features = ["sync"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
-tracing = "0.1"
-lingproc = { path = "../lingproc" }
+pragmatic-segmenter = "0.1"
+unicode-segmentation = "1"
+futures = "0.3"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
