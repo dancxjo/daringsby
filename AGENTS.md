@@ -17,3 +17,5 @@ This repository is now a Rust workspace.
  - Expose WebSocket chat at `/ws` that forwards psyche events.
  - The server no longer exposes the `/chat` SSE endpoint; real-time events are
    WebSocket-only.
+- Use `tracing` macros for all logging.
+- Initialize logging in binaries with `tracing_subscriber::fmt::init()`.

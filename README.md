@@ -60,3 +60,7 @@ cargo run -p pete
 
 After starting the server, visit `http://127.0.0.1:3000/` in your browser. The page connects to `ws://localhost:3000/ws` and lets you chat with Pete in real time.
 When the page receives a `pete-says` message it echoes back `{type: "displayed", text}` so the server knows the line was shown.
+
+### Logging
+
+Set `RUST_LOG=info` when running the server to enable helpful tracing output.
