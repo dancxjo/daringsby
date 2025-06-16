@@ -277,3 +277,29 @@ pub fn dummy_psyche() -> Psyche {
     info!("created dummy psyche");
     psyche
 }
+
+/// Create a psyche backed by an Ollama server.
+///
+/// This uses [`OllamaProvider`](psyche::ling::OllamaProvider) for all language
+/// capabilities and the no-op ear and mouth implementations.
+pub fn ollama_psyche(host: &str, model: &str) -> anyhow::Result<Psyche> {
+    use psyche::ling::OllamaProvider;
+
+    let narrator = OllamaProvider::new(host, model)?;
+    let voice = OllamaProvider::new(host, model)?;
+    let vectorizer = OllamaProvider::new(host, model)?;
+
+    let mouth = Arc::new(NoopMouth::default());
+    let ear = Arc::new(NoopEar);
+
+    let mut psyche = Psyche::new(
+        Box::new(narrator),
+        Box::new(voice),
+        Box::new(vectorizer),
+        mouth,
+        ear,
+    );
+    psyche.set_turn_limit(usize::MAX);
+    info!(%host, %model, "created ollama psyche");
+    Ok(psyche)
+}

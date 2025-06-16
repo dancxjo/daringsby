@@ -51,10 +51,10 @@ Run tests with:
 cargo test
 ```
 
-Run the web server with:
+Run the web server with the built-in Ollama support:
 
 ```sh
-cargo run -p pete
+cargo run -p pete -- --ollama-url http://localhost:11434 --model mistral
 ```
 ## Web Interface
 

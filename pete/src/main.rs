@@ -1,5 +1,5 @@
 use clap::Parser;
-use pete::{AppState, ChannelEar, app, dummy_psyche, listen_user_input};
+use pete::{AppState, ChannelEar, app, listen_user_input, ollama_psyche};
 use std::{
     net::SocketAddr,
     sync::{Arc, atomic::AtomicBool},
@@ -14,6 +14,12 @@ struct Cli {
     /// Address to bind the HTTP server
     #[arg(long, default_value = "127.0.0.1:3000")]
     addr: String,
+    /// URL of the Ollama server
+    #[arg(long, default_value = "http://localhost:11434")]
+    ollama_url: String,
+    /// Model name to use with Ollama
+    #[arg(long, default_value = "mistral")]
+    model: String,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -23,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
 
     info!(%cli.addr, "starting server");
 
-    let mut psyche = dummy_psyche();
+    let mut psyche = ollama_psyche(&cli.ollama_url, &cli.model)?;
     let events = Arc::new(psyche.subscribe());
     let speaking = Arc::new(AtomicBool::new(false));
     let ear = Arc::new(ChannelEar::new(
