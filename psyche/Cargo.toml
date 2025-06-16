@@ -9,6 +9,7 @@ anyhow = "1"
 ollama-rs = { version = "0.3", features = ["stream"] }
 tokio = { version = "1", features = ["sync"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
+tracing = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

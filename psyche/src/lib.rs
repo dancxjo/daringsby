@@ -5,6 +5,7 @@ use ling::{Chatter, Doer, Message, Vectorizer};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, broadcast, mpsc};
+use tracing::{debug, error, info};
 
 /// Event types emitted by the [`Psyche`] during conversation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -151,6 +152,7 @@ impl Psyche {
 
     /// Main loop that handles the conversation with the assistant.
     async fn converse(mut self) -> Self {
+        info!("psyche conversation started");
         let mut turns = 0;
         while self.still_conversing(turns) {
             let history = {
@@ -163,24 +165,28 @@ impl Psyche {
                 while let Some(chunk_res) = stream.next().await {
                     match chunk_res {
                         Ok(chunk) => {
+                            debug!("chunk received: {}", chunk);
                             let _ = self.events_tx.send(Event::StreamChunk(chunk.clone()));
                             resp.push_str(&chunk);
                         }
                         Err(_) => break,
                     }
                 }
+                info!("assistant intends to say: {}", resp);
                 let _ = self.events_tx.send(Event::IntentionToSay(resp.clone()));
                 self.mouth.speak(&resp).await;
                 loop {
                     let recv = self.input_rx.recv();
                     match tokio::time::timeout(self.echo_timeout, recv).await {
                         Ok(Some(Sensation::HeardOwnVoice(msg))) => {
+                            debug!("heard own voice: {}", msg);
                             self.ear.hear_self_say(&msg).await;
                             let mut conv = self.conversation.lock().await;
                             conv.add_assistant(msg);
                             break;
                         }
                         Ok(Some(Sensation::HeardUserVoice(msg))) => {
+                            debug!("heard user voice: {}", msg);
                             if self.mouth.speaking() {
                                 self.mouth.interrupt().await;
                             }
@@ -190,6 +196,7 @@ impl Psyche {
                         }
                         Ok(None) => break,
                         Err(_) => {
+                            error!("echo timeout");
                             self.ear.hear_self_say(&resp).await;
                             let mut conv = self.conversation.lock().await;
                             conv.add_assistant(resp.clone());
@@ -198,10 +205,13 @@ impl Psyche {
                     }
                 }
             } else {
+                error!("voice chat failed");
                 break;
             }
             turns += 1;
+            debug!("turn {} complete", turns);
         }
+        info!("psyche conversation ended");
         self
     }
 
@@ -213,10 +223,12 @@ impl Psyche {
 
     /// Run `converse` and `experience` concurrently and return the updated [`Psyche`].
     pub async fn run(self) -> Self {
+        info!("psyche run started");
         let converse_handle = tokio::spawn(self.converse());
         let experience_handle = tokio::spawn(Self::experience());
         let psyche = converse_handle.await.expect("converse task panicked");
         experience_handle.await.expect("experience task panicked");
+        info!("psyche run finished");
         psyche
     }
 }

@@ -15,6 +15,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use tokio::sync::{Mutex, broadcast, mpsc};
+use tracing::{debug, error, info};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -68,12 +69,14 @@ impl ChannelEar {
 impl Ear for ChannelEar {
     async fn hear_self_say(&self, text: &str) {
         self.speaking.store(false, Ordering::SeqCst);
+        debug!("ear heard self say: {}", text);
         let _ = self
             .forward
             .send(Sensation::HeardOwnVoice(text.to_string()));
     }
 
     async fn hear_user_say(&self, text: &str) {
+        debug!("ear heard user say: {}", text);
         let _ = self
             .forward
             .send(Sensation::HeardUserVoice(text.to_string()));
@@ -92,10 +95,12 @@ pub struct ChannelMouth {
 impl Mouth for ChannelMouth {
     async fn speak(&self, text: &str) {
         self.speaking.store(true, Ordering::SeqCst);
+        debug!("mouth speaking: {}", text);
         let _ = self.events.send(Event::IntentionToSay(text.to_string()));
     }
     async fn interrupt(&self) {
         self.speaking.store(false, Ordering::SeqCst);
+        debug!("mouth interrupted");
         let _ = self.events.send(Event::IntentionToSay(String::new()));
     }
     fn speaking(&self) -> bool {
@@ -141,14 +146,17 @@ impl Ear for NoopEar {
 /// Serve the embedded `index.html`.
 pub async fn index() -> Html<&'static str> {
     static INDEX: &str = include_str!("../../index.html");
+    info!("serving index page");
     Html(INDEX)
 }
 
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
+    info!("websocket upgrade initiated");
     ws.on_upgrade(move |socket| async move { handle_socket(socket, state).await })
 }
 
 async fn handle_socket(mut socket: WebSocket, state: AppState) {
+    info!("websocket connected");
     let mut events = state.events.resubscribe();
     loop {
         tokio::select! {
@@ -156,11 +164,17 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                 match evt {
                     Ok(Event::StreamChunk(chunk)) => {
                         let payload = serde_json::to_string(&WsResponse { kind: "pete-says", text: chunk }).unwrap();
-                        if socket.send(WsMessage::Text(payload.into())).await.is_err() { break; }
+                        if socket.send(WsMessage::Text(payload.into())).await.is_err() {
+                            error!("failed sending chunk");
+                            break;
+                        }
                     }
                     Ok(Event::IntentionToSay(text)) => {
                         let payload = serde_json::to_string(&WsResponse { kind: "pete-says", text: text.clone() }).unwrap();
-                        if socket.send(WsMessage::Text(payload.into())).await.is_err() { break; }
+                        if socket.send(WsMessage::Text(payload.into())).await.is_err() {
+                            error!("failed sending intention");
+                            break;
+                        }
                     }
                     Err(broadcast::error::RecvError::Closed) => break,
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
@@ -172,9 +186,11 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                         if let Ok(req) = serde_json::from_str::<WsRequest>(&text) {
                             match req {
                                 WsRequest::User { message, .. } => {
+                                    debug!("user message: {}", message);
                                     let _ = state.user_input.send(message);
                                 }
                                 WsRequest::Displayed { text } => {
+                                    debug!("displayed ack: {}", text);
                                     state.ear.hear_self_say(&text).await;
                                 }
                             }
@@ -186,6 +202,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
             }
         }
     }
+    info!("websocket disconnected");
 }
 
 /// Listen for user input messages and record them in the conversation.
@@ -208,6 +225,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 /// ```
 pub async fn listen_user_input(mut rx: mpsc::UnboundedReceiver<String>, ear: Arc<dyn Ear>) {
     while let Some(msg) = rx.recv().await {
+        debug!("forwarding user input: {}", msg);
         ear.hear_user_say(&msg).await;
     }
 }
@@ -255,6 +273,7 @@ pub fn dummy_psyche() -> Psyche {
         mouth,
         ear,
     );
-    psyche.set_turn_limit(10);
+    psyche.set_turn_limit(usize::MAX);
+    info!("created dummy psyche");
     psyche
 }

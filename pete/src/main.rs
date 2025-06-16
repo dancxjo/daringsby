@@ -5,6 +5,8 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 use tokio::sync::mpsc;
+use tracing::info;
+use tracing_subscriber::fmt::init as log_init;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -16,7 +18,10 @@ struct Cli {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
+    log_init();
     let cli = Cli::parse();
+
+    info!(%cli.addr, "starting server");
 
     let mut psyche = dummy_psyche();
     let events = Arc::new(psyche.subscribe());
@@ -42,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
     let app = app(state);
 
     let addr: SocketAddr = cli.addr.parse()?;
-    println!("Listening on http://{addr}");
+    info!(%addr, "listening");
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app.into_make_service()).await?;
     Ok(())
