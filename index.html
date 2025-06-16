@@ -5,23 +5,23 @@
   <title>Pete Console</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    #log.chat-log { white-space: pre-wrap; max-height: 60vh; overflow-y: auto; }
+    #log.chat-log { white-space: pre-wrap; overflow-y: auto; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 </head>
 <body class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 font-sans text-gray-800">
-  <div x-data="chatApp()" x-init="init()" class="w-full max-w-xl p-6 space-y-4 bg-white rounded-xl shadow">
-    <div id="status" x-text="status" class="text-xs font-semibold text-gray-500"></div>
-    <div id="log" x-ref="log" class="chat-log p-2 bg-gray-50 rounded flex flex-col space-y-1">
-      <template x-for="(msg, i) in log" :key="i">
-        <div :class="msg.role === 'user' ? 'text-blue-600 text-right' : 'text-left'" x-text="msg.text"></div>
-      </template>
-    </div>
-    <form class="flex gap-2"  @submit.prevent="send">
-      <label for="input" class="sr-only">Message</label>
-      <input type="text" autofocus class="flex-grow border rounded px-3 py-2" placeholder="Say something..." x-model="input" />
-      <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Send</button>
-    </form>
+  <div x-data="chatApp()" x-init="init()" class="flex w-full max-w-4xl h-[80vh] bg-white rounded-xl shadow overflow-hidden">
+    <aside class="w-48 p-4 bg-gray-100">
+      <div id="status" x-text="status" class="text-xs font-semibold text-gray-500"></div>
+    </aside>
+    <main class="flex flex-col flex-1 p-6 space-y-4">
+      <div id="log" x-ref="log" class="chat-log p-2 bg-gray-50 rounded flex flex-col space-y-1 flex-grow"></div>
+      <form class="flex gap-2 mt-auto" @submit.prevent="send">
+        <label for="input" class="sr-only">Message</label>
+        <input type="text" autofocus class="flex-grow border rounded px-3 py-2" placeholder="Say something..." x-model="input" />
+        <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Send</button>
+      </form>
+    </main>
   </div>
   <script>
     function chatApp() {
