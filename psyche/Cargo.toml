@@ -6,8 +6,9 @@ edition = "2024"
 [dependencies]
 async-trait = "0.1"
 anyhow = "1"
-ollama-rs = "0.3"
+ollama-rs = { version = "0.3", features = ["stream"] }
 tokio = { version = "1", features = ["sync"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

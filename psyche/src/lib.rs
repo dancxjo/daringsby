@@ -157,9 +157,17 @@ impl Psyche {
                 let conv = self.conversation.lock().await;
                 conv.tail(self.max_history)
             };
-            if let Ok(resp) = self.voice.chat(&self.system_prompt, &history).await {
-                for chunk in resp.split_whitespace() {
-                    let _ = self.events_tx.send(Event::StreamChunk(chunk.to_string()));
+            if let Ok(mut stream) = self.voice.chat(&self.system_prompt, &history).await {
+                use tokio_stream::StreamExt;
+                let mut resp = String::new();
+                while let Some(chunk_res) = stream.next().await {
+                    match chunk_res {
+                        Ok(chunk) => {
+                            let _ = self.events_tx.send(Event::StreamChunk(chunk.clone()));
+                            resp.push_str(&chunk);
+                        }
+                        Err(_) => break,
+                    }
                 }
                 let _ = self.events_tx.send(Event::IntentionToSay(resp.clone()));
                 self.mouth.speak(&resp).await;
@@ -229,8 +237,8 @@ mod tests {
 
     #[async_trait]
     impl Chatter for Dummy {
-        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<String> {
-            Ok("hi".into())
+        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<ling::ChatStream> {
+            Ok(Box::pin(tokio_stream::once(Ok("hi".to_string()))))
         }
     }
 

@@ -34,13 +34,15 @@
 //! psyche.run().await;
 //! # Ok(()) }
 //! ```
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use ollama_rs::{
     Ollama,
     generation::chat::{ChatMessage, request::ChatMessageRequest},
     generation::embeddings::request::{EmbeddingsInput, GenerateEmbeddingsRequest},
 };
+use std::pin::Pin;
+use tokio_stream::{Stream, StreamExt};
 
 /// Processes instructions and returns textual responses.
 #[async_trait]
@@ -80,9 +82,12 @@ impl Message {
     }
 }
 
+/// Stream of chat response chunks.
+pub type ChatStream = Pin<Box<dyn Stream<Item = Result<String>> + Send>>;
+
 #[async_trait]
 pub trait Chatter: Send + Sync {
-    async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<String>;
+    async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<ChatStream>;
 }
 
 /// Produces vector representations of text.
@@ -123,7 +128,7 @@ impl Doer for OllamaProvider {
 
 #[async_trait]
 impl Chatter for OllamaProvider {
-    async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<String> {
+    async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<ChatStream> {
         let mut msgs = Vec::with_capacity(history.len() + 1);
         msgs.push(ChatMessage::system(system_prompt.to_string()));
         for m in history {
@@ -134,8 +139,15 @@ impl Chatter for OllamaProvider {
             msgs.push(converted);
         }
         let req = ChatMessageRequest::new(self.model.clone(), msgs);
-        let res = self.client.send_chat_messages(req).await?;
-        Ok(res.message.content)
+        let stream = self
+            .client
+            .send_chat_messages_stream(req)
+            .await?
+            .map(|res| {
+                res.map(|r| r.message.content)
+                    .map_err(|_| anyhow!("ollama stream error"))
+            });
+        Ok(Box::pin(stream))
     }
 }
 
@@ -163,8 +175,9 @@ mod tests {
 
     #[async_trait]
     impl Chatter for Dummy {
-        async fn chat(&self, _s: &str, h: &[Message]) -> Result<String> {
-            Ok(format!("c:{}", h.len()))
+        async fn chat(&self, _s: &str, h: &[Message]) -> Result<ChatStream> {
+            let msg = format!("c:{}", h.len());
+            Ok(Box::pin(tokio_stream::once(Ok(msg))))
         }
     }
 
@@ -180,7 +193,12 @@ mod tests {
         let d = Dummy;
         assert_eq!(d.follow("x").await.unwrap(), "f:x");
         let hist = vec![Message::user("hi"), Message::assistant("hey")];
-        assert_eq!(d.chat("sys", &hist).await.unwrap(), "c:2");
+        let mut stream = d.chat("sys", &hist).await.unwrap();
+        let mut collected = String::new();
+        while let Some(chunk) = stream.next().await.transpose().unwrap() {
+            collected.push_str(&chunk);
+        }
+        assert_eq!(collected, "c:2");
         assert_eq!(d.vectorize("ab").await.unwrap(), vec![2.0]);
     }
 }
