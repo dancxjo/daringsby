@@ -1,9 +1,0 @@
-[package]
-name = "lingproc"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-rxrust = "1.0.0-beta.9"
-sentence_segmentation = "1.2.0"
-unicode-segmentation = "1.12"
