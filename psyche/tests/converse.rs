@@ -1,8 +1,19 @@
 use async_trait::async_trait;
 use psyche::ling::{Chatter, Doer, Message, Vectorizer};
-use psyche::{Event, Psyche, Sensation};
+use psyche::{Ear, Event, Mouth, Psyche, Sensation};
 
 struct Dummy;
+
+#[async_trait]
+impl Mouth for Dummy {
+    async fn speak(&self, _t: &str) {}
+}
+
+#[async_trait]
+impl Ear for Dummy {
+    async fn hear_self_say(&self, _t: &str) {}
+    async fn hear_user_say(&self, _t: &str) {}
+}
 
 #[async_trait]
 impl Doer for Dummy {
@@ -27,7 +38,15 @@ impl Vectorizer for Dummy {
 
 #[tokio::test]
 async fn adds_message_after_voice_heard() {
-    let mut psyche = Psyche::new(Box::new(Dummy), Box::new(Dummy), Box::new(Dummy));
+    let mouth = std::sync::Arc::new(Dummy);
+    let ear = mouth.clone();
+    let mut psyche = Psyche::new(
+        Box::new(Dummy),
+        Box::new(Dummy),
+        Box::new(Dummy),
+        mouth,
+        ear,
+    );
     psyche.set_turn_limit(1);
     psyche.set_system_prompt("sys");
 

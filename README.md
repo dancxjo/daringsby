@@ -15,7 +15,27 @@ use psyche::Psyche;
 let narrator = OllamaProvider::new("http://localhost:11434", "mistral").unwrap();
 let voice = OllamaProvider::new("http://localhost:11434", "mistral").unwrap();
 let vectorizer = OllamaProvider::new("http://localhost:11434", "mistral").unwrap();
-let psyche = Psyche::new(Box::new(narrator), Box::new(voice), Box::new(vectorizer));
+use psyche::{Ear, Mouth};
+use async_trait::async_trait;
+
+struct DummyMouth;
+#[async_trait]
+impl Mouth for DummyMouth { async fn speak(&self, _t: &str) {} }
+
+struct DummyEar;
+#[async_trait]
+impl Ear for DummyEar {
+    async fn hear_self_say(&self, _t: &str) {}
+    async fn hear_user_say(&self, _t: &str) {}
+}
+
+let psyche = Psyche::new(
+    Box::new(narrator),
+    Box::new(voice),
+    Box::new(vectorizer),
+    std::sync::Arc::new(DummyMouth),
+    std::sync::Arc::new(DummyEar),
+);
 psyche.run().await;
 ```
 
@@ -34,3 +54,4 @@ cargo run -p pete
 ## Web Interface
 
 After starting the server, visit `http://127.0.0.1:3000/` in your browser. The page connects to `ws://localhost:3000/ws` and lets you chat with Pete in real time.
+When the page receives a `pete-says` message it echoes back `{type: "displayed", text}` so the server knows the line was shown.

@@ -11,7 +11,22 @@
 //! let narrator = OllamaProvider::new("http://localhost:11434", "mistral")?;
 //! let voice = OllamaProvider::new("http://localhost:11434", "mistral")?;
 //! let vectorizer = OllamaProvider::new("http://localhost:11434", "mistral")?;
-//! let psyche = Psyche::new(Box::new(narrator), Box::new(voice), Box::new(vectorizer));
+//! # struct DummyMouth;
+//! # #[async_trait::async_trait]
+//! # impl psyche::Mouth for DummyMouth { async fn speak(&self, _t: &str) {} }
+//! # struct DummyEar;
+//! # #[async_trait::async_trait]
+//! # impl psyche::Ear for DummyEar {
+//! #   async fn hear_self_say(&self, _t: &str) {}
+//! #   async fn hear_user_say(&self, _t: &str) {}
+//! # }
+//! let psyche = Psyche::new(
+//!     Box::new(narrator),
+//!     Box::new(voice),
+//!     Box::new(vectorizer),
+//!     std::sync::Arc::new(DummyMouth),
+//!     std::sync::Arc::new(DummyEar),
+//! );
 //! psyche.run().await;
 //! # Ok(()) }
 //! ```

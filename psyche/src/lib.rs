@@ -1,5 +1,6 @@
 pub mod ling;
 
+use async_trait::async_trait;
 use ling::{Chatter, Doer, Message, Vectorizer};
 use std::sync::Arc;
 use tokio::sync::{Mutex, broadcast, mpsc};
@@ -20,6 +21,22 @@ pub enum Sensation {
     HeardOwnVoice(String),
     /// The user spoke to the assistant.
     HeardUserVoice(String),
+}
+
+/// Something that can vocalize text.
+#[async_trait]
+pub trait Mouth: Send + Sync {
+    /// Speak the provided text.
+    async fn speak(&self, text: &str);
+}
+
+/// Something that can register what was said.
+#[async_trait]
+pub trait Ear: Send + Sync {
+    /// The psyche heard itself say `text`.
+    async fn hear_self_say(&self, text: &str);
+    /// The psyche heard the user say `text`.
+    async fn hear_user_say(&self, text: &str);
 }
 
 /// Simple conversation log.
@@ -53,6 +70,8 @@ pub struct Psyche {
     narrator: Box<dyn Doer>,
     voice: Box<dyn Chatter>,
     vectorizer: Box<dyn Vectorizer>,
+    mouth: Arc<dyn Mouth>,
+    ear: Arc<dyn Ear>,
     system_prompt: String,
     max_history: usize,
     max_turns: usize,
@@ -68,6 +87,8 @@ impl Psyche {
         narrator: Box<dyn Doer>,
         voice: Box<dyn Chatter>,
         vectorizer: Box<dyn Vectorizer>,
+        mouth: Arc<dyn Mouth>,
+        ear: Arc<dyn Ear>,
     ) -> Self {
         let (events_tx, _r) = broadcast::channel(16);
         let (input_tx, input_rx) = mpsc::unbounded_channel();
@@ -75,6 +96,8 @@ impl Psyche {
             narrator,
             voice,
             vectorizer,
+            mouth,
+            ear,
             system_prompt: String::new(),
             max_history: 8,
             max_turns: 1,
@@ -127,14 +150,17 @@ impl Psyche {
                     let _ = self.events_tx.send(Event::StreamChunk(chunk.to_string()));
                 }
                 let _ = self.events_tx.send(Event::IntentionToSay(resp.clone()));
+                self.mouth.speak(&resp).await;
                 loop {
                     match self.input_rx.recv().await {
                         Some(Sensation::HeardOwnVoice(msg)) => {
+                            self.ear.hear_self_say(&msg).await;
                             let mut conv = self.conversation.lock().await;
                             conv.add_assistant(msg);
                             break;
                         }
                         Some(Sensation::HeardUserVoice(msg)) => {
+                            self.ear.hear_user_say(&msg).await;
                             let mut conv = self.conversation.lock().await;
                             conv.add_user(msg);
                         }
