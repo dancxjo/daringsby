@@ -115,8 +115,9 @@ async fn interrupts_when_user_speaks() {
         }
     }
 
-    let _ = handle.await.unwrap();
+    let psyche = handle.await.unwrap();
     assert!(!mouth.speaking());
+    assert!(!psyche.speaking());
 }
 
 #[tokio::test]
@@ -139,4 +140,34 @@ async fn times_out_without_echo() {
     let conv = psyche.conversation();
     let log_len = { conv.lock().await.all().len() };
     assert_eq!(log_len, 1);
+}
+
+#[tokio::test]
+async fn speaking_flag_clears_after_echo() {
+    let mouth = std::sync::Arc::new(Dummy::default());
+    let ear = mouth.clone();
+    let mut psyche = Psyche::new(
+        Box::new(Dummy::default()),
+        Box::new(Dummy::default()),
+        Box::new(Dummy::default()),
+        mouth,
+        ear,
+    );
+    psyche.set_turn_limit(1);
+    psyche.set_system_prompt("sys");
+
+    let mut events = psyche.subscribe();
+    let input = psyche.input_sender();
+
+    let handle = tokio::spawn(async move { psyche.run().await });
+
+    while let Ok(evt) = events.recv().await {
+        if let Event::IntentionToSay(msg) = evt {
+            input.send(Sensation::HeardOwnVoice(msg)).unwrap();
+            break;
+        }
+    }
+
+    let psyche = handle.await.unwrap();
+    assert!(!psyche.speaking());
 }

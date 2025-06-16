@@ -42,6 +42,7 @@ let psyche = Psyche::new(
 );
 psyche.set_echo_timeout(std::time::Duration::from_secs(1));
 psyche.run().await;
+assert!(!psyche.speaking());
 ```
 
 

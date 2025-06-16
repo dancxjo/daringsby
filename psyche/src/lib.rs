@@ -88,6 +88,7 @@ pub struct Psyche {
     input_rx: mpsc::UnboundedReceiver<Sensation>,
     conversation: Arc<Mutex<Conversation>>,
     echo_timeout: Duration,
+    is_speaking: bool,
 }
 
 impl Psyche {
@@ -115,6 +116,7 @@ impl Psyche {
             input_rx,
             conversation: Arc::new(Mutex::new(Conversation::default())),
             echo_timeout: Duration::from_secs(1),
+            is_speaking: false,
         }
     }
 
@@ -152,6 +154,11 @@ impl Psyche {
         self.conversation.clone()
     }
 
+    /// Whether speech has been dispatched but not yet echoed.
+    pub fn speaking(&self) -> bool {
+        self.is_speaking
+    }
+
     /// Main loop that handles the conversation with the assistant.
     async fn converse(mut self) -> Self {
         info!("psyche conversation started");
@@ -176,6 +183,7 @@ impl Psyche {
                 }
                 info!("assistant intends to say: {}", resp);
                 let _ = self.events_tx.send(Event::IntentionToSay(resp.clone()));
+                self.is_speaking = true;
                 self.mouth.speak(&resp).await;
                 loop {
                     let recv = self.input_rx.recv();
@@ -185,16 +193,20 @@ impl Psyche {
                             self.ear.hear_self_say(&msg).await;
                             let mut conv = self.conversation.lock().await;
                             conv.add_assistant(msg);
+                            self.is_speaking = false;
                             break;
                         }
                         Ok(Some(Sensation::HeardUserVoice(msg))) => {
                             debug!("heard user voice: {}", msg);
-                            if self.mouth.speaking() {
+                            if self.is_speaking {
                                 self.mouth.interrupt().await;
+                                while self.input_rx.try_recv().is_ok() {}
+                                self.is_speaking = false;
                             }
                             self.ear.hear_user_say(&msg).await;
                             let mut conv = self.conversation.lock().await;
                             conv.add_user(msg);
+                            break;
                         }
                         Ok(Some(Sensation::Of(_))) => {
                             debug!("received non-voice sensation");
@@ -206,6 +218,7 @@ impl Psyche {
                             self.ear.hear_self_say(&resp).await;
                             let mut conv = self.conversation.lock().await;
                             conv.add_assistant(resp.clone());
+                            self.is_speaking = false;
                             break;
                         }
                     }
