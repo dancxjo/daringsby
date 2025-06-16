@@ -7,6 +7,13 @@ use std::time::Duration;
 use tokio::sync::{Mutex, broadcast, mpsc};
 use tracing::{debug, error, info};
 
+/// Default instructions sent to the language model.
+///
+/// The assistant should be concise, replying with no more than two
+/// sentences. It will have additional opportunities to speak. Sending an
+/// empty response indicates a pause where the assistant says nothing.
+pub const DEFAULT_SYSTEM_PROMPT: &str = "Respond with one or two concise sentences at most. You will get another chance to speak. Returning an empty message means you remain silent.";
+
 /// Event types emitted by the [`Psyche`] during conversation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
@@ -110,7 +117,7 @@ impl Psyche {
             vectorizer,
             mouth,
             ear,
-            system_prompt: String::new(),
+            system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
             max_history: 8,
             max_turns: 1,
             events_tx,
@@ -125,6 +132,11 @@ impl Psyche {
     /// Change the system prompt.
     pub fn set_system_prompt(&mut self, prompt: impl Into<String>) {
         self.system_prompt = prompt.into();
+    }
+
+    /// Access the current system prompt.
+    pub fn system_prompt(&self) -> &str {
+        &self.system_prompt
     }
 
     /// Limit the number of turns for a run.
