@@ -12,15 +12,12 @@
 <body class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 font-sans text-gray-800">
   <div x-data="chatApp()" x-init="init()" class="w-full max-w-xl p-6 space-y-4 bg-white rounded-xl shadow">
     <div id="status" x-text="status" class="text-xs font-semibold text-gray-500"></div>
-    <div id="log" x-ref="log" class="chat-log p-2 bg-gray-50 rounded flex flex-col space-y-1 overflow-y-auto">
-      <template x-for="msg in log" :key="msg.id">
-        <div :class="msg.role === 'user' ? 'text-right text-blue-600' : 'text-left text-gray-800'" x-text="msg.text"></div>
-      </template>
-    </div>
-    <div class="flex gap-2">
+    <pre id="log" x-ref="log" x-text="log" class="chat-log p-2 bg-gray-50 rounded"></pre>
+    <form class="flex gap-2"  @submit.prevent="send">
+      <label for="input" class="sr-only">Message</label>
       <input type="text" class="flex-grow border rounded px-3 py-2" placeholder="Say something..." x-model="input" />
-      <button class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700" @click.prevent="send">Send</button>
-    </div>
+      <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Send</button>
+    </form>
   </div>
   <script>
     function chatApp() {
