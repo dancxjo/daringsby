@@ -12,4 +12,6 @@ async fn serves_index_html() {
             .contains("this.log[this.log.length - 1].text += text")
     );
     assert!(resp.0.contains("audioQueue"));
+    assert!(resp.0.contains("<ul id=\"log\""));
+    assert!(resp.0.contains("<li :class=\"msg.role\""));
 }

@@ -105,9 +105,9 @@ fn main() {
                 div { id: "log-status", "x-text": "logStatus", class: "has-text-weight-bold is-size-7" }
             }
             main { class: "column is-flex is-flex-direction-column p-4",
-                div { id: "log", "x-ref": "log", class: "box is-flex is-flex-direction-column space-y-1 is-flex-grow-1",
-                    template { "x-for": "msg in log", ":key": "msg.id",
-                        div { ":class": "msg.role === 'user' ? 'has-text-info has-text-right' : 'has-text-left'", "x-text": "msg.text" }
+                ul { id: "log", "x-ref": "log", class: "box is-flex is-flex-direction-column space-y-1 is-flex-grow-1 list-style-none",
+                    template { "x-for": "(msg, i) in log", ":key": "i",
+                        li { ":class": "msg.role", "x-text": "msg.text" }
                     }
                 }
                 div { id: "trace", "x-ref": "trace", class: "box has-background-black has-text-white is-family-monospace is-size-7 is-flex is-flex-direction-column space-y-1 mb-2", style: "overflow-y: auto; height: 10rem;",
