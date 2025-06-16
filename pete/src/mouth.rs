@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use pragmatic_segmenter::Segmenter;
 use psyche::{Event, Mouth};
 use std::sync::{
     Arc,

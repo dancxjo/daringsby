@@ -23,3 +23,5 @@ This repository is now a Rust workspace.
 - Initialize logging in binaries with `tracing_subscriber::fmt::init()`.
 - When files grow beyond roughly 200 lines, break them into logical modules.
 - Avoid using `echo $?` to verify command success; rely on command output.
+- Prefer lightweight test dependencies; stub heavy external services like TTS
+  engines to keep CI fast.
