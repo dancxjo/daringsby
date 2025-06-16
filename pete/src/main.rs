@@ -1,12 +1,13 @@
 use clap::Parser;
-use pete::{AppState, ChannelEar, ChannelMouth, app, listen_user_input, ollama_psyche};
+use pete::{
+    AppState, ChannelEar, ChannelMouth, app, init_logging, listen_user_input, ollama_psyche,
+};
 use std::{
     net::SocketAddr,
     sync::{Arc, atomic::AtomicBool},
 };
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use tracing::info;
-use tracing_subscriber::fmt::init as log_init;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -24,7 +25,8 @@ struct Cli {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
-    log_init();
+    let (log_tx, _log_rx) = tokio::sync::broadcast::channel(100);
+    init_logging(log_tx.clone());
     let cli = Cli::parse();
 
     info!(%cli.addr, "starting server");
@@ -50,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         user_input: user_tx,
         events: events.clone(),
+        logs: Arc::new(log_tx.subscribe()),
         ear: ear.clone(),
     };
     let app = app(state);

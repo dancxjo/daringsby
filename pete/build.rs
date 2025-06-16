@@ -6,12 +6,15 @@ use std::path::PathBuf;
 const SCRIPT: &str = r#"function chatApp() {
   return {
     ws: null,
+    logWs: null,
     status: 'WS: connecting',
+    logStatus: 'LOG: connecting',
     log: [],
+    logs: [],
     input: '',
     audioQueue: [],
     audio: null,
-    init() { this.connect(); },
+    init() { this.connect(); this.connectLog(); },
     connect() {
       if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
         return;
@@ -35,6 +38,20 @@ const SCRIPT: &str = r#"function chatApp() {
         } catch (_) {
           this.append('system', ev.data);
         }
+      };
+    },
+    connectLog() {
+      if (this.logWs && (this.logWs.readyState === WebSocket.OPEN || this.logWs.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+      if (this.logWs) { this.logWs.close(); }
+      this.logStatus = 'LOG: connecting';
+      this.logWs = new WebSocket('ws://localhost:3000/log');
+      this.logWs.onopen = () => this.logStatus = 'LOG: open';
+      this.logWs.onclose = () => { this.logStatus = 'LOG: closed'; setTimeout(() => this.connectLog(), 1000); };
+      this.logWs.onerror = () => this.logStatus = 'LOG: error';
+      this.logWs.onmessage = (ev) => {
+        this.appendLog(ev.data);
       };
     },
     playNext() {
@@ -61,6 +78,16 @@ const SCRIPT: &str = r#"function chatApp() {
         if (role !== 'user') this.ws.send(JSON.stringify({ type: 'displayed', text }));
       });
     },
+    appendLog(line) {
+      const el = this.$refs.trace;
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+      let level = 'info';
+      if (line.startsWith('ERROR')) level = 'error';
+      else if (line.startsWith('WARN')) level = 'warn';
+      else if (line.startsWith('DEBUG')) level = 'debug';
+      this.logs.push({ text: line, level });
+      this.$nextTick(() => { if (atBottom) el.scrollTop = el.scrollHeight; });
+    },
     send() {
       if (!this.input) return;
       this.append('user', this.input);
@@ -75,11 +102,17 @@ fn main() {
         div { "x-data": "chatApp()", "x-init": "init()", class: "columns is-gapless is-fullheight",
             aside { class: "column is-one-quarter p-4 has-background-grey-light",
                 div { id: "status", "x-text": "status", class: "has-text-weight-bold is-size-7" }
+                div { id: "log-status", "x-text": "logStatus", class: "has-text-weight-bold is-size-7" }
             }
             main { class: "column is-flex is-flex-direction-column p-4",
                 div { id: "log", "x-ref": "log", class: "box is-flex is-flex-direction-column space-y-1 is-flex-grow-1",
                     template { "x-for": "msg in log", ":key": "msg.id",
                         div { ":class": "msg.role === 'user' ? 'has-text-info has-text-right' : 'has-text-left'", "x-text": "msg.text" }
+                    }
+                }
+                div { id: "trace", "x-ref": "trace", class: "box has-background-black has-text-white is-family-monospace is-size-7 is-flex is-flex-direction-column space-y-1 mb-2", style: "overflow-y: auto; height: 10rem;",
+                    template { "x-for": "(l, idx) in logs", ":key": "idx",
+                        div { ":class": "l.level === 'error' ? 'has-text-danger' : l.level === 'warn' ? 'has-text-warning' : l.level === 'debug' ? 'has-text-grey-light' : ''", "x-text": "l.text" }
                     }
                 }
                 div { class: "field has-addons mt-auto",

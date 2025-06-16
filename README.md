@@ -65,6 +65,8 @@ cargo run -p pete -- --ollama-url http://localhost:11434 --model mistral
 After starting the server, visit `http://127.0.0.1:3000/` in your browser. The page connects to `ws://localhost:3000/ws` and lets you chat with Pete in real time.
 When the page receives a `pete-says` message it echoes back `{type: "displayed", text}` so the server knows the line was shown.
 
+The page also opens `ws://localhost:3000/log` to stream server logs. Connection statuses for both sockets are shown in the sidebar.
+
 ### Logging
 
 Set `RUST_LOG=info` when running the server to enable helpful tracing output.

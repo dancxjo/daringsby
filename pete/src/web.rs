@@ -18,6 +18,7 @@ use psyche::{Ear, Event};
 pub struct AppState {
     pub user_input: mpsc::UnboundedSender<String>,
     pub events: Arc<broadcast::Receiver<Event>>,
+    pub logs: Arc<broadcast::Receiver<String>>,
     pub ear: Arc<dyn Ear>,
 }
 
@@ -55,6 +56,14 @@ pub async fn index() -> Html<&'static str> {
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
     info!("websocket upgrade initiated");
     ws.on_upgrade(move |socket| async move { handle_socket(socket, state).await })
+}
+
+pub async fn log_ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    info!("log websocket upgrade initiated");
+    ws.on_upgrade(move |socket| async move { handle_log_socket(socket, state).await })
 }
 
 async fn handle_socket(mut socket: WebSocket, state: AppState) {
@@ -118,6 +127,17 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
     info!("websocket disconnected");
 }
 
+async fn handle_log_socket(mut socket: WebSocket, state: AppState) {
+    info!("log websocket connected");
+    let mut logs = state.logs.resubscribe();
+    while let Ok(line) = logs.recv().await {
+        if socket.send(WsMessage::Text(line.into())).await.is_err() {
+            break;
+        }
+    }
+    info!("log websocket disconnected");
+}
+
 /// Listen for user input messages and record them in the conversation.
 ///
 /// Each received message is forwarded to the running [`Psyche`] via
@@ -148,5 +168,6 @@ pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/ws", get(ws_handler))
+        .route("/log", get(log_ws_handler))
         .with_state(state)
 }
