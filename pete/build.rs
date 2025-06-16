@@ -77,9 +77,9 @@ fn main() {
                 div { id: "status", "x-text": "status", class: "has-text-weight-bold is-size-7" }
             }
             main { class: "column is-flex is-flex-direction-column p-4",
-                div { id: "log", "x-ref": "log", class: "box is-flex is-flex-direction-column space-y-1 is-flex-grow-1",
-                    template { "x-for": "msg in log", ":key": "msg.id",
-                        div { ":class": "msg.role === 'user' ? 'has-text-info has-text-right' : 'has-text-left'", "x-text": "msg.text" }
+                ul { id: "log", "x-ref": "log", class: "box is-flex is-flex-direction-column space-y-1 is-flex-grow-1 list-style-none",
+                    template { "x-for": "(msg, i) in log", ":key": "i",
+                        li { ":class": "msg.role", "x-text": "msg.text" }
                     }
                 }
                 div { class: "field has-addons mt-auto",

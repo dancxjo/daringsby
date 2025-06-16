@@ -15,7 +15,11 @@
       <div id="status" x-text="status" class="text-xs font-semibold text-gray-500"></div>
     </aside>
     <main class="flex flex-col flex-1 p-6 space-y-4">
-      <div id="log" x-ref="log" class="chat-log p-2 bg-gray-50 rounded flex flex-col space-y-1 flex-grow"></div>
+      <ul id="log" x-ref="log" class="chat-log p-2 bg-gray-50 rounded flex flex-col space-y-1 flex-grow list-none">
+        <template x-for="(msg, i) in log" :key="i">
+          <li :class="msg.role" x-text="msg.text"></li>
+        </template>
+      </ul>
       <form class="flex gap-2 mt-auto" @submit.prevent="send">
         <label for="input" class="sr-only">Message</label>
         <input type="text" autofocus class="flex-grow border rounded px-3 py-2" placeholder="Say something..." x-model="input" />
