@@ -6,6 +6,8 @@ This repository contains a Rust workspace with three crates:
 - **lingproc** – helper LLM abstractions re-exported by `psyche`
 - **pete** – a binary crate depending on `psyche`
 
+`Psyche` starts with a prompt asking the LLM to respond in one or two sentences at most. You can override it with `set_system_prompt`.
+
 Example with the `OllamaProvider`:
 
 ```rust,no_run
@@ -43,6 +45,8 @@ let psyche = Psyche::new(
 // replace the dummy mouth with your own implementation
 let mouth = std::sync::Arc::new(DummyMouth);
 psyche.set_mouth(mouth);
+// Customize or replace the default prompt if desired
+psyche.set_system_prompt("Respond with two sentences.");
 psyche.set_echo_timeout(std::time::Duration::from_secs(1));
 psyche.run().await;
 assert!(!psyche.speaking());
