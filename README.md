@@ -1,9 +1,10 @@
 # Daringsby Workspace
 
-This repository contains a Rust workspace with two crates:
+This repository contains a Rust workspace with multiple crates:
 
 - **psyche** – a library crate providing the `Psyche` type
 - **ling** – helper LLM abstractions exposed through the `psyche` crate
+- **lingproc** – streaming text utilities built with `rxrs`
 - **pete** – a binary crate depending on `psyche`
 
 Example with the `OllamaProvider`:
