@@ -8,6 +8,7 @@ use axum::{
     response::{Html, IntoResponse},
     routing::get,
 };
+use pragmatic_segmenter::Segmenter;
 use psyche::ling::{Chatter, Doer, Message, Vectorizer};
 use psyche::{Ear, Event, Mouth, Psyche, Sensation};
 use std::sync::{
@@ -85,10 +86,20 @@ impl Ear for ChannelEar {
     }
 }
 
+/// Mouth implementation that forwards sentences via a broadcast channel.
+///
+/// Each call to [`speak`](Mouth::speak) splits the input into sentences and
+/// broadcasts an [`Event::IntentionToSay`] for every sentence.
 #[derive(Clone)]
 pub struct ChannelMouth {
     events: broadcast::Sender<Event>,
     speaking: Arc<AtomicBool>,
+}
+
+impl ChannelMouth {
+    pub fn new(events: broadcast::Sender<Event>, speaking: Arc<AtomicBool>) -> Self {
+        Self { events, speaking }
+    }
 }
 
 #[async_trait]
@@ -96,7 +107,14 @@ impl Mouth for ChannelMouth {
     async fn speak(&self, text: &str) {
         self.speaking.store(true, Ordering::SeqCst);
         debug!("mouth speaking: {}", text);
-        let _ = self.events.send(Event::IntentionToSay(text.to_string()));
+        let seg = pragmatic_segmenter::Segmenter::new().expect("segmenter init");
+        for sentence in seg.segment(text) {
+            let sent = sentence.trim();
+            if !sent.is_empty() {
+                let _ = self.events.send(Event::IntentionToSay(sent.to_string()));
+            }
+        }
+        self.speaking.store(false, Ordering::SeqCst);
     }
     async fn interrupt(&self) {
         self.speaking.store(false, Ordering::SeqCst);
