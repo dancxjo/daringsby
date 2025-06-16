@@ -13,6 +13,7 @@ This repository is now a Rust workspace.
 - Keep `index.html` minimal and updated to connect to `ws://localhost:3000/ws`.
 - Display the WebSocket connection status in the page for debugging.
 - The chat page uses Alpine.js for binding; preserve this dependency when updating `index.html`.
+- Render the chat log as a `<ul>` with `<li>` elements for each message.
 - Run `cargo fetch` before testing to warm the cache.
 - When embedding `index.html` in the `pete` crate, use `include_str!("../../index.html")`.
 - Keep the chat script in `index.html` and `pete/build.rs` in sync.
