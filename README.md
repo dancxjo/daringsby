@@ -49,7 +49,7 @@ let display = std::sync::Arc::new(pete::ChannelMouth::new(psyche.event_sender(),
 let tts = std::sync::Arc::new(pete::TtsMouth::new(
     psyche.event_sender(),
     speaking.clone(),
-    std::sync::Arc::new(pete::CoquiTts::new().unwrap()),
+    std::sync::Arc::new(pete::EdgeTts::new()),
 ));
 #[cfg(feature = "tts")]
 let mouth = std::sync::Arc::new(psyche::AndMouth::new(vec![display.clone(), tts]));
