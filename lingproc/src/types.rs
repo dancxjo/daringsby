@@ -10,7 +10,7 @@ pub trait Doer: Send + Sync {
 }
 
 /// Speaker roles for a chat message.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Role {
     Assistant,
     User,
