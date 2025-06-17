@@ -17,6 +17,7 @@ use tracing::{debug, error, info};
 
 use psyche::{Ear, Event, ling::Role};
 
+/// State shared across HTTP handlers and WebSocket tasks.
 #[derive(Clone)]
 pub struct AppState {
     pub user_input: mpsc::UnboundedSender<String>,
@@ -58,11 +59,13 @@ pub async fn index() -> Html<&'static str> {
     Html(include_str!("../../index.html"))
 }
 
+/// Upgrade the request to a WebSocket connection and forward events.
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
     info!("websocket upgrade initiated");
     ws.on_upgrade(move |socket| async move { handle_socket(socket, state).await })
 }
 
+/// Upgrade to a WebSocket streaming log output.
 pub async fn log_ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,

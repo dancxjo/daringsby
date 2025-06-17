@@ -19,6 +19,7 @@ pub struct ChannelMouth {
 }
 
 impl ChannelMouth {
+    /// Create a new `ChannelMouth` that sends events on `events`.
     pub fn new(events: broadcast::Sender<Event>, speaking: Arc<AtomicBool>) -> Self {
         Self { events, speaking }
     }
@@ -48,6 +49,7 @@ impl Mouth for ChannelMouth {
     }
 }
 
+/// [`Mouth`] implementation that only toggles a speaking flag.
 #[derive(Clone)]
 pub struct NoopMouth {
     speaking: Arc<AtomicBool>,

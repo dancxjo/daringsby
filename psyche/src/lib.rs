@@ -1,3 +1,6 @@
+//! Core cognitive engine powering Pete.
+//!
+//! The `psyche` crate coordinates conversation with language models. It exposes the [`Psyche`] struct along with traits and helpers for building mouth, ear, countenance, and wit components.
 mod and_mouth;
 mod countenance;
 mod heart;
@@ -55,33 +58,46 @@ pub enum Sensation {
     Of(Box<dyn std::any::Any + Send + Sync>),
 }
 
-/// Something that can vocalize text.
+/// Interface for speech output mechanisms.
+///
+/// A `Mouth` is responsible for turning text into audio or visual output.
+/// Implementations must be `Send` and `Sync` so they can be shared across tasks.
+/// Calls to its methods are made sequentially by [`Psyche`].
 #[async_trait]
 pub trait Mouth: Send + Sync {
-    /// Speak the provided text.
+    /// Asynchronously vocalize `text`.
+    ///
+    /// The returned future resolves once the speech is completed.
     async fn speak(&self, text: &str);
-    /// Immediately stop saying anything queued or in progress.
+    /// Interrupt any in-progress speech.
     async fn interrupt(&self);
     /// Whether the mouth is currently speaking.
+    /// Return `true` if speech is currently being produced.
     fn speaking(&self) -> bool;
 }
 
-/// Something that can register what was said.
+/// Interface for capturing spoken lines.
+///
+/// Implementations typically forward what Pete or the user said back into the system.
+/// All callbacks are made from the conversation loop.
 #[async_trait]
 pub trait Ear: Send + Sync {
-    /// The psyche heard itself say `text`.
+    /// Notifies the ear that Pete spoke `text`.
     async fn hear_self_say(&self, text: &str);
-    /// The psyche heard the user say `text`.
+    /// Notifies the ear that the user said `text`.
     async fn hear_user_say(&self, text: &str);
 }
 
-/// Simple conversation log.
+/// A minimal history of exchanged messages.
+///
+/// `Conversation` collects messages in order so they can be fed back to the language model for context.
 #[derive(Default, Clone)]
 pub struct Conversation {
     log: Vec<Message>,
 }
 
 impl Conversation {
+    /// Append a user message to the log, merging with the previous user entry when possible.
     pub fn add_user(&mut self, content: String) {
         self.append_or_new(Role::User, content);
     }
@@ -105,13 +121,15 @@ impl Conversation {
         self.log[len.saturating_sub(n)..].to_vec()
     }
 
-    /// Borrow the entire log.
+    /// Return the entire conversation history.
     pub fn all(&self) -> &[Message] {
         &self.log
     }
 }
 
-/// The core AI engine.
+/// The core AI engine coordinating conversation.
+///
+/// `Psyche` drives interactions with language models and orchestrates IO via the [`Mouth`] and [`Ear`] traits. Instantiate it and call [`Psyche::run`] to start the loop.
 pub struct Psyche {
     narrator: Box<dyn Doer>,
     voice: Box<dyn Chatter>,
@@ -135,7 +153,7 @@ pub struct Psyche {
 }
 
 impl Psyche {
-    /// Construct a new [`Psyche`].
+    /// Construct a new [`Psyche`] using the given language model providers and IO components.
     pub fn new(
         narrator: Box<dyn Doer>,
         voice: Box<dyn Chatter>,
@@ -168,57 +186,57 @@ impl Psyche {
         }
     }
 
-    /// Change the system prompt.
+    /// Specify the base instructions provided to the language model.
     pub fn set_system_prompt(&mut self, prompt: impl Into<String>) {
         self.system_prompt = prompt.into();
     }
 
-    /// Access the current system prompt.
+    /// Retrieve the system prompt currently in use.
     pub fn system_prompt(&self) -> &str {
         &self.system_prompt
     }
 
-    /// Limit the number of turns for a run.
+    /// Limit the number of conversation turns to `turns`.
     pub fn set_turn_limit(&mut self, turns: usize) {
         self.max_turns = turns;
     }
 
-    /// Set how long to wait for an echo of what was said.
+    /// Set how long to wait for the mouth to echo spoken text.
     pub fn set_echo_timeout(&mut self, dur: Duration) {
         self.echo_timeout = dur;
     }
 
-    /// Provide a counter of active websocket connections.
+    /// Attach an atomic counter tracking active WebSocket connections.
     pub fn set_connection_counter(&mut self, counter: Arc<AtomicUsize>) {
         self.connections = Some(counter);
     }
 
-    /// Subscribe to conversation events.
+    /// Create a new receiver for conversation [`Event`]s.
     pub fn subscribe(&self) -> broadcast::Receiver<Event> {
         self.events_tx.subscribe()
     }
 
-    /// Sender for inputs to the running psyche.
+    /// Obtain a sender for queuing [`Sensation`]s to the conversation loop.
     pub fn input_sender(&self) -> mpsc::UnboundedSender<Sensation> {
         self.input_tx.clone()
     }
 
-    /// Broadcast channel for conversation events.
+    /// Obtain the sender used to broadcast conversation [`Event`]s.
     pub fn event_sender(&self) -> broadcast::Sender<Event> {
         self.events_tx.clone()
     }
 
-    /// Replace the current [`Mouth`] implementation.
+    /// Swap out the [`Mouth`] used for speech output.
     pub fn set_mouth(&mut self, mouth: Arc<dyn Mouth>) {
         self.mouth = mouth;
     }
 
-    /// Replace the current [`Countenance`] implementation.
+    /// Swap out the [`Countenance`] used to display emotion.
     pub fn set_countenance(&mut self, countenance: Arc<dyn Countenance>) {
         self.countenance = countenance;
     }
 
-    /// Change the active emotional expression.
+    /// Set the currently expressed emotion to `emoji`.
     pub fn set_emotion(&mut self, emoji: impl Into<String>) {
         self.emotion = emoji.into();
         self.countenance.express(&self.emotion);
@@ -231,23 +249,23 @@ impl Psyche {
         turns < self.max_turns
     }
 
-    /// Access the conversation log.
+    /// Get a handle to the shared conversation history.
     pub fn conversation(&self) -> Arc<Mutex<Conversation>> {
         self.conversation.clone()
     }
 
-    /// Whether speech has been dispatched but not yet echoed.
+    /// Returns `true` if speech has been dispatched but not yet echoed.
     pub fn speaking(&self) -> bool {
         self.is_speaking
     }
 
-    /// Require user input before speaking.
+    /// Enable or disable waiting for user input before speaking.
     pub fn set_speak_when_spoken_to(&mut self, enabled: bool) {
         self.speak_when_spoken_to = enabled;
         self.pending_user_message = !enabled;
     }
 
-    /// Whether the psyche waits for the user before speaking.
+    /// Returns `true` if the psyche waits for user messages before speaking.
     pub fn speak_when_spoken_to(&self) -> bool {
         self.speak_when_spoken_to
     }
@@ -368,7 +386,7 @@ impl Psyche {
         tokio::task::yield_now().await;
     }
 
-    /// Run `converse` and `experience` concurrently and return the updated [`Psyche`].
+    /// Start the conversation and background tasks. Returns the updated [`Psyche`] when finished.
     pub async fn run(self) -> Self {
         info!("psyche run started");
         let converse_handle = tokio::spawn(self.converse());

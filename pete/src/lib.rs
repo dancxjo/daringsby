@@ -1,7 +1,6 @@
 //! Pete web server library.
 //!
-//! This crate exposes helpers for running the Pete chatbot server and
-//! interacting with a [`Psyche`](psyche::Psyche) instance.
+//! This crate exposes helpers for running the Pete chatbot server and interacting with a [`psyche::Psyche`] instance. It wires HTTP and WebSocket endpoints to the psyche and provides mouth/ear implementations.
 
 mod ear;
 mod face;
