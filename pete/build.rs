@@ -63,7 +63,18 @@ const SCRIPT: &str = r#"function chatApp() {
         this.ws.send(JSON.stringify({ type: 'played', text }));
         this.playNext();
       };
-      this.audio.play();
+      const p = this.audio.play();
+      if (p !== undefined) {
+        p.catch(err => {
+          if (err.name === 'NotAllowedError') {
+            const resume = () => {
+              document.removeEventListener('click', resume);
+              this.audio.play();
+            };
+            document.addEventListener('click', resume);
+          }
+        });
+      }
     },
     append(role, text) {
       const el = this.$refs.log;
