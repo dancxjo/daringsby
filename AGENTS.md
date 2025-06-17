@@ -27,6 +27,7 @@ This repository is a Rust workspace.
 * Document new traits with examples and unit tests.
 * Prefer `AndMouth` when composing multiple `Mouth` implementations.
 * Use `TrimMouth` to skip speaking empty/whitespace-only text.
+* Do **not** emit `Event::IntentionToSay` for empty or whitespace-only text.
 * `ChannelMouth` emits `Event::IntentionToSay` per parsed sentence.
 * `ChannelCountenance` emits `Event::EmotionChanged` on updates.
 * `Conversation::add_*` merges consecutive same-role messages.

@@ -366,9 +366,14 @@ impl Psyche {
                         Err(_) => break,
                     }
                 }
-                info!("assistant intends to say: {}", resp);
-                let _ = self.events_tx.send(Event::IntentionToSay(resp.clone()));
-                if resp.trim().is_empty() {
+                let trimmed = resp.trim();
+                info!("assistant intends to say: {}", trimmed);
+                if !trimmed.is_empty() {
+                    let _ = self
+                        .events_tx
+                        .send(Event::IntentionToSay(trimmed.to_string()));
+                }
+                if trimmed.is_empty() {
                     warn!("Skipping speech of empty response.");
                     self.pending_user_message = !self.speak_when_spoken_to;
                     turns += 1;
