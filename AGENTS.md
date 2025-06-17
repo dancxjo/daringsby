@@ -1,38 +1,81 @@
-# AGENT Instructions
+# Agent Instructions
 
-This repository is now a Rust workspace.
+This repository is a Rust workspace.
 
-- Install the stable Rust toolchain before running tests.
-- Run tests with `cargo test` from the repository root.
-- Format with `cargo fmt` when possible.
-- Ensure the `rustfmt` component is installed so formatting can run offline.
-- Crate `pete` depends on the local `psyche` crate.
-- Keep examples and inline docs up to date with code changes.
-- Update README examples whenever new public APIs are added.
-- Document new traits like `Wit` with examples and tests.
-- When adding binary arguments or library APIs, update tests accordingly.
-- Keep `index.html` minimal and updated to connect to `ws://localhost:3000/ws`.
-- Display the WebSocket connection status in the page for debugging.
-- The chat page uses Alpine.js for binding; preserve this dependency when updating `index.html`.
-- Render the chat log as a `<ul>` with `<li>` elements for each message.
-- Run `cargo fetch` before testing to warm the cache.
-- When embedding `index.html` in the `pete` crate, use `include_str!("../../index.html")`.
-- Keep the chat script in `index.html` and `pete/build.rs` in sync.
- - Expose WebSocket chat at `/ws` that forwards psyche events.
- - The server no longer exposes the `/chat` SSE endpoint; real-time events are
-   WebSocket-only.
-- Use `tracing` macros for all logging.
-- Initialize logging in binaries with `tracing_subscriber::fmt::init()`.
-- When files grow beyond roughly 200 lines, break them into logical modules.
-- Avoid using `echo $?` to verify command success; rely on command output.
-- Prefer lightweight test dependencies; stub heavy external services like TTS
-  engines to keep CI fast.
-- The `tts` feature now streams audio from a Coqui TTS server. Configure the
-  server URL with the `--tts-url` CLI flag.
-- Compose multiple `Mouth` implementations using `AndMouth` when both audio and
-  textual output are required.
-- `ChannelMouth` emits `Event::IntentionToSay` for each parsed sentence.
-- `ChannelCountenance` emits `Event::EmotionChanged` when the emotion updates.
-- `Conversation::add_*` should merge consecutive messages from the same role.
-- Use `TrimMouth` to remove whitespace before speaking; skip speech when the
-  trimmed text is empty.
+## Setup
+
+* Install the stable Rust toolchain.
+* Ensure the `rustfmt` and `clippy` components are installed.
+* Run `cargo fetch` to warm the cache before testing.
+
+## Running & Testing
+
+* Run tests with `cargo test` from the repository root.
+* Format with `cargo fmt`.
+* Use `tracing` macros for all logging.
+* Initialize logging in binaries with `tracing_subscriber::fmt::init()`.
+
+## Project Layout
+
+* Crate `pete` depends on local crate `psyche`.
+* Crates should be logically modular; split files beyond \~200 lines.
+
+## Code Practices
+
+* Prefer traits for abstraction (`Mouth`, `Ear`, `Countenance`, `Wit`).
+* Document new traits with examples and unit tests.
+* Prefer `AndMouth` when composing multiple `Mouth` implementations.
+* Use `TrimMouth` to skip speaking empty/whitespace-only text.
+* `ChannelMouth` emits `Event::IntentionToSay` per parsed sentence.
+* `ChannelCountenance` emits `Event::EmotionChanged` on updates.
+* `Conversation::add_*` merges consecutive same-role messages.
+
+## Frontend
+
+* Keep `index.html` minimal.
+* It should connect to `ws://localhost:3000/ws`.
+* Show WebSocket connection status for debugging.
+* Use Alpine.js for client binding.
+* Render chat log as `<ul>` with `<li>` per message.
+* Keep `index.html` and `pete/build.rs` in sync.
+
+## Communication
+
+* Expose WebSocket chat at `/ws`, forwarding all `Psyche` events.
+* SSE endpoints like `/chat` are deprecated; use WebSocket only.
+
+## Audio / TTS
+
+* The `tts` feature streams audio from Coqui TTS.
+* Configure with `--tts-url` CLI flag.
+* Stub TTS in tests to avoid delays.
+
+## Specialized Notes
+
+* `Wit` runs asynchronously and infrequently — do not block main loop.
+* Voice should **only** generate dialogue; all decisions routed through `Will`.
+* Memory graph (Neo4j) and embedding DB (Qdrant) must stay in sync.
+* Long-lived impressions are stored as `Impression<T>` with headline, detail, and raw data.
+
+## Contributor Notes
+
+* Use meaningful commit messages.
+* Keep README examples up to date with public APIs.
+* Document all new CLI arguments and environment flags.
+* Avoid `echo $?`; rely on return values/output checks.
+
+## LLM Integration
+
+* Fast LLMs (e.g. Ollama) for `Will`, `Voice`, `Heart`, `Combobulator`.
+* Slow/idle LLMs for `Memory`, `Narrator`.
+* Only `Will` may invoke `Voice::take_turn`.
+* `Countenance` trait should reflect current emotion via emoji.
+
+## Additional Suggestions
+
+* Consider adding unit tests that simulate full conversation loops (with mocked `Mouth`, `Ear`, `Voice`).
+* Consider adding CLI test scaffolding for mocking TTS/Neo4j/Qdrant.
+* Ensure that `Wit<Instant>` is fed only when it has sufficient `Sensation` inputs — fail early otherwise.
+* Be mindful of the single-CPU assumption — prefer concurrency without heavy parallelism.
+
+This document reflects the current cognitive and runtime architecture of Pete Daringsby. Keep it consistent with the latest design discussions and behavior changes.
