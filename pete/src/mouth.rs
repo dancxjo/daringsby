@@ -42,7 +42,6 @@ impl Mouth for ChannelMouth {
     async fn interrupt(&self) {
         self.speaking.store(false, Ordering::SeqCst);
         debug!("mouth interrupted");
-        let _ = self.events.send(Event::IntentionToSay(String::new()));
     }
     fn speaking(&self) -> bool {
         self.speaking.load(Ordering::SeqCst)

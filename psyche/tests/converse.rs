@@ -310,3 +310,87 @@ async fn empty_response_does_not_trigger_echo_timeout() {
     let conv_len = { psyche.conversation().lock().await.all().len() };
     assert_eq!(conv_len, 0);
 }
+
+#[tokio::test]
+async fn no_intention_event_for_empty_response() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    #[derive(Clone, Default)]
+    struct SilentLLM;
+
+    #[async_trait]
+    impl Doer for SilentLLM {
+        async fn follow(&self, _: Instruction) -> anyhow::Result<String> {
+            Ok("ok".into())
+        }
+    }
+
+    #[async_trait]
+    impl Chatter for SilentLLM {
+        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+            Ok(Box::pin(tokio_stream::once(Ok(String::new()))))
+        }
+    }
+
+    #[async_trait]
+    impl Vectorizer for SilentLLM {
+        async fn vectorize(&self, _: &str) -> anyhow::Result<Vec<f32>> {
+            Ok(vec![0.0])
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct NullMouth(Arc<AtomicUsize>);
+
+    #[async_trait]
+    impl Mouth for NullMouth {
+        async fn speak(&self, _text: &str) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+        async fn interrupt(&self) {}
+        fn speaking(&self) -> bool {
+            false
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct NullEar;
+
+    #[async_trait]
+    impl Ear for NullEar {
+        async fn hear_self_say(&self, _t: &str) {}
+        async fn hear_user_say(&self, _t: &str) {}
+    }
+
+    let mouth_count = Arc::new(AtomicUsize::new(0));
+    let mouth = Arc::new(NullMouth(mouth_count.clone())) as Arc<dyn Mouth>;
+    let ear = Arc::new(NullEar) as Arc<dyn Ear>;
+
+    let mut psyche = Psyche::new(
+        Box::new(SilentLLM),
+        Box::new(SilentLLM),
+        Box::new(SilentLLM),
+        Arc::new(psyche::NoopMemory),
+        mouth,
+        ear,
+    );
+    psyche.set_turn_limit(1);
+    psyche.set_system_prompt("sys");
+
+    let mut events = psyche.subscribe();
+
+    let handle = tokio::spawn(async move { psyche.run().await });
+    let psyche = handle.await.unwrap();
+
+    while let Ok(evt) = events.try_recv() {
+        if let Event::IntentionToSay(msg) = evt {
+            panic!("should not intend to say: {:?}", msg);
+        }
+    }
+
+    assert_eq!(mouth_count.load(Ordering::SeqCst), 0);
+    assert!(!psyche.speaking());
+}
