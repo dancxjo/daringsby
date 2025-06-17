@@ -39,6 +39,14 @@ impl Ear for DummyEar {
     async fn hear_user_say(&self, _t: &str) {}
 }
 
+struct DummyVoice;
+#[async_trait]
+impl psyche::ling::Chatter for DummyVoice {
+    async fn chat(&self, _s: &str, _h: &[psyche::ling::Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+        Ok(Box::pin(tokio_stream::once(Ok("😊".to_string()))))
+    }
+}
+
 let psyche = Psyche::new(
     Box::new(narrator),
     Box::new(voice),
@@ -71,6 +79,10 @@ impl psyche::Countenance for DummyFace {
 let face = std::sync::Arc::new(DummyFace::default());
 psyche.set_countenance(face);
 psyche.set_emotion("😊");
+// Determine emotion from text using the Heart
+let heart = psyche::Heart::new(Box::new(DummyVoice));
+let imp = heart.process("Great!".to_string()).await;
+assert_eq!(imp.raw_data, "😊");
 // Customize or replace the default prompt if desired
 psyche.set_system_prompt("Respond with two sentences.");
 psyche.set_echo_timeout(std::time::Duration::from_secs(1));
