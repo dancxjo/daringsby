@@ -7,6 +7,11 @@ use std::sync::{
 use tokio::sync::broadcast;
 use tracing::debug;
 
+/// Simple mouth implementation that does not produce audio.
+///
+/// `ChannelMouth` segments text into sentences and dispatches
+/// [`Event::IntentionToSay`] events for each one while toggling a
+/// shared speaking flag.
 #[derive(Clone)]
 pub struct ChannelMouth {
     events: broadcast::Sender<Event>,
