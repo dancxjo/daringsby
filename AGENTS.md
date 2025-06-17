@@ -26,3 +26,5 @@ This repository is now a Rust workspace.
 - Avoid using `echo $?` to verify command success; rely on command output.
 - Prefer lightweight test dependencies; stub heavy external services like TTS
   engines to keep CI fast.
+- Compose multiple `Mouth` implementations using `AndMouth` when both audio and
+  textual output are required.
