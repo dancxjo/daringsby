@@ -5,7 +5,7 @@ mod impression;
 pub mod ling;
 mod trim_mouth;
 mod will;
-mod wit;
+pub mod wit;
 pub use and_mouth::AndMouth;
 pub use countenance::{Countenance, NoopCountenance};
 pub use heart::Heart;
