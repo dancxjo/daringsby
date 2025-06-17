@@ -3,7 +3,7 @@ use pete::{
     AppState, ChannelEar, ChannelMouth, app, init_logging, listen_user_input, ollama_psyche,
 };
 #[cfg(feature = "tts")]
-use pete::{CoquiTts, TtsMouth};
+use pete::{EdgeTts, TtsMouth};
 use psyche::{AndMouth, Mouth};
 use std::{
     net::SocketAddr,
@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
     let audio = Arc::new(TtsMouth::new(
         psyche.event_sender(),
         speaking.clone(),
-        Arc::new(CoquiTts::new()?),
+        Arc::new(EdgeTts::new()),
     ));
     #[cfg(feature = "tts")]
     let mouth = Arc::new(AndMouth::new(vec![

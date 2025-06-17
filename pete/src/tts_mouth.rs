@@ -11,44 +11,73 @@ use tracing::error;
 
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
-use pyo3::IntoPy;
+use natural_tts::{
+    Model, NaturalTtsBuilder,
+    models::msedge::{MSEdgeModel, SpeechConfig},
+};
+use std::sync::Mutex;
 
 pub trait Tts: Send + Sync {
     fn to_wav(&self, text: &str) -> Result<Vec<u8>>;
 }
 
-pub struct CoquiTts {
-    inner: pyo3::Py<pyo3::PyAny>,
+pub struct EdgeTts {
+    inner: Mutex<natural_tts::NaturalTts>,
 }
 
-impl CoquiTts {
-    pub fn new() -> Result<Self> {
-        use pyo3::types::{PyDict, PyModule};
-        pyo3::Python::with_gil(|py| {
-            let module = PyModule::import(py, "TTS.api")?;
-            let class = module.getattr("TTS")?;
-            let kwargs = PyDict::new(py);
-            kwargs.set_item("progress_bar", false)?;
-            let obj = class.call((), Some(kwargs))?;
-            Ok(Self {
-                inner: obj.into_py(py),
-            })
-        })
+impl EdgeTts {
+    pub fn new() -> Self {
+        let cfg = SpeechConfig {
+            voice_name: "en-US-AnnaNeural".to_string(),
+            audio_format: "riff-24khz-16bit-mono-pcm".to_string(),
+            pitch: 0,
+            rate: 0,
+            volume: 0,
+        };
+        let model = MSEdgeModel::new(cfg);
+        let tts = NaturalTtsBuilder::default()
+            .msedge_model(model)
+            .default_model(Model::MSEdge)
+            .build()
+            .expect("construct msedge tts");
+        Self {
+            inner: Mutex::new(tts),
+        }
     }
 }
 
-impl Tts for CoquiTts {
+impl Tts for EdgeTts {
     fn to_wav(&self, text: &str) -> Result<Vec<u8>> {
-        use std::fs;
-        pyo3::Python::with_gil(|py| {
-            let tts = self.inner.as_ref(py);
-            let path = "/tmp/pete_tts.wav";
-            tts.call_method1("tts_to_file", (text, path))?;
-            let data = fs::read(path)?;
-            let _ = fs::remove_file(path);
-            Ok(data)
-        })
+        let mut tts = self.inner.lock().unwrap();
+        let audio = tts.synthesize_auto(text.to_string())?;
+        let rate = match audio.spec {
+            natural_tts::models::Spec::Wav(spec) => spec.sample_rate,
+            _ => 24_000,
+        };
+        Ok(samples_to_wav_bytes(&audio.data, rate))
     }
+}
+
+fn samples_to_wav_bytes(data: &[f32], sample_rate: u32) -> Vec<u8> {
+    let mut out = Vec::with_capacity(44 + data.len() * 4);
+    out.extend_from_slice(b"RIFF");
+    let chunk_size = 36 + data.len() * 4;
+    out.extend(&(chunk_size as u32).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend(&(16u32.to_le_bytes()));
+    out.extend(&(1u16).to_le_bytes()); // PCM
+    out.extend(&(1u16).to_le_bytes()); // mono
+    out.extend(&sample_rate.to_le_bytes());
+    out.extend(&(sample_rate * 4).to_le_bytes());
+    out.extend(&(4u16).to_le_bytes());
+    out.extend(&(32u16).to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend(&((data.len() * 4) as u32).to_le_bytes());
+    for s in data {
+        let i = (s * 2147483647.0) as i32;
+        out.extend(&i.to_le_bytes());
+    }
+    out
 }
 
 #[derive(Clone)]
