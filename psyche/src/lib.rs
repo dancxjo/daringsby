@@ -1,11 +1,13 @@
 mod and_mouth;
 mod countenance;
+mod heart;
 mod impression;
 pub mod ling;
 mod trim_mouth;
 mod wit;
 pub use and_mouth::AndMouth;
 pub use countenance::{Countenance, NoopCountenance};
+pub use heart::Heart;
 pub use impression::Impression;
 pub use trim_mouth::TrimMouth;
 pub use wit::Wit;
