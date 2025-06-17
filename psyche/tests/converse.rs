@@ -74,6 +74,7 @@ async fn waits_for_user_when_configured() {
         Box::new(Dummy::default()),
         Box::new(chatter.clone()),
         Box::new(Dummy::default()),
+        std::sync::Arc::new(psyche::NoopMemory),
         mouth,
         ear,
     );
@@ -112,6 +113,7 @@ async fn adds_message_after_voice_heard() {
         Box::new(Dummy::default()),
         Box::new(Dummy::default()),
         Box::new(Dummy::default()),
+        std::sync::Arc::new(psyche::NoopMemory),
         mouth,
         ear,
     );
@@ -151,6 +153,7 @@ async fn interrupts_when_user_speaks() {
         Box::new(Dummy::default()),
         Box::new(Dummy::default()),
         Box::new(Dummy::default()),
+        std::sync::Arc::new(psyche::NoopMemory),
         mouth.clone(),
         ear,
     );
@@ -184,6 +187,7 @@ async fn times_out_without_echo() {
         Box::new(Dummy::default()),
         Box::new(Dummy::default()),
         Box::new(Dummy::default()),
+        std::sync::Arc::new(psyche::NoopMemory),
         mouth,
         ear,
     );
@@ -206,6 +210,7 @@ async fn speaking_flag_clears_after_echo() {
         Box::new(Dummy::default()),
         Box::new(Dummy::default()),
         Box::new(Dummy::default()),
+        std::sync::Arc::new(psyche::NoopMemory),
         mouth,
         ear,
     );

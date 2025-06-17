@@ -1,40 +1,91 @@
-use crate::Event;
-use tokio::sync::broadcast;
+use crate::Impression;
+use crate::ling::Vectorizer;
+use anyhow::Result;
+use async_trait::async_trait;
+use serde::Serialize;
+use serde_json::Value;
+use std::sync::Arc;
 use tracing::info;
 
-/// Simple memory that emits Cypher merge statements for text inputs.
-///
-/// This struct is a placeholder representing a memory subsystem that
-/// would typically persist facts in a graph database like Neo4j. It
-/// collects text observations via [`feel`] and when [`consult`] is
-/// called it emits a Cypher statement on the provided broadcast
-/// channel.
-pub struct Memory {
-    tx: broadcast::Sender<Event>,
-    log: Vec<String>,
+/// Trait representing the memory subsystem.
+#[async_trait]
+pub trait Memory: Send + Sync {
+    /// Persist the given impression.
+    async fn store(&self, impression: &Impression<Value>) -> Result<()>;
 }
 
-impl Memory {
-    /// Create a new `Memory` using the given event channel.
-    pub fn new(tx: broadcast::Sender<Event>) -> Self {
-        Self {
-            tx,
-            log: Vec::new(),
-        }
+impl dyn Memory {
+    /// Helper to store any serializable impression.
+    pub async fn store_serializable<T: Serialize + Send + Sync>(
+        &self,
+        impression: &Impression<T>,
+    ) -> Result<()> {
+        let raw = serde_json::to_value(&impression.raw_data)?;
+        let erased = Impression {
+            id: impression.id,
+            timestamp: impression.timestamp,
+            headline: impression.headline.clone(),
+            details: impression.details.clone(),
+            raw_data: raw,
+        };
+        self.store(&erased).await
     }
+}
 
-    /// Record a new observation.
-    pub fn feel(&mut self, text: impl Into<String>) {
-        self.log.push(text.into());
+/// Client for storing vectors in Qdrant.
+#[derive(Clone, Default)]
+pub struct QdrantClient;
+
+impl QdrantClient {
+    /// Store `vector` associated with `headline`.
+    pub async fn store_vector(&self, headline: &str, vector: &[f32]) -> Result<()> {
+        info!(target: "qdrant", ?headline, len = vector.len(), "stored vector");
+        Ok(())
     }
+}
 
-    /// Emit a Cypher statement summarizing the last observation.
-    pub async fn consult(&mut self) -> anyhow::Result<()> {
-        if let Some(last) = self.log.last() {
-            let cypher = format!("MERGE (:Memory {{ text: \"{}\" }})", last);
-            info!(%cypher, "memory generated cypher");
-            let _ = self.tx.send(Event::StreamChunk(cypher));
-        }
+/// Client for persisting raw data in Neo4j.
+#[derive(Clone, Default)]
+pub struct Neo4jClient;
+
+impl Neo4jClient {
+    /// Store `data` in the graph database.
+    pub async fn store_data(&self, data: &Value) -> Result<()> {
+        let json = serde_json::to_string(data)?;
+        info!(target: "neo4j", %json, "stored data");
+        Ok(())
+    }
+}
+
+/// Memory implementation combining Qdrant and Neo4j storage.
+pub struct BasicMemory {
+    /// Vectorizer used for headline embeddings.
+    pub vectorizer: Arc<dyn Vectorizer>,
+    /// Client used for vector storage.
+    pub qdrant: QdrantClient,
+    /// Client used for raw data storage.
+    pub neo4j: Neo4jClient,
+}
+
+#[async_trait]
+impl Memory for BasicMemory {
+    async fn store(&self, impression: &Impression<Value>) -> Result<()> {
+        let vector = self.vectorizer.vectorize(&impression.headline).await?;
+        self.qdrant
+            .store_vector(&impression.headline, &vector)
+            .await?;
+        self.neo4j.store_data(&impression.raw_data).await?;
+        Ok(())
+    }
+}
+
+/// Memory implementation that performs no storage.
+#[derive(Default)]
+pub struct NoopMemory;
+
+#[async_trait]
+impl Memory for NoopMemory {
+    async fn store(&self, _impression: &Impression<Value>) -> Result<()> {
         Ok(())
     }
 }

@@ -3,7 +3,9 @@ use crate::{
     ling::{Doer, Instruction},
 };
 use async_trait::async_trait;
+use chrono::Utc;
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Determine the emotional tone of text using an LLM.
 ///
@@ -26,7 +28,7 @@ use std::sync::Arc;
 /// # async fn main() {
 /// let heart = Heart::new(Box::new(Dummy));
 /// let imp = heart
-///     .digest(&[Impression { headline: "".into(), details: None, raw_data: "Great job!".to_string() }])
+///     .digest(&[Impression::new("", Some("Great job!"), "".to_string())])
 ///     .await
 ///     .unwrap();
 /// assert_eq!(imp.raw_data, "😊");
@@ -60,6 +62,8 @@ impl Summarizer<String, String> for Heart {
         let resp = self.doer.follow(instruction).await?;
         let emoji = resp.trim().to_string();
         Ok(Impression {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
             headline: emoji.clone(),
             details: None,
             raw_data: emoji,

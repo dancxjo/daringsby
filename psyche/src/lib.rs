@@ -14,7 +14,7 @@ pub use and_mouth::AndMouth;
 pub use countenance::{Countenance, NoopCountenance};
 pub use heart::Heart;
 pub use impression::Impression;
-pub use memory::Memory;
+pub use memory::{BasicMemory, Memory, Neo4jClient, NoopMemory, QdrantClient};
 pub use trim_mouth::TrimMouth;
 pub use will::Will;
 pub use wit::{Summarizer, Wit};
@@ -22,6 +22,7 @@ pub use wit::{Summarizer, Wit};
 use crate::wit::{ErasedWit, WitAdapter};
 use async_trait::async_trait;
 use ling::{Chatter, Doer, Message, Role, Vectorizer};
+use serde::Serialize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -140,6 +141,7 @@ pub struct Psyche {
     narrator: Box<dyn Doer>,
     voice: Box<dyn Chatter>,
     vectorizer: Box<dyn Vectorizer>,
+    memory: Arc<dyn Memory>,
     mouth: Arc<dyn Mouth>,
     ear: Arc<dyn Ear>,
     countenance: Arc<dyn Countenance>,
@@ -165,6 +167,7 @@ impl Psyche {
         narrator: Box<dyn Doer>,
         voice: Box<dyn Chatter>,
         vectorizer: Box<dyn Vectorizer>,
+        memory: Arc<dyn Memory>,
         mouth: Arc<dyn Mouth>,
         ear: Arc<dyn Ear>,
     ) -> Self {
@@ -174,6 +177,7 @@ impl Psyche {
             narrator,
             voice,
             vectorizer,
+            memory,
             mouth,
             ear,
             countenance: Arc::new(NoopCountenance),
@@ -239,6 +243,11 @@ impl Psyche {
         self.mouth = mouth;
     }
 
+    /// Swap out the [`Memory`] implementation.
+    pub fn set_memory(&mut self, memory: Arc<dyn Memory>) {
+        self.memory = memory;
+    }
+
     /// Swap out the [`Countenance`] used to display emotion.
     pub fn set_countenance(&mut self, countenance: Arc<dyn Countenance>) {
         self.countenance = countenance;
@@ -276,7 +285,7 @@ impl Psyche {
     /// Convenience to register a typed [`Wit`] without manual boxing.
     pub fn register_typed_wit<T>(&mut self, wit: Arc<dyn Wit<T> + Send + Sync>)
     where
-        T: Send + Sync + 'static,
+        T: Serialize + Send + Sync + 'static,
     {
         self.wits
             .push(Arc::new(wit::WitAdapter::new(wit)) as Arc<dyn ErasedWit + Send + Sync>);
@@ -418,13 +427,15 @@ impl Psyche {
     }
 
     /// Background task processing non-conversational experience.
-    async fn experience(wits: Vec<Arc<dyn ErasedWit + Send + Sync>>) {
+    async fn experience(memory: Arc<dyn Memory>, wits: Vec<Arc<dyn ErasedWit + Send + Sync>>) {
         loop {
             for wit in &wits {
                 let maybe_imp = wit.tick_erased().await;
                 if let Some(impression) = maybe_imp {
                     info!(?impression.headline, "Wit emitted impression");
-                    // TODO: emit to memory/event stream
+                    if let Err(e) = memory.store_serializable(&impression).await {
+                        error!(?e, "memory store failed");
+                    }
                 }
             }
             tokio::time::sleep(EXPERIENCE_TICK).await;
@@ -435,7 +446,8 @@ impl Psyche {
     pub async fn run(self) -> Self {
         info!("psyche run started");
         let wits = self.wits.clone();
-        let experience_handle = tokio::spawn(Self::experience(wits));
+        let mem = self.memory.clone();
+        let experience_handle = tokio::spawn(Self::experience(mem, wits));
         let converse_handle = tokio::spawn(self.converse());
         let psyche = converse_handle.await.expect("converse task panicked");
         experience_handle.abort();

@@ -53,6 +53,7 @@ let psyche = Psyche::new(
     Box::new(narrator),
     Box::new(voice),
     Box::new(vectorizer),
+    std::sync::Arc::new(psyche::NoopMemory),
     std::sync::Arc::new(DummyMouth),
     std::sync::Arc::new(DummyEar),
 );

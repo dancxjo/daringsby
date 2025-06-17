@@ -1,10 +1,13 @@
 //! Integration tests exercising Will, Heart and Memory together.
 
 use async_trait::async_trait;
+use chrono::Utc;
 use psyche::ling::{Chatter, Doer, Instruction, Message};
 use psyche::{Countenance, Ear, Event, Heart, Impression, Memory, Mouth, Summarizer, Will};
+use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::{Mutex, broadcast};
+use uuid::Uuid;
 
 struct DummyMouth;
 
@@ -66,6 +69,8 @@ async fn will_can_invoke_voice() {
     let will = Will::new(doer);
     let imp = will
         .digest(&[Impression {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
             headline: "".into(),
             details: None,
             raw_data: "Now is the time.".to_string(),
@@ -81,6 +86,8 @@ async fn heart_sets_emotion() {
     let heart = Heart::new(doer);
     let imp = heart
         .digest(&[Impression {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
             headline: "".into(),
             details: None,
             raw_data: "You are feeling happy.".to_string(),
@@ -91,14 +98,22 @@ async fn heart_sets_emotion() {
 }
 
 #[tokio::test]
-async fn memory_generates_cypher() {
-    let (tx, mut rx) = broadcast::channel(16);
-    let mut memory = Memory::new(tx);
-    memory.feel("Pete just met Travis.");
-    memory.consult().await.unwrap();
-    let evt = rx.try_recv().unwrap();
-    match evt {
-        Event::StreamChunk(cypher) => assert!(cypher.contains("MERGE")),
-        other => panic!("unexpected event {other:?}"),
+async fn memory_store_invoked() {
+    #[derive(Default)]
+    struct MockMemory(std::sync::Mutex<usize>);
+
+    #[async_trait]
+    impl Memory for MockMemory {
+        async fn store(&self, _: &Impression<Value>) -> anyhow::Result<()> {
+            let mut guard = self.0.lock().unwrap();
+            *guard += 1;
+            Ok(())
+        }
     }
+
+    let memory = MockMemory::default();
+    <dyn Memory>::store_serializable(&memory, &Impression::new("hey", None::<String>, ()))
+        .await
+        .unwrap();
+    assert_eq!(*memory.0.lock().unwrap(), 1);
 }

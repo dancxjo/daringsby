@@ -60,6 +60,7 @@ fn set_emotion_calls_countenance() {
         Box::new(Dummy),
         Box::new(Dummy),
         Box::new(Dummy),
+        Arc::new(psyche::NoopMemory),
         mouth,
         ear,
     );
