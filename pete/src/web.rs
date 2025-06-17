@@ -8,7 +8,10 @@ use axum::{
     routing::get,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, error, info};
 
@@ -21,6 +24,7 @@ pub struct AppState {
     pub logs: Arc<broadcast::Receiver<String>>,
     pub ear: Arc<dyn Ear>,
     pub conversation: Arc<tokio::sync::Mutex<psyche::Conversation>>,
+    pub connections: Arc<AtomicUsize>,
 }
 
 #[derive(Deserialize)]
@@ -69,6 +73,7 @@ pub async fn log_ws_handler(
 
 async fn handle_socket(mut socket: WebSocket, state: AppState) {
     info!("websocket connected");
+    state.connections.fetch_add(1, Ordering::SeqCst);
     let mut events = state.events.resubscribe();
     loop {
         tokio::select! {
@@ -125,6 +130,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
             }
         }
     }
+    state.connections.fetch_sub(1, Ordering::SeqCst);
     info!("websocket disconnected");
 }
 

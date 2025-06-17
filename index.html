@@ -16,6 +16,7 @@
   <div x-data="chatApp()" x-init="init()" class="flex w-full max-w-4xl h-[80vh] bg-white rounded-xl shadow overflow-hidden">
     <aside class="w-48 p-4 bg-gray-100 space-y-2">
       <div id="status" x-text="status" class="text-xs font-semibold text-gray-500"></div>
+      <audio controls x-ref="player" class="w-full"></audio>
     </aside>
     <main class="flex flex-col flex-1 p-6 space-y-4">
       <ul id="log" x-ref="log" class="chat-log p-2 bg-gray-50 rounded flex flex-col space-y-1 flex-grow list-none">
@@ -37,6 +38,7 @@
         status: 'WS: connecting',
         log: [],
         input: '',
+        lastText: '',
         audioQueue: [],
         audio: null,
         init() { this.connect(); },
@@ -54,10 +56,11 @@
             try {
               const data = JSON.parse(ev.data);
               if (data.text) {
+                this.lastText = data.text;
                 this.append('system', data.text);
               }
               if (data.audio) {
-                this.audioQueue.push({ audio: data.audio, text: data.text || '' });
+                this.audioQueue.push({ audio: data.audio, text: this.lastText });
                 this.playNext();
               }
             } catch (_) {
@@ -68,7 +71,8 @@
         playNext() {
           if (this.audio || this.audioQueue.length === 0) return;
           const { audio, text } = this.audioQueue.shift();
-          this.audio = new Audio('data:audio/wav;base64,' + audio);
+          this.audio = this.$refs.player;
+          this.audio.src = 'data:audio/wav;base64,' + audio;
           this.audio.onended = () => {
             this.audio = null;
             this.ws.send(JSON.stringify({ type: 'played', text }));
@@ -97,7 +101,6 @@
           }
           this.$nextTick(() => {
             if (atBottom) el.scrollTop = el.scrollHeight;
-            if (role !== 'user') this.ws.send(JSON.stringify({ type: 'displayed', text }));
           });
         },
         send() {

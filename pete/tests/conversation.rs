@@ -1,6 +1,9 @@
 use axum::{body, extract::State, response::IntoResponse};
 use pete::{AppState, ChannelEar, conversation_log, dummy_psyche};
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicUsize},
+};
 use tokio::sync::{broadcast, mpsc};
 
 #[tokio::test]
@@ -22,6 +25,7 @@ async fn returns_log_json() {
         logs: Arc::new(log_tx.subscribe()),
         ear,
         conversation,
+        connections: Arc::new(AtomicUsize::new(1)),
     };
     let resp = conversation_log(State(state)).await.into_response();
     let body = body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();

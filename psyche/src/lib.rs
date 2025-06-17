@@ -7,6 +7,7 @@ pub use trim_mouth::TrimMouth;
 use async_trait::async_trait;
 use ling::{Chatter, Doer, Message, Role, Vectorizer};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::sync::{Mutex, broadcast, mpsc};
 use tracing::{debug, error, info};
@@ -114,6 +115,7 @@ pub struct Psyche {
     is_speaking: bool,
     speak_when_spoken_to: bool,
     pending_user_message: bool,
+    connections: Option<Arc<AtomicUsize>>,
 }
 
 impl Psyche {
@@ -144,6 +146,7 @@ impl Psyche {
             is_speaking: false,
             speak_when_spoken_to: false,
             pending_user_message: true,
+            connections: None,
         }
     }
 
@@ -165,6 +168,11 @@ impl Psyche {
     /// Set how long to wait for an echo of what was said.
     pub fn set_echo_timeout(&mut self, dur: Duration) {
         self.echo_timeout = dur;
+    }
+
+    /// Provide a counter of active websocket connections.
+    pub fn set_connection_counter(&mut self, counter: Arc<AtomicUsize>) {
+        self.connections = Some(counter);
     }
 
     /// Subscribe to conversation events.
@@ -217,6 +225,11 @@ impl Psyche {
         info!("psyche conversation started");
         let mut turns = 0;
         while self.still_conversing(turns) {
+            if let Some(counter) = &self.connections {
+                while counter.load(Ordering::SeqCst) == 0 {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            }
             if self.speak_when_spoken_to && !self.pending_user_message {
                 match self.input_rx.recv().await {
                     Some(Sensation::HeardUserVoice(msg)) => {

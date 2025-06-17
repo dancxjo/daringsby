@@ -93,19 +93,21 @@ impl Mouth for TtsMouth {
             }
             match self.tts.stream_wav(sent).await {
                 Ok(mut stream) => {
+                    let mut buf = Vec::new();
                     while let Some(chunk) = stream.next().await {
                         match chunk {
-                            Ok(bytes) => {
-                                let b64 = general_purpose::STANDARD.encode(bytes);
-                                if self.events.send(Event::SpeechAudio(b64)).is_err() {
-                                    error!("failed sending audio chunk");
-                                    break;
-                                }
-                            }
+                            Ok(bytes) => buf.extend_from_slice(&bytes),
                             Err(e) => {
                                 error!(?e, "tts streaming failed");
+                                buf.clear();
                                 break;
                             }
+                        }
+                    }
+                    if !buf.is_empty() {
+                        let b64 = general_purpose::STANDARD.encode(buf);
+                        if self.events.send(Event::SpeechAudio(b64)).is_err() {
+                            error!("failed sending audio chunk");
                         }
                     }
                 }
