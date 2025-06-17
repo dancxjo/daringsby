@@ -1,7 +1,9 @@
 #![cfg(feature = "tts")]
 use async_trait::async_trait;
+use futures::{Stream, StreamExt};
 use pragmatic_segmenter::Segmenter;
 use psyche::{Event, Mouth};
+use std::pin::Pin;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -11,75 +13,53 @@ use tracing::error;
 
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
-use natural_tts::{
-    Model, NaturalTtsBuilder,
-    models::msedge::{MSEdgeModel, SpeechConfig},
-};
-use std::sync::Mutex;
+use reqwest::Client;
 
+/// Stream of raw WAV data chunks.
+pub type TtsStream = Pin<Box<dyn Stream<Item = Result<Vec<u8>>> + Send>>;
+
+/// Text-to-speech engine interface.
+#[async_trait]
 pub trait Tts: Send + Sync {
-    fn to_wav(&self, text: &str) -> Result<Vec<u8>>;
+    /// Return a stream of WAV bytes for `text`.
+    async fn stream_wav(&self, text: &str) -> Result<TtsStream>;
 }
 
-pub struct EdgeTts {
-    inner: Mutex<natural_tts::NaturalTts>,
+/// Client for a Coqui TTS server.
+#[derive(Clone)]
+pub struct CoquiTts {
+    url: String,
+    client: Client,
 }
 
-impl EdgeTts {
-    pub fn new() -> Self {
-        let cfg = SpeechConfig {
-            voice_name: "en-US-AnnaNeural".to_string(),
-            audio_format: "riff-24khz-16bit-mono-pcm".to_string(),
-            pitch: 0,
-            rate: 0,
-            volume: 0,
-        };
-        let model = MSEdgeModel::new(cfg);
-        let tts = NaturalTtsBuilder::default()
-            .msedge_model(model)
-            .default_model(Model::MSEdge)
-            .build()
-            .expect("construct msedge tts");
+impl CoquiTts {
+    /// Create a new client targeting `url` (e.g. `http://localhost:5002/api/tts`).
+    pub fn new(url: impl Into<String>) -> Self {
         Self {
-            inner: Mutex::new(tts),
+            url: url.into(),
+            client: Client::new(),
         }
     }
 }
 
-impl Tts for EdgeTts {
-    fn to_wav(&self, text: &str) -> Result<Vec<u8>> {
-        let mut tts = self.inner.lock().unwrap();
-        let audio = tts.synthesize_auto(text.to_string())?;
-        let rate = match audio.spec {
-            natural_tts::models::Spec::Wav(spec) => spec.sample_rate,
-            _ => 24_000,
-        };
-        Ok(samples_to_wav_bytes(&audio.data, rate))
+#[async_trait]
+impl Tts for CoquiTts {
+    async fn stream_wav(&self, text: &str) -> Result<TtsStream> {
+        let resp = self
+            .client
+            .get(&self.url)
+            .query(&[("text", text)])
+            .send()
+            .await?;
+        let stream = resp
+            .bytes_stream()
+            .map(|b| b.map(|bytes| bytes.to_vec()).map_err(|e| e.into()));
+        Ok(Box::pin(stream))
     }
 }
 
-fn samples_to_wav_bytes(data: &[f32], sample_rate: u32) -> Vec<u8> {
-    let mut out = Vec::with_capacity(44 + data.len() * 4);
-    out.extend_from_slice(b"RIFF");
-    let chunk_size = 36 + data.len() * 4;
-    out.extend(&(chunk_size as u32).to_le_bytes());
-    out.extend_from_slice(b"WAVEfmt ");
-    out.extend(&(16u32.to_le_bytes()));
-    out.extend(&(1u16).to_le_bytes()); // PCM
-    out.extend(&(1u16).to_le_bytes()); // mono
-    out.extend(&sample_rate.to_le_bytes());
-    out.extend(&(sample_rate * 4).to_le_bytes());
-    out.extend(&(4u16).to_le_bytes());
-    out.extend(&(32u16).to_le_bytes());
-    out.extend_from_slice(b"data");
-    out.extend(&((data.len() * 4) as u32).to_le_bytes());
-    for s in data {
-        let i = (s * 2147483647.0) as i32;
-        out.extend(&i.to_le_bytes());
-    }
-    out
-}
-
+/// [`Mouth`] implementation that streams audio via [`Tts`] and forwards it as
+/// [`Event::SpeechAudio`] chunks.
 #[derive(Clone)]
 pub struct TtsMouth {
     events: broadcast::Sender<Event>,
@@ -111,15 +91,26 @@ impl Mouth for TtsMouth {
             if sent.is_empty() {
                 continue;
             }
-            match self.tts.to_wav(sent) {
-                Ok(bytes) => {
-                    let b64 = general_purpose::STANDARD.encode(bytes);
-                    if self.events.send(Event::SpeechAudio(b64)).is_err() {
-                        error!("failed sending audio");
+            match self.tts.stream_wav(sent).await {
+                Ok(mut stream) => {
+                    while let Some(chunk) = stream.next().await {
+                        match chunk {
+                            Ok(bytes) => {
+                                let b64 = general_purpose::STANDARD.encode(bytes);
+                                if self.events.send(Event::SpeechAudio(b64)).is_err() {
+                                    error!("failed sending audio chunk");
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                error!(?e, "tts streaming failed");
+                                break;
+                            }
+                        }
                     }
                 }
                 Err(e) => {
-                    error!(?e, "tts failed");
+                    error!(?e, "tts request failed");
                 }
             }
         }

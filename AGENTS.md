@@ -26,6 +26,8 @@ This repository is now a Rust workspace.
 - Avoid using `echo $?` to verify command success; rely on command output.
 - Prefer lightweight test dependencies; stub heavy external services like TTS
   engines to keep CI fast.
+- The `tts` feature now streams audio from a Coqui TTS server. Configure the
+  server URL with the `--tts-url` CLI flag.
 - Compose multiple `Mouth` implementations using `AndMouth` when both audio and
   textual output are required.
 - `ChannelMouth` emits `Event::IntentionToSay` for each parsed sentence.
