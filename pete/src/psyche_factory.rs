@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use psyche::Psyche;
-use psyche::ling::{Chatter, Doer, Message, Vectorizer};
+use psyche::ling::{Chatter, Doer, Instruction, Message, Vectorizer};
 use std::sync::Arc;
 use tracing::info;
 
@@ -14,7 +14,7 @@ pub fn dummy_psyche() -> Psyche {
 
     #[async_trait]
     impl Doer for Dummy {
-        async fn follow(&self, _: &str) -> anyhow::Result<String> {
+        async fn follow(&self, _: Instruction) -> anyhow::Result<String> {
             Ok("ok".into())
         }
     }

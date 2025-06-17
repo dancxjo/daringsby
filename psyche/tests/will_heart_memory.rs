@@ -1,7 +1,7 @@
 //! Integration tests exercising Will, Heart and Memory together.
 
 use async_trait::async_trait;
-use psyche::ling::{Chatter, Doer, Message};
+use psyche::ling::{Chatter, Doer, Instruction, Message};
 use psyche::{Countenance, Ear, Event, Heart, Impression, Memory, Mouth, Will, Wit};
 use std::sync::Arc;
 use tokio::sync::{Mutex, broadcast};
@@ -55,7 +55,7 @@ struct DummyDoer;
 
 #[async_trait]
 impl Doer for DummyDoer {
-    async fn follow(&self, _instruction: &str) -> anyhow::Result<String> {
+    async fn follow(&self, _instruction: Instruction) -> anyhow::Result<String> {
         Ok("Executed".to_string())
     }
 }

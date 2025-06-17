@@ -1,13 +1,13 @@
 use async_trait::async_trait;
-use psyche::ling::{Chatter, Doer, Message, Vectorizer};
+use psyche::ling::{Chatter, Doer, Instruction, Message, Vectorizer};
 use tokio_stream::StreamExt;
 
 struct Dummy;
 
 #[async_trait]
 impl Doer for Dummy {
-    async fn follow(&self, i: &str) -> anyhow::Result<String> {
-        Ok(format!("do:{i}"))
+    async fn follow(&self, i: Instruction) -> anyhow::Result<String> {
+        Ok(format!("do:{}", i.command))
     }
 }
 
@@ -29,7 +29,15 @@ impl Vectorizer for Dummy {
 #[tokio::test]
 async fn dummy_traits() {
     let d = Dummy;
-    assert_eq!(d.follow("a").await.unwrap(), "do:a");
+    assert_eq!(
+        d.follow(Instruction {
+            command: "a".into(),
+            images: Vec::new()
+        })
+        .await
+        .unwrap(),
+        "do:a"
+    );
     let hist = vec![Message::user("hi"), Message::assistant("hey")];
     let mut stream = d.chat("sys", &hist).await.unwrap();
     let mut res = String::new();

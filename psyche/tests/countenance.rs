@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::ling::{Chatter, Doer, Message, Vectorizer};
+use psyche::ling::{Chatter, Doer, Instruction, Message, Vectorizer};
 use psyche::{Countenance, NoopCountenance, Psyche};
 use psyche::{Ear, Mouth};
 use std::sync::{Arc, Mutex};
@@ -24,7 +24,7 @@ impl Ear for Dummy {
 
 #[async_trait]
 impl Doer for Dummy {
-    async fn follow(&self, _: &str) -> anyhow::Result<String> {
+    async fn follow(&self, _: Instruction) -> anyhow::Result<String> {
         Ok("ok".into())
     }
 }

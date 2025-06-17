@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::ling::Doer;
+use psyche::ling::{Doer, Instruction};
 use psyche::{Heart, Impression, Wit};
 
 #[derive(Clone)]
@@ -7,7 +7,7 @@ struct Dummy;
 
 #[async_trait]
 impl Doer for Dummy {
-    async fn follow(&self, _: &str) -> anyhow::Result<String> {
+    async fn follow(&self, _: Instruction) -> anyhow::Result<String> {
         Ok("😊".to_string())
     }
 }

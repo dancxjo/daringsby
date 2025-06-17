@@ -1,4 +1,7 @@
-use crate::{Impression, Wit, ling::Doer};
+use crate::{
+    Impression, Wit,
+    ling::{Doer, Instruction},
+};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -10,12 +13,12 @@ use std::sync::Arc;
 ///
 /// # Example
 /// ```no_run
-/// # use psyche::{Heart, ling::Doer, Impression, Wit};
+/// # use psyche::{Heart, ling::{Doer, Instruction}, Impression, Wit};
 /// # use async_trait::async_trait;
 /// # struct Dummy;
 /// # #[async_trait]
 /// # impl Doer for Dummy {
-/// #   async fn follow(&self, _s: &str) -> anyhow::Result<String> {
+/// #   async fn follow(&self, _i: Instruction) -> anyhow::Result<String> {
 /// #       Ok("😊".to_string())
 /// #   }
 /// # }
@@ -48,9 +51,13 @@ impl Wit<String, String> for Heart {
             .last()
             .map(|i| i.raw_data.clone())
             .unwrap_or_default();
-        let instruction =
-            format!("Respond with a single emoji describing the overall emotion of:\n{input}");
-        let resp = self.doer.follow(&instruction).await?;
+        let instruction = Instruction {
+            command: format!(
+                "Respond with a single emoji describing the overall emotion of:\n{input}"
+            ),
+            images: Vec::new(),
+        };
+        let resp = self.doer.follow(instruction).await?;
         let emoji = resp.trim().to_string();
         Ok(Impression {
             headline: emoji.clone(),

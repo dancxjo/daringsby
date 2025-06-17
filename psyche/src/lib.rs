@@ -407,7 +407,7 @@ mod tests {
 
     #[async_trait]
     impl Doer for Dummy {
-        async fn follow(&self, _: &str) -> anyhow::Result<String> {
+        async fn follow(&self, _: crate::ling::Instruction) -> anyhow::Result<String> {
             Ok("ok".into())
         }
     }

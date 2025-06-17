@@ -3,6 +3,39 @@ use async_trait::async_trait;
 use std::pin::Pin;
 use tokio_stream::Stream;
 
+/// Represents an image passed into the instruction context.
+///
+/// `ImageData` is used to represent camera input, screen captures, or uploaded
+/// assets. The `Doer` may include them in prompts for multimodal models (e.g.,
+/// Gemini, GPT-4V).
+#[derive(Debug, Clone)]
+pub struct ImageData {
+    pub mime: String,   // e.g., "image/png"
+    pub base64: String, // base64-encoded content
+}
+
+/// Use `Instruction` to pass natural language plus multimedia context to the
+/// `Doer`.
+///
+/// Example usage:
+/// ```rust,ignore
+/// let instruction = Instruction {
+///     command: "Describe what you see.".to_string(),
+///     images: vec![ImageData {
+///         mime: "image/png".to_string(),
+///         base64: capture_base64_image(), // <- User-defined
+///     }],
+/// };
+/// let result = doer.follow(instruction).await?;
+/// ```
+///
+/// In the future this struct may include audio or file attachments.
+#[derive(Debug, Clone)]
+pub struct Instruction {
+    pub command: String,        // Natural language instruction
+    pub images: Vec<ImageData>, // Optional supporting images
+}
+
 /// Trait for executing imperative instructions (e.g., take a photo, run a Cypher query).
 ///
 /// Used by the `Will` to invoke external side effects or decisions via LLM-generated
@@ -10,15 +43,18 @@ use tokio_stream::Stream;
 ///
 /// ## Example
 /// ```rust,ignore
-/// let output = doer.follow("take a photo").await?;
+/// let output = doer
+///     .follow(Instruction { command: "take a photo".into(), images: vec![] })
+///     .await?;
 /// println!("Output: {output}");
 /// ```
 #[async_trait]
 pub trait Doer: Send + Sync {
-    /// Execute the given instruction and return the textual result.
+    /// Follow an instruction, possibly with supporting images, and return the
+    /// textual result.
     ///
     /// Implementors may call an external LLM or other service.
-    async fn follow(&self, instruction: &str) -> Result<String>;
+    async fn follow(&self, instruction: Instruction) -> Result<String>;
 }
 
 /// Indicates the speaker of a message in a conversation.
@@ -81,6 +117,22 @@ pub type ChatStream = Pin<Box<dyn Stream<Item = Result<String>> + Send>>;
 ///     println!("LLM: {}", chunk?);
 /// }
 /// ```
+///
+/// The `Chatter` is responsible for turning a prompt + message history into a
+/// streaming response.
+///
+/// The stream emits one chunk at a time (typically words or partial sentences).
+/// These chunks may be:
+///   - Buffered and split into full sentences
+///   - Sent to TTS as soon as each sentence completes
+///   - Annotated midstream with emotion or function tags (e.g., <function name="emote">😳</function>)
+///
+/// You can use `sentenceBySentence()` on the frontend or backend to process the stream.
+///
+/// This enables:
+///   - Speaking mid-response
+///   - Interruptibility
+///   - Dynamic emotional expression
 #[async_trait]
 pub trait Chatter: Send + Sync {
     /// Start a chat session using `system_prompt` and `history`.
