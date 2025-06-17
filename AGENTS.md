@@ -32,6 +32,7 @@ This repository is now a Rust workspace.
 - Compose multiple `Mouth` implementations using `AndMouth` when both audio and
   textual output are required.
 - `ChannelMouth` emits `Event::IntentionToSay` for each parsed sentence.
+- `ChannelCountenance` emits `Event::EmotionChanged` when the emotion updates.
 - `Conversation::add_*` should merge consecutive messages from the same role.
 - Use `TrimMouth` to remove whitespace before speaking; skip speech when the
   trimmed text is empty.
