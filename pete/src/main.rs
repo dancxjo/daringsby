@@ -2,11 +2,14 @@ use clap::Parser;
 use pete::{
     AppState, ChannelEar, ChannelMouth, app, init_logging, listen_user_input, ollama_psyche,
 };
+#[cfg(feature = "tts")]
+use pete::{CoquiTts, TtsMouth};
+use psyche::{AndMouth, Mouth};
 use std::{
     net::SocketAddr,
     sync::{Arc, atomic::AtomicBool},
 };
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 use tracing::info;
 
 #[derive(Parser)]
@@ -33,7 +36,20 @@ async fn main() -> anyhow::Result<()> {
 
     let mut psyche = ollama_psyche(&cli.ollama_url, &cli.model)?;
     let speaking = Arc::new(AtomicBool::new(false));
-    let mouth = Arc::new(ChannelMouth::new(psyche.event_sender(), speaking.clone()));
+    let display = Arc::new(ChannelMouth::new(psyche.event_sender(), speaking.clone()));
+    #[cfg(feature = "tts")]
+    let audio = Arc::new(TtsMouth::new(
+        psyche.event_sender(),
+        speaking.clone(),
+        Arc::new(CoquiTts::new()?),
+    ));
+    #[cfg(feature = "tts")]
+    let mouth = Arc::new(AndMouth::new(vec![
+        display.clone() as Arc<dyn Mouth>,
+        audio,
+    ]));
+    #[cfg(not(feature = "tts"))]
+    let mouth = display.clone() as Arc<dyn Mouth>;
     psyche.set_mouth(mouth.clone());
     let events = Arc::new(psyche.subscribe());
     let conversation = psyche.conversation();

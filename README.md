@@ -43,7 +43,18 @@ let psyche = Psyche::new(
     std::sync::Arc::new(DummyEar),
 );
 // replace the dummy mouth with your own implementation
-let mouth = std::sync::Arc::new(DummyMouth);
+let speaking = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+let display = std::sync::Arc::new(pete::ChannelMouth::new(psyche.event_sender(), speaking.clone()));
+#[cfg(feature = "tts")]
+let tts = std::sync::Arc::new(pete::TtsMouth::new(
+    psyche.event_sender(),
+    speaking.clone(),
+    std::sync::Arc::new(pete::CoquiTts::new().unwrap()),
+));
+#[cfg(feature = "tts")]
+let mouth = std::sync::Arc::new(psyche::AndMouth::new(vec![display.clone(), tts]));
+#[cfg(not(feature = "tts"))]
+let mouth = display.clone() as std::sync::Arc<dyn Mouth>;
 psyche.set_mouth(mouth);
 // Customize or replace the default prompt if desired
 psyche.set_system_prompt("Respond with two sentences.");
