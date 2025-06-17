@@ -1,12 +1,12 @@
 use async_trait::async_trait;
-use psyche::{Impression, Wit};
+use psyche::{Impression, Summarizer};
 use std::sync::Arc;
 
 #[derive(Debug)]
 struct DummyWit;
 
 #[async_trait]
-impl Wit<String, String> for DummyWit {
+impl Summarizer<String, String> for DummyWit {
     async fn digest(&self, _inputs: &[Impression<String>]) -> anyhow::Result<Impression<String>> {
         Ok(Impression::new(
             "Dummy headline",
@@ -34,7 +34,7 @@ async fn multiple_wits_should_independently_generate_impressions() {
     struct AnotherDummyWit;
 
     #[async_trait]
-    impl Wit<String, String> for AnotherDummyWit {
+    impl Summarizer<String, String> for AnotherDummyWit {
         async fn digest(
             &self,
             _inputs: &[Impression<String>],
@@ -47,7 +47,7 @@ async fn multiple_wits_should_independently_generate_impressions() {
         }
     }
 
-    let wits: Vec<Arc<dyn Wit<String, String>>> =
+    let wits: Vec<Arc<dyn Summarizer<String, String>>> =
         vec![Arc::new(DummyWit), Arc::new(AnotherDummyWit)];
 
     for wit in wits {

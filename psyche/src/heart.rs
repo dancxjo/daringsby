@@ -1,5 +1,5 @@
 use crate::{
-    Impression, Wit,
+    Impression, Summarizer,
     ling::{Doer, Instruction},
 };
 use async_trait::async_trait;
@@ -13,7 +13,7 @@ use std::sync::Arc;
 ///
 /// # Example
 /// ```no_run
-/// # use psyche::{Heart, ling::{Doer, Instruction}, Impression, Wit};
+/// # use psyche::{Heart, ling::{Doer, Instruction}, Impression, Summarizer};
 /// # use async_trait::async_trait;
 /// # struct Dummy;
 /// # #[async_trait]
@@ -45,7 +45,7 @@ impl Heart {
 }
 
 #[async_trait]
-impl Wit<String, String> for Heart {
+impl Summarizer<String, String> for Heart {
     async fn digest(&self, inputs: &[Impression<String>]) -> anyhow::Result<Impression<String>> {
         let input = inputs
             .last()

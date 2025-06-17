@@ -3,13 +3,27 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+/// A Wit is a layer of cognition that summarizes prior impressions into a more
+/// abstract one.
+///
+/// Each Wit listens for input impressions of a lower level and, on tick, emits
+/// a higher-level [`Impression`].
+#[async_trait]
+pub trait Wit<Input>: Send + Sync {
+    /// Feed an incoming input (e.g. Sensation or lower-level Impression).
+    async fn observe(&self, input: Input);
+
+    /// Periodically called to emit a summarized [`Impression`].
+    async fn tick(&self) -> Option<Impression<Input>>;
+}
+
 /// A cognitive unit that distills input into an [`Impression`].
 ///
 /// Wits operate asynchronously and may be chained together to form
 /// layered cognition. The `digest` method consumes a batch of lower level
 /// impressions and produces a higher level [`Impression`].
 #[async_trait]
-pub trait Wit<I, O>: Send + Sync {
+pub trait Summarizer<I, O>: Send + Sync {
     /// Digest `inputs` into a single summarizing [`Impression`].
     async fn digest(&self, inputs: &[Impression<I>]) -> anyhow::Result<Impression<O>>;
 }
@@ -43,7 +57,7 @@ pub struct InstantWit {
 }
 
 #[async_trait]
-impl Wit<Sensation, Instant> for InstantWit {
+impl Summarizer<Sensation, Instant> for InstantWit {
     async fn digest(
         &self,
         _inputs: &[Impression<Sensation>],
@@ -85,7 +99,7 @@ impl Default for MomentWit {
 }
 
 #[async_trait]
-impl Wit<Instant, Moment> for MomentWit {
+impl Summarizer<Instant, Moment> for MomentWit {
     async fn digest(&self, inputs: &[Impression<Instant>]) -> anyhow::Result<Impression<Moment>> {
         // Join headlines, details and observations into one paragraph.
         let mut combined = String::new();
@@ -134,7 +148,7 @@ pub struct SituationWit {
 }
 
 #[async_trait]
-impl Wit<Moment, Situation> for SituationWit {
+impl Summarizer<Moment, Situation> for SituationWit {
     async fn digest(
         &self,
         _inputs: &[Impression<Moment>],
@@ -149,7 +163,7 @@ pub struct EpisodeWit {
 }
 
 #[async_trait]
-impl Wit<Situation, Episode> for EpisodeWit {
+impl Summarizer<Situation, Episode> for EpisodeWit {
     async fn digest(
         &self,
         _inputs: &[Impression<Situation>],
@@ -162,14 +176,15 @@ impl Wit<Situation, Episode> for EpisodeWit {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use std::sync::Mutex;
 
     #[derive(Default)]
     struct EchoWit;
 
-    /// A trivial [`Wit`] used for tests that wraps the last input string
+    /// A trivial [`Summarizer`] used for tests that wraps the last input string
     /// into an [`Impression`].
     #[async_trait]
-    impl Wit<String, String> for EchoWit {
+    impl Summarizer<String, String> for EchoWit {
         async fn digest(
             &self,
             inputs: &[Impression<String>],
@@ -199,5 +214,39 @@ mod tests {
             .unwrap();
         assert_eq!(imp.headline, "hi");
         assert_eq!(imp.raw_data, "hi");
+    }
+
+    struct DummyWit {
+        data: Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl Wit<String> for DummyWit {
+        async fn observe(&self, input: String) {
+            self.data.lock().unwrap().push(input);
+        }
+
+        async fn tick(&self) -> Option<Impression<String>> {
+            let mut data = self.data.lock().unwrap();
+            let summary = data.join(", ");
+            data.clear();
+            Some(Impression {
+                headline: format!("Summarized {} items", summary.split(", ").count()),
+                details: Some(summary),
+                raw_data: "dummy".to_string(),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn it_summarizes_input_on_tick() {
+        let wit = DummyWit {
+            data: Mutex::new(Vec::new()),
+        };
+        wit.observe("foo".to_string()).await;
+        wit.observe("bar".to_string()).await;
+        let result = wit.tick().await.unwrap();
+        assert!(result.headline.contains("Summarized 2"));
+        assert_eq!(result.details.unwrap(), "foo, bar");
     }
 }

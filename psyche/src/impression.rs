@@ -1,6 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-/// A distilled perception captured by a Wit layer.
+/// A structured cognitive unit summarizing Pete's perception at a moment in
+/// time.
+///
+/// This is a memory object suitable for embedding and storage.
+///
+/// - `headline`: one-sentence summary, suitable for Qdrant embedding.
+/// - `details`: optional paragraph summary, used for narrative reflection.
+/// - `raw_data`: arbitrary serializable data, stored in Neo4j.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Impression<T> {
     /// One-sentence summary for vector storage.
