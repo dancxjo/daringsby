@@ -7,6 +7,7 @@ use std::sync::{
 use tokio::sync::{Mutex, mpsc};
 use tracing::debug;
 
+/// [`Ear`] implementation that forwards heard text through a channel.
 #[derive(Clone)]
 pub struct ChannelEar {
     forward: mpsc::UnboundedSender<Sensation>,
@@ -15,6 +16,7 @@ pub struct ChannelEar {
 }
 
 impl ChannelEar {
+    /// Create a new `ChannelEar` wired to the given channels.
     pub fn new(
         forward: mpsc::UnboundedSender<Sensation>,
         conversation: Arc<Mutex<psyche::Conversation>>,
@@ -48,6 +50,7 @@ impl Ear for ChannelEar {
     }
 }
 
+/// [`Ear`] implementation that ignores all input.
 #[derive(Clone)]
 pub struct NoopEar;
 

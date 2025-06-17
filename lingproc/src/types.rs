@@ -6,6 +6,9 @@ use tokio_stream::Stream;
 /// Processes instructions and returns textual responses.
 #[async_trait]
 pub trait Doer: Send + Sync {
+    /// Execute the given instruction and return the textual result.
+    ///
+    /// Implementors may call an external LLM or other service.
     async fn follow(&self, instruction: &str) -> Result<String>;
 }
 
@@ -46,11 +49,15 @@ pub type ChatStream = Pin<Box<dyn Stream<Item = Result<String>> + Send>>;
 
 #[async_trait]
 pub trait Chatter: Send + Sync {
+    /// Start a chat session using `system_prompt` and `history`.
+    ///
+    /// Returns a stream of response chunks from the language model.
     async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<ChatStream>;
 }
 
 /// Produces vector representations of text.
 #[async_trait]
 pub trait Vectorizer: Send + Sync {
+    /// Convert `text` into a vector representation suitable for similarity search.
     async fn vectorize(&self, text: &str) -> Result<Vec<f32>>;
 }

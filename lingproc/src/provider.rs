@@ -30,6 +30,7 @@ impl OllamaProvider {
 
 #[async_trait]
 impl Doer for OllamaProvider {
+    /// Follow an instruction via the Ollama API.
     async fn follow(&self, instruction: &str) -> Result<String> {
         let req = ChatMessageRequest::new(
             self.model.clone(),
@@ -67,6 +68,7 @@ impl Chatter for OllamaProvider {
 
 #[async_trait]
 impl Vectorizer for OllamaProvider {
+    /// Request text embeddings from Ollama.
     async fn vectorize(&self, text: &str) -> Result<Vec<f32>> {
         let req = GenerateEmbeddingsRequest::new(self.model.clone(), EmbeddingsInput::from(text));
         let res = self.client.generate_embeddings(req).await?;
