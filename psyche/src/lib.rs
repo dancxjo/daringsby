@@ -98,6 +98,8 @@ pub struct Psyche {
     conversation: Arc<Mutex<Conversation>>,
     echo_timeout: Duration,
     is_speaking: bool,
+    speak_when_spoken_to: bool,
+    pending_user_message: bool,
 }
 
 impl Psyche {
@@ -126,6 +128,8 @@ impl Psyche {
             conversation: Arc::new(Mutex::new(Conversation::default())),
             echo_timeout: Duration::from_secs(1),
             is_speaking: false,
+            speak_when_spoken_to: false,
+            pending_user_message: true,
         }
     }
 
@@ -183,11 +187,45 @@ impl Psyche {
         self.is_speaking
     }
 
+    /// Require user input before speaking.
+    pub fn set_speak_when_spoken_to(&mut self, enabled: bool) {
+        self.speak_when_spoken_to = enabled;
+        self.pending_user_message = !enabled;
+    }
+
+    /// Whether the psyche waits for the user before speaking.
+    pub fn speak_when_spoken_to(&self) -> bool {
+        self.speak_when_spoken_to
+    }
+
     /// Main loop that handles the conversation with the assistant.
     async fn converse(mut self) -> Self {
         info!("psyche conversation started");
         let mut turns = 0;
         while self.still_conversing(turns) {
+            if self.speak_when_spoken_to && !self.pending_user_message {
+                match self.input_rx.recv().await {
+                    Some(Sensation::HeardUserVoice(msg)) => {
+                        debug!("heard user voice: {}", msg);
+                        self.ear.hear_user_say(&msg).await;
+                        let mut conv = self.conversation.lock().await;
+                        conv.add_user(msg);
+                        self.pending_user_message = true;
+                        continue;
+                    }
+                    Some(Sensation::HeardOwnVoice(msg)) => {
+                        debug!("heard own voice while waiting: {}", msg);
+                        self.ear.hear_self_say(&msg).await;
+                        continue;
+                    }
+                    Some(Sensation::Of(_)) => {
+                        debug!("received non-voice sensation while waiting");
+                        continue;
+                    }
+                    None => break,
+                }
+            }
+
             let history = {
                 let conv = self.conversation.lock().await;
                 conv.tail(self.max_history)
@@ -218,6 +256,7 @@ impl Psyche {
                             let mut conv = self.conversation.lock().await;
                             conv.add_assistant(msg);
                             self.is_speaking = false;
+                            self.pending_user_message = !self.speak_when_spoken_to;
                             break;
                         }
                         Ok(Some(Sensation::HeardUserVoice(msg))) => {
@@ -230,19 +269,24 @@ impl Psyche {
                             self.ear.hear_user_say(&msg).await;
                             let mut conv = self.conversation.lock().await;
                             conv.add_user(msg);
+                            self.pending_user_message = true;
                             break;
                         }
                         Ok(Some(Sensation::Of(_))) => {
                             debug!("received non-voice sensation");
                             // TODO: handle other sensations
                         }
-                        Ok(None) => break,
+                        Ok(None) => {
+                            self.pending_user_message = !self.speak_when_spoken_to;
+                            break;
+                        }
                         Err(_) => {
                             error!("echo timeout");
                             self.ear.hear_self_say(&resp).await;
                             let mut conv = self.conversation.lock().await;
                             conv.add_assistant(resp.clone());
                             self.is_speaking = false;
+                            self.pending_user_message = !self.speak_when_spoken_to;
                             break;
                         }
                     }
