@@ -44,6 +44,7 @@ const SCRIPT: &str = r#"function chatApp() {
       this.audio.onended = () => {
         this.audio = null;
         this.ws.send(JSON.stringify({ type: 'played', text }));
+        console.log('sent played ack:', text);
         this.playNext();
       };
       const p = this.audio.play();
@@ -69,7 +70,10 @@ const SCRIPT: &str = r#"function chatApp() {
       }
       this.$nextTick(() => {
         if (atBottom) el.scrollTop = el.scrollHeight;
-        if (role !== 'user') this.ws.send(JSON.stringify({ type: 'displayed', text }));
+        if (role !== 'user') {
+          this.ws.send(JSON.stringify({ type: 'displayed', text }));
+          console.log('sent displayed ack:', text);
+        }
       });
     },
     send() {
