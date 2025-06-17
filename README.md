@@ -73,6 +73,18 @@ When the page receives a `pete-says` message it echoes back `{type: "displayed",
 
 The page also opens `ws://localhost:3000/log` to stream server logs. Connection statuses for both sockets are shown in the sidebar.
 
+Fetch the raw conversation log at `/conversation`:
+
+```sh
+curl http://127.0.0.1:3000/conversation
+```
+
+Which returns JSON like:
+
+```json
+[{"role":"user","content":"Hi"}]
+```
+
 ### Logging
 
 Set `RUST_LOG=info` when running the server to enable helpful tracing output.

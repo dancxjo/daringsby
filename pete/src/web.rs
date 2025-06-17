@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, error, info};
 
-use psyche::{Ear, Event};
+use psyche::{Ear, Event, ling::Role};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -20,6 +20,7 @@ pub struct AppState {
     pub events: Arc<broadcast::Receiver<Event>>,
     pub logs: Arc<broadcast::Receiver<String>>,
     pub ear: Arc<dyn Ear>,
+    pub conversation: Arc<tokio::sync::Mutex<psyche::Conversation>>,
 }
 
 #[derive(Deserialize)]
@@ -138,6 +139,28 @@ async fn handle_log_socket(mut socket: WebSocket, state: AppState) {
     info!("log websocket disconnected");
 }
 
+/// Return the raw conversation log as JSON.
+pub async fn conversation_log(State(state): State<AppState>) -> impl IntoResponse {
+    let conv = state.conversation.lock().await;
+    #[derive(Serialize)]
+    struct Entry {
+        role: String,
+        content: String,
+    }
+    let entries: Vec<Entry> = conv
+        .all()
+        .iter()
+        .map(|m| Entry {
+            role: match m.role {
+                Role::User => "user".to_string(),
+                Role::Assistant => "assistant".to_string(),
+            },
+            content: m.content.clone(),
+        })
+        .collect();
+    axum::Json(entries)
+}
+
 /// Listen for user input messages and record them in the conversation.
 ///
 /// Each received message is forwarded to the running [`Psyche`] via
@@ -169,5 +192,6 @@ pub fn app(state: AppState) -> Router {
         .route("/", get(index))
         .route("/ws", get(ws_handler))
         .route("/log", get(log_ws_handler))
+        .route("/conversation", get(conversation_log))
         .with_state(state)
 }
