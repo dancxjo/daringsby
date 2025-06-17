@@ -7,8 +7,8 @@ This repository contains a Rust workspace with three crates:
 - **pete** – a binary crate depending on `psyche`
 
 The `psyche` crate also defines a `Wit` trait used to build modular
-cognitive layers. Each `Wit` asynchronously processes input and
-produces an `Impression<T>` summarizing its observation.
+cognitive layers. Each `Wit` asynchronously digests a batch of lower
+level impressions and produces a higher-level `Impression<T>`.
 
 `Psyche` starts with a prompt asking the LLM to respond in one or two sentences at most. You can override it with `set_system_prompt`.
 
@@ -76,11 +76,15 @@ psyche.set_countenance(face);
 psyche.set_emotion("😊");
 // Determine emotion from text using the Heart
 let heart = psyche::Heart::new(Box::new(DummyVoice));
-let imp = heart.process("Great!".to_string()).await;
+let imp = heart
+    .digest(&[psyche::Impression { headline: "".into(), details: None, raw_data: "Great!".to_string() }])
+    .await?;
 assert_eq!(imp.raw_data, "😊");
 // Ask the Will what to do next
 let will = psyche::Will::new(Box::new(DummyVoice));
-let decision = will.process("say hi".to_string()).await;
+let decision = will
+    .digest(&[psyche::Impression { headline: "".into(), details: None, raw_data: "say hi".to_string() }])
+    .await?;
 assert_eq!(decision.headline, "Speak.");
 // Customize or replace the default prompt if desired
 psyche.set_system_prompt("Respond with two sentences.");
