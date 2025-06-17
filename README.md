@@ -6,6 +6,10 @@ This repository contains a Rust workspace with three crates:
 - **lingproc** – helper LLM abstractions re-exported by `psyche`
 - **pete** – a binary crate depending on `psyche`
 
+The `psyche` crate also defines a `Wit` trait used to build modular
+cognitive layers. Each `Wit` asynchronously processes input and
+produces an `Impression<T>` summarizing its observation.
+
 `Psyche` starts with a prompt asking the LLM to respond in one or two sentences at most. You can override it with `set_system_prompt`.
 
 Example with the `OllamaProvider`:

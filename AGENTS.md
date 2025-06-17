@@ -9,6 +9,7 @@ This repository is now a Rust workspace.
 - Crate `pete` depends on the local `psyche` crate.
 - Keep examples and inline docs up to date with code changes.
 - Update README examples whenever new public APIs are added.
+- Document new traits like `Wit` with examples and tests.
 - When adding binary arguments or library APIs, update tests accordingly.
 - Keep `index.html` minimal and updated to connect to `ws://localhost:3000/ws`.
 - Display the WebSocket connection status in the page for debugging.
