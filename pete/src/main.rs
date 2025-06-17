@@ -36,9 +36,10 @@ async fn main() -> anyhow::Result<()> {
     let mouth = Arc::new(ChannelMouth::new(psyche.event_sender(), speaking.clone()));
     psyche.set_mouth(mouth.clone());
     let events = Arc::new(psyche.subscribe());
+    let conversation = psyche.conversation();
     let ear = Arc::new(ChannelEar::new(
         psyche.input_sender(),
-        psyche.conversation(),
+        conversation.clone(),
         speaking.clone(),
     ));
     let (user_tx, user_rx) = mpsc::unbounded_channel();
@@ -54,6 +55,7 @@ async fn main() -> anyhow::Result<()> {
         events: events.clone(),
         logs: Arc::new(log_tx.subscribe()),
         ear: ear.clone(),
+        conversation,
     };
     let app = app(state);
 
