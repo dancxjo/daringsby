@@ -1,5 +1,6 @@
 #![cfg(feature = "tts")]
-use pete::{Tts, TtsMouth};
+use futures::stream;
+use pete::{Tts, TtsMouth, TtsStream};
 use psyche::Event;
 use psyche::Mouth;
 use std::sync::{Arc, atomic::AtomicBool};
@@ -7,9 +8,10 @@ use tokio::sync::broadcast;
 
 struct DummyTts;
 
+#[async_trait::async_trait]
 impl Tts for DummyTts {
-    fn to_wav(&self, _text: &str) -> anyhow::Result<Vec<u8>> {
-        Ok(vec![0u8; 4])
+    async fn stream_wav(&self, _text: &str) -> anyhow::Result<TtsStream> {
+        Ok(Box::pin(stream::once(async { Ok(vec![0u8; 4]) })))
     }
 }
 

@@ -3,7 +3,7 @@ use pete::{
     AppState, ChannelEar, ChannelMouth, app, init_logging, listen_user_input, ollama_psyche,
 };
 #[cfg(feature = "tts")]
-use pete::{EdgeTts, TtsMouth};
+use pete::{CoquiTts, TtsMouth};
 use psyche::{AndMouth, Mouth};
 use std::{
     net::SocketAddr,
@@ -24,6 +24,9 @@ struct Cli {
     /// Model name to use with Ollama
     #[arg(long, default_value = "mistral")]
     model: String,
+    /// URL of the Coqui TTS server
+    #[arg(long, default_value = "http://localhost:5002/api/tts")]
+    tts_url: String,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -41,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
     let audio = Arc::new(TtsMouth::new(
         psyche.event_sender(),
         speaking.clone(),
-        Arc::new(EdgeTts::new()),
+        Arc::new(CoquiTts::new(cli.tts_url)),
     ));
     #[cfg(feature = "tts")]
     let mouth = Arc::new(AndMouth::new(vec![
