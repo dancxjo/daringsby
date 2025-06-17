@@ -232,3 +232,81 @@ async fn speaking_flag_clears_after_echo() {
     let psyche = handle.await.unwrap();
     assert!(!psyche.speaking());
 }
+
+#[tokio::test]
+async fn empty_response_does_not_trigger_echo_timeout() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    #[derive(Clone, Default)]
+    struct SilentLLM;
+
+    #[async_trait]
+    impl Doer for SilentLLM {
+        async fn follow(&self, _: Instruction) -> anyhow::Result<String> {
+            Ok("ok".into())
+        }
+    }
+
+    #[async_trait]
+    impl Chatter for SilentLLM {
+        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+            Ok(Box::pin(tokio_stream::once(Ok(String::new()))))
+        }
+    }
+
+    #[async_trait]
+    impl Vectorizer for SilentLLM {
+        async fn vectorize(&self, _: &str) -> anyhow::Result<Vec<f32>> {
+            Ok(vec![0.0])
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct CountingMouth(Arc<AtomicUsize>);
+
+    #[async_trait]
+    impl Mouth for CountingMouth {
+        async fn speak(&self, _text: &str) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+        async fn interrupt(&self) {}
+        fn speaking(&self) -> bool {
+            false
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct NullEar;
+
+    #[async_trait]
+    impl Ear for NullEar {
+        async fn hear_self_say(&self, _t: &str) {}
+        async fn hear_user_say(&self, _t: &str) {}
+    }
+
+    let mouth_count = Arc::new(AtomicUsize::new(0));
+    let mouth = Arc::new(CountingMouth(mouth_count.clone())) as Arc<dyn Mouth>;
+    let ear = Arc::new(NullEar) as Arc<dyn Ear>;
+
+    let mut psyche = Psyche::new(
+        Box::new(SilentLLM),
+        Box::new(SilentLLM),
+        Box::new(SilentLLM),
+        Arc::new(psyche::NoopMemory),
+        mouth,
+        ear,
+    );
+    psyche.set_turn_limit(1);
+    psyche.set_system_prompt("sys");
+
+    let handle = tokio::spawn(async move { psyche.run().await });
+
+    let psyche = handle.await.unwrap();
+    assert_eq!(mouth_count.load(Ordering::SeqCst), 0);
+    assert!(!psyche.speaking());
+    let conv_len = { psyche.conversation().lock().await.all().len() };
+    assert_eq!(conv_len, 0);
+}
