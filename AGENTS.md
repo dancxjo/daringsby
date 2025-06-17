@@ -79,5 +79,6 @@ This repository is a Rust workspace.
 * Consider adding CLI test scaffolding for mocking TTS/Neo4j/Qdrant.
 * Ensure that `Wit<Instant>` is fed only when it has sufficient `Sensation` inputs — fail early otherwise.
 * Be mindful of the single-CPU assumption — prefer concurrency without heavy parallelism.
+* When skipping speech for empty responses, increment the turn counter so the conversation loop can exit.
 
 This document reflects the current cognitive and runtime architecture of Pete Daringsby. Keep it consistent with the latest design discussions and behavior changes.
