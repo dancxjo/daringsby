@@ -1,4 +1,6 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// A structured cognitive unit summarizing Pete's perception at a moment in
 /// time.
@@ -10,6 +12,10 @@ use serde::{Deserialize, Serialize};
 /// - `raw_data`: arbitrary serializable data, stored in Neo4j.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Impression<T> {
+    /// Unique identifier for the impression.
+    pub id: Uuid,
+    /// Timestamp of when the impression was created.
+    pub timestamp: DateTime<Utc>,
     /// One-sentence summary for vector storage.
     pub headline: String,
     /// Optional paragraph providing more detail.
@@ -36,6 +42,8 @@ impl<T> Impression<T> {
         raw_data: T,
     ) -> Self {
         Self {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
             headline: headline.into(),
             details: details.map(|d| d.into()),
             raw_data,

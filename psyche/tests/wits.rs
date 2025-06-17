@@ -1,5 +1,7 @@
+use chrono::Utc;
 use psyche::wit::{Instant, MomentWit};
 use psyche::{Impression, Summarizer};
+use uuid::Uuid;
 
 #[tokio::test]
 async fn synthesizes_moment_from_instants() {
@@ -7,6 +9,8 @@ async fn synthesizes_moment_from_instants() {
 
     let input = vec![
         Impression {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
             headline: "Saw a dog".into(),
             details: Some("At 10:01, a golden retriever barked at Pete.".into()),
             raw_data: Instant {
@@ -14,6 +18,8 @@ async fn synthesizes_moment_from_instants() {
             },
         },
         Impression {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
             headline: "Pete felt startled".into(),
             details: Some("At 10:02, Pete's posture stiffened.".into()),
             raw_data: Instant {

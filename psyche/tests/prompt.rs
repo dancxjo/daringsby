@@ -58,6 +58,7 @@ fn default_prompt_present() {
         Box::new(Dummy::default()),
         Box::new(Dummy::default()),
         Box::new(Dummy::default()),
+        std::sync::Arc::new(psyche::NoopMemory),
         mouth,
         ear,
     );

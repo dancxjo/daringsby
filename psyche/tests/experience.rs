@@ -77,6 +77,7 @@ async fn registered_wit_ticks() {
         Box::new(Dummy::default()),
         Box::new(Dummy::default()),
         Box::new(Dummy::default()),
+        Arc::new(psyche::NoopMemory),
         mouth,
         ear,
     );

@@ -39,6 +39,7 @@ pub fn dummy_psyche() -> Psyche {
         Box::new(Dummy),
         Box::new(Dummy),
         Box::new(Dummy),
+        Arc::new(psyche::NoopMemory),
         mouth,
         ear,
     );
@@ -65,6 +66,7 @@ pub fn ollama_psyche(host: &str, model: &str) -> anyhow::Result<Psyche> {
         Box::new(narrator),
         Box::new(voice),
         Box::new(vectorizer),
+        Arc::new(psyche::NoopMemory),
         mouth,
         ear,
     );

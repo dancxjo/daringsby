@@ -3,7 +3,9 @@ use crate::{
     ling::{Doer, Instruction},
 };
 use async_trait::async_trait;
+use chrono::Utc;
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Decide Pete's next action or speech using a language model.
 ///
@@ -27,7 +29,7 @@ use std::sync::Arc;
 /// # async fn main() {
 /// let will = Will::new(Box::new(Dummy));
 /// let imp = will
-///     .digest(&[Impression { headline: "".into(), details: None, raw_data: "greet the user".to_string() }])
+///     .digest(&[Impression::new("", None::<String>, "greet the user".to_string())])
 ///     .await
 ///     .unwrap();
 /// assert_eq!(imp.raw_data, "Speak.");
@@ -59,6 +61,8 @@ impl Summarizer<String, String> for Will {
         let resp = self.doer.follow(instruction).await?;
         let decision = resp.trim().to_string();
         Ok(Impression {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
             headline: decision.clone(),
             details: None,
             raw_data: decision,

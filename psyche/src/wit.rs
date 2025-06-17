@@ -1,7 +1,10 @@
 use crate::{Impression, Sensation};
 use async_trait::async_trait;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use serde_json::{self, Value};
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// A Wit is a layer of cognition that summarizes prior impressions into a more
 /// abstract one.
@@ -20,8 +23,8 @@ pub trait Wit<Input>: Send + Sync {
 /// Type-erased wrapper enabling heterogeneous [`Wit`]s to be stored together.
 #[async_trait]
 pub trait ErasedWit: Send + Sync {
-    /// Execute a tick and return an [`Impression`] with an erased payload.
-    async fn tick_erased(&self) -> Option<Impression<Box<dyn std::any::Any + Send + Sync>>>;
+    /// Execute a tick and return an [`Impression`] with the payload serialized.
+    async fn tick_erased(&self) -> Option<Impression<Value>>;
 }
 
 /// Adapter allowing any [`Wit`] to be used as an [`ErasedWit`].
@@ -39,13 +42,19 @@ impl<T> WitAdapter<T> {
 #[async_trait]
 impl<T> ErasedWit for WitAdapter<T>
 where
-    T: Send + Sync + 'static,
+    T: Serialize + Send + Sync + 'static,
 {
-    async fn tick_erased(&self) -> Option<Impression<Box<dyn std::any::Any + Send + Sync>>> {
-        self.inner.tick().await.map(|imp| Impression {
-            headline: imp.headline,
-            details: imp.details,
-            raw_data: Box::new(imp.raw_data) as Box<dyn std::any::Any + Send + Sync>,
+    async fn tick_erased(&self) -> Option<Impression<Value>> {
+        self.inner.tick().await.and_then(|imp| {
+            serde_json::to_value(imp.raw_data)
+                .ok()
+                .map(|raw| Impression {
+                    id: imp.id,
+                    timestamp: imp.timestamp,
+                    headline: imp.headline,
+                    details: imp.details,
+                    raw_data: raw,
+                })
         })
     }
 }
@@ -168,6 +177,8 @@ impl Summarizer<Instant, Moment> for MomentWit {
         let summary = resp.trim().to_string();
 
         Ok(Impression {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
             headline: summary.clone(),
             details: Some(combined),
             raw_data: Moment { summary },
@@ -227,6 +238,8 @@ mod tests {
                 .map(|i| i.raw_data.clone())
                 .unwrap_or_default();
             Ok(Impression {
+                id: Uuid::new_v4(),
+                timestamp: Utc::now(),
                 headline: input.clone(),
                 details: None,
                 raw_data: input,
@@ -239,6 +252,8 @@ mod tests {
         let wit = EchoWit::default();
         let imp = wit
             .digest(&[Impression {
+                id: Uuid::new_v4(),
+                timestamp: Utc::now(),
                 headline: "hi".into(),
                 details: None,
                 raw_data: "hi".to_string(),
@@ -264,6 +279,8 @@ mod tests {
             let summary = data.join(", ");
             data.clear();
             Some(Impression {
+                id: Uuid::new_v4(),
+                timestamp: Utc::now(),
                 headline: format!("Summarized {} items", summary.split(", ").count()),
                 details: Some(summary),
                 raw_data: "dummy".to_string(),

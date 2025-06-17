@@ -136,6 +136,7 @@ fn test_psyche(mouth: Arc<dyn Mouth>, ear: Arc<dyn Ear>) -> psyche::Psyche {
         Box::new(DummyLLM),
         Box::new(DummyLLM),
         Box::new(DummyLLM),
+        std::sync::Arc::new(psyche::NoopMemory),
         mouth,
         ear,
     )

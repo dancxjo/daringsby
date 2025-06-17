@@ -1,15 +1,24 @@
-use psyche::{Event, Memory};
-use tokio::sync::broadcast;
+use async_trait::async_trait;
+use psyche::{Impression, Memory};
+use serde_json::Value;
+use std::sync::{Arc, Mutex};
+
+#[derive(Default)]
+struct MockMemory(Arc<Mutex<Vec<String>>>);
+
+#[async_trait]
+impl Memory for MockMemory {
+    async fn store(&self, impression: &Impression<Value>) -> anyhow::Result<()> {
+        self.0.lock().unwrap().push(impression.headline.clone());
+        Ok(())
+    }
+}
 
 #[tokio::test]
-async fn emits_cypher_statement() {
-    let (tx, mut rx) = broadcast::channel(8);
-    let mut mem = Memory::new(tx);
-    mem.feel("Pete met Travis.");
-    mem.consult().await.unwrap();
-    let evt = rx.try_recv().unwrap();
-    match evt {
-        Event::StreamChunk(cypher) => assert!(cypher.contains("MERGE")),
-        other => panic!("unexpected event {other:?}"),
-    }
+async fn stores_impression() {
+    let mem = MockMemory::default();
+    <dyn Memory>::store_serializable(&mem, &Impression::new("hello", None::<String>, 1))
+        .await
+        .unwrap();
+    assert_eq!(mem.0.lock().unwrap().len(), 1);
 }
