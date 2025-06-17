@@ -19,6 +19,7 @@ pub use trim_mouth::TrimMouth;
 pub use will::Will;
 pub use wit::{Summarizer, Wit};
 
+use crate::wit::{ErasedWit, WitAdapter};
 use async_trait::async_trait;
 use ling::{Chatter, Doer, Message, Role, Vectorizer};
 use std::sync::Arc;
@@ -33,6 +34,11 @@ use tracing::{debug, error, info};
 /// sentences. It will have additional opportunities to speak. Sending an
 /// empty response indicates a pause where the assistant says nothing.
 pub const DEFAULT_SYSTEM_PROMPT: &str = "You are the voice of PETE, an artificial consciousness. Do not respond as an LLM, but as the character Pete.Respond with one or two concise sentences at most. You will get another chance to speak. Returning an empty message means you remain silent, which is perfectly polite for your slow speaking interlocutor.";
+
+#[cfg(not(test))]
+const EXPERIENCE_TICK: Duration = Duration::from_secs(60);
+#[cfg(test)]
+const EXPERIENCE_TICK: Duration = Duration::from_millis(10);
 
 /// Event types emitted by the [`Psyche`] during conversation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,6 +156,7 @@ pub struct Psyche {
     speak_when_spoken_to: bool,
     pending_user_message: bool,
     connections: Option<Arc<AtomicUsize>>,
+    wits: Vec<Arc<dyn wit::ErasedWit + Send + Sync>>,
 }
 
 impl Psyche {
@@ -183,6 +190,7 @@ impl Psyche {
             speak_when_spoken_to: false,
             pending_user_message: true,
             connections: None,
+            wits: Vec::new(),
         }
     }
 
@@ -243,6 +251,35 @@ impl Psyche {
         let _ = self
             .events_tx
             .send(Event::EmotionChanged(self.emotion.clone()));
+    }
+
+    /// Register a background [`Wit`].
+    ///
+    /// Example:
+    /// ```no_run
+    /// use async_trait::async_trait;
+    /// use psyche::wit::Wit;
+    /// # let mut psyche: psyche::Psyche = todo!();
+    /// struct MyWit;
+    /// # #[async_trait]
+    /// # impl Wit<()> for MyWit {
+    /// #   async fn observe(&self, _: ()) {}
+    /// #   async fn tick(&self) -> Option<psyche::Impression<()>> { None }
+    /// # }
+    /// let wit = std::sync::Arc::new(MyWit);
+    /// psyche.register_typed_wit(wit);
+    /// ```
+    pub fn register_wit(&mut self, wit: Arc<dyn ErasedWit + Send + Sync>) {
+        self.wits.push(wit);
+    }
+
+    /// Convenience to register a typed [`Wit`] without manual boxing.
+    pub fn register_typed_wit<T>(&mut self, wit: Arc<dyn Wit<T> + Send + Sync>)
+    where
+        T: Send + Sync + 'static,
+    {
+        self.wits
+            .push(Arc::new(wit::WitAdapter::new(wit)) as Arc<dyn ErasedWit + Send + Sync>);
     }
 
     fn still_conversing(&self, turns: usize) -> bool {
@@ -381,18 +418,28 @@ impl Psyche {
     }
 
     /// Background task processing non-conversational experience.
-    async fn experience() {
-        // Placeholder for future sensory processing.
-        tokio::task::yield_now().await;
+    async fn experience(wits: Vec<Arc<dyn ErasedWit + Send + Sync>>) {
+        loop {
+            for wit in &wits {
+                let maybe_imp = wit.tick_erased().await;
+                if let Some(impression) = maybe_imp {
+                    info!(?impression.headline, "Wit emitted impression");
+                    // TODO: emit to memory/event stream
+                }
+            }
+            tokio::time::sleep(EXPERIENCE_TICK).await;
+        }
     }
 
     /// Start the conversation and background tasks. Returns the updated [`Psyche`] when finished.
     pub async fn run(self) -> Self {
         info!("psyche run started");
+        let wits = self.wits.clone();
+        let experience_handle = tokio::spawn(Self::experience(wits));
         let converse_handle = tokio::spawn(self.converse());
-        let experience_handle = tokio::spawn(Self::experience());
         let psyche = converse_handle.await.expect("converse task panicked");
-        experience_handle.await.expect("experience task panicked");
+        experience_handle.abort();
+        let _ = experience_handle.await;
         info!("psyche run finished");
         psyche
     }
