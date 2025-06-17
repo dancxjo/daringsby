@@ -28,3 +28,4 @@ This repository is now a Rust workspace.
   engines to keep CI fast.
 - Compose multiple `Mouth` implementations using `AndMouth` when both audio and
   textual output are required.
+- `ChannelMouth` emits `Event::IntentionToSay` for each parsed sentence.
