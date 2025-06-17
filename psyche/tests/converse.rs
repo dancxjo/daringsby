@@ -132,6 +132,7 @@ async fn adds_message_after_voice_heard() {
                 break;
             }
             Event::SpeechAudio(_) => {}
+            Event::EmotionChanged(_) => {}
         }
     }
 

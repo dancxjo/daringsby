@@ -71,12 +71,7 @@ let mouth = std::sync::Arc::new(psyche::TrimMouth::new(mouth));
 let mouth = display.clone() as std::sync::Arc<dyn Mouth>;
 let mouth = std::sync::Arc::new(psyche::TrimMouth::new(mouth));
 psyche.set_mouth(mouth);
-#[derive(Default)]
-struct DummyFace;
-impl psyche::Countenance for DummyFace {
-    fn express(&self, _emoji: &str) {}
-}
-let face = std::sync::Arc::new(DummyFace::default());
+let face = std::sync::Arc::new(pete::ChannelCountenance::new(psyche.event_sender()));
 psyche.set_countenance(face);
 psyche.set_emotion("😊");
 // Determine emotion from text using the Heart
@@ -112,6 +107,7 @@ cargo run -p pete -- --ollama-url http://localhost:11434 --model mistral
 
 After starting the server, visit `http://127.0.0.1:3000/` in your browser. The page connects to `ws://localhost:3000/ws` and lets you chat with Pete in real time.
 When the page receives a `pete-says` message it echoes back `{type: "displayed", text}` so the server knows the line was shown. Connection status is shown in the sidebar.
+Emotion updates arrive via `pete-emotion` messages containing an emoji string.
 
 Fetch the raw conversation log at `/conversation`:
 

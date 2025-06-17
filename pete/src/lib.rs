@@ -4,6 +4,7 @@
 //! interacting with a [`Psyche`](psyche::Psyche) instance.
 
 mod ear;
+mod face;
 mod logging;
 mod mouth;
 mod psyche_factory;
@@ -12,6 +13,7 @@ mod tts_mouth;
 mod web;
 
 pub use ear::{ChannelEar, NoopEar};
+pub use face::{ChannelCountenance, NoopFace};
 pub use logging::init_logging;
 pub use mouth::{ChannelMouth, NoopMouth};
 pub use psyche_factory::{dummy_psyche, ollama_psyche};

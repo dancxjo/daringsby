@@ -16,6 +16,7 @@
   <div x-data="chatApp()" x-init="init()" class="flex w-full max-w-4xl h-[80vh] bg-white rounded-xl shadow overflow-hidden">
     <aside class="w-48 p-4 bg-gray-100 space-y-2">
       <div id="status" x-text="status" class="text-xs font-semibold text-gray-500"></div>
+      <div id="face" x-text="emotion" class="text-4xl"></div>
       <audio controls x-ref="player" class="w-full"></audio>
     </aside>
     <main class="flex flex-col flex-1 p-6 space-y-4">
@@ -39,6 +40,7 @@
         log: [],
         input: '',
         lastText: '',
+        emotion: '😐',
         audioQueue: [],
         audio: null,
         init() { this.connect(); },
@@ -55,7 +57,9 @@
           this.ws.onmessage = (ev) => {
             try {
               const data = JSON.parse(ev.data);
-              if (data.text) {
+              if (data.kind === 'pete-emotion') {
+                this.emotion = data.text;
+              } else if (data.text) {
                 this.lastText = data.text;
                 this.append('system', data.text);
               }

@@ -100,6 +100,13 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                             break;
                         }
                     }
+                    Ok(Event::EmotionChanged(emo)) => {
+                        let payload = serde_json::to_string(&WsResponse { kind: "pete-emotion", text: Some(emo), audio: None }).unwrap();
+                        if socket.send(WsMessage::Text(payload.into())).await.is_err() {
+                            error!("failed sending emotion");
+                            break;
+                        }
+                    }
                     Err(broadcast::error::RecvError::Closed) => break,
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
                 }

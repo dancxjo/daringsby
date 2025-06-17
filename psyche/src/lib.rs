@@ -38,6 +38,8 @@ pub enum Event {
     IntentionToSay(String),
     /// Base64-encoded WAV audio representing the spoken sentence.
     SpeechAudio(String),
+    /// The psyche's emotional expression changed.
+    EmotionChanged(String),
 }
 
 /// Inputs that can be sent to a running [`Psyche`].
@@ -218,6 +220,9 @@ impl Psyche {
     pub fn set_emotion(&mut self, emoji: impl Into<String>) {
         self.emotion = emoji.into();
         self.countenance.express(&self.emotion);
+        let _ = self
+            .events_tx
+            .send(Event::EmotionChanged(self.emotion.clone()));
     }
 
     fn still_conversing(&self, turns: usize) -> bool {
