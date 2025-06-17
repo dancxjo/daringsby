@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use psyche::Psyche;
-use psyche::ling::{Chatter, Doer, Message, Vectorizer};
+use psyche::ling::{ChatContext, Chatter, Doer, Message, Vectorizer};
 use std::sync::Arc;
 use tracing::info;
 
@@ -21,7 +21,7 @@ pub fn dummy_psyche() -> Psyche {
 
     #[async_trait]
     impl Chatter for Dummy {
-        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+        async fn chat(&self, _: ChatContext<'_>) -> anyhow::Result<psyche::ling::ChatStream> {
             Ok(Box::pin(tokio_stream::once(Ok("hi".to_string()))))
         }
     }

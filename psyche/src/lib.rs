@@ -15,7 +15,7 @@ pub use will::Will;
 pub use wit::Wit;
 
 use async_trait::async_trait;
-use ling::{Chatter, Doer, Message, Role, Vectorizer};
+use ling::{ChatContext, Chatter, Doer, Message, Role, Vectorizer};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -287,7 +287,12 @@ impl Psyche {
                 let conv = self.conversation.lock().await;
                 conv.tail(self.max_history)
             };
-            if let Ok(mut stream) = self.voice.chat(&self.system_prompt, &history).await {
+            let ctx = ChatContext {
+                system_prompt: &self.system_prompt,
+                history: &history,
+                emotion: Some(&self.emotion),
+            };
+            if let Ok(mut stream) = self.voice.chat(ctx).await {
                 use tokio_stream::StreamExt;
                 let mut resp = String::new();
                 while let Some(chunk_res) = stream.next().await {
@@ -394,7 +399,7 @@ mod tests {
 
     #[async_trait]
     impl Chatter for Dummy {
-        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<ling::ChatStream> {
+        async fn chat(&self, _: ChatContext<'_>) -> anyhow::Result<ling::ChatStream> {
             Ok(Box::pin(tokio_stream::once(Ok("hi".to_string()))))
         }
     }

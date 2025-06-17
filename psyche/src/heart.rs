@@ -1,6 +1,6 @@
 use crate::{
     Impression, Wit,
-    ling::{Chatter, Message, Role},
+    ling::{ChatContext, Chatter, Message, Role},
 };
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -14,12 +14,12 @@ use tokio_stream::StreamExt;
 ///
 /// # Example
 /// ```no_run
-/// # use psyche::{Heart, ling::{Chatter, Message}, Impression, Wit};
+/// # use psyche::{Heart, ling::{Chatter, Message, ChatContext}, Impression, Wit};
 /// # use async_trait::async_trait;
 /// # struct Dummy;
 /// # #[async_trait]
 /// # impl Chatter for Dummy {
-/// #   async fn chat(&self, _s: &str, _h: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+/// #   async fn chat(&self, _: ChatContext<'_>) -> anyhow::Result<psyche::ling::ChatStream> {
 /// #       Ok(Box::pin(tokio_stream::once(Ok("😊".to_string()))))
 /// #   }
 /// # }
@@ -52,9 +52,14 @@ impl Wit<String, String> for Heart {
             role: Role::User,
             content: input.clone(),
         }];
+        let ctx = ChatContext {
+            system_prompt: prompt,
+            history: &history,
+            emotion: None,
+        };
         let mut stream = self
             .chatter
-            .chat(prompt, &history)
+            .chat(ctx)
             .await
             .unwrap_or_else(|_| Box::pin(tokio_stream::empty()));
         let mut resp = String::new();

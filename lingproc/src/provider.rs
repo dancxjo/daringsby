@@ -1,6 +1,6 @@
 //! Providers implementing the [`Doer`], [`Chatter`], and [`Vectorizer`] traits.
 
-use crate::types::{ChatStream, Chatter, Doer, Message, Role, Vectorizer};
+use crate::types::{ChatContext, ChatStream, Chatter, Doer, Message, Role, Vectorizer};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use ollama_rs::{
@@ -42,10 +42,10 @@ impl Doer for OllamaProvider {
 
 #[async_trait]
 impl Chatter for OllamaProvider {
-    async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<ChatStream> {
-        let mut msgs = Vec::with_capacity(history.len() + 1);
-        msgs.push(ChatMessage::system(system_prompt.to_string()));
-        for m in history {
+    async fn chat(&self, ctx: ChatContext<'_>) -> Result<ChatStream> {
+        let mut msgs = Vec::with_capacity(ctx.history.len() + 1);
+        msgs.push(ChatMessage::system(ctx.system_prompt.to_string()));
+        for m in ctx.history {
             let m = match m.role {
                 Role::Assistant => ChatMessage::assistant(m.content.clone()),
                 Role::User => ChatMessage::user(m.content.clone()),

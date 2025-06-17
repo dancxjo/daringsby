@@ -44,9 +44,23 @@ impl Message {
 /// Stream of chat response chunks.
 pub type ChatStream = Pin<Box<dyn Stream<Item = Result<String>> + Send>>;
 
+/// Context for generating a chat response.
+///
+/// This bundles the system prompt, prior conversation history,
+/// and the speaker's current emotional state.
+#[derive(Debug, Clone)]
+pub struct ChatContext<'a> {
+    /// Instructions guiding the assistant's behavior.
+    pub system_prompt: &'a str,
+    /// Previous dialog turns.
+    pub history: &'a [Message],
+    /// Optional emoji conveying Pete's emotion.
+    pub emotion: Option<&'a str>,
+}
+
 #[async_trait]
 pub trait Chatter: Send + Sync {
-    async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<ChatStream>;
+    async fn chat(&self, ctx: ChatContext<'_>) -> Result<ChatStream>;
 }
 
 /// Produces vector representations of text.

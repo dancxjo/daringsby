@@ -1,4 +1,4 @@
-use psyche::ling::{Chatter, Message};
+use psyche::ling::{ChatContext, Chatter, Message};
 use psyche::{Will, Wit};
 use tokio_stream::once;
 
@@ -7,7 +7,7 @@ struct Dummy;
 
 #[async_trait::async_trait]
 impl Chatter for Dummy {
-    async fn chat(&self, _p: &str, _h: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+    async fn chat(&self, _: ChatContext<'_>) -> anyhow::Result<psyche::ling::ChatStream> {
         Ok(Box::pin(once(Ok("Do it".to_string()))))
     }
 }

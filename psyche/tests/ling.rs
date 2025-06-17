@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::ling::{Chatter, Doer, Message, Vectorizer};
+use psyche::ling::{ChatContext, Chatter, Doer, Message, Vectorizer};
 use tokio_stream::StreamExt;
 
 struct Dummy;
@@ -13,8 +13,8 @@ impl Doer for Dummy {
 
 #[async_trait]
 impl Chatter for Dummy {
-    async fn chat(&self, _s: &str, h: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
-        let msg = format!("say:{}", h.len());
+    async fn chat(&self, ctx: ChatContext<'_>) -> anyhow::Result<psyche::ling::ChatStream> {
+        let msg = format!("say:{}", ctx.history.len());
         Ok(Box::pin(tokio_stream::once(Ok(msg))))
     }
 }
@@ -31,7 +31,12 @@ async fn dummy_traits() {
     let d = Dummy;
     assert_eq!(d.follow("a").await.unwrap(), "do:a");
     let hist = vec![Message::user("hi"), Message::assistant("hey")];
-    let mut stream = d.chat("sys", &hist).await.unwrap();
+    let ctx = ChatContext {
+        system_prompt: "sys",
+        history: &hist,
+        emotion: None,
+    };
+    let mut stream = d.chat(ctx).await.unwrap();
     let mut res = String::new();
     while let Some(chunk) = stream.next().await.transpose().unwrap() {
         res.push_str(&chunk);

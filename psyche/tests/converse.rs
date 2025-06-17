@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::ling::{Chatter, Doer, Message, Vectorizer};
+use psyche::ling::{ChatContext, Chatter, Doer, Message, Vectorizer};
 use psyche::{Ear, Event, Mouth, Psyche, Sensation};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -38,7 +38,7 @@ impl Doer for Dummy {
 
 #[async_trait]
 impl Chatter for Dummy {
-    async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+    async fn chat(&self, _: ChatContext<'_>) -> anyhow::Result<psyche::ling::ChatStream> {
         Ok(Box::pin(tokio_stream::once(Ok("hello world".to_string()))))
     }
 }
@@ -61,7 +61,7 @@ async fn waits_for_user_when_configured() {
 
     #[async_trait]
     impl Chatter for CountingChatter {
-        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+        async fn chat(&self, _: ChatContext<'_>) -> anyhow::Result<psyche::ling::ChatStream> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(Box::pin(tokio_stream::once(Ok("hi".to_string()))))
         }
