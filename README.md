@@ -83,6 +83,10 @@ psyche.set_emotion("😊");
 let heart = psyche::Heart::new(Box::new(DummyVoice));
 let imp = heart.process("Great!".to_string()).await;
 assert_eq!(imp.raw_data, "😊");
+// Ask the Will what to do next
+let will = psyche::Will::new(Box::new(DummyVoice));
+let decision = will.process("say hi".to_string()).await;
+assert_eq!(decision.headline, "Speak.");
 // Customize or replace the default prompt if desired
 psyche.set_system_prompt("Respond with two sentences.");
 psyche.set_echo_timeout(std::time::Duration::from_secs(1));
