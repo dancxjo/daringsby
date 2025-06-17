@@ -1,7 +1,11 @@
 mod and_mouth;
+mod countenance;
+mod impression;
 pub mod ling;
 mod trim_mouth;
 pub use and_mouth::AndMouth;
+pub use countenance::{Countenance, NoopCountenance};
+pub use impression::Impression;
 pub use trim_mouth::TrimMouth;
 
 use async_trait::async_trait;
@@ -104,6 +108,8 @@ pub struct Psyche {
     vectorizer: Box<dyn Vectorizer>,
     mouth: Arc<dyn Mouth>,
     ear: Arc<dyn Ear>,
+    countenance: Arc<dyn Countenance>,
+    emotion: String,
     system_prompt: String,
     max_history: usize,
     max_turns: usize,
@@ -135,6 +141,8 @@ impl Psyche {
             vectorizer,
             mouth,
             ear,
+            countenance: Arc::new(NoopCountenance),
+            emotion: "😐".to_string(),
             system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
             max_history: 8,
             max_turns: 1,
@@ -193,6 +201,17 @@ impl Psyche {
     /// Replace the current [`Mouth`] implementation.
     pub fn set_mouth(&mut self, mouth: Arc<dyn Mouth>) {
         self.mouth = mouth;
+    }
+
+    /// Replace the current [`Countenance`] implementation.
+    pub fn set_countenance(&mut self, countenance: Arc<dyn Countenance>) {
+        self.countenance = countenance;
+    }
+
+    /// Change the active emotional expression.
+    pub fn set_emotion(&mut self, emoji: impl Into<String>) {
+        self.emotion = emoji.into();
+        self.countenance.express(&self.emotion);
     }
 
     fn still_conversing(&self, turns: usize) -> bool {
@@ -273,6 +292,7 @@ impl Psyche {
                 info!("assistant intends to say: {}", resp);
                 let _ = self.events_tx.send(Event::IntentionToSay(resp.clone()));
                 self.is_speaking = true;
+                self.countenance.express(&self.emotion);
                 self.mouth.speak(&resp).await;
                 loop {
                     let recv = self.input_rx.recv();

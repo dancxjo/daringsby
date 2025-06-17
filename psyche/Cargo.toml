@@ -12,6 +12,7 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 tracing = "0.1"
 lingproc = { path = "../lingproc" }
 futures = "0.3"
+serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
