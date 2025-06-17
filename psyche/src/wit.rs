@@ -17,6 +17,39 @@ pub trait Wit<Input>: Send + Sync {
     async fn tick(&self) -> Option<Impression<Input>>;
 }
 
+/// Type-erased wrapper enabling heterogeneous [`Wit`]s to be stored together.
+#[async_trait]
+pub trait ErasedWit: Send + Sync {
+    /// Execute a tick and return an [`Impression`] with an erased payload.
+    async fn tick_erased(&self) -> Option<Impression<Box<dyn std::any::Any + Send + Sync>>>;
+}
+
+/// Adapter allowing any [`Wit`] to be used as an [`ErasedWit`].
+pub struct WitAdapter<T> {
+    inner: Arc<dyn Wit<T> + Send + Sync>,
+}
+
+impl<T> WitAdapter<T> {
+    /// Wrap `wit` so it can be stored as an [`ErasedWit`].
+    pub fn new(wit: Arc<dyn Wit<T> + Send + Sync>) -> Self {
+        Self { inner: wit }
+    }
+}
+
+#[async_trait]
+impl<T> ErasedWit for WitAdapter<T>
+where
+    T: Send + Sync + 'static,
+{
+    async fn tick_erased(&self) -> Option<Impression<Box<dyn std::any::Any + Send + Sync>>> {
+        self.inner.tick().await.map(|imp| Impression {
+            headline: imp.headline,
+            details: imp.details,
+            raw_data: Box::new(imp.raw_data) as Box<dyn std::any::Any + Send + Sync>,
+        })
+    }
+}
+
 /// A cognitive unit that distills input into an [`Impression`].
 ///
 /// Wits operate asynchronously and may be chained together to form
