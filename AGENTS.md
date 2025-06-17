@@ -30,3 +30,5 @@ This repository is now a Rust workspace.
   textual output are required.
 - `ChannelMouth` emits `Event::IntentionToSay` for each parsed sentence.
 - `Conversation::add_*` should merge consecutive messages from the same role.
+- Use `TrimMouth` to remove whitespace before speaking; skip speech when the
+  trimmed text is empty.

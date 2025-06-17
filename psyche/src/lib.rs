@@ -1,6 +1,8 @@
 mod and_mouth;
 pub mod ling;
+mod trim_mouth;
 pub use and_mouth::AndMouth;
+pub use trim_mouth::TrimMouth;
 
 use async_trait::async_trait;
 use ling::{Chatter, Doer, Message, Role, Vectorizer};
