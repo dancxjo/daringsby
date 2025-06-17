@@ -5,7 +5,7 @@
   <title>Pete Console</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    #log.chat-log, #trace.chat-log {
+    #log.chat-log {
       white-space: pre-wrap;
       overflow-y: auto;
     }
@@ -16,7 +16,6 @@
   <div x-data="chatApp()" x-init="init()" class="flex w-full max-w-4xl h-[80vh] bg-white rounded-xl shadow overflow-hidden">
     <aside class="w-48 p-4 bg-gray-100 space-y-2">
       <div id="status" x-text="status" class="text-xs font-semibold text-gray-500"></div>
-      <div id="log-status" x-text="logStatus" class="text-xs font-semibold text-gray-500"></div>
     </aside>
     <main class="flex flex-col flex-1 p-6 space-y-4">
       <ul id="log" x-ref="log" class="chat-log p-2 bg-gray-50 rounded flex flex-col space-y-1 flex-grow list-none">
@@ -24,11 +23,6 @@
           <li :class="msg.role" x-text="msg.text"></li>
         </template>
       </ul>
-      <div id="trace" x-ref="trace" class="chat-log p-2 bg-gray-900 text-gray-100 text-xs font-mono rounded flex flex-col space-y-1 h-40 overflow-y-auto">
-        <template x-for="(l, idx) in logs" :key="idx">
-          <div :class="l.level === 'error' ? 'text-red-400' : l.level === 'warn' ? 'text-yellow-300' : l.level === 'debug' ? 'text-gray-400' : 'text-white'" x-text="l.text"></div>
-        </template>
-      </div>
       <form class="flex gap-2 mt-auto" @submit.prevent="send">
         <label for="input" class="sr-only">Message</label>
         <input type="text" autofocus class="flex-grow border rounded px-3 py-2" placeholder="Say something..." x-model="input" />
@@ -40,15 +34,12 @@
     function chatApp() {
       return {
         ws: null,
-        logWs: null,
         status: 'WS: connecting',
-        logStatus: 'LOG: connecting',
         log: [],
-        logs: [],
         input: '',
         audioQueue: [],
         audio: null,
-        init() { this.connect(); this.connectLog(); },
+        init() { this.connect(); },
         connect() {
           if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
             return;
@@ -74,20 +65,6 @@
             }
           };
         },
-        connectLog() {
-          if (this.logWs && (this.logWs.readyState === WebSocket.OPEN || this.logWs.readyState === WebSocket.CONNECTING)) {
-            return;
-          }
-          if (this.logWs) { this.logWs.close(); }
-          this.logStatus = 'LOG: connecting';
-          this.logWs = new WebSocket('ws://localhost:3000/log');
-          this.logWs.onopen = () => this.logStatus = 'LOG: open';
-          this.logWs.onclose = () => { this.logStatus = 'LOG: closed'; setTimeout(() => this.connectLog(), 1000); };
-          this.logWs.onerror = () => this.logStatus = 'LOG: error';
-          this.logWs.onmessage = (ev) => {
-            this.appendLog(ev.data);
-          };
-        },
         playNext() {
           if (this.audio || this.audioQueue.length === 0) return;
           const { audio, text } = this.audioQueue.shift();
@@ -111,16 +88,6 @@
             if (atBottom) el.scrollTop = el.scrollHeight;
             if (role !== 'user') this.ws.send(JSON.stringify({ type: 'displayed', text }));
           });
-        },
-        appendLog(line) {
-          const el = this.$refs.trace;
-          const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
-          let level = 'info';
-          if (line.startsWith('ERROR')) level = 'error';
-          else if (line.startsWith('WARN')) level = 'warn';
-          else if (line.startsWith('DEBUG')) level = 'debug';
-          this.logs.push({ text: line, level });
-          this.$nextTick(() => { if (atBottom) el.scrollTop = el.scrollHeight; });
         },
         send() {
           if (!this.input) return;
