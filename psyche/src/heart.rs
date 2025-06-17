@@ -1,71 +1,61 @@
-use crate::{
-    Impression, Wit,
-    ling::{Chatter, Message, Role},
-};
+use crate::{Impression, Wit, ling::Doer};
 use async_trait::async_trait;
 use std::sync::Arc;
-use tokio_stream::StreamExt;
 
 /// Determine the emotional tone of text using an LLM.
 ///
-/// `Heart` sends the provided text to a [`Chatter`] with a prompt asking
+/// `Heart` sends the provided text to a [`Doer`] with a prompt asking
 /// for an emoji summarizing the emotion. The resulting emoji is wrapped
 /// in an [`Impression`].
 ///
 /// # Example
 /// ```no_run
-/// # use psyche::{Heart, ling::{Chatter, Message}, Impression, Wit};
+/// # use psyche::{Heart, ling::Doer, Impression, Wit};
 /// # use async_trait::async_trait;
 /// # struct Dummy;
 /// # #[async_trait]
-/// # impl Chatter for Dummy {
-/// #   async fn chat(&self, _s: &str, _h: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
-/// #       Ok(Box::pin(tokio_stream::once(Ok("😊".to_string()))))
+/// # impl Doer for Dummy {
+/// #   async fn follow(&self, _s: &str) -> anyhow::Result<String> {
+/// #       Ok("😊".to_string())
 /// #   }
 /// # }
 /// # #[tokio::main]
 /// # async fn main() {
 /// let heart = Heart::new(Box::new(Dummy));
-/// let imp = heart.process("Great job!".to_string()).await;
+/// let imp = heart
+///     .digest(&[Impression { headline: "".into(), details: None, raw_data: "Great job!".to_string() }])
+///     .await
+///     .unwrap();
 /// assert_eq!(imp.raw_data, "😊");
 /// # }
 /// ```
 #[derive(Clone)]
 pub struct Heart {
-    chatter: Arc<dyn Chatter>,
+    doer: Arc<dyn Doer>,
 }
 
 impl Heart {
-    /// Create a new `Heart` using the given [`Chatter`].
-    pub fn new(chatter: Box<dyn Chatter>) -> Self {
-        Self {
-            chatter: chatter.into(),
-        }
+    /// Create a new `Heart` using the given [`Doer`].
+    pub fn new(doer: Box<dyn Doer>) -> Self {
+        Self { doer: doer.into() }
     }
 }
 
 #[async_trait]
 impl Wit<String, String> for Heart {
-    async fn process(&self, input: String) -> Impression<String> {
-        let prompt = "Respond with a single emoji describing the overall emotion";
-        let history = [Message {
-            role: Role::User,
-            content: input.clone(),
-        }];
-        let mut stream = self
-            .chatter
-            .chat(prompt, &history)
-            .await
-            .unwrap_or_else(|_| Box::pin(tokio_stream::empty()));
-        let mut resp = String::new();
-        while let Some(chunk) = stream.next().await.transpose().unwrap_or_default() {
-            resp.push_str(&chunk);
-        }
+    async fn digest(&self, inputs: &[Impression<String>]) -> anyhow::Result<Impression<String>> {
+        let input = inputs
+            .last()
+            .map(|i| i.raw_data.clone())
+            .unwrap_or_default();
+        let instruction =
+            format!("Respond with a single emoji describing the overall emotion of:\n{input}");
+        let resp = self.doer.follow(&instruction).await?;
         let emoji = resp.trim().to_string();
-        Impression {
+        Ok(Impression {
             headline: emoji.clone(),
             details: None,
             raw_data: emoji,
-        }
+        })
     }
 }
