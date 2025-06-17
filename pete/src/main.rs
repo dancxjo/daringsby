@@ -7,7 +7,10 @@ use pete::{CoquiTts, TtsMouth};
 use psyche::{AndMouth, Mouth};
 use std::{
     net::SocketAddr,
-    sync::{Arc, atomic::AtomicBool},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize},
+    },
 };
 use tokio::sync::mpsc;
 use tracing::info;
@@ -39,6 +42,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut psyche = ollama_psyche(&cli.ollama_url, &cli.model)?;
     let speaking = Arc::new(AtomicBool::new(false));
+    let connections = Arc::new(AtomicUsize::new(0));
     let display = Arc::new(ChannelMouth::new(psyche.event_sender(), speaking.clone()));
     #[cfg(feature = "tts")]
     let audio = Arc::new(TtsMouth::new(
@@ -54,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "tts"))]
     let mouth = display.clone() as Arc<dyn Mouth>;
     psyche.set_mouth(mouth.clone());
+    psyche.set_connection_counter(connections.clone());
     let events = Arc::new(psyche.subscribe());
     let conversation = psyche.conversation();
     let ear = Arc::new(ChannelEar::new(
@@ -75,6 +80,7 @@ async fn main() -> anyhow::Result<()> {
         logs: Arc::new(log_tx.subscribe()),
         ear: ear.clone(),
         conversation,
+        connections,
     };
     let app = app(state);
 
