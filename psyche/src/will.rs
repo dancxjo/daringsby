@@ -1,4 +1,7 @@
-use crate::{Impression, Wit, ling::Doer};
+use crate::{
+    Impression, Wit,
+    ling::{Doer, Instruction},
+};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -11,12 +14,12 @@ use std::sync::Arc;
 ///
 /// # Example
 /// ```no_run
-/// # use psyche::{Will, ling::Doer, Impression, Wit};
+/// # use psyche::{Will, ling::{Doer, Instruction}, Impression, Wit};
 /// # use async_trait::async_trait;
 /// # struct Dummy;
 /// # #[async_trait]
 /// # impl Doer for Dummy {
-/// #   async fn follow(&self, _s: &str) -> anyhow::Result<String> {
+/// #   async fn follow(&self, _i: Instruction) -> anyhow::Result<String> {
 /// #       Ok("Speak.".to_string())
 /// #   }
 /// # }
@@ -49,9 +52,11 @@ impl Wit<String, String> for Will {
             .last()
             .map(|i| i.raw_data.clone())
             .unwrap_or_default();
-        let instruction =
-            format!("In one short sentence, what should Pete do or say next?\n{input}");
-        let resp = self.doer.follow(&instruction).await?;
+        let instruction = Instruction {
+            command: format!("In one short sentence, what should Pete do or say next?\n{input}"),
+            images: Vec::new(),
+        };
+        let resp = self.doer.follow(instruction).await?;
         let decision = resp.trim().to_string();
         Ok(Impression {
             headline: decision.clone(),

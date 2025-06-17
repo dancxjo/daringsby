@@ -1,6 +1,6 @@
 //! Providers implementing the [`Doer`], [`Chatter`], and [`Vectorizer`] traits.
 
-use crate::types::{ChatStream, Chatter, Doer, Message, Role, Vectorizer};
+use crate::types::{ChatStream, Chatter, Doer, Instruction, Message, Role, Vectorizer};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use ollama_rs::{
@@ -31,10 +31,10 @@ impl OllamaProvider {
 #[async_trait]
 impl Doer for OllamaProvider {
     /// Follow an instruction via the Ollama API.
-    async fn follow(&self, instruction: &str) -> Result<String> {
+    async fn follow(&self, instruction: Instruction) -> Result<String> {
         let req = ChatMessageRequest::new(
             self.model.clone(),
-            vec![ChatMessage::user(instruction.to_string())],
+            vec![ChatMessage::user(instruction.command)],
         );
         let res = self.client.send_chat_messages(req).await?;
         Ok(res.message.content)

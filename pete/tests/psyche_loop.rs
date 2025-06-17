@@ -102,14 +102,14 @@ async fn test_countenance_sets_emotion() {
 
 fn test_psyche(mouth: Arc<dyn Mouth>, ear: Arc<dyn Ear>) -> psyche::Psyche {
     use futures::stream;
-    use psyche::ling::{ChatStream, Chatter, Doer, Message, Vectorizer};
+    use psyche::ling::{ChatStream, Chatter, Doer, Instruction, Message, Vectorizer};
     use std::pin::Pin;
 
     struct DummyLLM;
 
     #[async_trait]
     impl Doer for DummyLLM {
-        async fn follow(&self, _instruction: &str) -> anyhow::Result<String> {
+        async fn follow(&self, _instruction: Instruction) -> anyhow::Result<String> {
             Ok("Done".into())
         }
     }

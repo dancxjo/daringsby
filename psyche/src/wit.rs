@@ -72,8 +72,11 @@ impl Default for MomentWit {
 
         #[async_trait]
         impl crate::ling::Doer for Dummy {
-            async fn follow(&self, instruction: &str) -> anyhow::Result<String> {
-                Ok(instruction.to_string())
+            async fn follow(
+                &self,
+                instruction: crate::ling::Instruction,
+            ) -> anyhow::Result<String> {
+                Ok(instruction.command)
             }
         }
 
@@ -108,7 +111,13 @@ impl Wit<Instant, Moment> for MomentWit {
         );
 
         // For now we simply echo the prompt as the model response.
-        let resp = self.doer.follow(&prompt).await?;
+        let resp = self
+            .doer
+            .follow(crate::ling::Instruction {
+                command: prompt,
+                images: Vec::new(),
+            })
+            .await?;
         let summary = resp.trim().to_string();
 
         Ok(Impression {
