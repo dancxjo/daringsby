@@ -29,3 +29,4 @@ This repository is now a Rust workspace.
 - Compose multiple `Mouth` implementations using `AndMouth` when both audio and
   textual output are required.
 - `ChannelMouth` emits `Event::IntentionToSay` for each parsed sentence.
+- `Conversation::add_*` should merge consecutive messages from the same role.

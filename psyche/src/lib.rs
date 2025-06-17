@@ -3,7 +3,7 @@ pub mod ling;
 pub use and_mouth::AndMouth;
 
 use async_trait::async_trait;
-use ling::{Chatter, Doer, Message, Vectorizer};
+use ling::{Chatter, Doer, Message, Role, Vectorizer};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, broadcast, mpsc};
@@ -66,11 +66,21 @@ pub struct Conversation {
 
 impl Conversation {
     pub fn add_user(&mut self, content: String) {
-        self.log.push(Message::user(content));
+        self.append_or_new(Role::User, content);
     }
 
     fn add_assistant(&mut self, content: String) {
-        self.log.push(Message::assistant(content));
+        self.append_or_new(Role::Assistant, content);
+    }
+
+    fn append_or_new(&mut self, role: Role, content: String) {
+        if let Some(last) = self.log.last_mut() {
+            if last.role == role {
+                last.content.push_str(&content);
+                return;
+            }
+        }
+        self.log.push(Message { role, content });
     }
 
     fn tail(&self, n: usize) -> Vec<Message> {
@@ -348,5 +358,19 @@ mod tests {
         async fn vectorize(&self, _: &str) -> anyhow::Result<Vec<f32>> {
             Ok(vec![1.0])
         }
+    }
+
+    #[test]
+    fn merges_consecutive_messages() {
+        let mut conv = Conversation::default();
+        conv.add_user("hi".into());
+        conv.add_user(" there".into());
+        assert_eq!(conv.all().len(), 1);
+        assert_eq!(conv.all()[0].content, "hi there");
+
+        conv.add_assistant("ok".into());
+        conv.add_assistant(" done".into());
+        assert_eq!(conv.all().len(), 2);
+        assert_eq!(conv.all()[1].content, "ok done");
     }
 }
