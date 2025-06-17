@@ -59,6 +59,14 @@ let mouth = std::sync::Arc::new(psyche::TrimMouth::new(mouth));
 let mouth = display.clone() as std::sync::Arc<dyn Mouth>;
 let mouth = std::sync::Arc::new(psyche::TrimMouth::new(mouth));
 psyche.set_mouth(mouth);
+#[derive(Default)]
+struct DummyFace;
+impl psyche::Countenance for DummyFace {
+    fn express(&self, _emoji: &str) {}
+}
+let face = std::sync::Arc::new(DummyFace::default());
+psyche.set_countenance(face);
+psyche.set_emotion("😊");
 // Customize or replace the default prompt if desired
 psyche.set_system_prompt("Respond with two sentences.");
 psyche.set_echo_timeout(std::time::Duration::from_secs(1));
