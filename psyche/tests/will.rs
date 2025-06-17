@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use psyche::ling::{Doer, Instruction};
-use psyche::{Impression, Will, Wit};
+use psyche::{Impression, Summarizer, Will};
 
 #[derive(Clone)]
 struct Dummy;

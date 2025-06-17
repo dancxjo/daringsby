@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use psyche::ling::{Chatter, Doer, Instruction, Message};
-use psyche::{Countenance, Ear, Event, Heart, Impression, Memory, Mouth, Will, Wit};
+use psyche::{Countenance, Ear, Event, Heart, Impression, Memory, Mouth, Summarizer, Will};
 use std::sync::Arc;
 use tokio::sync::{Mutex, broadcast};
 

@@ -17,7 +17,7 @@ pub use impression::Impression;
 pub use memory::Memory;
 pub use trim_mouth::TrimMouth;
 pub use will::Will;
-pub use wit::Wit;
+pub use wit::{Summarizer, Wit};
 
 use async_trait::async_trait;
 use ling::{Chatter, Doer, Message, Role, Vectorizer};

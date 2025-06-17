@@ -23,6 +23,7 @@ This repository is a Rust workspace.
 ## Code Practices
 
 * Prefer traits for abstraction (`Mouth`, `Ear`, `Countenance`, `Wit`).
+* Use `Summarizer` when batching impressions into higher-level summaries.
 * Document new traits with examples and unit tests.
 * Prefer `AndMouth` when composing multiple `Mouth` implementations.
 * Use `TrimMouth` to skip speaking empty/whitespace-only text.
@@ -52,7 +53,8 @@ This repository is a Rust workspace.
 
 ## Specialized Notes
 
-* `Wit` runs asynchronously and infrequently — do not block main loop.
+* `Wit` runs asynchronously and infrequently — do not block main loop. Implement
+  tick-based summarization when possible.
 * Voice should **only** generate dialogue; all decisions routed through `Will`.
 * Memory graph (Neo4j) and embedding DB (Qdrant) must stay in sync.
 * Long-lived impressions are stored as `Impression<T>` with headline, detail, and raw data.

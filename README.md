@@ -6,9 +6,11 @@ This repository contains a Rust workspace with three crates:
 - **lingproc** – helper LLM abstractions re-exported by `psyche`
 - **pete** – a binary crate depending on `psyche`
 
-The `psyche` crate also defines a `Wit` trait used to build modular
-cognitive layers. Each `Wit` asynchronously digests a batch of lower
-level impressions and produces a higher-level `Impression<T>`.
+The `psyche` crate also defines a `Summarizer` trait used to build modular
+cognitive layers. Each `Summarizer` asynchronously digests a batch of lower
+level impressions and produces a higher-level `Impression<T>`. A lightweight
+`Wit` trait is available for incrementally observing inputs and emitting
+periodic impressions.
 
 `Psyche` starts with a prompt asking the LLM to respond in one or two sentences at most. You can override it with `set_system_prompt`.
 

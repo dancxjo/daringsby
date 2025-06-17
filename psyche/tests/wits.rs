@@ -1,5 +1,5 @@
 use psyche::wit::{Instant, MomentWit};
-use psyche::{Impression, Wit};
+use psyche::{Impression, Summarizer};
 
 #[tokio::test]
 async fn synthesizes_moment_from_instants() {
