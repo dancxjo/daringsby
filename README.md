@@ -53,8 +53,11 @@ let tts = std::sync::Arc::new(pete::TtsMouth::new(
 ));
 #[cfg(feature = "tts")]
 let mouth = std::sync::Arc::new(psyche::AndMouth::new(vec![display.clone(), tts]));
+#[cfg(feature = "tts")]
+let mouth = std::sync::Arc::new(psyche::TrimMouth::new(mouth));
 #[cfg(not(feature = "tts"))]
 let mouth = display.clone() as std::sync::Arc<dyn Mouth>;
+let mouth = std::sync::Arc::new(psyche::TrimMouth::new(mouth));
 psyche.set_mouth(mouth);
 // Customize or replace the default prompt if desired
 psyche.set_system_prompt("Respond with two sentences.");
