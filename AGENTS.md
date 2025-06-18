@@ -85,5 +85,6 @@ This repository is a Rust workspace.
 * Ensure that `Wit<Instant>` is fed only when it has sufficient `Sensation` inputs — fail early otherwise.
 * Be mindful of the single-CPU assumption — prefer concurrency without heavy parallelism.
 * When skipping speech for empty responses, increment the turn counter so the conversation loop can exit.
+* Log Coqui TTS request URLs with `info!(%url, "requesting TTS")` to ease debugging misconfigured endpoints.
 
 This document reflects the current cognitive and runtime architecture of Pete Daringsby. Keep it consistent with the latest design discussions and behavior changes.

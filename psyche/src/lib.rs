@@ -377,18 +377,15 @@ impl Psyche {
                     }
                 }
                 let trimmed = resp.trim();
-                info!("assistant intends to say: {}", trimmed);
-                if !trimmed.is_empty() {
-                    let _ = self
-                        .events_tx
-                        .send(Event::IntentionToSay(trimmed.to_string()));
-                }
                 if trimmed.is_empty() {
-                    warn!("Skipping speech of empty response.");
                     self.pending_user_message = !self.speak_when_spoken_to;
                     turns += 1;
                     continue;
                 }
+                info!("assistant intends to say: {}", trimmed);
+                let _ = self
+                    .events_tx
+                    .send(Event::IntentionToSay(trimmed.to_string()));
                 self.is_speaking = true;
                 self.countenance.express(&self.emotion);
                 debug!("Calling mouth.speak with: '{}'", resp);

@@ -9,7 +9,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use tokio::sync::broadcast;
-use tracing::error;
+use tracing::{error, info};
 
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
@@ -68,6 +68,7 @@ impl Tts for CoquiTts {
                 qp.append_pair("language_id", l);
             }
         }
+        info!(%url, "requesting TTS");
         let resp = self.client.get(url).send().await?;
         let stream = resp
             .bytes_stream()
