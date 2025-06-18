@@ -1,4 +1,5 @@
 use clap::Parser;
+use pete::EyeSensor;
 use pete::{
     AppState, ChannelCountenance, ChannelEar, ChannelMouth, app, init_logging, listen_user_input,
     ollama_psyche,
@@ -70,6 +71,7 @@ async fn main() -> anyhow::Result<()> {
         conversation.clone(),
         speaking.clone(),
     ));
+    let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
     let (user_tx, user_rx) = mpsc::unbounded_channel();
 
     tokio::spawn(listen_user_input(user_rx, ear.clone()));
@@ -83,6 +85,7 @@ async fn main() -> anyhow::Result<()> {
         events: events.clone(),
         logs: Arc::new(log_tx.subscribe()),
         ear: ear.clone(),
+        eye: eye.clone(),
         conversation,
         connections,
     };

@@ -18,6 +18,7 @@
       <div id="status" x-text="status" class="text-xs font-semibold text-gray-500"></div>
       <div id="face" x-text="emotion" class="text-4xl"></div>
       <audio controls x-ref="player" class="w-full"></audio>
+      <video x-ref="video" autoplay class="w-full max-h-40"></video>
     </aside>
     <main class="flex flex-col flex-1 p-6 space-y-4">
       <ul id="log" x-ref="log" class="chat-log p-2 bg-gray-50 rounded flex flex-col space-y-1 flex-grow list-none">
@@ -29,6 +30,7 @@
         <label for="input" class="sr-only">Message</label>
         <input type="text" autofocus class="flex-grow border rounded px-3 py-2" placeholder="Say something..." x-model="input" />
         <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Send</button>
+        <button type="button" @click.prevent="capture" class="px-3 py-2 bg-gray-300 rounded">Snap</button>
       </form>
     </main>
   </div>
@@ -43,7 +45,12 @@
         emotion: '😐',
         audioQueue: [],
         audio: null,
-        init() { this.connect(); },
+        init() { this.connect(); this.initCamera(); },
+        initCamera() {
+          navigator.mediaDevices.getUserMedia({ video: true }).then(s => {
+            this.$refs.video.srcObject = s;
+          }).catch(() => {});
+        },
         connect() {
           if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
             return;
@@ -117,6 +124,15 @@
           this.append('user', this.input);
           this.ws.send(JSON.stringify({ type: 'user', message: this.input }));
           this.input = '';
+        },
+        capture() {
+          const v = this.$refs.video;
+          const c = document.createElement('canvas');
+          c.width = v.videoWidth;
+          c.height = v.videoHeight;
+          c.getContext('2d').drawImage(v, 0, 0);
+          const base64 = c.toDataURL('image/png').split(',')[1];
+          this.ws.send(JSON.stringify({ type: 'image', mime: 'image/png', base64 }));
         }
       }
     }

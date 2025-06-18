@@ -7,6 +7,7 @@ mod face;
 mod logging;
 mod mouth;
 mod psyche_factory;
+mod sensor;
 #[cfg(feature = "tts")]
 mod tts_mouth;
 mod web;
@@ -16,6 +17,7 @@ pub use face::{ChannelCountenance, NoopFace};
 pub use logging::init_logging;
 pub use mouth::{ChannelMouth, NoopMouth};
 pub use psyche_factory::{dummy_psyche, ollama_psyche};
+pub use sensor::eye::EyeSensor;
 #[cfg(feature = "tts")]
 pub use tts_mouth::{CoquiTts, Tts, TtsMouth};
 pub use web::{
