@@ -16,7 +16,9 @@ const SCRIPT: &str = r#"function chatApp() {
     initCamera() {
       navigator.mediaDevices.getUserMedia({ video: true }).then(s => {
         this.stream = s;
-        this.$refs.video.srcObject = s;
+        const v = this.$refs.video;
+        v.srcObject = s;
+        v.play();
       }).catch(() => {});
     },
     connect() {
@@ -117,7 +119,7 @@ fn main() {
         div { "x-data": "chatApp()", "x-init": "init()", class: "columns is-gapless is-fullheight",
             aside { class: "column is-one-quarter p-4 has-background-grey-light",
                 div { id: "status", "x-text": "status", class: "has-text-weight-bold is-size-7" }
-                video { autoplay: true, "x-ref": "video", class: "w-full" }
+                video { autoplay: true, playsinline: true, "x-ref": "video", class: "w-full max-h-40" }
             }
             main { class: "column is-flex is-flex-direction-column p-4",
                 ul { id: "log", "x-ref": "log", class: "box is-flex is-flex-direction-column space-y-1 is-flex-grow-1 list-style-none",
