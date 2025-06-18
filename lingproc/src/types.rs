@@ -139,6 +139,11 @@ pub trait Chatter: Send + Sync {
     ///
     /// Returns a stream of response chunks from the language model.
     async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<ChatStream>;
+
+    /// Update additional context for future prompts.
+    ///
+    /// Default implementation does nothing so callers may ignore this.
+    async fn update_prompt_context(&self, _context: &str) {}
 }
 
 /// Trait for generating semantic vector embeddings from text.

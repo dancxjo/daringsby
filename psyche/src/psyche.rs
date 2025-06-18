@@ -66,7 +66,7 @@ impl Conversation {
 /// `Psyche` drives interactions with language models and orchestrates IO via the [`Mouth`] and [`Ear`] traits. Instantiate it and call [`Psyche::run`] to start the loop.
 pub struct Psyche {
     narrator: Box<dyn Doer>,
-    voice: Box<dyn Chatter>,
+    voice: Arc<dyn Chatter>,
     vectorizer: Box<dyn Vectorizer>,
     memory: Arc<dyn Memory>,
     mouth: Arc<dyn Mouth>,
@@ -105,7 +105,7 @@ impl Psyche {
         let (input_tx, input_rx) = mpsc::unbounded_channel();
         Self {
             narrator,
-            voice,
+            voice: Arc::from(voice),
             vectorizer,
             memory,
             mouth,
@@ -358,6 +358,7 @@ impl Psyche {
         memory: Arc<dyn Memory>,
         wits: Vec<Arc<dyn ErasedWit + Send + Sync>>,
         context: Arc<Mutex<String>>,
+        voice: Arc<dyn Chatter>,
     ) {
         loop {
             for wit in &wits {
@@ -367,8 +368,12 @@ impl Psyche {
                     if let Err(e) = memory.store_serializable(&impression).await {
                         error!(?e, "memory store failed");
                     }
-                    let mut ctx = context.lock().await;
-                    *ctx = impression.headline.clone();
+                    let headline = impression.headline.clone();
+                    {
+                        let mut ctx = context.lock().await;
+                        *ctx = headline.clone();
+                    }
+                    voice.update_prompt_context(&headline).await;
                 }
             }
             tokio::time::sleep(EXPERIENCE_TICK).await;
@@ -381,7 +386,8 @@ impl Psyche {
         let wits = self.wits.clone();
         let mem = self.memory.clone();
         let ctx = self.prompt_context.clone();
-        let experience_handle = tokio::spawn(Self::experience(mem, wits, ctx));
+        let voice = self.voice.clone();
+        let experience_handle = tokio::spawn(Self::experience(mem, wits, ctx, voice));
         let converse_handle = tokio::spawn(self.converse());
         let psyche = converse_handle.await.expect("converse task panicked");
         experience_handle.abort();
