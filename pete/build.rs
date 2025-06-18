@@ -10,7 +10,7 @@ const SCRIPT: &str = r#"function chatApp() {
       log: [],
       input: '',
     audioQueue: [],
-    audio: null,
+    playing: false,
     init() { this.connect(); this.initCamera(); },
     initCamera() {
       navigator.mediaDevices.getUserMedia({ video: true }).then(s => {
@@ -43,27 +43,38 @@ const SCRIPT: &str = r#"function chatApp() {
       };
     },
     playNext() {
-      if (this.audio || this.audioQueue.length === 0) return;
+      if (this.playing || this.audioQueue.length === 0) return;
       const { audio, text } = this.audioQueue.shift();
-      this.audio = new Audio('data:audio/wav;base64,' + audio);
-      this.audio.onended = () => {
-        this.audio = null;
+      const player = this.$refs.player;
+      let mime = 'audio/wav';
+      const tryPlay = () => {
+        player.src = `data:${mime};base64,${audio}`;
+        const attempt = player.play();
+        if (attempt !== undefined) {
+          attempt.catch(err => {
+            if (err.name === 'NotSupportedError' && mime === 'audio/wav') {
+              mime = 'audio/mpeg';
+              tryPlay();
+            } else if (err.name === 'NotAllowedError') {
+              const resume = () => {
+                document.removeEventListener('click', resume);
+                tryPlay();
+              };
+              document.addEventListener('click', resume);
+            } else {
+              console.error('Audio playback failed:', err);
+            }
+          });
+        }
+      };
+      player.onended = () => {
+        this.playing = false;
         this.ws.send(JSON.stringify({ type: 'played', text }));
         console.log('sent played ack:', text);
         this.playNext();
       };
-      const p = this.audio.play();
-      if (p !== undefined) {
-        p.catch(err => {
-          if (err.name === 'NotAllowedError') {
-            const resume = () => {
-              document.removeEventListener('click', resume);
-              this.audio.play();
-            };
-            document.addEventListener('click', resume);
-          }
-        });
-      }
+      this.playing = true;
+      tryPlay();
     },
     append(role, text) {
       const el = this.$refs.log;
