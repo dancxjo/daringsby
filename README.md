@@ -89,6 +89,9 @@ let decision = will
     .digest(&[psyche::Impression { headline: "".into(), details: None, raw_data: "say hi".to_string() }])
     .await?;
 assert_eq!(decision.headline, "Speak.");
+// Build a custom instruction with the prompt generator
+let custom = psyche::WillPrompt::default().build("say hi");
+assert!(custom.contains("Pete"));
 // Customize or replace the default prompt if desired
 psyche.set_system_prompt("Respond with two sentences.");
 psyche.set_echo_timeout(std::time::Duration::from_secs(1));

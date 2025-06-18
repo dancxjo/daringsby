@@ -141,3 +141,34 @@ fn test_psyche(mouth: Arc<dyn Mouth>, ear: Arc<dyn Ear>) -> psyche::Psyche {
         ear,
     )
 }
+
+#[tokio::test]
+async fn roundtrip_speech() {
+    let spoken = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+    let mouth = Arc::new(TestMouth {
+        spoken: spoken.clone(),
+    });
+    let mut psyche = test_psyche(
+        mouth.clone(),
+        Arc::new(TestEar {
+            heard_self: Default::default(),
+            heard_user: Default::default(),
+        }),
+    );
+    psyche.set_speak_when_spoken_to(true);
+    let input = psyche.input_sender();
+    let events = psyche.subscribe();
+    let handle = tokio::spawn(async move { psyche.run().await });
+    input
+        .send(Sensation::HeardUserVoice("hello".into()))
+        .unwrap();
+    let mut events = events;
+    while let Ok(evt) = events.recv().await {
+        if let psyche::Event::IntentionToSay(msg) = evt {
+            input.send(Sensation::HeardOwnVoice(msg)).unwrap();
+            break;
+        }
+    }
+    handle.await.unwrap();
+    assert!(!spoken.lock().await.is_empty());
+}
