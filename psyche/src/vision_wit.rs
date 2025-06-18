@@ -24,7 +24,7 @@ impl VisionWit {
 }
 
 #[async_trait]
-impl Wit<ImageData> for VisionWit {
+impl Wit<ImageData, ImageData> for VisionWit {
     async fn observe(&self, input: ImageData) {
         self.buffer.lock().unwrap().push(input);
     }

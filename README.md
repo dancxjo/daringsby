@@ -9,8 +9,9 @@ This repository contains a Rust workspace with three crates:
 The `psyche` crate also defines a `Summarizer` trait used to build modular
 cognitive layers. Each `Summarizer` asynchronously digests a batch of lower
 level impressions and produces a higher-level `Impression<T>`. A lightweight
-`Wit` trait is available for incrementally observing inputs and emitting
-periodic impressions.
+`Wit<I, O>` trait is available for incrementally observing inputs and emitting
+periodic impressions of type `O`. The `Prehension` helper buffers incoming
+impressions and summarizes them using a `Summarizer`.
 
 `Psyche` starts with a prompt asking the LLM to respond in one or two sentences at most. You can override it with `set_system_prompt`.
 
