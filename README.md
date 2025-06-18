@@ -14,6 +14,7 @@ periodic impressions of type `O`. The `Prehension` helper buffers incoming
 impressions and summarizes them using a `Summarizer`.
 
 `Psyche` starts with a prompt asking the LLM to respond in one or two sentences at most. You can override it with `set_system_prompt`.
+Pete's mouth streams audio one sentence at a time so long replies don't block.
 
 Example with the `OllamaProvider`:
 
