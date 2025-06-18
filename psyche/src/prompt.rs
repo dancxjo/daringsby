@@ -39,3 +39,13 @@ impl PromptBuilder for HeartPrompt {
         format!("Respond with a single emoji describing the overall emotion of:\n{input}")
     }
 }
+
+/// Prompt builder for the `Combobulator` subagent.
+#[derive(Clone, Default)]
+pub struct CombobulatorPrompt;
+
+impl PromptBuilder for CombobulatorPrompt {
+    fn build(&self, input: &str) -> String {
+        format!("Summarize Pete's current awareness in one sentence:\n{input}")
+    }
+}
