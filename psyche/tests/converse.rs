@@ -494,3 +494,64 @@ async fn no_intention_event_for_empty_response() {
     assert_eq!(mouth_count.load(Ordering::SeqCst), 0);
     assert!(!psyche.speaking());
 }
+
+#[tokio::test]
+async fn voice_response_is_echoed() {
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone)]
+    struct EchoVoice;
+
+    #[async_trait]
+    impl Chatter for EchoVoice {
+        async fn chat(
+            &self,
+            system_prompt: &str,
+            _: &[Message],
+        ) -> anyhow::Result<psyche::ling::ChatStream> {
+            assert!(system_prompt.contains("You are PETE"));
+            Ok(Box::pin(tokio_stream::once(Ok("hi 🙂".to_string()))))
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingEar(Arc<Mutex<Vec<String>>>);
+
+    #[async_trait]
+    impl Ear for RecordingEar {
+        async fn hear_self_say(&self, t: &str) {
+            self.0.lock().unwrap().push(t.to_string());
+        }
+        async fn hear_user_say(&self, _t: &str) {}
+    }
+
+    let mouth = std::sync::Arc::new(Dummy::default());
+    let ear = std::sync::Arc::new(RecordingEar::default());
+    let mut psyche = Psyche::new(
+        Box::new(Dummy::default()),
+        Box::new(EchoVoice),
+        Box::new(Dummy::default()),
+        std::sync::Arc::new(psyche::NoopMemory),
+        mouth.clone(),
+        ear.clone(),
+    );
+    psyche.set_turn_limit(1);
+
+    let mut events = psyche.subscribe();
+    let input = psyche.input_sender();
+
+    let handle = tokio::spawn(async move { psyche.run().await });
+
+    while let Ok(evt) = events.recv().await {
+        if let Event::IntentionToSay(msg) = evt {
+            assert_eq!(msg, "hi 🙂");
+            input.send(Sensation::HeardOwnVoice(msg)).unwrap();
+            break;
+        }
+    }
+
+    let psyche = handle.await.unwrap();
+    let heard = ear.0.lock().unwrap().clone();
+    assert_eq!(heard, vec!["hi 🙂"]);
+    assert!(!psyche.speaking());
+}
