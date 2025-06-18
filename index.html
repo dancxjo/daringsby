@@ -71,6 +71,7 @@
         audioQueue: [],
         playing: false,
         stream: null,
+        captureInterval: null,
         init() { this.connect(); this.connectDebug(); this.initCamera(); },
         initCamera() {
           navigator.mediaDevices.getUserMedia({ video: true }).then(s => {
@@ -78,6 +79,7 @@
             const v = this.$refs.video;
             v.srcObject = s;
             v.play();
+            this.startCaptureLoop();
           }).catch(() => {});
         },
         connect() {
@@ -183,6 +185,10 @@
           this.append('user', this.input);
           this.ws.send(JSON.stringify({ type: 'user', message: this.input }));
           this.input = '';
+        },
+        startCaptureLoop() {
+          if (this.captureInterval) return;
+          this.captureInterval = setInterval(() => this.capture(), 2000);
         },
         capture() {
           const v = this.$refs.video;
