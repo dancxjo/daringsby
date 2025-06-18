@@ -64,6 +64,8 @@ impl Chatter for OllamaProvider {
             });
         Ok(Box::pin(stream))
     }
+
+    async fn update_prompt_context(&self, _context: &str) {}
 }
 
 #[async_trait]
