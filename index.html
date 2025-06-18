@@ -68,6 +68,7 @@
         thoughts: [],
         input: '',
         lastText: '',
+        pendingText: '',
         emotion: '😐',
         audioQueue: [],
         playing: false,
@@ -77,9 +78,11 @@
         initCamera() {
           navigator.mediaDevices.getUserMedia({ video: true }).then(s => {
             this.stream = s;
+            this.stream.oninactive = () => this.initCamera();
             const v = this.$refs.video;
             v.srcObject = s;
             v.play().catch(() => {});
+            v.onerror = () => this.initCamera();
             this.startCaptureLoop();
           }).catch(() => {});
         },
@@ -99,10 +102,16 @@
               if (data.kind === 'pete-emotion') {
                 this.emotion = data.text;
               } else if (data.text) {
-                this.lastText = data.text;
+                this.pendingText += data.text;
                 this.append('system', data.text);
               }
               if (data.audio) {
+                if (this.pendingText) {
+                  this.ws.send(JSON.stringify({ type: 'displayed', text: this.pendingText }));
+                  console.log('sent displayed ack:', this.pendingText);
+                  this.lastText = this.pendingText;
+                  this.pendingText = '';
+                }
                 this.audioQueue.push({ audio: data.audio, text: this.lastText });
                 console.log('queued audio', this.audioQueue.length);
                 this.playNext();
@@ -152,9 +161,18 @@
                   document.addEventListener('click', resume);
                 } else {
                   console.error('Audio playback failed:', err);
+                  this.playing = false;
+                  this.ws.send(JSON.stringify({ type: 'played', text }));
+                  this.playNext();
                 }
               });
             }
+          };
+          player.onerror = () => {
+            this.playing = false;
+            this.ws.send(JSON.stringify({ type: 'played', text }));
+            console.error('Audio element error');
+            this.playNext();
           };
           player.onended = () => {
             this.playing = false;
@@ -175,10 +193,6 @@
           }
           this.$nextTick(() => {
             if (atBottom) el.scrollTop = el.scrollHeight;
-            if (role !== 'user') {
-              this.ws.send(JSON.stringify({ type: 'displayed', text }));
-              console.log('sent displayed ack:', text);
-            }
           });
         },
         send() {
