@@ -56,6 +56,12 @@ impl AndMouth {
 #[async_trait]
 impl Mouth for AndMouth {
     async fn speak(&self, text: &str) {
+        tracing::debug!(
+            targets = "and_mouth",
+            text,
+            mouths = self.mouths.len(),
+            "broadcasting speech"
+        );
         self.for_each_async(|m| Box::pin(m.speak(text))).await;
     }
 

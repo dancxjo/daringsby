@@ -94,6 +94,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                     }
                     Ok(Event::IntentionToSay(text)) => {
                         let payload = serde_json::to_string(&WsResponse { kind: "pete-says", text: Some(text.clone()), audio: None }).unwrap();
+                        debug!("ws dispatch say: {}", text);
                         if socket.send(WsMessage::Text(payload.into())).await.is_err() {
                             error!("failed sending intention");
                             break;
@@ -101,6 +102,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                     }
                     Ok(Event::SpeechAudio(data)) => {
                         let payload = serde_json::to_string(&WsResponse { kind: "pete-audio", text: None, audio: Some(data) }).unwrap();
+                        debug!("ws dispatch audio chunk");
                         if socket.send(WsMessage::Text(payload.into())).await.is_err() {
                             error!("failed sending audio");
                             break;

@@ -21,6 +21,7 @@ dioxus = { version = "0.4.3", default-features = false, features = ["html", "mac
 dioxus-ssr = "0.4.3"
 reqwest = { version = "0.11", features = ["stream"] }
 base64 = { version = "0.21" }
+futures = "0.3"
 
 [features]
 default = []
@@ -33,3 +34,4 @@ dioxus-ssr = "0.4.3"
 [dev-dependencies]
 assert_cmd = "2"
 futures = "0.3"
+tokio-tungstenite = "0.27"
