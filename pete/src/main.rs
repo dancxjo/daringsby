@@ -32,6 +32,12 @@ struct Cli {
     /// URL of the Coqui TTS server
     #[arg(long, default_value = "http://localhost:5002/api/tts")]
     tts_url: String,
+    /// Optional speaker ID for the TTS voice
+    #[arg(long)]
+    tts_speaker_id: Option<String>,
+    /// Optional language ID for the TTS voice
+    #[arg(long)]
+    tts_language_id: Option<String>,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -51,7 +57,11 @@ async fn main() -> anyhow::Result<()> {
     let audio = Arc::new(TtsMouth::new(
         psyche.event_sender(),
         speaking.clone(),
-        Arc::new(CoquiTts::new(cli.tts_url)),
+        Arc::new(CoquiTts::new(
+            cli.tts_url,
+            cli.tts_speaker_id,
+            cli.tts_language_id,
+        )),
     ));
     #[cfg(feature = "tts")]
     let mouth = Arc::new(AndMouth::new(vec![

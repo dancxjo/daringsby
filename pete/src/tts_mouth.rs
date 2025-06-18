@@ -13,7 +13,7 @@ use tracing::error;
 
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
-use reqwest::Client;
+use reqwest::{Client, Url};
 
 /// Stream of raw WAV data chunks.
 pub type TtsStream = Pin<Box<dyn Stream<Item = Result<Vec<u8>>> + Send>>;
@@ -30,14 +30,25 @@ pub trait Tts: Send + Sync {
 pub struct CoquiTts {
     url: String,
     client: Client,
+    speaker_id: Option<String>,
+    language_id: Option<String>,
 }
 
 impl CoquiTts {
     /// Create a new client targeting `url` (e.g. `http://localhost:5002/api/tts`).
-    pub fn new(url: impl Into<String>) -> Self {
+    ///
+    /// Optional `speaker_id` and `language_id` parameters allow selecting a
+    /// specific voice and language on the TTS server.
+    pub fn new(
+        url: impl Into<String>,
+        speaker_id: Option<String>,
+        language_id: Option<String>,
+    ) -> Self {
         Self {
             url: url.into(),
             client: Client::new(),
+            speaker_id,
+            language_id,
         }
     }
 }
@@ -45,12 +56,19 @@ impl CoquiTts {
 #[async_trait]
 impl Tts for CoquiTts {
     async fn stream_wav(&self, text: &str) -> Result<TtsStream> {
-        let resp = self
-            .client
-            .get(&self.url)
-            .query(&[("text", text)])
-            .send()
-            .await?;
+        let mut url = Url::parse(&self.url)?;
+        {
+            let mut qp = url.query_pairs_mut();
+            qp.append_pair("text", text);
+            qp.append_pair("style_wav", "");
+            if let Some(ref s) = self.speaker_id {
+                qp.append_pair("speaker_id", s);
+            }
+            if let Some(ref l) = self.language_id {
+                qp.append_pair("language_id", l);
+            }
+        }
+        let resp = self.client.get(url).send().await?;
         let stream = resp
             .bytes_stream()
             .map(|b| b.map(|bytes| bytes.to_vec()).map_err(|e| e.into()));

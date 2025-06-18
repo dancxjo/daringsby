@@ -64,7 +64,11 @@ let display = std::sync::Arc::new(pete::ChannelMouth::new(psyche.event_sender(),
 let tts = std::sync::Arc::new(pete::TtsMouth::new(
     psyche.event_sender(),
     speaking.clone(),
-    std::sync::Arc::new(pete::CoquiTts::new("http://localhost:5002/api/tts")),
+    std::sync::Arc::new(pete::CoquiTts::new(
+        "http://localhost:5002/api/tts",
+        Some("p376".into()),
+        None,
+    )),
 ));
 #[cfg(feature = "tts")]
 let mouth = std::sync::Arc::new(psyche::AndMouth::new(vec![display.clone(), tts]));
@@ -114,13 +118,13 @@ Run the web server with the built-in Ollama support:
 cargo run -p pete -- --ollama-url http://localhost:11434 --model mistral
 
 To enable audio output via Coqui TTS, build with the optional `tts` feature and
-provide the TTS server URL:
+provide the TTS server URL and optional voice parameters:
 
 ```sh
 cargo run -p pete --features tts -- \
   --ollama-url http://localhost:11434 --model mistral \
-  --tts-url http://localhost:5002/api/tts
-```
+  --tts-url http://localhost:5002/api/tts \
+  --tts-speaker-id p376
 ```
 ## Web Interface
 
