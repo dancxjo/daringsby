@@ -15,7 +15,7 @@ use std::sync::{
 use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, error, info};
 
-use psyche::{Ear, Event, ling::Role};
+use psyche::{Ear, Event, ImageData, Sensor, ling::Role};
 
 /// State shared across HTTP handlers and WebSocket tasks.
 #[derive(Clone)]
@@ -24,6 +24,7 @@ pub struct AppState {
     pub events: Arc<broadcast::Receiver<Event>>,
     pub logs: Arc<broadcast::Receiver<String>>,
     pub ear: Arc<dyn Ear>,
+    pub eye: Arc<dyn Sensor<ImageData>>,
     pub conversation: Arc<tokio::sync::Mutex<psyche::Conversation>>,
     pub connections: Arc<AtomicUsize>,
 }
@@ -41,6 +42,8 @@ pub enum WsRequest {
     Displayed { text: String },
     /// Confirmation that audio for the line was played.
     Played { text: String },
+    /// A base64-encoded image snapshot.
+    Image { mime: String, base64: String },
 }
 
 #[derive(Serialize)]
@@ -130,6 +133,13 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                                 WsRequest::Played { text } => {
                                     debug!("played ack: {}", text);
                                     state.ear.hear_self_say(&text).await;
+                                }
+                                WsRequest::Image { mime, base64 } => {
+                                    debug!("image received");
+                                    state
+                                        .eye
+                                        .sense(ImageData { mime, base64 })
+                                        .await;
                                 }
                             }
                         }

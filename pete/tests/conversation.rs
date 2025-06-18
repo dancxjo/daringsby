@@ -1,5 +1,5 @@
 use axum::{body, extract::State, response::IntoResponse};
-use pete::{AppState, ChannelEar, conversation_log, dummy_psyche};
+use pete::{AppState, ChannelEar, EyeSensor, conversation_log, dummy_psyche};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize},
@@ -19,11 +19,13 @@ async fn returns_log_json() {
     let (event_tx, _) = broadcast::channel(8);
     let (log_tx, _) = broadcast::channel(8);
     let (user_tx, _user_rx) = mpsc::unbounded_channel();
+    let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
     let state = AppState {
         user_input: user_tx,
         events: Arc::new(event_tx.subscribe()),
         logs: Arc::new(log_tx.subscribe()),
         ear,
+        eye,
         conversation,
         connections: Arc::new(AtomicUsize::new(1)),
     };

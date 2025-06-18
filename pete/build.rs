@@ -11,7 +11,12 @@ const SCRIPT: &str = r#"function chatApp() {
       input: '',
     audioQueue: [],
     audio: null,
-    init() { this.connect(); },
+    init() { this.connect(); this.initCamera(); },
+    initCamera() {
+      navigator.mediaDevices.getUserMedia({ video: true }).then(s => {
+        this.$refs.video.srcObject = s;
+      }).catch(() => {});
+    },
     connect() {
       if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
         return;
@@ -81,6 +86,15 @@ const SCRIPT: &str = r#"function chatApp() {
       this.append('user', this.input);
       this.ws.send(JSON.stringify({ type: 'user', message: this.input }));
       this.input = '';
+    },
+    capture() {
+      const v = this.$refs.video;
+      const c = document.createElement('canvas');
+      c.width = v.videoWidth;
+      c.height = v.videoHeight;
+      c.getContext('2d').drawImage(v, 0, 0);
+      const base64 = c.toDataURL('image/png').split(',')[1];
+      this.ws.send(JSON.stringify({ type: 'image', mime: 'image/png', base64 }));
     }
   }
 }"#;
@@ -90,6 +104,7 @@ fn main() {
         div { "x-data": "chatApp()", "x-init": "init()", class: "columns is-gapless is-fullheight",
             aside { class: "column is-one-quarter p-4 has-background-grey-light",
                 div { id: "status", "x-text": "status", class: "has-text-weight-bold is-size-7" }
+                video { autoplay: true, "x-ref": "video", class: "w-full" }
             }
             main { class: "column is-flex is-flex-direction-column p-4",
                 ul { id: "log", "x-ref": "log", class: "box is-flex is-flex-direction-column space-y-1 is-flex-grow-1 list-style-none",
@@ -108,6 +123,9 @@ fn main() {
                     }
                     div { class: "control",
                         sl-button { r#type: "submit", variant: "primary", "@click.prevent": "send", "Send" }
+                    }
+                    div { class: "control",
+                        sl-button { r#type: "button", variant: "default", "@click.prevent": "capture", "Snap" }
                     }
                 }
             }
