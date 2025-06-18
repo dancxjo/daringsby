@@ -77,8 +77,9 @@ let mouth = std::sync::Arc::new(psyche::TrimMouth::new(mouth));
 #[cfg(not(feature = "tts"))]
 let mouth = display.clone() as std::sync::Arc<dyn Mouth>;
 let mouth = std::sync::Arc::new(psyche::TrimMouth::new(mouth));
-psyche.set_mouth(mouth);
 let face = std::sync::Arc::new(pete::ChannelCountenance::new(psyche.event_sender()));
+let mouth = std::sync::Arc::new(psyche::EmojiMouth::new(mouth, face.clone()));
+psyche.set_mouth(mouth);
 psyche.set_countenance(face);
 psyche.set_emotion("😊");
 // Determine emotion from text using the Heart

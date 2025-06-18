@@ -3,6 +3,7 @@
 //! The `psyche` crate coordinates conversation with language models. It exposes the [`Psyche`] struct along with traits and helpers for building mouth, ear, countenance, and wit components.
 mod and_mouth;
 mod countenance;
+mod emoji_mouth;
 mod heart;
 mod impression;
 pub mod ling;
@@ -16,6 +17,7 @@ mod will;
 pub mod wit;
 pub use and_mouth::AndMouth;
 pub use countenance::{Countenance, NoopCountenance};
+pub use emoji_mouth::EmojiMouth;
 pub use heart::Heart;
 pub use impression::Impression;
 pub use memory::{BasicMemory, GraphStore, Memory, Neo4jClient, NoopMemory, QdrantClient};
