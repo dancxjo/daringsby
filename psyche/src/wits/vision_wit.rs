@@ -1,7 +1,7 @@
 use crate::ImageData;
 use crate::Impression;
 use crate::ling::{Doer, Instruction};
-use crate::wit::Wit;
+use crate::traits::wit::Wit;
 use async_trait::async_trait;
 use lingproc::ImageData as LImageData;
 use std::sync::{Arc, Mutex};

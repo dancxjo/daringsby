@@ -1,6 +1,6 @@
 use crate::{
     Impression,
-    wit::{Summarizer, Wit},
+    traits::wit::{Summarizer, Wit},
 };
 use async_trait::async_trait;
 use std::marker::PhantomData;
