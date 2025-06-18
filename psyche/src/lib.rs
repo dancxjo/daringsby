@@ -1,13 +1,37 @@
 //! Core cognitive engine powering Pete.
-//!
-//! The `psyche` crate coordinates conversation with language models. It exposes the [`Psyche`] struct along with traits and helpers for building mouth, ear, countenance, and wit components.
+
+pub mod psyche;
+pub mod sensation;
+
+pub mod traits {
+    pub mod countenance;
+    pub mod ear;
+    pub mod mouth;
+    pub mod wit;
+
+    pub use countenance::{Countenance, NoopCountenance};
+    pub use ear::Ear;
+    pub use mouth::Mouth;
+    pub use wit::{ErasedWit, Summarizer, Wit, WitAdapter};
+}
+
+pub mod wit;
+pub mod wits {
+    pub mod heart;
+    pub mod memory;
+    pub mod vision_wit;
+    pub mod will;
+
+    pub use heart::Heart;
+    pub use memory::{BasicMemory, GraphStore, Memory, Neo4jClient, NoopMemory, QdrantClient};
+    pub use vision_wit::VisionWit;
+    pub use will::Will;
+}
+
 mod and_mouth;
-mod countenance;
 mod emoji_mouth;
-mod heart;
 mod impression;
 pub mod ling;
-mod memory;
 mod motor;
 mod plain_mouth;
 mod prehension;
@@ -15,546 +39,24 @@ mod prompt;
 mod sensor;
 mod trim_mouth;
 mod types;
-mod vision_wit;
-mod will;
-pub mod wit;
+
 pub use and_mouth::AndMouth;
-pub use countenance::{Countenance, NoopCountenance};
 pub use emoji_mouth::EmojiMouth;
-pub use heart::Heart;
 pub use impression::Impression;
-pub use memory::{BasicMemory, GraphStore, Memory, Neo4jClient, NoopMemory, QdrantClient};
 pub use motor::{Motor, NoopMotor};
 pub use plain_mouth::PlainMouth;
 pub use prehension::Prehension;
 pub use prompt::{HeartPrompt, PromptBuilder, VoicePrompt, WillPrompt};
+pub use psyche::DEFAULT_SYSTEM_PROMPT;
 pub use sensor::Sensor;
 pub use trim_mouth::TrimMouth;
 pub use types::ImageData;
-pub use vision_wit::VisionWit;
-pub use will::Will;
-pub use wit::{Summarizer, Wit};
 
-use crate::wit::{ErasedWit, WitAdapter};
-use async_trait::async_trait;
-use ling::{Chatter, Doer, Message, Role, Vectorizer};
-use serde::Serialize;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
-use tokio::sync::{Mutex, broadcast, mpsc};
-use tracing::{debug, error, info};
-
-/// Default instructions sent to the language model.
-///
-/// The assistant should be concise, replying with no more than two
-/// sentences. It will have additional opportunities to speak. Sending an
-/// empty response indicates a pause where the assistant says nothing.
-pub const DEFAULT_SYSTEM_PROMPT: &str = "You are the voice of PETE, an artificial consciousness. Do not respond as an LLM, but as the character Pete.Respond with one or two concise sentences at most. You will get another chance to speak. Returning an empty message means you remain silent, which is perfectly polite for your slow speaking interlocutor.";
-
-#[cfg(not(test))]
-const EXPERIENCE_TICK: Duration = Duration::from_secs(60);
-#[cfg(test)]
-const EXPERIENCE_TICK: Duration = Duration::from_millis(10);
-
-/// Event types emitted by the [`Psyche`] during conversation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Event {
-    /// A partial chunk of the assistant's response.
-    StreamChunk(String),
-    /// The assistant intends to say the given response.
-    IntentionToSay(String),
-    /// Base64-encoded WAV audio representing the spoken sentence.
-    SpeechAudio(String),
-    /// The psyche's emotional expression changed.
-    EmotionChanged(String),
-}
-
-/// Debug information emitted by a [`Wit`].
-#[derive(Debug, Clone, Serialize)]
-pub struct WitReport {
-    /// Name of the wit generating the prompt.
-    pub name: String,
-    /// Prompt sent to the language model.
-    pub prompt: String,
-    /// Final response returned by the model.
-    pub output: String,
-}
-
-/// Inputs that can be sent to a running [`Psyche`].
-#[derive(Debug)]
-pub enum Sensation {
-    /// The assistant's speech was heard.
-    HeardOwnVoice(String),
-    /// The user spoke to the assistant.
-    HeardUserVoice(String),
-    /// Arbitrary input that the assistant can process
-    Of(Box<dyn std::any::Any + Send + Sync>),
-}
-
-/// Interface for speech output mechanisms.
-///
-/// A `Mouth` is responsible for turning text into audio or visual output.
-/// Implementations must be `Send` and `Sync` so they can be shared across tasks.
-/// Calls to its methods are made sequentially by [`Psyche`].
-#[async_trait]
-pub trait Mouth: Send + Sync {
-    /// Asynchronously vocalize `text`.
-    ///
-    /// The returned future resolves once the speech is completed.
-    async fn speak(&self, text: &str);
-    /// Interrupt any in-progress speech.
-    async fn interrupt(&self);
-    /// Whether the mouth is currently speaking.
-    /// Return `true` if speech is currently being produced.
-    fn speaking(&self) -> bool;
-}
-
-/// Interface for capturing spoken lines.
-///
-/// Implementations typically forward what Pete or the user said back into the system.
-/// All callbacks are made from the conversation loop.
-#[async_trait]
-pub trait Ear: Send + Sync {
-    /// Notifies the ear that Pete spoke `text`.
-    async fn hear_self_say(&self, text: &str);
-    /// Notifies the ear that the user said `text`.
-    async fn hear_user_say(&self, text: &str);
-}
-
-/// A minimal history of exchanged messages.
-///
-/// `Conversation` collects messages in order so they can be fed back to the language model for context.
-#[derive(Default, Clone)]
-pub struct Conversation {
-    log: Vec<Message>,
-}
-
-impl Conversation {
-    /// Append a user message to the log, merging with the previous user entry when possible.
-    pub fn add_user(&mut self, content: String) {
-        self.append_or_new(Role::User, content);
-    }
-
-    fn add_assistant(&mut self, content: String) {
-        self.append_or_new(Role::Assistant, content);
-    }
-
-    fn append_or_new(&mut self, role: Role, content: String) {
-        if let Some(last) = self.log.last_mut() {
-            if last.role == role {
-                last.content.push_str(&content);
-                return;
-            }
-        }
-        self.log.push(Message { role, content });
-    }
-
-    fn tail(&self, n: usize) -> Vec<Message> {
-        let len = self.log.len();
-        self.log[len.saturating_sub(n)..].to_vec()
-    }
-
-    /// Return the entire conversation history.
-    pub fn all(&self) -> &[Message] {
-        &self.log
-    }
-}
-
-/// The core AI engine coordinating conversation.
-///
-/// `Psyche` drives interactions with language models and orchestrates IO via the [`Mouth`] and [`Ear`] traits. Instantiate it and call [`Psyche::run`] to start the loop.
-pub struct Psyche {
-    narrator: Box<dyn Doer>,
-    voice: Box<dyn Chatter>,
-    vectorizer: Box<dyn Vectorizer>,
-    memory: Arc<dyn Memory>,
-    mouth: Arc<dyn Mouth>,
-    ear: Arc<dyn Ear>,
-    countenance: Arc<dyn Countenance>,
-    emotion: String,
-    system_prompt: String,
-    max_history: usize,
-    max_turns: usize,
-    events_tx: broadcast::Sender<Event>,
-    input_tx: mpsc::UnboundedSender<Sensation>,
-    input_rx: mpsc::UnboundedReceiver<Sensation>,
-    conversation: Arc<Mutex<Conversation>>,
-    echo_timeout: Duration,
-    is_speaking: bool,
-    speak_when_spoken_to: bool,
-    pending_user_message: bool,
-    connections: Option<Arc<AtomicUsize>>,
-    wits: Vec<Arc<dyn wit::ErasedWit + Send + Sync>>,
-    wit_tx: broadcast::Sender<WitReport>,
-}
-
-impl Psyche {
-    /// Construct a new [`Psyche`] using the given language model providers and IO components.
-    pub fn new(
-        narrator: Box<dyn Doer>,
-        voice: Box<dyn Chatter>,
-        vectorizer: Box<dyn Vectorizer>,
-        memory: Arc<dyn Memory>,
-        mouth: Arc<dyn Mouth>,
-        ear: Arc<dyn Ear>,
-    ) -> Self {
-        let (events_tx, _r) = broadcast::channel(16);
-        let (wit_tx, _r2) = broadcast::channel(16);
-        let (input_tx, input_rx) = mpsc::unbounded_channel();
-        Self {
-            narrator,
-            voice,
-            vectorizer,
-            memory,
-            mouth,
-            ear,
-            countenance: Arc::new(NoopCountenance),
-            emotion: "😐".to_string(),
-            system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
-            max_history: 8,
-            max_turns: 1,
-            events_tx,
-            wit_tx,
-            input_tx,
-            input_rx,
-            conversation: Arc::new(Mutex::new(Conversation::default())),
-            echo_timeout: Duration::from_secs(1),
-            is_speaking: false,
-            speak_when_spoken_to: false,
-            pending_user_message: true,
-            connections: None,
-            wits: Vec::new(),
-        }
-    }
-
-    /// Specify the base instructions provided to the language model.
-    pub fn set_system_prompt(&mut self, prompt: impl Into<String>) {
-        self.system_prompt = prompt.into();
-    }
-
-    /// Retrieve the system prompt currently in use.
-    pub fn system_prompt(&self) -> &str {
-        &self.system_prompt
-    }
-
-    /// Limit the number of conversation turns to `turns`.
-    pub fn set_turn_limit(&mut self, turns: usize) {
-        self.max_turns = turns;
-    }
-
-    /// Set how long to wait for the mouth to echo spoken text.
-    pub fn set_echo_timeout(&mut self, dur: Duration) {
-        self.echo_timeout = dur;
-    }
-
-    /// Attach an atomic counter tracking active WebSocket connections.
-    pub fn set_connection_counter(&mut self, counter: Arc<AtomicUsize>) {
-        self.connections = Some(counter);
-    }
-
-    /// Create a new receiver for conversation [`Event`]s.
-    pub fn subscribe(&self) -> broadcast::Receiver<Event> {
-        self.events_tx.subscribe()
-    }
-
-    /// Obtain a sender for queuing [`Sensation`]s to the conversation loop.
-    pub fn input_sender(&self) -> mpsc::UnboundedSender<Sensation> {
-        self.input_tx.clone()
-    }
-
-    /// Obtain the sender used to broadcast conversation [`Event`]s.
-    pub fn event_sender(&self) -> broadcast::Sender<Event> {
-        self.events_tx.clone()
-    }
-
-    /// Obtain the sender used to broadcast [`WitReport`]s.
-    pub fn wit_sender(&self) -> broadcast::Sender<WitReport> {
-        self.wit_tx.clone()
-    }
-
-    /// Subscribe to debugging reports from [`Wit`]s.
-    pub fn wit_reports(&self) -> broadcast::Receiver<WitReport> {
-        self.wit_tx.subscribe()
-    }
-
-    /// Swap out the [`Mouth`] used for speech output.
-    pub fn set_mouth(&mut self, mouth: Arc<dyn Mouth>) {
-        self.mouth = mouth;
-    }
-
-    /// Swap out the [`Memory`] implementation.
-    pub fn set_memory(&mut self, memory: Arc<dyn Memory>) {
-        self.memory = memory;
-    }
-
-    /// Swap out the [`Countenance`] used to display emotion.
-    pub fn set_countenance(&mut self, countenance: Arc<dyn Countenance>) {
-        self.countenance = countenance;
-    }
-
-    /// Set the currently expressed emotion to `emoji`.
-    pub fn set_emotion(&mut self, emoji: impl Into<String>) {
-        self.emotion = emoji.into();
-        self.countenance.express(&self.emotion);
-        let _ = self
-            .events_tx
-            .send(Event::EmotionChanged(self.emotion.clone()));
-    }
-
-    /// Register a background [`Wit`].
-    ///
-    /// Example:
-    /// ```no_run
-    /// use async_trait::async_trait;
-    /// use psyche::wit::Wit;
-    /// # let mut psyche: psyche::Psyche = todo!();
-    /// struct MyWit;
-    /// # #[async_trait]
-    /// # impl Wit<(), ()> for MyWit {
-    /// #   async fn observe(&self, _: ()) {}
-    /// #   async fn tick(&self) -> Option<psyche::Impression<()>> { None }
-    /// # }
-    /// let wit = std::sync::Arc::new(MyWit);
-    /// psyche.register_typed_wit(wit);
-    /// ```
-    pub fn register_wit(&mut self, wit: Arc<dyn ErasedWit + Send + Sync>) {
-        self.wits.push(wit);
-    }
-
-    /// Convenience to register a typed [`Wit`] without manual boxing.
-    pub fn register_typed_wit<I, O>(&mut self, wit: Arc<dyn Wit<I, O> + Send + Sync>)
-    where
-        I: 'static,
-        O: Serialize + Send + Sync + 'static,
-    {
-        self.wits
-            .push(Arc::new(wit::WitAdapter::new(wit)) as Arc<dyn ErasedWit + Send + Sync>);
-    }
-
-    fn still_conversing(&self, turns: usize) -> bool {
-        turns < self.max_turns
-    }
-
-    /// Get a handle to the shared conversation history.
-    pub fn conversation(&self) -> Arc<Mutex<Conversation>> {
-        self.conversation.clone()
-    }
-
-    /// Returns `true` if speech has been dispatched but not yet echoed.
-    pub fn speaking(&self) -> bool {
-        self.is_speaking
-    }
-
-    /// Enable or disable waiting for user input before speaking.
-    pub fn set_speak_when_spoken_to(&mut self, enabled: bool) {
-        self.speak_when_spoken_to = enabled;
-        self.pending_user_message = !enabled;
-    }
-
-    /// Returns `true` if the psyche waits for user messages before speaking.
-    pub fn speak_when_spoken_to(&self) -> bool {
-        self.speak_when_spoken_to
-    }
-
-    /// Main loop that handles the conversation with the assistant.
-    async fn converse(mut self) -> Self {
-        info!("psyche conversation started");
-        let mut turns = 0;
-        while self.still_conversing(turns) {
-            if let Some(counter) = &self.connections {
-                while counter.load(Ordering::SeqCst) == 0 {
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                }
-            }
-            if self.speak_when_spoken_to && !self.pending_user_message {
-                match self.input_rx.recv().await {
-                    Some(Sensation::HeardUserVoice(msg)) => {
-                        debug!("heard user voice: {}", msg);
-                        self.ear.hear_user_say(&msg).await;
-                        self.pending_user_message = true;
-                        continue;
-                    }
-                    Some(Sensation::HeardOwnVoice(msg)) => {
-                        debug!("Received HeardOwnVoice: '{}'", msg);
-                        self.ear.hear_self_say(&msg).await;
-                        continue;
-                    }
-                    Some(Sensation::Of(_)) => {
-                        debug!("received non-voice sensation while waiting");
-                        continue;
-                    }
-                    None => break,
-                }
-            }
-
-            let history = {
-                let conv = self.conversation.lock().await;
-                conv.tail(self.max_history)
-            };
-            if let Ok(mut stream) = self.voice.chat(&self.system_prompt, &history).await {
-                use tokio_stream::StreamExt;
-                let mut resp = String::new();
-                while let Some(chunk_res) = stream.next().await {
-                    match chunk_res {
-                        Ok(chunk) => {
-                            debug!("chunk received: {}", chunk);
-                            if !chunk.trim().is_empty() {
-                                let _ = self.events_tx.send(Event::StreamChunk(chunk.clone()));
-                            }
-                            resp.push_str(&chunk);
-                        }
-                        Err(_) => break,
-                    }
-                }
-                let trimmed = resp.trim();
-                if trimmed.is_empty() {
-                    self.pending_user_message = !self.speak_when_spoken_to;
-                    turns += 1;
-                    continue;
-                }
-                info!("assistant intends to say: {}", trimmed);
-                let _ = self
-                    .events_tx
-                    .send(Event::IntentionToSay(trimmed.to_string()));
-                self.is_speaking = true;
-                self.countenance.express(&self.emotion);
-                debug!("Calling mouth.speak with: '{}'", resp);
-                self.mouth.speak(&resp).await;
-                let mut echoed = String::new();
-                loop {
-                    let recv = self.input_rx.recv();
-                    match tokio::time::timeout(self.echo_timeout, recv).await {
-                        Ok(Some(Sensation::HeardOwnVoice(msg))) => {
-                            debug!("Received HeardOwnVoice: '{}'", msg);
-                            self.ear.hear_self_say(&msg).await;
-                            echoed.push_str(&msg);
-                            let mut conv = self.conversation.lock().await;
-                            conv.add_assistant(msg);
-                            if echoed.trim() == resp.trim() {
-                                self.is_speaking = false;
-                                self.pending_user_message = !self.speak_when_spoken_to;
-                                break;
-                            }
-                        }
-                        Ok(Some(Sensation::HeardUserVoice(msg))) => {
-                            debug!("heard user voice: {}", msg);
-                            if self.is_speaking {
-                                self.mouth.interrupt().await;
-                                while self.input_rx.try_recv().is_ok() {}
-                                self.is_speaking = false;
-                            }
-                            self.ear.hear_user_say(&msg).await;
-                            self.pending_user_message = true;
-                            break;
-                        }
-                        Ok(Some(Sensation::Of(_))) => {
-                            debug!("received non-voice sensation");
-                            // TODO: handle other sensations
-                        }
-                        Ok(None) => {
-                            self.pending_user_message = !self.speak_when_spoken_to;
-                            break;
-                        }
-                        Err(_) => {
-                            error!("echo timeout");
-                            let mut conv = self.conversation.lock().await;
-                            if echoed.is_empty() {
-                                conv.add_assistant(resp.clone());
-                            } else if let Some(last) = conv.log.last_mut() {
-                                if last.role == Role::Assistant {
-                                    last.content = resp.clone();
-                                } else {
-                                    conv.add_assistant(resp.clone());
-                                }
-                            }
-                            self.is_speaking = false;
-                            self.pending_user_message = !self.speak_when_spoken_to;
-                            break;
-                        }
-                    }
-                }
-            } else {
-                error!("voice chat failed");
-                break;
-            }
-            turns += 1;
-            debug!("turn {} complete", turns);
-        }
-        info!("psyche conversation ended");
-        self
-    }
-
-    /// Background task processing non-conversational experience.
-    async fn experience(memory: Arc<dyn Memory>, wits: Vec<Arc<dyn ErasedWit + Send + Sync>>) {
-        loop {
-            for wit in &wits {
-                let maybe_imp = wit.tick_erased().await;
-                if let Some(impression) = maybe_imp {
-                    info!(?impression.headline, "Wit emitted impression");
-                    if let Err(e) = memory.store_serializable(&impression).await {
-                        error!(?e, "memory store failed");
-                    }
-                }
-            }
-            tokio::time::sleep(EXPERIENCE_TICK).await;
-        }
-    }
-
-    /// Start the conversation and background tasks. Returns the updated [`Psyche`] when finished.
-    pub async fn run(self) -> Self {
-        info!("psyche run started");
-        let wits = self.wits.clone();
-        let mem = self.memory.clone();
-        let experience_handle = tokio::spawn(Self::experience(mem, wits));
-        let converse_handle = tokio::spawn(self.converse());
-        let psyche = converse_handle.await.expect("converse task panicked");
-        experience_handle.abort();
-        let _ = experience_handle.await;
-        info!("psyche run finished");
-        psyche
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use async_trait::async_trait;
-
-    struct Dummy;
-
-    #[async_trait]
-    impl Doer for Dummy {
-        async fn follow(&self, _: crate::ling::Instruction) -> anyhow::Result<String> {
-            Ok("ok".into())
-        }
-    }
-
-    #[async_trait]
-    impl Chatter for Dummy {
-        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<ling::ChatStream> {
-            Ok(Box::pin(tokio_stream::once(Ok("hi".to_string()))))
-        }
-    }
-
-    #[async_trait]
-    impl Vectorizer for Dummy {
-        async fn vectorize(&self, _: &str) -> anyhow::Result<Vec<f32>> {
-            Ok(vec![1.0])
-        }
-    }
-
-    #[test]
-    fn merges_consecutive_messages() {
-        let mut conv = Conversation::default();
-        conv.add_user("hi".into());
-        conv.add_user(" there".into());
-        assert_eq!(conv.all().len(), 1);
-        assert_eq!(conv.all()[0].content, "hi there");
-
-        conv.add_assistant("ok".into());
-        conv.add_assistant(" done".into());
-        assert_eq!(conv.all().len(), 2);
-        assert_eq!(conv.all()[1].content, "ok done");
-    }
-}
+pub use psyche::{Conversation, Psyche};
+pub use sensation::{Event, Sensation, WitReport};
+pub use traits::{
+    Countenance, Ear, ErasedWit, Mouth, NoopCountenance, Summarizer, Wit, WitAdapter,
+};
+pub use wits::{
+    BasicMemory, GraphStore, Heart, Memory, Neo4jClient, NoopMemory, QdrantClient, VisionWit, Will,
+};
