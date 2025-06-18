@@ -23,6 +23,7 @@ pub struct AppState {
     pub user_input: mpsc::UnboundedSender<String>,
     pub events: Arc<broadcast::Receiver<Event>>,
     pub logs: Arc<broadcast::Receiver<String>>,
+    pub wits: Arc<broadcast::Receiver<psyche::WitReport>>,
     pub ear: Arc<dyn Ear>,
     pub eye: Arc<dyn Sensor<ImageData>>,
     pub conversation: Arc<tokio::sync::Mutex<psyche::Conversation>>,
@@ -75,6 +76,15 @@ pub async fn log_ws_handler(
 ) -> impl IntoResponse {
     info!("log websocket upgrade initiated");
     ws.on_upgrade(move |socket| async move { handle_log_socket(socket, state).await })
+}
+
+/// Upgrade to a WebSocket streaming wit debug output.
+pub async fn wit_ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    info!("wit websocket upgrade initiated");
+    ws.on_upgrade(move |socket| async move { handle_wit_socket(socket, state).await })
 }
 
 async fn handle_socket(mut socket: WebSocket, state: AppState) {
@@ -166,6 +176,32 @@ async fn handle_log_socket(mut socket: WebSocket, state: AppState) {
     info!("log websocket disconnected");
 }
 
+async fn handle_wit_socket(mut socket: WebSocket, state: AppState) {
+    info!("wit websocket connected");
+    let mut rx = state.wits.resubscribe();
+    while let Ok(report) = rx.recv().await {
+        #[derive(Serialize)]
+        struct WitMsg<'a> {
+            #[serde(rename = "type")]
+            kind: &'a str,
+            name: &'a str,
+            prompt: &'a str,
+            output: &'a str,
+        }
+        let msg = serde_json::to_string(&WitMsg {
+            kind: "wit",
+            name: &report.name,
+            prompt: &report.prompt,
+            output: &report.output,
+        })
+        .unwrap();
+        if socket.send(WsMessage::Text(msg.into())).await.is_err() {
+            break;
+        }
+    }
+    info!("wit websocket disconnected");
+}
+
 /// Return the raw conversation log as JSON.
 pub async fn conversation_log(State(state): State<AppState>) -> impl IntoResponse {
     let conv = state.conversation.lock().await;
@@ -219,6 +255,7 @@ pub fn app(state: AppState) -> Router {
         .route("/", get(index))
         .route("/ws", get(ws_handler))
         .route("/log", get(log_ws_handler))
+        .route("/debug", get(wit_ws_handler))
         .route("/conversation", get(conversation_log))
         .with_state(state)
 }

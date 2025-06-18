@@ -68,6 +68,17 @@ pub enum Event {
     EmotionChanged(String),
 }
 
+/// Debug information emitted by a [`Wit`].
+#[derive(Debug, Clone, Serialize)]
+pub struct WitReport {
+    /// Name of the wit generating the prompt.
+    pub name: String,
+    /// Prompt sent to the language model.
+    pub prompt: String,
+    /// Final response returned by the model.
+    pub output: String,
+}
+
 /// Inputs that can be sent to a running [`Psyche`].
 #[derive(Debug)]
 pub enum Sensation {
@@ -173,6 +184,7 @@ pub struct Psyche {
     pending_user_message: bool,
     connections: Option<Arc<AtomicUsize>>,
     wits: Vec<Arc<dyn wit::ErasedWit + Send + Sync>>,
+    wit_tx: broadcast::Sender<WitReport>,
 }
 
 impl Psyche {
@@ -186,6 +198,7 @@ impl Psyche {
         ear: Arc<dyn Ear>,
     ) -> Self {
         let (events_tx, _r) = broadcast::channel(16);
+        let (wit_tx, _r2) = broadcast::channel(16);
         let (input_tx, input_rx) = mpsc::unbounded_channel();
         Self {
             narrator,
@@ -200,6 +213,7 @@ impl Psyche {
             max_history: 8,
             max_turns: 1,
             events_tx,
+            wit_tx,
             input_tx,
             input_rx,
             conversation: Arc::new(Mutex::new(Conversation::default())),
@@ -250,6 +264,16 @@ impl Psyche {
     /// Obtain the sender used to broadcast conversation [`Event`]s.
     pub fn event_sender(&self) -> broadcast::Sender<Event> {
         self.events_tx.clone()
+    }
+
+    /// Obtain the sender used to broadcast [`WitReport`]s.
+    pub fn wit_sender(&self) -> broadcast::Sender<WitReport> {
+        self.wit_tx.clone()
+    }
+
+    /// Subscribe to debugging reports from [`Wit`]s.
+    pub fn wit_reports(&self) -> broadcast::Receiver<WitReport> {
+        self.wit_tx.subscribe()
     }
 
     /// Swap out the [`Mouth`] used for speech output.

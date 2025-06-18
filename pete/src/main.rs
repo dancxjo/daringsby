@@ -89,6 +89,7 @@ async fn main() -> anyhow::Result<()> {
 
     tokio::spawn(listen_user_input(user_rx, ear.clone()));
 
+    let wit_rx = psyche.wit_reports();
     tokio::spawn(async move {
         psyche.run().await;
     });
@@ -97,6 +98,7 @@ async fn main() -> anyhow::Result<()> {
         user_input: user_tx,
         events: events.clone(),
         logs: Arc::new(log_tx.subscribe()),
+        wits: Arc::new(wit_rx),
         ear: ear.clone(),
         eye: eye.clone(),
         conversation,

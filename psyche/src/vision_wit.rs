@@ -5,12 +5,14 @@ use crate::wit::Wit;
 use async_trait::async_trait;
 use lingproc::ImageData as LImageData;
 use std::sync::{Arc, Mutex};
+use tokio::sync::broadcast;
 use tracing::debug;
 
 /// Wit producing first-person captions from images.
 pub struct VisionWit {
     doer: Arc<dyn Doer>,
     buffer: Mutex<Vec<ImageData>>,
+    tx: Option<broadcast::Sender<crate::WitReport>>,
 }
 
 impl VisionWit {
@@ -19,6 +21,16 @@ impl VisionWit {
         Self {
             doer,
             buffer: Mutex::new(Vec::new()),
+            tx: None,
+        }
+    }
+
+    /// Create a `VisionWit` that emits [`WitReport`]s using `tx`.
+    pub fn with_debug(doer: Arc<dyn Doer>, tx: broadcast::Sender<crate::WitReport>) -> Self {
+        Self {
+            doer,
+            buffer: Mutex::new(Vec::new()),
+            tx: Some(tx),
         }
     }
 }
@@ -45,6 +57,13 @@ impl Wit<ImageData, ImageData> for VisionWit {
             .await
             .ok()?;
         let how = caption.trim().to_string();
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(crate::WitReport {
+                name: "VisionWit".into(),
+                prompt: "image caption".into(),
+                output: how.clone(),
+            });
+        }
         Some(Impression::new(how, None::<String>, img))
     }
 }

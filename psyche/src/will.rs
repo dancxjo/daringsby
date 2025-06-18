@@ -6,6 +6,7 @@ use crate::{
 use async_trait::async_trait;
 use chrono::Utc;
 use std::sync::Arc;
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 /// Decide Pete's next action or speech using a language model.
@@ -40,6 +41,7 @@ use uuid::Uuid;
 pub struct Will {
     doer: Arc<dyn Doer>,
     prompt: crate::prompt::WillPrompt,
+    tx: Option<broadcast::Sender<crate::WitReport>>,
 }
 
 impl Will {
@@ -48,6 +50,16 @@ impl Will {
         Self {
             doer: doer.into(),
             prompt: crate::prompt::WillPrompt::default(),
+            tx: None,
+        }
+    }
+
+    /// Create a `Will` that emits [`WitReport`]s using `tx`.
+    pub fn with_debug(doer: Box<dyn Doer>, tx: broadcast::Sender<crate::WitReport>) -> Self {
+        Self {
+            doer: doer.into(),
+            prompt: crate::prompt::WillPrompt::default(),
+            tx: Some(tx),
         }
     }
 
@@ -68,8 +80,15 @@ impl Summarizer<String, String> for Will {
             command: self.prompt.build(&input),
             images: Vec::new(),
         };
-        let resp = self.doer.follow(instruction).await?;
+        let resp = self.doer.follow(instruction.clone()).await?;
         let decision = resp.trim().to_string();
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(crate::WitReport {
+                name: "Will".into(),
+                prompt: instruction.command.clone(),
+                output: decision.clone(),
+            });
+        }
         Ok(Impression {
             id: Uuid::new_v4(),
             timestamp: Utc::now(),

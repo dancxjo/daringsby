@@ -21,6 +21,10 @@
       padding: 0.25rem 0.5rem;
       border-radius: 0.375rem;
     }
+    #thoughts li {
+      align-self: flex-start;
+      color: #6b7280;
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 </head>
@@ -28,6 +32,7 @@
   <div x-data="chatApp()" x-init="init()" class="flex w-full max-w-4xl h-[80vh] bg-white rounded-xl shadow overflow-hidden">
     <aside class="w-48 p-4 bg-gray-100 space-y-2">
       <div id="status" x-text="status" class="text-xs font-semibold text-gray-500"></div>
+      <div id="debug-status" x-text="debugStatus" class="text-xs text-gray-400"></div>
       <div id="face" x-text="emotion" class="text-4xl"></div>
       <audio controls x-ref="player" class="w-full"></audio>
       <video x-ref="video" autoplay playsinline class="w-full max-h-40"></video>
@@ -36,6 +41,11 @@
       <ul id="log" x-ref="log" class="chat-log p-2 bg-gray-50 rounded flex flex-col space-y-1 flex-grow list-none">
         <template x-for="(msg, i) in log" :key="i">
           <li :class="msg.role" x-text="msg.text"></li>
+        </template>
+      </ul>
+      <ul id="thoughts" class="p-2 bg-gray-50 rounded flex flex-col space-y-1 text-sm text-gray-500 list-none max-h-32 overflow-y-auto">
+        <template x-for="(t, i) in thoughts" :key="'t'+i">
+          <li x-text="t"></li>
         </template>
       </ul>
       <form class="flex gap-2 mt-auto" @submit.prevent="send">
@@ -50,15 +60,18 @@
     function chatApp() {
       return {
         ws: null,
+        debugWs: null,
         status: 'WS: connecting',
+        debugStatus: 'Debug: connecting',
         log: [],
+        thoughts: [],
         input: '',
         lastText: '',
         emotion: '😐',
         audioQueue: [],
         playing: false,
         stream: null,
-        init() { this.connect(); this.initCamera(); },
+        init() { this.connect(); this.connectDebug(); this.initCamera(); },
         initCamera() {
           navigator.mediaDevices.getUserMedia({ video: true }).then(s => {
             this.stream = s;
@@ -94,6 +107,25 @@
             } catch (_) {
               this.append('system', ev.data);
             }
+          };
+        },
+        connectDebug() {
+          if (this.debugWs && (this.debugWs.readyState === WebSocket.OPEN || this.debugWs.readyState === WebSocket.CONNECTING)) {
+            return;
+          }
+          if (this.debugWs) { this.debugWs.close(); }
+          this.debugStatus = 'Debug: connecting';
+          this.debugWs = new WebSocket('ws://localhost:3000/debug');
+          this.debugWs.onopen = () => this.debugStatus = 'Debug: open';
+          this.debugWs.onclose = () => { this.debugStatus = 'Debug: closed'; setTimeout(() => this.connectDebug(), 1000); };
+          this.debugWs.onerror = () => this.debugStatus = 'Debug: error';
+          this.debugWs.onmessage = (ev) => {
+            try {
+              const d = JSON.parse(ev.data);
+              if (d.type === 'wit') {
+                this.thoughts.push(`${d.name}: ${d.prompt} => ${d.output}`);
+              }
+            } catch {}
           };
         },
         playNext() {

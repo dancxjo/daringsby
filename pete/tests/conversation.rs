@@ -17,6 +17,7 @@ async fn returns_log_json() {
         Arc::new(AtomicBool::new(false)),
     ));
     let (event_tx, _) = broadcast::channel(8);
+    let (wit_tx, _) = broadcast::channel(8);
     let (log_tx, _) = broadcast::channel(8);
     let (user_tx, _user_rx) = mpsc::unbounded_channel();
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
@@ -24,6 +25,7 @@ async fn returns_log_json() {
         user_input: user_tx,
         events: Arc::new(event_tx.subscribe()),
         logs: Arc::new(log_tx.subscribe()),
+        wits: Arc::new(wit_tx.subscribe()),
         ear,
         eye,
         conversation,
