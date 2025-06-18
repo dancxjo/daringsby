@@ -43,7 +43,11 @@ pub fn dummy_psyche() -> Psyche {
         mouth,
         ear,
     );
-    psyche.register_typed_wit(Arc::new(psyche::VisionWit::new(Arc::new(Dummy))));
+    let wit_tx = psyche.wit_sender();
+    psyche.register_typed_wit(Arc::new(psyche::VisionWit::with_debug(
+        Arc::new(Dummy),
+        wit_tx,
+    )));
     psyche.set_turn_limit(usize::MAX);
     info!("created dummy psyche");
     psyche
@@ -71,9 +75,11 @@ pub fn ollama_psyche(host: &str, model: &str) -> anyhow::Result<Psyche> {
         mouth,
         ear,
     );
-    psyche.register_typed_wit(Arc::new(psyche::VisionWit::new(Arc::new(
-        psyche::ling::OllamaProvider::new(host, model)?,
-    ))));
+    let wit_tx = psyche.wit_sender();
+    psyche.register_typed_wit(Arc::new(psyche::VisionWit::with_debug(
+        Arc::new(psyche::ling::OllamaProvider::new(host, model)?),
+        wit_tx,
+    )));
     psyche.set_turn_limit(usize::MAX);
     info!(%host, %model, "created ollama psyche");
     Ok(psyche)

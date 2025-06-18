@@ -50,6 +50,7 @@ This repository is a Rust workspace.
 ## Communication
 
 * Expose WebSocket chat at `/ws`, forwarding all `Psyche` events.
+* Debug information from Wits streams via `/debug`.
 * SSE endpoints like `/chat` are deprecated; use WebSocket only.
 
 ## Audio / TTS
