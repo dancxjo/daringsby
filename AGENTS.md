@@ -41,6 +41,7 @@ This repository is a Rust workspace.
 * Show WebSocket connection status for debugging.
 * Use Alpine.js for client binding.
 * Render chat log as `<ul>` with `<li>` per message.
+* Style user and system messages distinctly for clarity.
 * Keep `index.html` and `pete/build.rs` in sync.
 * Front-end tests live under `frontend/` and run with `npm test`.
 
