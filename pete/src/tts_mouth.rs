@@ -60,7 +60,6 @@ impl Tts for CoquiTts {
         {
             let mut qp = url.query_pairs_mut();
             qp.append_pair("text", text);
-            qp.append_pair("style_wav", "");
             if let Some(ref s) = self.speaker_id {
                 qp.append_pair("speaker_id", s);
             }
