@@ -35,7 +35,8 @@
       <div id="debug-status" x-text="debugStatus" class="text-xs text-gray-400"></div>
       <div id="face" x-text="emotion" class="text-4xl"></div>
       <audio controls x-ref="player" class="w-full"></audio>
-      <video x-ref="video" autoplay playsinline class="w-full max-h-40"></video>
+      <!-- autoplay on the video element can race with manual play() calls -->
+      <video x-ref="video" playsinline class="w-full max-h-40"></video>
       <ul id="thoughts" class="p-2 bg-gray-50 rounded flex flex-col space-y-1 text-xs text-gray-500 list-none max-h-24 overflow-y-auto">
         <template x-for="(t, i) in thoughts" :key="'t'+i">
           <li x-text="t"></li>
@@ -78,7 +79,7 @@
             this.stream = s;
             const v = this.$refs.video;
             v.srcObject = s;
-            v.play();
+            v.play().catch(() => {});
             this.startCaptureLoop();
           }).catch(() => {});
         },
