@@ -17,11 +17,13 @@ pub mod traits {
 
 pub mod wit;
 pub mod wits {
+    pub mod combobulator;
     pub mod heart;
     pub mod memory;
     pub mod vision_wit;
     pub mod will;
 
+    pub use combobulator::Combobulator;
     pub use heart::Heart;
     pub use memory::{BasicMemory, GraphStore, Memory, Neo4jClient, NoopMemory, QdrantClient};
     pub use vision_wit::VisionWit;
@@ -46,7 +48,7 @@ pub use impression::Impression;
 pub use motor::{Motor, NoopMotor};
 pub use plain_mouth::PlainMouth;
 pub use prehension::Prehension;
-pub use prompt::{HeartPrompt, PromptBuilder, VoicePrompt, WillPrompt};
+pub use prompt::{CombobulatorPrompt, HeartPrompt, PromptBuilder, VoicePrompt, WillPrompt};
 pub use psyche::DEFAULT_SYSTEM_PROMPT;
 pub use sensor::Sensor;
 pub use trim_mouth::TrimMouth;
