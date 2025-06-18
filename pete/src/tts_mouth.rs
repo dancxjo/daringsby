@@ -60,9 +60,9 @@ impl Tts for CoquiTts {
         {
             let mut qp = url.query_pairs_mut();
             qp.append_pair("text", text);
-            if let Some(ref s) = self.speaker_id {
-                qp.append_pair("speaker_id", s);
-            }
+            // Always include speaker_id and language_id, using defaults if not provided
+            qp.append_pair("speaker_id", self.speaker_id.as_deref().unwrap_or("p340"));
+            qp.append_pair("language_id", self.language_id.as_deref().unwrap_or(""));
             if let Some(ref l) = self.language_id {
                 qp.append_pair("language_id", l);
             }
