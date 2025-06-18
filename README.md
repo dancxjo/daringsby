@@ -61,14 +61,16 @@ let psyche = Psyche::new(
 let speaking = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 let display = std::sync::Arc::new(pete::ChannelMouth::new(psyche.event_sender(), speaking.clone()));
 #[cfg(feature = "tts")]
-let tts = std::sync::Arc::new(pete::TtsMouth::new(
-    psyche.event_sender(),
-    speaking.clone(),
-    std::sync::Arc::new(pete::CoquiTts::new(
-        "http://localhost:5002/api/tts",
-        Some("p376".into()),
-        None,
-    )),
+let tts = std::sync::Arc::new(psyche::PlainMouth::new(
+    std::sync::Arc::new(pete::TtsMouth::new(
+        psyche.event_sender(),
+        speaking.clone(),
+        std::sync::Arc::new(pete::CoquiTts::new(
+            "http://localhost:5002/api/tts",
+            Some("p376".into()),
+            None,
+        )),
+    )) as std::sync::Arc<dyn Mouth>
 ));
 #[cfg(feature = "tts")]
 let mouth = std::sync::Arc::new(psyche::AndMouth::new(vec![display.clone(), tts]));
