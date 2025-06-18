@@ -7,7 +7,7 @@ use pete::{
 #[cfg(feature = "tts")]
 use pete::{CoquiTts, TtsMouth};
 use psyche::PlainMouth;
-use psyche::{AndMouth, Mouth};
+use psyche::{AndMouth, EmojiMouth, Mouth, TrimMouth};
 use std::{
     net::SocketAddr,
     sync::{
@@ -55,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
     let display = Arc::new(ChannelMouth::new(psyche.event_sender(), speaking.clone()));
     let face = Arc::new(ChannelCountenance::new(psyche.event_sender()));
     #[cfg(feature = "tts")]
-    let mouth = {
+    let base_mouth: Arc<dyn Mouth> = {
         let tts = Arc::new(TtsMouth::new(
             psyche.event_sender(),
             speaking.clone(),
@@ -72,7 +72,9 @@ async fn main() -> anyhow::Result<()> {
         ]))
     };
     #[cfg(not(feature = "tts"))]
-    let mouth = display.clone() as Arc<dyn Mouth>;
+    let base_mouth: Arc<dyn Mouth> = display.clone() as Arc<dyn Mouth>;
+    let mouth = Arc::new(TrimMouth::new(base_mouth)) as Arc<dyn Mouth>;
+    let mouth = Arc::new(EmojiMouth::new(mouth, face.clone())) as Arc<dyn Mouth>;
     psyche.set_mouth(mouth.clone());
     psyche.set_countenance(face.clone());
     psyche.set_emotion("😐");
