@@ -42,6 +42,7 @@ This repository is a Rust workspace.
 * Use Alpine.js for client binding.
 * Render chat log as `<ul>` with `<li>` per message.
 * Keep `index.html` and `pete/build.rs` in sync.
+* Front-end tests live under `frontend/` and run with `npm test`.
 
 ## Communication
 
