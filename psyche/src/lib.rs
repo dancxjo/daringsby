@@ -9,6 +9,7 @@ mod impression;
 pub mod ling;
 mod memory;
 mod plain_mouth;
+mod prehension;
 mod prompt;
 mod sensor;
 mod trim_mouth;
@@ -23,6 +24,7 @@ pub use heart::Heart;
 pub use impression::Impression;
 pub use memory::{BasicMemory, GraphStore, Memory, Neo4jClient, NoopMemory, QdrantClient};
 pub use plain_mouth::PlainMouth;
+pub use prehension::Prehension;
 pub use prompt::{HeartPrompt, PromptBuilder, VoicePrompt, WillPrompt};
 pub use sensor::Sensor;
 pub use trim_mouth::TrimMouth;
@@ -39,7 +41,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::sync::{Mutex, broadcast, mpsc};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// Default instructions sent to the language model.
 ///
@@ -283,7 +285,7 @@ impl Psyche {
     /// # let mut psyche: psyche::Psyche = todo!();
     /// struct MyWit;
     /// # #[async_trait]
-    /// # impl Wit<()> for MyWit {
+    /// # impl Wit<(), ()> for MyWit {
     /// #   async fn observe(&self, _: ()) {}
     /// #   async fn tick(&self) -> Option<psyche::Impression<()>> { None }
     /// # }
@@ -295,9 +297,10 @@ impl Psyche {
     }
 
     /// Convenience to register a typed [`Wit`] without manual boxing.
-    pub fn register_typed_wit<T>(&mut self, wit: Arc<dyn Wit<T> + Send + Sync>)
+    pub fn register_typed_wit<I, O>(&mut self, wit: Arc<dyn Wit<I, O> + Send + Sync>)
     where
-        T: Serialize + Send + Sync + 'static,
+        I: 'static,
+        O: Serialize + Send + Sync + 'static,
     {
         self.wits
             .push(Arc::new(wit::WitAdapter::new(wit)) as Arc<dyn ErasedWit + Send + Sync>);

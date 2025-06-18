@@ -67,6 +67,7 @@ This repository is a Rust workspace.
 * Voice should **only** generate dialogue; all decisions routed through `Will`.
 * Memory graph (Neo4j) and embedding DB (Qdrant) must stay in sync.
 * Long-lived impressions are stored as `Impression<T>` with headline, detail, and raw data.
+* Use `Prehension` when buffering impressions for summarization. `Wit` is generic over input and output types.
 
 ## Contributor Notes
 

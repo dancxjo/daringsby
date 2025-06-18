@@ -60,7 +60,7 @@ struct CountingWit {
 }
 
 #[async_trait]
-impl Wit<()> for CountingWit {
+impl Wit<(), ()> for CountingWit {
     async fn observe(&self, _: ()) {}
     async fn tick(&self) -> Option<Impression<()>> {
         let mut t = self.ticks.lock().unwrap();

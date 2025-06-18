@@ -12,12 +12,12 @@ use uuid::Uuid;
 /// Each Wit listens for input impressions of a lower level and, on tick, emits
 /// a higher-level [`Impression`].
 #[async_trait]
-pub trait Wit<Input>: Send + Sync {
+pub trait Wit<Input, Output>: Send + Sync {
     /// Feed an incoming input (e.g. Sensation or lower-level Impression).
     async fn observe(&self, input: Input);
 
     /// Periodically called to emit a summarized [`Impression`].
-    async fn tick(&self) -> Option<Impression<Input>>;
+    async fn tick(&self) -> Option<Impression<Output>>;
 }
 
 /// Type-erased wrapper enabling heterogeneous [`Wit`]s to be stored together.
@@ -28,21 +28,21 @@ pub trait ErasedWit: Send + Sync {
 }
 
 /// Adapter allowing any [`Wit`] to be used as an [`ErasedWit`].
-pub struct WitAdapter<T> {
-    inner: Arc<dyn Wit<T> + Send + Sync>,
+pub struct WitAdapter<I, O> {
+    inner: Arc<dyn Wit<I, O> + Send + Sync>,
 }
 
-impl<T> WitAdapter<T> {
+impl<I, O> WitAdapter<I, O> {
     /// Wrap `wit` so it can be stored as an [`ErasedWit`].
-    pub fn new(wit: Arc<dyn Wit<T> + Send + Sync>) -> Self {
+    pub fn new(wit: Arc<dyn Wit<I, O> + Send + Sync>) -> Self {
         Self { inner: wit }
     }
 }
 
 #[async_trait]
-impl<T> ErasedWit for WitAdapter<T>
+impl<I, O> ErasedWit for WitAdapter<I, O>
 where
-    T: Serialize + Send + Sync + 'static,
+    O: Serialize + Send + Sync + 'static,
 {
     async fn tick_erased(&self) -> Option<Impression<Value>> {
         self.inner.tick().await.and_then(|imp| {
@@ -269,7 +269,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl Wit<String> for DummyWit {
+    impl Wit<String, String> for DummyWit {
         async fn observe(&self, input: String) {
             self.data.lock().unwrap().push(input);
         }
