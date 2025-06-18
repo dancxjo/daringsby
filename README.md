@@ -112,6 +112,15 @@ Run the web server with the built-in Ollama support:
 
 ```sh
 cargo run -p pete -- --ollama-url http://localhost:11434 --model mistral
+
+To enable audio output via Coqui TTS, build with the optional `tts` feature and
+provide the TTS server URL:
+
+```sh
+cargo run -p pete --features tts -- \
+  --ollama-url http://localhost:11434 --model mistral \
+  --tts-url http://localhost:5002/api/tts
+```
 ```
 ## Web Interface
 

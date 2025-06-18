@@ -11,9 +11,11 @@ const SCRIPT: &str = r#"function chatApp() {
       input: '',
     audioQueue: [],
     playing: false,
+    stream: null,
     init() { this.connect(); this.initCamera(); },
     initCamera() {
       navigator.mediaDevices.getUserMedia({ video: true }).then(s => {
+        this.stream = s;
         this.$refs.video.srcObject = s;
       }).catch(() => {});
     },

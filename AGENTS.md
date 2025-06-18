@@ -51,6 +51,7 @@ This repository is a Rust workspace.
 
 * The `tts` feature streams audio from Coqui TTS.
 * Configure with `--tts-url` CLI flag.
+* Build the `pete` binary with `--features tts` to enable audio.
 * Stub TTS in tests to avoid delays.
 
 ## Specialized Notes
