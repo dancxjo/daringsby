@@ -372,8 +372,6 @@ impl Psyche {
                     Some(Sensation::HeardUserVoice(msg)) => {
                         debug!("heard user voice: {}", msg);
                         self.ear.hear_user_say(&msg).await;
-                        let mut conv = self.conversation.lock().await;
-                        conv.add_user(msg);
                         self.pending_user_message = true;
                         continue;
                     }
@@ -447,8 +445,6 @@ impl Psyche {
                                 self.is_speaking = false;
                             }
                             self.ear.hear_user_say(&msg).await;
-                            let mut conv = self.conversation.lock().await;
-                            conv.add_user(msg);
                             self.pending_user_message = true;
                             break;
                         }

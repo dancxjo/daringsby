@@ -18,10 +18,10 @@ where
     S: Stream<Item = Result<String, E>> + Unpin,
 {
     use futures::stream::unfold;
-    let mut buf = String::new();
+    let buf = String::new();
     let seg = Segmenter::new().expect("segmenter init");
-    let mut leftover = String::new();
-    let mut pending: VecDeque<String> = VecDeque::new();
+    let leftover = String::new();
+    let pending: VecDeque<String> = VecDeque::new();
 
     unfold(
         (input, buf, seg, leftover, pending),
@@ -68,8 +68,8 @@ where
     S: Stream<Item = Result<String, E>> + Unpin,
 {
     use futures::stream::unfold;
-    let mut buf = String::new();
-    let mut pending: VecDeque<String> = VecDeque::new();
+    let buf = String::new();
+    let pending: VecDeque<String> = VecDeque::new();
 
     unfold(
         (input, buf, pending),
