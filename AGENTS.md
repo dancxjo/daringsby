@@ -27,6 +27,7 @@ This repository is a Rust workspace.
 * Document new traits with examples and unit tests.
 * Prefer `AndMouth` when composing multiple `Mouth` implementations.
 * Use `TrimMouth` to skip speaking empty/whitespace-only text.
+* Use `EmojiMouth` to route emoji to the countenance instead of speaking them.
 * Do **not** emit `Event::IntentionToSay` for empty or whitespace-only text.
 * Skip sending `Event::StreamChunk` when the chunk is empty or whitespace.
 * Build prompts using dedicated structs like `WillPrompt` and `HeartPrompt`.
