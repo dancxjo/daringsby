@@ -87,6 +87,7 @@ pub struct Psyche {
     connections: Option<Arc<AtomicUsize>>,
     wits: Vec<Arc<dyn wit::ErasedWit + Send + Sync>>,
     wit_tx: broadcast::Sender<WitReport>,
+    prompt_context: Arc<Mutex<String>>,
 }
 
 impl Psyche {
@@ -125,6 +126,7 @@ impl Psyche {
             pending_user_message: true,
             connections: None,
             wits: Vec::new(),
+            prompt_context: Arc::new(Mutex::new(String::new())),
         }
     }
 
@@ -166,6 +168,12 @@ impl Psyche {
     /// Obtain the sender used to broadcast conversation [`Event`]s.
     pub fn event_sender(&self) -> broadcast::Sender<Event> {
         self.events_tx.clone()
+    }
+
+    /// Update the additional context appended to the system prompt.
+    pub async fn update_prompt_context(&self, context: impl Into<String>) {
+        let mut ctx = self.prompt_context.lock().await;
+        *ctx = context.into();
     }
 
     /// Obtain the sender used to broadcast [`WitReport`]s.
@@ -292,7 +300,13 @@ impl Psyche {
                 let conv = self.conversation.lock().await;
                 conv.tail(self.max_history)
             };
-            if let Ok(mut stream) = self.voice.chat(&self.system_prompt, &history).await {
+            let context = { self.prompt_context.lock().await.clone() };
+            let prompt = if context.is_empty() {
+                self.system_prompt.clone()
+            } else {
+                format!("{}\n{}", self.system_prompt, context)
+            };
+            if let Ok(mut stream) = self.voice.chat(&prompt, &history).await {
                 use tokio_stream::StreamExt;
                 let mut resp = String::new();
                 while let Some(chunk_res) = stream.next().await {
@@ -321,59 +335,13 @@ impl Psyche {
                 self.countenance.express(&self.emotion);
                 debug!("Calling mouth.speak with: '{}'", resp);
                 self.mouth.speak(&resp).await;
-                let mut echoed = String::new();
-                loop {
-                    let recv = self.input_rx.recv();
-                    match tokio::time::timeout(self.echo_timeout, recv).await {
-                        Ok(Some(Sensation::HeardOwnVoice(msg))) => {
-                            debug!("Received HeardOwnVoice: '{}'", msg);
-                            self.ear.hear_self_say(&msg).await;
-                            echoed.push_str(&msg);
-                            let mut conv = self.conversation.lock().await;
-                            conv.add_assistant(msg);
-                            if echoed.trim() == resp.trim() {
-                                self.is_speaking = false;
-                                self.pending_user_message = !self.speak_when_spoken_to;
-                                break;
-                            }
-                        }
-                        Ok(Some(Sensation::HeardUserVoice(msg))) => {
-                            debug!("heard user voice: {}", msg);
-                            if self.is_speaking {
-                                self.mouth.interrupt().await;
-                                while self.input_rx.try_recv().is_ok() {}
-                                self.is_speaking = false;
-                            }
-                            self.ear.hear_user_say(&msg).await;
-                            self.pending_user_message = true;
-                            break;
-                        }
-                        Ok(Some(Sensation::Of(_))) => {
-                            debug!("received non-voice sensation");
-                            // TODO: handle other sensations
-                        }
-                        Ok(None) => {
-                            self.pending_user_message = !self.speak_when_spoken_to;
-                            break;
-                        }
-                        Err(_) => {
-                            error!("echo timeout");
-                            let mut conv = self.conversation.lock().await;
-                            if echoed.is_empty() {
-                                conv.add_assistant(resp.clone());
-                            } else if let Some(last) = conv.log.last_mut() {
-                                if last.role == Role::Assistant {
-                                    last.content = resp.clone();
-                                } else {
-                                    conv.add_assistant(resp.clone());
-                                }
-                            }
-                            self.is_speaking = false;
-                            self.pending_user_message = !self.speak_when_spoken_to;
-                            break;
-                        }
-                    }
+                self.ear.hear_self_say(&resp).await;
+                {
+                    let mut conv = self.conversation.lock().await;
+                    conv.add_assistant(resp.clone());
                 }
+                self.is_speaking = false;
+                self.pending_user_message = !self.speak_when_spoken_to;
             } else {
                 error!("voice chat failed");
                 break;
@@ -386,7 +354,11 @@ impl Psyche {
     }
 
     /// Background task processing non-conversational experience.
-    async fn experience(memory: Arc<dyn Memory>, wits: Vec<Arc<dyn ErasedWit + Send + Sync>>) {
+    async fn experience(
+        memory: Arc<dyn Memory>,
+        wits: Vec<Arc<dyn ErasedWit + Send + Sync>>,
+        context: Arc<Mutex<String>>,
+    ) {
         loop {
             for wit in &wits {
                 let maybe_imp = wit.tick_erased().await;
@@ -395,6 +367,8 @@ impl Psyche {
                     if let Err(e) = memory.store_serializable(&impression).await {
                         error!(?e, "memory store failed");
                     }
+                    let mut ctx = context.lock().await;
+                    *ctx = impression.headline.clone();
                 }
             }
             tokio::time::sleep(EXPERIENCE_TICK).await;
@@ -406,7 +380,8 @@ impl Psyche {
         info!("psyche run started");
         let wits = self.wits.clone();
         let mem = self.memory.clone();
-        let experience_handle = tokio::spawn(Self::experience(mem, wits));
+        let ctx = self.prompt_context.clone();
+        let experience_handle = tokio::spawn(Self::experience(mem, wits, ctx));
         let converse_handle = tokio::spawn(self.converse());
         let psyche = converse_handle.await.expect("converse task panicked");
         experience_handle.abort();

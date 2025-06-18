@@ -194,8 +194,7 @@ async fn waits_for_user_when_configured() {
         .unwrap();
 
     while let Ok(evt) = events.recv().await {
-        if let Event::IntentionToSay(msg) = evt {
-            input.send(Sensation::HeardOwnVoice(msg)).unwrap();
+        if matches!(evt, Event::IntentionToSay(_)) {
             break;
         }
     }
@@ -229,10 +228,7 @@ async fn adds_message_after_voice_heard() {
     while let Ok(evt) = events.recv().await {
         match evt {
             Event::StreamChunk(_) => saw_chunk = true,
-            Event::IntentionToSay(msg) => {
-                input.send(Sensation::HeardOwnVoice(msg)).unwrap();
-                break;
-            }
+            Event::IntentionToSay(_) => break,
             Event::SpeechAudio(_) => {}
             Event::EmotionChanged(_) => {}
         }
@@ -267,9 +263,7 @@ async fn interrupts_when_user_speaks() {
 
     while let Ok(evt) = events.recv().await {
         if let Event::IntentionToSay(msg) = evt {
-            assert!(mouth.speaking());
             input.send(Sensation::HeardUserVoice("hi".into())).unwrap();
-            input.send(Sensation::HeardOwnVoice(msg)).unwrap();
             break;
         }
     }
@@ -323,8 +317,7 @@ async fn speaking_flag_clears_after_echo() {
     let handle = tokio::spawn(async move { psyche.run().await });
 
     while let Ok(evt) = events.recv().await {
-        if let Event::IntentionToSay(msg) = evt {
-            input.send(Sensation::HeardOwnVoice(msg)).unwrap();
+        if matches!(evt, Event::IntentionToSay(_)) {
             break;
         }
     }
@@ -545,7 +538,6 @@ async fn voice_response_is_echoed() {
     while let Ok(evt) = events.recv().await {
         if let Event::IntentionToSay(msg) = evt {
             assert_eq!(msg, "hi 🙂");
-            input.send(Sensation::HeardOwnVoice(msg)).unwrap();
             break;
         }
     }
