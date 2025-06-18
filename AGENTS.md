@@ -34,6 +34,7 @@ This repository is a Rust workspace.
 * `ChannelMouth` emits `Event::IntentionToSay` per parsed sentence.
 * `ChannelCountenance` emits `Event::EmotionChanged` on updates.
 * `Conversation::add_*` merges consecutive same-role messages.
+* Use the `Motor` trait for host actions. Implementations live in `pete`.
 
 ## Frontend
 

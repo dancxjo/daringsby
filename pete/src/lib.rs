@@ -5,6 +5,7 @@
 mod ear;
 mod face;
 mod logging;
+mod motor;
 mod mouth;
 mod psyche_factory;
 mod sensor;
@@ -15,6 +16,7 @@ mod web;
 pub use ear::{ChannelEar, NoopEar};
 pub use face::{ChannelCountenance, NoopFace};
 pub use logging::init_logging;
+pub use motor::LoggingMotor;
 pub use mouth::{ChannelMouth, NoopMouth};
 pub use psyche_factory::{dummy_psyche, ollama_psyche};
 pub use sensor::eye::EyeSensor;
