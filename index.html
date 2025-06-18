@@ -36,16 +36,16 @@
       <div id="face" x-text="emotion" class="text-4xl"></div>
       <audio controls x-ref="player" class="w-full"></audio>
       <video x-ref="video" autoplay playsinline class="w-full max-h-40"></video>
+      <ul id="thoughts" class="p-2 bg-gray-50 rounded flex flex-col space-y-1 text-xs text-gray-500 list-none max-h-24 overflow-y-auto">
+        <template x-for="(t, i) in thoughts" :key="'t'+i">
+          <li x-text="t"></li>
+        </template>
+      </ul>
     </aside>
     <main class="flex flex-col flex-1 p-6 space-y-4">
       <ul id="log" x-ref="log" class="chat-log p-2 bg-gray-50 rounded flex flex-col space-y-1 flex-grow list-none">
         <template x-for="(msg, i) in log" :key="i">
           <li :class="msg.role" x-text="msg.text"></li>
-        </template>
-      </ul>
-      <ul id="thoughts" class="p-2 bg-gray-50 rounded flex flex-col space-y-1 text-sm text-gray-500 list-none max-h-32 overflow-y-auto">
-        <template x-for="(t, i) in thoughts" :key="'t'+i">
-          <li x-text="t"></li>
         </template>
       </ul>
       <form class="flex gap-2 mt-auto" @submit.prevent="send">
