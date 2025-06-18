@@ -1,3 +1,4 @@
+use crate::prompt::PromptBuilder;
 use crate::{
     Impression, Summarizer,
     ling::{Doer, Instruction},
@@ -37,12 +38,21 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct Heart {
     doer: Arc<dyn Doer>,
+    prompt: crate::prompt::HeartPrompt,
 }
 
 impl Heart {
     /// Create a new `Heart` using the given [`Doer`].
     pub fn new(doer: Box<dyn Doer>) -> Self {
-        Self { doer: doer.into() }
+        Self {
+            doer: doer.into(),
+            prompt: crate::prompt::HeartPrompt::default(),
+        }
+    }
+
+    /// Replace the prompt builder.
+    pub fn set_prompt(&mut self, prompt: crate::prompt::HeartPrompt) {
+        self.prompt = prompt;
     }
 }
 
@@ -54,9 +64,7 @@ impl Summarizer<String, String> for Heart {
             .map(|i| i.raw_data.clone())
             .unwrap_or_default();
         let instruction = Instruction {
-            command: format!(
-                "Respond with a single emoji describing the overall emotion of:\n{input}"
-            ),
+            command: self.prompt.build(&input),
             images: Vec::new(),
         };
         let resp = self.doer.follow(instruction).await?;

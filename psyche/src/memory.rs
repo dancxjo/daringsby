@@ -57,6 +57,18 @@ impl Neo4jClient {
     }
 }
 
+#[async_trait]
+pub trait GraphStore: Send + Sync {
+    async fn store_data(&self, data: &Value) -> Result<()>;
+}
+
+#[async_trait]
+impl GraphStore for Neo4jClient {
+    async fn store_data(&self, data: &Value) -> Result<()> {
+        self.store_data(data).await
+    }
+}
+
 /// Memory implementation combining Qdrant and Neo4j storage.
 pub struct BasicMemory {
     /// Vectorizer used for headline embeddings.
@@ -64,7 +76,7 @@ pub struct BasicMemory {
     /// Client used for vector storage.
     pub qdrant: QdrantClient,
     /// Client used for raw data storage.
-    pub neo4j: Neo4jClient,
+    pub neo4j: Arc<dyn GraphStore>,
 }
 
 #[async_trait]

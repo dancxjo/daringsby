@@ -1,3 +1,4 @@
+use crate::prompt::PromptBuilder;
 use crate::{
     Impression, Summarizer,
     ling::{Doer, Instruction},
@@ -38,12 +39,21 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct Will {
     doer: Arc<dyn Doer>,
+    prompt: crate::prompt::WillPrompt,
 }
 
 impl Will {
     /// Create a new `Will` using the provided [`Doer`].
     pub fn new(doer: Box<dyn Doer>) -> Self {
-        Self { doer: doer.into() }
+        Self {
+            doer: doer.into(),
+            prompt: crate::prompt::WillPrompt::default(),
+        }
+    }
+
+    /// Replace the prompt builder.
+    pub fn set_prompt(&mut self, prompt: crate::prompt::WillPrompt) {
+        self.prompt = prompt;
     }
 }
 
@@ -55,7 +65,7 @@ impl Summarizer<String, String> for Will {
             .map(|i| i.raw_data.clone())
             .unwrap_or_default();
         let instruction = Instruction {
-            command: format!("In one short sentence, what should Pete do or say next?\n{input}"),
+            command: self.prompt.build(&input),
             images: Vec::new(),
         };
         let resp = self.doer.follow(instruction).await?;
