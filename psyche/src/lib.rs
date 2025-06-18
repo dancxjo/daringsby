@@ -392,17 +392,21 @@ impl Psyche {
                 self.countenance.express(&self.emotion);
                 debug!("Calling mouth.speak with: '{}'", resp);
                 self.mouth.speak(&resp).await;
+                let mut echoed = String::new();
                 loop {
                     let recv = self.input_rx.recv();
                     match tokio::time::timeout(self.echo_timeout, recv).await {
                         Ok(Some(Sensation::HeardOwnVoice(msg))) => {
                             debug!("Received HeardOwnVoice: '{}'", msg);
                             self.ear.hear_self_say(&msg).await;
+                            echoed.push_str(&msg);
                             let mut conv = self.conversation.lock().await;
                             conv.add_assistant(msg);
-                            self.is_speaking = false;
-                            self.pending_user_message = !self.speak_when_spoken_to;
-                            break;
+                            if echoed.trim() == resp.trim() {
+                                self.is_speaking = false;
+                                self.pending_user_message = !self.speak_when_spoken_to;
+                                break;
+                            }
                         }
                         Ok(Some(Sensation::HeardUserVoice(msg))) => {
                             debug!("heard user voice: {}", msg);
@@ -427,9 +431,16 @@ impl Psyche {
                         }
                         Err(_) => {
                             error!("echo timeout");
-                            self.ear.hear_self_say(&resp).await;
                             let mut conv = self.conversation.lock().await;
-                            conv.add_assistant(resp.clone());
+                            if echoed.is_empty() {
+                                conv.add_assistant(resp.clone());
+                            } else if let Some(last) = conv.log.last_mut() {
+                                if last.role == Role::Assistant {
+                                    last.content = resp.clone();
+                                } else {
+                                    conv.add_assistant(resp.clone());
+                                }
+                            }
                             self.is_speaking = false;
                             self.pending_user_message = !self.speak_when_spoken_to;
                             break;
