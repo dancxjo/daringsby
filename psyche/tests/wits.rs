@@ -1,6 +1,6 @@
 use chrono::Utc;
-use psyche::wit::{Instant, MomentWit};
-use psyche::{Impression, Summarizer};
+use psyche::wit::{EpisodeWit, Instant, InstantWit, MomentWit, SituationWit};
+use psyche::{Impression, Sensation, Summarizer};
 use uuid::Uuid;
 
 #[tokio::test]
@@ -32,4 +32,23 @@ async fn synthesizes_moment_from_instants() {
 
     assert_eq!(output.raw_data.summary.contains("dog"), true);
     assert_eq!(output.raw_data.summary.contains("startled"), true);
+}
+
+#[tokio::test]
+async fn instant_to_episode_pipeline() {
+    let instant_wit = InstantWit::default();
+    let moment_wit = MomentWit::default();
+    let situation_wit = SituationWit::default();
+    let episode_wit = EpisodeWit::default();
+
+    let sensation = Impression::new(
+        "",
+        None::<String>,
+        Sensation::HeardUserVoice("hello".into()),
+    );
+    let instant = instant_wit.digest(&[sensation]).await.unwrap();
+    let moment = moment_wit.digest(&[instant.clone()]).await.unwrap();
+    let situation = situation_wit.digest(&[moment.clone()]).await.unwrap();
+    let episode = episode_wit.digest(&[situation]).await.unwrap();
+    assert!(!episode.raw_data.summary.is_empty());
 }

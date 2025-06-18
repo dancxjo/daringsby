@@ -1,4 +1,4 @@
-use crate::{Impression, Sensation};
+use crate::{Impression, Sensation, ling::Instruction};
 use async_trait::async_trait;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -87,24 +87,86 @@ pub struct Moment {
 
 /// An aggregation of moments providing more context.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Situation;
+pub struct Situation {
+    /// Concise description of the current situation.
+    pub summary: String,
+}
 
 /// A high level summary of a situation.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Episode;
+pub struct Episode {
+    /// Narrative recap of recent situations.
+    pub summary: String,
+}
 
 /// A Wit turning [`Sensation`]s into [`Instant`]s.
 pub struct InstantWit {
     doer: Arc<dyn crate::ling::Doer>,
 }
 
+impl InstantWit {
+    /// Create a new `InstantWit` using the provided [`Doer`].
+    pub fn new(doer: Box<dyn crate::ling::Doer>) -> Self {
+        Self { doer: doer.into() }
+    }
+}
+
+impl Default for InstantWit {
+    fn default() -> Self {
+        #[derive(Clone)]
+        struct Dummy;
+
+        #[async_trait]
+        impl crate::ling::Doer for Dummy {
+            async fn follow(
+                &self,
+                instruction: crate::ling::Instruction,
+            ) -> anyhow::Result<String> {
+                Ok(instruction.command)
+            }
+        }
+
+        Self::new(Box::new(Dummy))
+    }
+}
+
 #[async_trait]
 impl Summarizer<Sensation, Instant> for InstantWit {
     async fn digest(
         &self,
-        _inputs: &[Impression<Sensation>],
+        inputs: &[Impression<Sensation>],
     ) -> anyhow::Result<Impression<Instant>> {
-        todo!()
+        let mut combined = String::new();
+        for imp in inputs {
+            if !combined.is_empty() {
+                combined.push(' ');
+            }
+            let desc = match &imp.raw_data {
+                Sensation::HeardOwnVoice(t) => format!("Pete said: {t}"),
+                Sensation::HeardUserVoice(t) => format!("User said: {t}"),
+                Sensation::Of(_) => "Something happened".to_string(),
+            };
+            combined.push_str(&desc);
+        }
+        let prompt = format!(
+            "Summarize the following sensations in one sentence:\n{}",
+            combined
+        );
+        let resp = self
+            .doer
+            .follow(Instruction {
+                command: prompt,
+                images: Vec::new(),
+            })
+            .await?;
+        let observation = resp.trim().to_string();
+        Ok(Impression {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            headline: observation.clone(),
+            details: Some(combined),
+            raw_data: Instant { observation },
+        })
     }
 }
 
@@ -191,13 +253,61 @@ pub struct SituationWit {
     doer: Arc<dyn crate::ling::Doer>,
 }
 
+impl SituationWit {
+    /// Create a new `SituationWit` using the provided [`Doer`].
+    pub fn new(doer: Box<dyn crate::ling::Doer>) -> Self {
+        Self { doer: doer.into() }
+    }
+}
+
+impl Default for SituationWit {
+    fn default() -> Self {
+        #[derive(Clone)]
+        struct Dummy;
+
+        #[async_trait]
+        impl crate::ling::Doer for Dummy {
+            async fn follow(
+                &self,
+                instruction: crate::ling::Instruction,
+            ) -> anyhow::Result<String> {
+                Ok(instruction.command)
+            }
+        }
+
+        Self::new(Box::new(Dummy))
+    }
+}
+
 #[async_trait]
 impl Summarizer<Moment, Situation> for SituationWit {
-    async fn digest(
-        &self,
-        _inputs: &[Impression<Moment>],
-    ) -> anyhow::Result<Impression<Situation>> {
-        todo!()
+    async fn digest(&self, inputs: &[Impression<Moment>]) -> anyhow::Result<Impression<Situation>> {
+        let mut combined = String::new();
+        for imp in inputs {
+            if !combined.is_empty() {
+                combined.push(' ');
+            }
+            combined.push_str(&imp.raw_data.summary);
+        }
+        let prompt = format!(
+            "Summarize the following moments in one sentence:\n{}",
+            combined
+        );
+        let resp = self
+            .doer
+            .follow(Instruction {
+                command: prompt,
+                images: Vec::new(),
+            })
+            .await?;
+        let summary = resp.trim().to_string();
+        Ok(Impression {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            headline: summary.clone(),
+            details: Some(combined),
+            raw_data: Situation { summary },
+        })
     }
 }
 
@@ -206,13 +316,64 @@ pub struct EpisodeWit {
     doer: Arc<dyn crate::ling::Doer>,
 }
 
+impl EpisodeWit {
+    /// Create a new `EpisodeWit` using the provided [`Doer`].
+    pub fn new(doer: Box<dyn crate::ling::Doer>) -> Self {
+        Self { doer: doer.into() }
+    }
+}
+
+impl Default for EpisodeWit {
+    fn default() -> Self {
+        #[derive(Clone)]
+        struct Dummy;
+
+        #[async_trait]
+        impl crate::ling::Doer for Dummy {
+            async fn follow(
+                &self,
+                instruction: crate::ling::Instruction,
+            ) -> anyhow::Result<String> {
+                Ok(instruction.command)
+            }
+        }
+
+        Self::new(Box::new(Dummy))
+    }
+}
+
 #[async_trait]
 impl Summarizer<Situation, Episode> for EpisodeWit {
     async fn digest(
         &self,
-        _inputs: &[Impression<Situation>],
+        inputs: &[Impression<Situation>],
     ) -> anyhow::Result<Impression<Episode>> {
-        todo!()
+        let mut combined = String::new();
+        for imp in inputs {
+            if !combined.is_empty() {
+                combined.push(' ');
+            }
+            combined.push_str(&imp.raw_data.summary);
+        }
+        let prompt = format!(
+            "Summarize these situations into a short episode:\n{}",
+            combined
+        );
+        let resp = self
+            .doer
+            .follow(Instruction {
+                command: prompt,
+                images: Vec::new(),
+            })
+            .await?;
+        let summary = resp.trim().to_string();
+        Ok(Impression {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            headline: summary.clone(),
+            details: Some(combined),
+            raw_data: Episode { summary },
+        })
     }
 }
 
