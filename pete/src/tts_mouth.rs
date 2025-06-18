@@ -14,6 +14,7 @@ use tracing::{error, info};
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
 use reqwest::{Client, Url};
+use urlencoding::encode;
 
 /// Stream of raw WAV data chunks.
 pub type TtsStream = Pin<Box<dyn Stream<Item = Result<Vec<u8>>> + Send>>;
@@ -59,7 +60,7 @@ impl Tts for CoquiTts {
         let mut url = Url::parse(&self.url)?;
         {
             let mut qp = url.query_pairs_mut();
-            qp.append_pair("text", text);
+            qp.append_pair("text", &encode(text).to_string());
             // Always include speaker_id and language_id, using defaults if not provided
             qp.append_pair("speaker_id", self.speaker_id.as_deref().unwrap_or("p340"));
             qp.append_pair("language_id", self.language_id.as_deref().unwrap_or(""));
@@ -111,20 +112,21 @@ impl Mouth for TtsMouth {
             }
             match self.tts.stream_wav(sent).await {
                 Ok(mut stream) => {
+                    let mut buf = Vec::new();
                     while let Some(chunk) = stream.next().await {
                         match chunk {
-                            Ok(bytes) if !bytes.is_empty() => {
-                                let b64 = general_purpose::STANDARD.encode(bytes);
-                                if self.events.send(Event::SpeechAudio(b64)).is_err() {
-                                    error!("failed sending audio chunk");
-                                    break;
-                                }
-                            }
+                            Ok(bytes) if !bytes.is_empty() => buf.extend(bytes),
                             Ok(_) => {}
                             Err(e) => {
                                 error!(?e, "tts streaming failed");
                                 break;
                             }
+                        }
+                    }
+                    if !buf.is_empty() {
+                        let b64 = general_purpose::STANDARD.encode(buf);
+                        if self.events.send(Event::SpeechAudio(b64)).is_err() {
+                            error!("failed sending audio chunk");
                         }
                     }
                 }
