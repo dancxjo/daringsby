@@ -44,6 +44,7 @@ This repository is a Rust workspace.
 * Style user and system messages distinctly for clarity.
 * Keep `index.html` and `pete/build.rs` in sync.
 * Front-end tests live under `frontend/` and run with `npm test`.
+* Run `npm install` first if dependencies are missing.
 
 ## Communication
 
