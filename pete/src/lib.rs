@@ -19,7 +19,7 @@ pub use mouth::{ChannelMouth, NoopMouth};
 pub use psyche_factory::{dummy_psyche, ollama_psyche};
 pub use sensor::eye::EyeSensor;
 #[cfg(feature = "tts")]
-pub use tts_mouth::{CoquiTts, Tts, TtsMouth};
+pub use tts_mouth::{CoquiTts, Tts, TtsMouth, TtsStream};
 pub use web::{
     AppState, WsRequest, app, conversation_log, index, listen_user_input, log_ws_handler,
     ws_handler,
