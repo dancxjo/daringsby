@@ -368,7 +368,9 @@ impl Psyche {
                     match chunk_res {
                         Ok(chunk) => {
                             debug!("chunk received: {}", chunk);
-                            let _ = self.events_tx.send(Event::StreamChunk(chunk.clone()));
+                            if !chunk.trim().is_empty() {
+                                let _ = self.events_tx.send(Event::StreamChunk(chunk.clone()));
+                            }
                             resp.push_str(&chunk);
                         }
                         Err(_) => break,

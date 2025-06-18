@@ -8,6 +8,106 @@ struct Dummy {
     speaking: std::sync::Arc<AtomicBool>,
 }
 
+#[tokio::test]
+async fn no_empty_stream_chunks() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    #[derive(Clone, Default)]
+    struct BlankFirstLLM;
+
+    #[async_trait]
+    impl Doer for BlankFirstLLM {
+        async fn follow(&self, _: Instruction) -> anyhow::Result<String> {
+            Ok("ok".into())
+        }
+    }
+
+    #[async_trait]
+    impl Chatter for BlankFirstLLM {
+        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+            let stream = tokio_stream::iter(vec![Ok("  ".to_string()), Ok("hello".to_string())]);
+            Ok(Box::pin(stream))
+        }
+    }
+
+    #[async_trait]
+    impl Vectorizer for BlankFirstLLM {
+        async fn vectorize(&self, _: &str) -> anyhow::Result<Vec<f32>> {
+            Ok(vec![0.0])
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct NullMouth(Arc<AtomicUsize>);
+
+    #[async_trait]
+    impl Mouth for NullMouth {
+        async fn speak(&self, _text: &str) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+        async fn interrupt(&self) {}
+        fn speaking(&self) -> bool {
+            false
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct NullEar;
+
+    #[async_trait]
+    impl Ear for NullEar {
+        async fn hear_self_say(&self, _t: &str) {}
+        async fn hear_user_say(&self, _t: &str) {}
+    }
+
+    let mouth_count = Arc::new(AtomicUsize::new(0));
+    let mouth = Arc::new(NullMouth(mouth_count.clone())) as Arc<dyn Mouth>;
+    let ear = Arc::new(NullEar) as Arc<dyn Ear>;
+
+    let mut psyche = Psyche::new(
+        Box::new(BlankFirstLLM),
+        Box::new(BlankFirstLLM),
+        Box::new(BlankFirstLLM),
+        Arc::new(psyche::NoopMemory),
+        mouth,
+        ear,
+    );
+    psyche.set_turn_limit(1);
+    psyche.set_system_prompt("sys");
+
+    let mut events = psyche.subscribe();
+
+    let handle = tokio::spawn(async move { psyche.run().await });
+
+    let mut got_empty_chunk = false;
+    let mut got_non_empty_chunk = false;
+    while let Ok(evt) = events.recv().await {
+        match evt {
+            Event::StreamChunk(chunk) => {
+                if chunk.trim().is_empty() {
+                    got_empty_chunk = true;
+                } else {
+                    got_non_empty_chunk = true;
+                }
+            }
+            Event::IntentionToSay(msg) => {
+                handle.abort();
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    let _ = handle.await;
+
+    assert!(got_non_empty_chunk);
+    assert!(!got_empty_chunk);
+    assert_eq!(mouth_count.load(Ordering::SeqCst), 1);
+}
+
 #[async_trait]
 impl Mouth for Dummy {
     async fn speak(&self, _t: &str) {
