@@ -6,6 +6,7 @@ use pete::{
 };
 #[cfg(feature = "tts")]
 use pete::{CoquiTts, TtsMouth};
+use psyche::PlainMouth;
 use psyche::{AndMouth, Mouth};
 use std::{
     net::SocketAddr,
@@ -54,20 +55,22 @@ async fn main() -> anyhow::Result<()> {
     let display = Arc::new(ChannelMouth::new(psyche.event_sender(), speaking.clone()));
     let face = Arc::new(ChannelCountenance::new(psyche.event_sender()));
     #[cfg(feature = "tts")]
-    let audio = Arc::new(TtsMouth::new(
-        psyche.event_sender(),
-        speaking.clone(),
-        Arc::new(CoquiTts::new(
-            cli.tts_url,
-            cli.tts_speaker_id,
-            cli.tts_language_id,
-        )),
-    ));
-    #[cfg(feature = "tts")]
-    let mouth = Arc::new(AndMouth::new(vec![
-        display.clone() as Arc<dyn Mouth>,
-        audio,
-    ]));
+    let mouth = {
+        let tts = Arc::new(TtsMouth::new(
+            psyche.event_sender(),
+            speaking.clone(),
+            Arc::new(CoquiTts::new(
+                cli.tts_url,
+                cli.tts_speaker_id,
+                cli.tts_language_id,
+            )),
+        )) as Arc<dyn Mouth>;
+        let audio = Arc::new(PlainMouth::new(tts)) as Arc<dyn Mouth>;
+        Arc::new(AndMouth::new(vec![
+            display.clone() as Arc<dyn Mouth>,
+            audio,
+        ]))
+    };
     #[cfg(not(feature = "tts"))]
     let mouth = display.clone() as Arc<dyn Mouth>;
     psyche.set_mouth(mouth.clone());
