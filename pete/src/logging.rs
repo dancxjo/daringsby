@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 use tokio::sync::broadcast;
-use tracing_subscriber::{fmt, util::SubscriberInitExt};
+use tracing_subscriber::fmt;
 
 /// Initialize logging to stdout and broadcast log lines over the provided channel.
 pub fn init_logging(tx: broadcast::Sender<String>) {

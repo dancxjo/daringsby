@@ -49,7 +49,7 @@ impl Will {
     pub fn new(doer: Box<dyn Doer>) -> Self {
         Self {
             doer: doer.into(),
-            prompt: crate::prompt::WillPrompt::default(),
+            prompt: crate::prompt::WillPrompt,
             tx: None,
         }
     }
@@ -58,7 +58,7 @@ impl Will {
     pub fn with_debug(doer: Box<dyn Doer>, tx: broadcast::Sender<crate::WitReport>) -> Self {
         Self {
             doer: doer.into(),
-            prompt: crate::prompt::WillPrompt::default(),
+            prompt: crate::prompt::WillPrompt,
             tx: Some(tx),
         }
     }
