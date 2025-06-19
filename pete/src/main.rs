@@ -1,13 +1,12 @@
 use clap::Parser;
 use pete::EyeSensor;
 use pete::{
-    AppState, ChannelCountenance, ChannelEar, ChannelMouth, app, init_logging, listen_user_input,
-    ollama_psyche,
+    AppState, ChannelEar, ChannelMouth, app, init_logging, listen_user_input, ollama_psyche,
 };
 #[cfg(feature = "tts")]
 use pete::{CoquiTts, TtsMouth};
 use psyche::PlainMouth;
-use psyche::{AndMouth, EmojiMouth, Mouth, Sensor, TrimMouth};
+use psyche::{AndMouth, Mouth, Sensor, TrimMouth};
 use std::{
     net::SocketAddr,
     sync::{
@@ -53,7 +52,6 @@ async fn main() -> anyhow::Result<()> {
     let speaking = Arc::new(AtomicBool::new(false));
     let connections = Arc::new(AtomicUsize::new(0));
     let display = Arc::new(ChannelMouth::new(psyche.event_sender(), speaking.clone()));
-    let face = Arc::new(ChannelCountenance::new(psyche.event_sender()));
     #[cfg(feature = "tts")]
     let base_mouth: Arc<dyn Mouth> = {
         let tts = Arc::new(TtsMouth::new(
@@ -74,9 +72,7 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "tts"))]
     let base_mouth: Arc<dyn Mouth> = display.clone() as Arc<dyn Mouth>;
     let mouth = Arc::new(TrimMouth::new(base_mouth)) as Arc<dyn Mouth>;
-    let mouth = Arc::new(EmojiMouth::new(mouth, face.clone())) as Arc<dyn Mouth>;
     psyche.set_mouth(mouth.clone());
-    psyche.set_countenance(face.clone());
     psyche.set_emotion("😐");
     psyche.set_connection_counter(connections.clone());
     let events = Arc::new(psyche.subscribe());

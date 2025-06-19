@@ -1,10 +1,9 @@
 use crate::Impression;
 use crate::ling::{Chatter, Doer, Message, Role, Vectorizer};
 use crate::sensation::{Event, Sensation, WitReport};
-use crate::traits::NoopCountenance;
 use crate::traits::wit;
 use crate::traits::wit::{ErasedWit, Wit, WitAdapter};
-use crate::traits::{Countenance, Ear, Mouth};
+use crate::traits::{Ear, Mouth};
 use crate::wits::memory::Memory;
 use async_trait::async_trait;
 use pragmatic_segmenter::Segmenter;
@@ -67,12 +66,10 @@ impl Conversation {
 /// `Psyche` drives interactions with language models and orchestrates IO via the [`Mouth`] and [`Ear`] traits. Instantiate it and call [`Psyche::run`] to start the loop.
 pub struct Psyche {
     narrator: Box<dyn Doer>,
-    voice: Arc<dyn Chatter>,
+    voice: Arc<crate::voice::Voice>,
     vectorizer: Box<dyn Vectorizer>,
     memory: Arc<dyn Memory>,
-    mouth: Arc<dyn Mouth>,
     ear: Arc<dyn Ear>,
-    countenance: Arc<dyn Countenance>,
     emotion: String,
     system_prompt: String,
     max_history: usize,
@@ -105,14 +102,13 @@ impl Psyche {
         let (events_tx, _r) = broadcast::channel(16);
         let (wit_tx, _r2) = broadcast::channel(16);
         let (input_tx, input_rx) = mpsc::unbounded_channel();
+        let voice = crate::voice::Voice::new(Arc::from(voice), mouth, events_tx.clone());
         Self {
             narrator,
-            voice: Arc::from(voice),
+            voice: Arc::new(voice),
             vectorizer,
             memory,
-            mouth,
             ear,
-            countenance: Arc::new(NoopCountenance),
             emotion: "😐".to_string(),
             system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
             max_history: 8,
@@ -209,7 +205,7 @@ impl Psyche {
 
     /// Swap out the [`Mouth`] used for speech output.
     pub fn set_mouth(&mut self, mouth: Arc<dyn Mouth>) {
-        self.mouth = mouth;
+        self.voice.set_mouth(mouth);
     }
 
     /// Swap out the [`Memory`] implementation.
@@ -217,15 +213,9 @@ impl Psyche {
         self.memory = memory;
     }
 
-    /// Swap out the [`Countenance`] used to display emotion.
-    pub fn set_countenance(&mut self, countenance: Arc<dyn Countenance>) {
-        self.countenance = countenance;
-    }
-
     /// Set the currently expressed emotion to `emoji`.
     pub fn set_emotion(&mut self, emoji: impl Into<String>) {
         self.emotion = emoji.into();
-        self.countenance.express(&self.emotion);
         let _ = self
             .events_tx
             .send(Event::EmotionChanged(self.emotion.clone()));
@@ -332,76 +322,13 @@ impl Psyche {
             } else {
                 format!("{}\n{}", base, context)
             };
-            if let Ok(mut stream) = self.voice.chat(&prompt, &history).await {
-                use std::collections::VecDeque;
-                use tokio_stream::StreamExt;
-                let mut resp = String::new();
-                let mut buf = String::new();
-                let mut leftover = String::new();
-                let mut pending: VecDeque<String> = VecDeque::new();
-                let segmenter = Segmenter::new().expect("segmenter init");
-
-                while let Some(chunk_res) = stream.next().await {
-                    match chunk_res {
-                        Ok(chunk) => {
-                            debug!("chunk received: {}", chunk);
-                            if !chunk.trim().is_empty() {
-                                let _ = self.events_tx.send(Event::StreamChunk(chunk.clone()));
-                            }
-                            resp.push_str(&chunk);
-
-                            buf.push_str(&leftover);
-                            buf.push_str(&chunk);
-                            let mut segs: Vec<String> =
-                                segmenter.segment(&buf).map(|s| s.to_string()).collect();
-                            if !segs.is_empty() {
-                                leftover = segs.pop().unwrap();
-                                for s in segs {
-                                    pending.push_back(s);
-                                }
-                            }
-                            buf.clear();
-
-                            while pending.len() > 1 {
-                                if let Some(sentence) = pending.pop_front() {
-                                    info!("assistant intends to say: {}", sentence.trim());
-                                    let _ = self
-                                        .events_tx
-                                        .send(Event::IntentionToSay(sentence.clone()));
-                                    self.is_speaking = true;
-                                    self.countenance.express(&self.emotion);
-                                    self.mouth.speak(&sentence).await;
-                                    self.is_speaking = false;
-                                }
-                            }
-                        }
-                        Err(_) => break,
-                    }
-                }
-
-                if !leftover.is_empty() {
-                    pending.push_back(leftover);
-                }
-                while let Some(sentence) = pending.pop_front() {
-                    let trimmed = sentence.trim();
-                    if trimmed.is_empty() {
-                        continue;
-                    }
-                    info!("assistant intends to say: {}", trimmed);
-                    let _ = self
-                        .events_tx
-                        .send(Event::IntentionToSay(trimmed.to_string()));
-                    self.is_speaking = true;
-                    self.countenance.express(&self.emotion);
-                    self.mouth.speak(trimmed).await;
-                    self.is_speaking = false;
-                }
-
-                self.pending_user_message = !self.speak_when_spoken_to;
-            } else {
-                error!("voice chat failed");
+            self.is_speaking = true;
+            if let Err(e) = self.voice.take_turn(&prompt, &history).await {
+                error!(?e, "voice chat failed");
                 break;
             }
+            self.is_speaking = false;
+            self.pending_user_message = !self.speak_when_spoken_to;
             turns += 1;
             debug!("turn {} complete", turns);
         }
@@ -414,7 +341,7 @@ impl Psyche {
         memory: Arc<dyn Memory>,
         wits: Vec<Arc<dyn ErasedWit + Send + Sync>>,
         context: Arc<Mutex<String>>,
-        voice: Arc<dyn Chatter>,
+        voice: Arc<crate::voice::Voice>,
     ) {
         loop {
             for wit in &wits {

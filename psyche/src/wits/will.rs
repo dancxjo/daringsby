@@ -67,6 +67,12 @@ impl Will {
     pub fn set_prompt(&mut self, prompt: crate::prompt::WillPrompt) {
         self.prompt = prompt;
     }
+
+    /// Allow the given [`Voice`] to speak using an optional instruction
+    /// override.
+    pub fn command_voice_to_speak(&self, voice: &crate::voice::Voice, prompt: Option<String>) {
+        voice.permit(prompt);
+    }
 }
 
 #[async_trait]

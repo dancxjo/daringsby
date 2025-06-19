@@ -30,16 +30,6 @@ impl PromptBuilder for WillPrompt {
     }
 }
 
-/// Prompt builder for the `Heart` subagent.
-#[derive(Clone, Default)]
-pub struct HeartPrompt;
-
-impl PromptBuilder for HeartPrompt {
-    fn build(&self, input: &str) -> String {
-        format!("Respond with a single emoji describing the overall emotion of:\n{input}")
-    }
-}
-
 /// Prompt builder for the `Combobulator` subagent.
 #[derive(Clone, Default)]
 pub struct CombobulatorPrompt;

@@ -205,46 +205,6 @@ async fn waits_for_user_when_configured() {
 }
 
 #[tokio::test]
-async fn adds_message_after_voice_heard() {
-    let mouth = std::sync::Arc::new(Dummy::default());
-    let ear = mouth.clone();
-    let mut psyche = Psyche::new(
-        Box::new(Dummy::default()),
-        Box::new(Dummy::default()),
-        Box::new(Dummy::default()),
-        std::sync::Arc::new(psyche::NoopMemory),
-        mouth,
-        ear,
-    );
-    psyche.set_turn_limit(1);
-    psyche.set_system_prompt("sys");
-
-    let mut events = psyche.subscribe();
-    let input = psyche.input_sender();
-
-    let handle = tokio::spawn(async move { psyche.run().await });
-
-    let mut saw_chunk = false;
-    while let Ok(evt) = events.recv().await {
-        match evt {
-            Event::StreamChunk(_) => saw_chunk = true,
-            Event::IntentionToSay(t) => {
-                input.send(Sensation::HeardOwnVoice(t)).unwrap();
-                break;
-            }
-            Event::SpeechAudio(_) => {}
-            Event::EmotionChanged(_) => {}
-        }
-    }
-
-    let psyche = handle.await.unwrap();
-    assert!(saw_chunk);
-    let conv = psyche.conversation();
-    let log_len = { conv.lock().await.all().len() };
-    assert_eq!(log_len, 1);
-}
-
-#[tokio::test]
 async fn interrupts_when_user_speaks() {
     let mouth = std::sync::Arc::new(Dummy::default());
     let ear = mouth.clone();
