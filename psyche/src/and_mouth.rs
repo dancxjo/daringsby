@@ -42,12 +42,12 @@ impl AndMouth {
         }
     }
 
-    fn for_each_async<'a, F>(&'a self, mut f: F) -> BoxFuture<'a, ()>
+    fn for_each_async<'a, F>(&'a self, f: F) -> BoxFuture<'a, ()>
     where
         F: FnMut(&'a Arc<dyn Mouth>) -> BoxFuture<'a, ()> + Send + 'a,
     {
         Box::pin(async move {
-            let futures = self.mouths.iter().map(|m| f(m));
+            let futures = self.mouths.iter().map(f);
             join_all(futures).await;
         })
     }

@@ -5,8 +5,9 @@ use pete::{
 };
 #[cfg(feature = "tts")]
 use pete::{CoquiTts, TtsMouth};
+#[cfg(feature = "tts")]
 use psyche::PlainMouth;
-use psyche::{AndMouth, Mouth, Sensor, TrimMouth};
+use psyche::{Mouth, Sensor, TrimMouth};
 use std::{
     net::SocketAddr,
     sync::{

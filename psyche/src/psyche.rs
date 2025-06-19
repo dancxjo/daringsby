@@ -2,7 +2,7 @@ use crate::ling::{Chatter, Doer, Message, Role, Vectorizer};
 use crate::prompt::PromptBuilder;
 use crate::sensation::{Event, Sensation, WitReport};
 use crate::traits::wit;
-use crate::traits::wit::{ErasedWit, Wit, WitAdapter};
+use crate::traits::wit::{ErasedWit, Wit};
 use crate::traits::{Ear, Mouth};
 use crate::wits::memory::Memory;
 use serde::Serialize;
@@ -63,8 +63,10 @@ impl Conversation {
 ///
 /// `Psyche` drives interactions with language models and orchestrates IO via the [`Mouth`] and [`Ear`] traits. Instantiate it and call [`Psyche::run`] to start the loop.
 pub struct Psyche {
+    #[allow(dead_code)]
     narrator: Box<dyn Doer>,
     voice: Arc<crate::voice::Voice>,
+    #[allow(dead_code)]
     vectorizer: Box<dyn Vectorizer>,
     memory: Arc<dyn Memory>,
     ear: Arc<dyn Ear>,
@@ -124,7 +126,7 @@ impl Psyche {
             connections: None,
             wits: Vec::new(),
             prompt_context: Arc::new(Mutex::new(String::new())),
-            voice_prompt: crate::prompt::VoicePrompt::default(),
+            voice_prompt: crate::prompt::VoicePrompt,
             senses: Vec::new(),
         }
     }

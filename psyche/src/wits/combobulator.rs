@@ -47,7 +47,7 @@ impl Combobulator {
     pub fn new(doer: Box<dyn Doer>) -> Self {
         Self {
             doer: doer.into(),
-            prompt: crate::prompt::CombobulatorPrompt::default(),
+            prompt: crate::prompt::CombobulatorPrompt,
             tx: None,
         }
     }
@@ -56,7 +56,7 @@ impl Combobulator {
     pub fn with_debug(doer: Box<dyn Doer>, tx: broadcast::Sender<crate::WitReport>) -> Self {
         Self {
             doer: doer.into(),
-            prompt: crate::prompt::CombobulatorPrompt::default(),
+            prompt: crate::prompt::CombobulatorPrompt,
             tx: Some(tx),
         }
     }
