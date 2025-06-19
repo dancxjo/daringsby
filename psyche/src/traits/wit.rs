@@ -149,7 +149,7 @@ impl Summarizer<Sensation, Instant> for InstantWit {
             combined.push_str(&desc);
         }
         let prompt = format!(
-            "Summarize the following sensations in one sentence:\n{}",
+            "Summarize the following sensations in one or two sentences:\n{}",
             combined
         );
         let resp = self
@@ -224,7 +224,7 @@ impl Summarizer<Instant, Moment> for MomentWit {
         let combined = combined.trim().to_string();
 
         let prompt = format!(
-            "Summarize the following observations into one short paragraph:\n{}",
+            "Summarize the following observations in one or two sentences:\n{}",
             combined
         );
 
@@ -290,7 +290,7 @@ impl Summarizer<Moment, Situation> for SituationWit {
             combined.push_str(&imp.raw_data.summary);
         }
         let prompt = format!(
-            "Summarize the following moments in one sentence:\n{}",
+            "Summarize the following moments in one or two sentences:\n{}",
             combined
         );
         let resp = self
@@ -356,7 +356,7 @@ impl Summarizer<Situation, Episode> for EpisodeWit {
             combined.push_str(&imp.raw_data.summary);
         }
         let prompt = format!(
-            "Summarize these situations into a short episode:\n{}",
+            "Summarize these situations in one or two sentences:\n{}",
             combined
         );
         let resp = self
