@@ -26,7 +26,11 @@ function loadAppWithSocket() {
   const socket = { send: jest.fn() };
   window.WebSocket = jest.fn(() => socket);
   const app = window.chatApp();
-  app.$refs = { log: document.createElement('div'), player: {}, video: {} };
+  app.$refs = {
+    log: document.createElement('div'),
+    player: { src: '', play: jest.fn(() => Promise.resolve()), onended: null },
+    video: {}
+  };
   app.$nextTick = (cb) => cb();
   app.connect();
   return { app, socket };
@@ -43,9 +47,16 @@ test('playNext loads audio and sends ack', () => {
   expect(app.playing).toBe(false);
 });
 
-test('displayed ack sent when text arrives', () => {
+test('speech event appends text and queues audio', () => {
   const { app, socket } = loadAppWithSocket();
-  socket.onmessage({ data: JSON.stringify({ kind: 'pete-says', text: 'hi' }) });
-  expect(app.log[0].text).toBe('hi');
-  expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: 'displayed', text: 'hi' }));
+  socket.onmessage({
+    data: JSON.stringify({ kind: 'pete-speech', text: 'hello', audio: 'AA==' })
+  });
+  expect(app.log[0].text).toBe('hello');
+  expect(app.playing).toBe(true);
+  expect(app.$refs.player.src).toBe('data:audio/wav;base64,AA==');
+  // queue is drained immediately
+  expect(app.audioQueue.length).toBe(0);
+  // No display ack is sent; playback ack happens later.
+  expect(socket.send).not.toHaveBeenCalled();
 });
