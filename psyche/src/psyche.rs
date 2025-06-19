@@ -1,12 +1,10 @@
-use crate::Impression;
 use crate::ling::{Chatter, Doer, Message, Role, Vectorizer};
+use crate::prompt::PromptBuilder;
 use crate::sensation::{Event, Sensation, WitReport};
 use crate::traits::wit;
 use crate::traits::wit::{ErasedWit, Wit, WitAdapter};
 use crate::traits::{Ear, Mouth};
 use crate::wits::memory::Memory;
-use async_trait::async_trait;
-use pragmatic_segmenter::Segmenter;
 use serde::Serialize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -86,6 +84,7 @@ pub struct Psyche {
     wits: Vec<Arc<dyn wit::ErasedWit + Send + Sync>>,
     wit_tx: broadcast::Sender<WitReport>,
     prompt_context: Arc<Mutex<String>>,
+    voice_prompt: crate::prompt::VoicePrompt,
     senses: Vec<String>,
 }
 
@@ -125,6 +124,7 @@ impl Psyche {
             connections: None,
             wits: Vec::new(),
             prompt_context: Arc::new(Mutex::new(String::new())),
+            voice_prompt: crate::prompt::VoicePrompt::default(),
             senses: Vec::new(),
         }
     }
@@ -206,6 +206,11 @@ impl Psyche {
     /// Swap out the [`Mouth`] used for speech output.
     pub fn set_mouth(&mut self, mouth: Arc<dyn Mouth>) {
         self.voice.set_mouth(mouth);
+    }
+
+    /// Replace the [`VoicePrompt`] used to build the system prompt.
+    pub fn set_voice_prompt(&mut self, prompt: crate::prompt::VoicePrompt) {
+        self.voice_prompt = prompt;
     }
 
     /// Swap out the [`Memory`] implementation.
@@ -317,11 +322,12 @@ impl Psyche {
             };
             let context = { self.prompt_context.lock().await.clone() };
             let base = self.described_system_prompt();
-            let prompt = if context.is_empty() {
+            let system_prompt = if context.is_empty() {
                 base
             } else {
                 format!("{}\n{}", base, context)
             };
+            let prompt = self.voice_prompt.build(&system_prompt);
             self.is_speaking = true;
             if let Err(e) = self.voice.take_turn(&prompt, &history).await {
                 error!(?e, "voice chat failed");
@@ -344,20 +350,30 @@ impl Psyche {
         voice: Arc<crate::voice::Voice>,
     ) {
         loop {
+            let mut tasks = Vec::new();
             for wit in &wits {
-                let maybe_imp = wit.tick_erased().await;
-                if let Some(impression) = maybe_imp {
-                    info!(?impression.headline, "Wit emitted impression");
-                    if let Err(e) = memory.store_serializable(&impression).await {
-                        error!(?e, "memory store failed");
+                let wit = wit.clone();
+                let memory = memory.clone();
+                let context = context.clone();
+                let voice = voice.clone();
+                tasks.push(tokio::spawn(async move {
+                    let maybe_imp = wit.tick_erased().await;
+                    if let Some(impression) = maybe_imp {
+                        info!(?impression.headline, "Wit emitted impression");
+                        if let Err(e) = memory.store_serializable(&impression).await {
+                            error!(?e, "memory store failed");
+                        }
+                        let headline = impression.headline.clone();
+                        {
+                            let mut ctx = context.lock().await;
+                            *ctx = headline.clone();
+                        }
+                        voice.update_prompt_context(&headline).await;
                     }
-                    let headline = impression.headline.clone();
-                    {
-                        let mut ctx = context.lock().await;
-                        *ctx = headline.clone();
-                    }
-                    voice.update_prompt_context(&headline).await;
-                }
+                }));
+            }
+            for t in tasks {
+                let _ = t.await;
             }
             tokio::time::sleep(EXPERIENCE_TICK).await;
         }
