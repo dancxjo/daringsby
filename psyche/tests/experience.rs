@@ -95,9 +95,9 @@ async fn registered_wit_ticks() {
     let handle = tokio::spawn(async move { psyche.run().await });
 
     while let Ok(evt) = events.recv().await {
-        if let Event::IntentionToSay(msg) = evt {
+        if let Event::Speech { text, .. } = evt {
             tokio::time::sleep(Duration::from_millis(30)).await;
-            input.send(Sensation::HeardOwnVoice(msg)).unwrap();
+            input.send(Sensation::HeardOwnVoice(text)).unwrap();
             break;
         }
     }

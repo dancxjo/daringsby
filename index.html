@@ -67,7 +67,6 @@
         log: [],
         thoughts: [],
         input: '',
-        pendingText: '',
         emotion: '😐',
         audioQueue: [],
         playing: false,
@@ -100,16 +99,8 @@
               const data = JSON.parse(ev.data);
               if (data.kind === 'pete-emotion') {
                 this.emotion = data.text;
-              } else if (data.text) {
-                this.pendingText += data.text;
-                this.append('system', data.text);
-                this.ws.send(JSON.stringify({ type: 'displayed', text: data.text }));
-              }
-              if (data.audio) {
-                const text = this.pendingText;
-                this.pendingText = '';
-                this.audioQueue.push({ audio: data.audio, text });
-                console.log('queued audio', this.audioQueue.length);
+              } else if (data.kind === 'pete-speech') {
+                this.audioQueue.push({ audio: data.audio, text: data.text });
                 this.playNext();
               }
             } catch (_) {
@@ -140,6 +131,7 @@
           if (this.playing || this.audioQueue.length === 0) return;
           const { audio, text } = this.audioQueue.shift();
           const player = this.$refs.player;
+          this.append('system', text);
           let mime = 'audio/wav';
           const tryPlay = () => {
             player.src = `data:${mime};base64,${audio}`;
@@ -166,14 +158,12 @@
           };
           player.onerror = () => {
             this.playing = false;
-            this.append('system', text);
             this.ws.send(JSON.stringify({ type: 'played', text }));
             console.error('Audio element error');
             this.playNext();
           };
           player.onended = () => {
             this.playing = false;
-            this.append('system', text);
             this.ws.send(JSON.stringify({ type: 'played', text }));
             console.log('sent played ack:', text);
             this.playNext();

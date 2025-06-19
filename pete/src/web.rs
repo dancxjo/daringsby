@@ -39,8 +39,6 @@ pub enum WsRequest {
         #[allow(dead_code)]
         name: Option<String>,
     },
-    /// Confirmation that a line was displayed to the user.
-    Displayed { text: String },
     /// Confirmation that audio for the line was played.
     Played { text: String },
     /// A base64-encoded image snapshot.
@@ -95,33 +93,14 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
         tokio::select! {
             evt = events.recv() => {
                 match evt {
-                    Ok(Event::StreamChunk(chunk)) => {
-                        let payload = serde_json::to_string(&WsResponse { kind: "pete-says", text: Some(chunk), audio: None }).unwrap();
+                    Ok(Event::Speech { text, audio }) => {
+                        let payload = serde_json::to_string(&WsResponse { kind: "pete-speech", text: Some(text), audio }).unwrap();
                         if socket.send(WsMessage::Text(payload.into())).await.is_err() {
-                            error!("failed sending chunk");
+                            error!("failed sending speech");
                             break;
                         }
                     }
-                    Ok(Event::IntentionToSay(text)) => {
-                        let payload = serde_json::to_string(&WsResponse {
-                            kind: "pete-says",
-                            text: Some(text),
-                            audio: None,
-                        })
-                        .unwrap();
-                        if socket.send(WsMessage::Text(payload.into())).await.is_err() {
-                            error!("failed sending intention text");
-                            break;
-                        }
-                    }
-                    Ok(Event::SpeechAudio(data)) => {
-                        let payload = serde_json::to_string(&WsResponse { kind: "pete-audio", text: None, audio: Some(data) }).unwrap();
-                        debug!("ws dispatch audio chunk");
-                        if socket.send(WsMessage::Text(payload.into())).await.is_err() {
-                            error!("failed sending audio");
-                            break;
-                        }
-                    }
+                    Ok(Event::StreamChunk(_)) => {},
                     Ok(Event::EmotionChanged(emo)) => {
                         let payload = serde_json::to_string(&WsResponse { kind: "pete-emotion", text: Some(emo), audio: None }).unwrap();
                         if socket.send(WsMessage::Text(payload.into())).await.is_err() {
@@ -141,10 +120,6 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                                 WsRequest::User { message, .. } => {
                                     debug!("user message: {}", message);
                                     let _ = state.user_input.send(message);
-                                }
-                                WsRequest::Displayed { text } => {
-                                    debug!("displayed ack: {}", text);
-                                    state.ear.hear_self_say(&text).await;
                                 }
                                 WsRequest::Played { text } => {
                                     debug!("played ack: {}", text);

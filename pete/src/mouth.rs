@@ -10,7 +10,7 @@ use tracing::debug;
 /// Simple mouth implementation that does not produce audio.
 ///
 /// `ChannelMouth` segments text into sentences and dispatches
-/// [`Event::IntentionToSay`] events for each one while toggling a
+/// [`Event::Speech`] events without audio for each one while toggling a
 /// shared speaking flag.
 #[derive(Clone)]
 pub struct ChannelMouth {
@@ -34,7 +34,10 @@ impl Mouth for ChannelMouth {
         for sentence in seg.segment(text) {
             let sent = sentence.trim();
             if !sent.is_empty() {
-                let _ = self.events.send(Event::IntentionToSay(sent.to_string()));
+                let _ = self.events.send(Event::Speech {
+                    text: sent.to_string(),
+                    audio: None,
+                });
             }
         }
         self.speaking.store(false, Ordering::SeqCst);

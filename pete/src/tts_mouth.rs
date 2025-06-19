@@ -78,7 +78,7 @@ impl Tts for CoquiTts {
 }
 
 /// [`Mouth`] implementation that streams audio via [`Tts`] and forwards it as
-/// [`Event::SpeechAudio`] chunks.
+/// [`Event::Speech`] chunks.
 #[derive(Clone)]
 pub struct TtsMouth {
     events: broadcast::Sender<Event>,
@@ -110,7 +110,8 @@ impl Mouth for TtsMouth {
             if sent.is_empty() {
                 continue;
             }
-            match self.tts.stream_wav(sent).await {
+            let (clean, _emo) = psyche::extract_emojis(sent);
+            match self.tts.stream_wav(&clean).await {
                 Ok(mut stream) => {
                     let mut buf = Vec::new();
                     while let Some(chunk) = stream.next().await {
@@ -125,9 +126,21 @@ impl Mouth for TtsMouth {
                     }
                     if !buf.is_empty() {
                         let b64 = general_purpose::STANDARD.encode(buf);
-                        if self.events.send(Event::SpeechAudio(b64)).is_err() {
-                            error!("failed sending audio chunk");
+                        if self
+                            .events
+                            .send(Event::Speech {
+                                text: sent.to_string(),
+                                audio: Some(b64),
+                            })
+                            .is_err()
+                        {
+                            error!("failed sending speech chunk");
                         }
+                    } else {
+                        let _ = self.events.send(Event::Speech {
+                            text: sent.to_string(),
+                            audio: None,
+                        });
                     }
                 }
                 Err(e) => {

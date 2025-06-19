@@ -24,8 +24,14 @@ async fn emits_audio_events() {
         Arc::new(DummyTts),
     );
     mouth.speak("Hello world.").await;
-    if let Ok(Event::SpeechAudio(_)) = rx.recv().await {
-        return;
+    match rx.recv().await {
+        Ok(Event::Speech {
+            text,
+            audio: Some(a),
+        }) => {
+            assert_eq!(text, "Hello world.");
+            assert!(!a.is_empty());
+        }
+        other => panic!("unexpected event: {:?}", other),
     }
-    panic!("no audio event");
 }

@@ -10,10 +10,16 @@ async fn sends_sentence_by_sentence() {
     mouth.speak("Hello world. How are you?").await;
     assert_eq!(
         rx.recv().await.unwrap(),
-        Event::IntentionToSay("Hello world.".into())
+        Event::Speech {
+            text: "Hello world.".into(),
+            audio: None
+        }
     );
     assert_eq!(
         rx.recv().await.unwrap(),
-        Event::IntentionToSay("How are you?".into())
+        Event::Speech {
+            text: "How are you?".into(),
+            audio: None
+        }
     );
 }

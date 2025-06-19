@@ -51,7 +51,6 @@ async fn main() -> anyhow::Result<()> {
     let mut psyche = ollama_psyche(&cli.ollama_url, &cli.model)?;
     let speaking = Arc::new(AtomicBool::new(false));
     let connections = Arc::new(AtomicUsize::new(0));
-    let display = Arc::new(ChannelMouth::new(psyche.event_sender(), speaking.clone()));
     #[cfg(feature = "tts")]
     let base_mouth: Arc<dyn Mouth> = {
         let tts = Arc::new(TtsMouth::new(
@@ -63,14 +62,11 @@ async fn main() -> anyhow::Result<()> {
                 cli.tts_language_id,
             )),
         )) as Arc<dyn Mouth>;
-        let audio = Arc::new(PlainMouth::new(tts)) as Arc<dyn Mouth>;
-        Arc::new(AndMouth::new(vec![
-            display.clone() as Arc<dyn Mouth>,
-            audio,
-        ]))
+        Arc::new(PlainMouth::new(tts)) as Arc<dyn Mouth>
     };
     #[cfg(not(feature = "tts"))]
-    let base_mouth: Arc<dyn Mouth> = display.clone() as Arc<dyn Mouth>;
+    let base_mouth: Arc<dyn Mouth> =
+        Arc::new(ChannelMouth::new(psyche.event_sender(), speaking.clone())) as Arc<dyn Mouth>;
     let mouth = Arc::new(TrimMouth::new(base_mouth)) as Arc<dyn Mouth>;
     psyche.set_mouth(mouth.clone());
     psyche.set_emotion("😐");
