@@ -11,6 +11,7 @@ function loadApp() {
   window.navigator.mediaDevices = { getUserMedia: () => Promise.resolve({}) };
   const app = window.chatApp();
   app.$refs = { player: { src: '', play: jest.fn(() => Promise.resolve()), onended: null }, log: document.createElement('div'), video: {} };
+  app.$nextTick = (cb) => cb();
   app.ws = { send: jest.fn() };
   return app;
 }
@@ -26,6 +27,7 @@ function loadAppWithSocket() {
   window.WebSocket = jest.fn(() => socket);
   const app = window.chatApp();
   app.$refs = { log: document.createElement('div'), player: {}, video: {} };
+  app.$nextTick = (cb) => cb();
   app.connect();
   return { app, socket };
 }

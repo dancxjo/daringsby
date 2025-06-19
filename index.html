@@ -75,6 +75,13 @@
         captureInterval: null,
         init() { this.connect(); this.connectDebug(); this.initCamera(); },
         initCamera() {
+          if (this.stream) {
+            this.stream.getTracks().forEach(t => t.stop());
+          }
+          if (this.captureInterval) {
+            clearInterval(this.captureInterval);
+            this.captureInterval = null;
+          }
           navigator.mediaDevices.getUserMedia({ video: true }).then(s => {
             this.stream = s;
             this.stream.oninactive = () => this.initCamera();
