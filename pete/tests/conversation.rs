@@ -1,5 +1,6 @@
 use axum::{body, extract::State, response::IntoResponse};
 use pete::{AppState, ChannelEar, EyeSensor, conversation_log, dummy_psyche};
+use psyche::Sensor;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize},
@@ -8,7 +9,7 @@ use tokio::sync::{broadcast, mpsc};
 
 #[tokio::test]
 async fn returns_log_json() {
-    let psyche = dummy_psyche();
+    let mut psyche = dummy_psyche();
     let conversation = psyche.conversation();
     conversation.lock().await.add_user("hi".into());
     let ear = Arc::new(ChannelEar::new(
@@ -21,6 +22,7 @@ async fn returns_log_json() {
     let (log_tx, _) = broadcast::channel(8);
     let (user_tx, _user_rx) = mpsc::unbounded_channel();
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
+    psyche.add_sense(eye.description());
     let state = AppState {
         user_input: user_tx,
         events: Arc::new(event_tx.subscribe()),

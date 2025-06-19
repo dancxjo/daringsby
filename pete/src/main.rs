@@ -7,7 +7,7 @@ use pete::{
 #[cfg(feature = "tts")]
 use pete::{CoquiTts, TtsMouth};
 use psyche::PlainMouth;
-use psyche::{AndMouth, EmojiMouth, Mouth, TrimMouth};
+use psyche::{AndMouth, EmojiMouth, Mouth, Sensor, TrimMouth};
 use std::{
     net::SocketAddr,
     sync::{
@@ -87,6 +87,7 @@ async fn main() -> anyhow::Result<()> {
         speaking.clone(),
     ));
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
+    psyche.add_sense(eye.description());
     let (user_tx, user_rx) = mpsc::unbounded_channel();
 
     tokio::spawn(listen_user_input(user_rx, ear.clone()));

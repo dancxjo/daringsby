@@ -89,6 +89,7 @@ pub struct Psyche {
     wits: Vec<Arc<dyn wit::ErasedWit + Send + Sync>>,
     wit_tx: broadcast::Sender<WitReport>,
     prompt_context: Arc<Mutex<String>>,
+    senses: Vec<String>,
 }
 
 impl Psyche {
@@ -128,6 +129,7 @@ impl Psyche {
             connections: None,
             wits: Vec::new(),
             prompt_context: Arc::new(Mutex::new(String::new())),
+            senses: Vec::new(),
         }
     }
 
@@ -139,6 +141,19 @@ impl Psyche {
     /// Retrieve the system prompt currently in use.
     pub fn system_prompt(&self) -> &str {
         &self.system_prompt
+    }
+
+    /// Build the system prompt with descriptions of Pete's body.
+    pub fn described_system_prompt(&self) -> String {
+        if self.senses.is_empty() {
+            return self.system_prompt.clone();
+        }
+        let mut out = format!("{}\n\nYou perceive through:", self.system_prompt);
+        for s in &self.senses {
+            out.push_str("\n- ");
+            out.push_str(s);
+        }
+        out
     }
 
     /// Limit the number of conversation turns to `turns`.
@@ -175,6 +190,11 @@ impl Psyche {
     pub async fn update_prompt_context(&self, context: impl Into<String>) {
         let mut ctx = self.prompt_context.lock().await;
         *ctx = context.into();
+    }
+
+    /// Record a description of an attached sense.
+    pub fn add_sense(&mut self, description: String) {
+        self.senses.push(description);
     }
 
     /// Obtain the sender used to broadcast [`WitReport`]s.
@@ -306,10 +326,11 @@ impl Psyche {
                 conv.tail(self.max_history)
             };
             let context = { self.prompt_context.lock().await.clone() };
+            let base = self.described_system_prompt();
             let prompt = if context.is_empty() {
-                self.system_prompt.clone()
+                base
             } else {
-                format!("{}\n{}", self.system_prompt, context)
+                format!("{}\n{}", base, context)
             };
             if let Ok(mut stream) = self.voice.chat(&prompt, &history).await {
                 use std::collections::VecDeque;

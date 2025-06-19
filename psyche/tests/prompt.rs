@@ -64,3 +64,20 @@ fn default_prompt_present() {
     );
     assert_eq!(psyche.system_prompt(), DEFAULT_SYSTEM_PROMPT);
 }
+
+#[test]
+fn senses_are_described() {
+    let mouth = std::sync::Arc::new(Dummy::default());
+    let ear = mouth.clone();
+    let mut psyche = Psyche::new(
+        Box::new(Dummy::default()),
+        Box::new(Dummy::default()),
+        Box::new(Dummy::default()),
+        std::sync::Arc::new(psyche::NoopMemory),
+        mouth,
+        ear,
+    );
+    psyche.add_sense("Heartbeat: Announces the time every 7 minutes.".into());
+    let prompt = psyche.described_system_prompt();
+    assert!(prompt.contains("Heartbeat"));
+}

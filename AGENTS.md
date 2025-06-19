@@ -25,6 +25,7 @@ This repository is a Rust workspace.
 * Prefer traits for abstraction (`Mouth`, `Ear`, `Countenance`, `Wit`).
 * Use `Summarizer` when batching impressions into higher-level summaries.
 * Document new traits with examples and unit tests.
+* Sensors expose `description()` for prompt inclusion.
 * Prefer `AndMouth` when composing multiple `Mouth` implementations.
 * Use `TrimMouth` to skip speaking empty/whitespace-only text.
 * Use `EmojiMouth` to route emoji to the countenance instead of speaking them.

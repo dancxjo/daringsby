@@ -22,4 +22,8 @@ impl Sensor<ImageData> for EyeSensor {
         debug!("eye sensed image");
         let _ = self.forward.send(Sensation::Of(Box::new(image)));
     }
+
+    fn description(&self) -> String {
+        "Webcam: Streams images from your environment.".to_string()
+    }
 }
