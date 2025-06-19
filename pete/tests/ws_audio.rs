@@ -2,6 +2,7 @@ use axum::{Router, routing::get, serve};
 use futures::StreamExt;
 use pete::{AppState, ChannelEar, EyeSensor, dummy_psyche, ws_handler};
 use psyche::Event;
+use psyche::Sensor;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize},
@@ -10,7 +11,7 @@ use tokio::sync::{broadcast, mpsc};
 
 #[tokio::test]
 async fn websocket_forwards_audio() {
-    let psyche = dummy_psyche();
+    let mut psyche = dummy_psyche();
     let conversation = psyche.conversation();
     let ear = Arc::new(ChannelEar::new(
         psyche.input_sender(),
@@ -18,6 +19,7 @@ async fn websocket_forwards_audio() {
         Arc::new(AtomicBool::new(false)),
     ));
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
+    psyche.add_sense(eye.description());
     let (event_tx, _) = broadcast::channel(8);
     let (wit_tx, _) = broadcast::channel(8);
     let (log_tx, _) = broadcast::channel(8);
