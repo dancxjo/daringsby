@@ -13,6 +13,7 @@ function loadApp() {
   window.WebSocket = jest.fn(() => socket);
   const app = window.chatApp();
   app.$refs = { log: document.createElement('div'), player: {}, video: {} };
+  app.$nextTick = (cb) => cb();
   app.ws = { send: jest.fn() };
   app.connectDebug();
   return { app, socket };
