@@ -60,7 +60,7 @@ impl Tts for CoquiTts {
         let mut url = Url::parse(&self.url)?;
         {
             let mut qp = url.query_pairs_mut();
-            qp.append_pair("text", &encode(text).to_string());
+            qp.append_pair("text", text);
             // Always include speaker_id and language_id, using defaults if not provided
             qp.append_pair("speaker_id", self.speaker_id.as_deref().unwrap_or("p340"));
             qp.append_pair("language_id", self.language_id.as_deref().unwrap_or(""));
