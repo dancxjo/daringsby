@@ -1,7 +1,7 @@
 #![cfg(feature = "tts")]
 use futures::StreamExt;
 use httpmock::{Method::GET, MockServer};
-use pete::CoquiTts;
+use pete::{CoquiTts, Tts};
 
 #[tokio::test]
 async fn coqui_url_has_required_params() {
