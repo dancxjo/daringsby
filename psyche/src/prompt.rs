@@ -26,7 +26,7 @@ pub struct WillPrompt;
 
 impl PromptBuilder for WillPrompt {
     fn build(&self, input: &str) -> String {
-        format!("In one short sentence, what should Pete do or say next?\n{input}")
+        format!("In one or two short sentences, what should Pete do or say next?\n{input}")
     }
 }
 
@@ -46,6 +46,6 @@ pub struct CombobulatorPrompt;
 
 impl PromptBuilder for CombobulatorPrompt {
     fn build(&self, input: &str) -> String {
-        format!("Summarize Pete's current awareness in one sentence:\n{input}")
+        format!("Summarize Pete's current awareness in one or two sentences:\n{input}")
     }
 }
