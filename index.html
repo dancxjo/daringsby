@@ -67,7 +67,6 @@
         log: [],
         thoughts: [],
         input: '',
-        lastText: '',
         pendingText: '',
         emotion: '😐',
         audioQueue: [],
@@ -103,16 +102,11 @@
                 this.emotion = data.text;
               } else if (data.text) {
                 this.pendingText += data.text;
-                this.append('system', data.text);
               }
               if (data.audio) {
-                if (this.pendingText) {
-                  this.ws.send(JSON.stringify({ type: 'displayed', text: this.pendingText }));
-                  console.log('sent displayed ack:', this.pendingText);
-                  this.lastText = this.pendingText;
-                  this.pendingText = '';
-                }
-                this.audioQueue.push({ audio: data.audio, text: this.lastText });
+                const text = this.pendingText;
+                this.pendingText = '';
+                this.audioQueue.push({ audio: data.audio, text });
                 console.log('queued audio', this.audioQueue.length);
                 this.playNext();
               }
@@ -170,12 +164,14 @@
           };
           player.onerror = () => {
             this.playing = false;
+            this.append('system', text);
             this.ws.send(JSON.stringify({ type: 'played', text }));
             console.error('Audio element error');
             this.playNext();
           };
           player.onended = () => {
             this.playing = false;
+            this.append('system', text);
             this.ws.send(JSON.stringify({ type: 'played', text }));
             console.log('sent played ack:', text);
             this.playNext();

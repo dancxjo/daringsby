@@ -102,12 +102,17 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                             break;
                         }
                     }
-                    Ok(Event::IntentionToSay(_)) => {
-                        // Intention events are used internally to trigger audio
-                        // playback. The user already received the text via
-                        // `StreamChunk` messages, so skip forwarding this final
-                        // repetition to avoid duplicate lines in the chat log.
-                        debug!("ws skipping IntentionToSay");
+                    Ok(Event::IntentionToSay(text)) => {
+                        let payload = serde_json::to_string(&WsResponse {
+                            kind: "pete-says",
+                            text: Some(text),
+                            audio: None,
+                        })
+                        .unwrap();
+                        if socket.send(WsMessage::Text(payload.into())).await.is_err() {
+                            error!("failed sending intention text");
+                            break;
+                        }
                     }
                     Ok(Event::SpeechAudio(data)) => {
                         let payload = serde_json::to_string(&WsResponse { kind: "pete-audio", text: None, audio: Some(data) }).unwrap();

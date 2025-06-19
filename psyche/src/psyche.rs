@@ -7,6 +7,7 @@ use crate::traits::wit::{ErasedWit, Wit, WitAdapter};
 use crate::traits::{Countenance, Ear, Mouth};
 use crate::wits::memory::Memory;
 use async_trait::async_trait;
+use pragmatic_segmenter::Segmenter;
 use serde::Serialize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -307,8 +308,14 @@ impl Psyche {
                 format!("{}\n{}", self.system_prompt, context)
             };
             if let Ok(mut stream) = self.voice.chat(&prompt, &history).await {
+                use std::collections::VecDeque;
                 use tokio_stream::StreamExt;
                 let mut resp = String::new();
+                let mut buf = String::new();
+                let mut leftover = String::new();
+                let mut pending: VecDeque<String> = VecDeque::new();
+                let segmenter = Segmenter::new().expect("segmenter init");
+
                 while let Some(chunk_res) = stream.next().await {
                     match chunk_res {
                         Ok(chunk) => {
@@ -317,30 +324,64 @@ impl Psyche {
                                 let _ = self.events_tx.send(Event::StreamChunk(chunk.clone()));
                             }
                             resp.push_str(&chunk);
+
+                            buf.push_str(&leftover);
+                            buf.push_str(&chunk);
+                            let mut segs: Vec<String> =
+                                segmenter.segment(&buf).map(|s| s.to_string()).collect();
+                            if !segs.is_empty() {
+                                leftover = segs.pop().unwrap();
+                                for s in segs {
+                                    pending.push_back(s);
+                                }
+                            }
+                            buf.clear();
+
+                            while pending.len() > 1 {
+                                if let Some(sentence) = pending.pop_front() {
+                                    info!("assistant intends to say: {}", sentence.trim());
+                                    let _ = self
+                                        .events_tx
+                                        .send(Event::IntentionToSay(sentence.clone()));
+                                    self.is_speaking = true;
+                                    self.countenance.express(&self.emotion);
+                                    self.mouth.speak(&sentence).await;
+                                    self.ear.hear_self_say(&sentence).await;
+                                    {
+                                        let mut conv = self.conversation.lock().await;
+                                        conv.add_assistant(sentence.clone());
+                                    }
+                                    self.is_speaking = false;
+                                }
+                            }
                         }
                         Err(_) => break,
                     }
                 }
-                let trimmed = resp.trim();
-                if trimmed.is_empty() {
-                    self.pending_user_message = !self.speak_when_spoken_to;
-                    turns += 1;
-                    continue;
+
+                if !leftover.is_empty() {
+                    pending.push_back(leftover);
                 }
-                info!("assistant intends to say: {}", trimmed);
-                let _ = self
-                    .events_tx
-                    .send(Event::IntentionToSay(trimmed.to_string()));
-                self.is_speaking = true;
-                self.countenance.express(&self.emotion);
-                debug!("Calling mouth.speak with: '{}'", resp);
-                self.mouth.speak(&resp).await;
-                self.ear.hear_self_say(&resp).await;
-                {
-                    let mut conv = self.conversation.lock().await;
-                    conv.add_assistant(resp.clone());
+                while let Some(sentence) = pending.pop_front() {
+                    let trimmed = sentence.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    info!("assistant intends to say: {}", trimmed);
+                    let _ = self
+                        .events_tx
+                        .send(Event::IntentionToSay(trimmed.to_string()));
+                    self.is_speaking = true;
+                    self.countenance.express(&self.emotion);
+                    self.mouth.speak(trimmed).await;
+                    self.ear.hear_self_say(trimmed).await;
+                    {
+                        let mut conv = self.conversation.lock().await;
+                        conv.add_assistant(trimmed.to_string());
+                    }
+                    self.is_speaking = false;
                 }
-                self.is_speaking = false;
+
                 self.pending_user_message = !self.speak_when_spoken_to;
             } else {
                 error!("voice chat failed");
