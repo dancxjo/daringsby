@@ -26,7 +26,7 @@ function loadAppWithSocket() {
   const socket = { send: jest.fn() };
   window.WebSocket = jest.fn(() => socket);
   const app = window.chatApp();
-  app.$refs = { log: document.createElement('div'), player: {}, video: {} };
+  app.$refs = { log: document.createElement('div'), player: { play: jest.fn(() => Promise.resolve()), onended: null }, video: {} };
   app.$nextTick = (cb) => cb();
   app.connect();
   return { app, socket };
@@ -43,9 +43,8 @@ test('playNext loads audio and sends ack', () => {
   expect(app.playing).toBe(false);
 });
 
-test('displayed ack sent when text arrives', () => {
+test('speech message appends to log', () => {
   const { app, socket } = loadAppWithSocket();
-  socket.onmessage({ data: JSON.stringify({ kind: 'pete-says', text: 'hi' }) });
+  socket.onmessage({ data: JSON.stringify({ kind: 'pete-speech', text: 'hi', audio: '' }) });
   expect(app.log[0].text).toBe('hi');
-  expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: 'displayed', text: 'hi' }));
 });

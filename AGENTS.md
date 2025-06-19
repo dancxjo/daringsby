@@ -47,6 +47,7 @@ This repository is a Rust workspace.
 * Keep `index.html` and `pete/build.rs` in sync.
 * Front-end tests live under `frontend/` and run with `npm test`.
 * Run `npm install` first if dependencies are missing.
+* Surface front-end errors in the console and show them on the page via `chatApp().error`.
 
 ## Communication
 
