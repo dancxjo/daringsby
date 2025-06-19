@@ -47,6 +47,8 @@ This repository is a Rust workspace.
 * Keep `index.html` and `pete/build.rs` in sync.
 * Front-end tests live under `frontend/` and run with `npm test`.
 * Run `npm install` first if dependencies are missing.
+* End-to-end tests are under `pete/tests` and require the `e2e` Cargo feature.
+  Run with `cargo test --features e2e`.
 * Surface front-end errors in the console and show them on the page via `chatApp().error`.
 
 ## Communication
