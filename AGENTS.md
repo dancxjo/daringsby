@@ -22,18 +22,17 @@ This repository is a Rust workspace.
 
 ## Code Practices
 
-* Prefer traits for abstraction (`Mouth`, `Ear`, `Countenance`, `Wit`).
+* Prefer traits for abstraction (`Mouth`, `Ear`, `Wit`).
 * Use `Summarizer` when batching impressions into higher-level summaries.
 * Document new traits with examples and unit tests.
 * Sensors expose `description()` for prompt inclusion.
 * Prefer `AndMouth` when composing multiple `Mouth` implementations.
 * Use `TrimMouth` to skip speaking empty/whitespace-only text.
-* Use `EmojiMouth` to route emoji to the countenance instead of speaking them.
+* Inline emoji in responses convey emotional tone.
 * Do **not** emit `Event::IntentionToSay` for empty or whitespace-only text.
 * Skip sending `Event::StreamChunk` when the chunk is empty or whitespace.
-* Build prompts using dedicated structs like `WillPrompt` and `HeartPrompt`.
+* Build prompts using dedicated structs like `WillPrompt`.
 * `ChannelMouth` emits `Event::IntentionToSay` per parsed sentence.
-* `ChannelCountenance` emits `Event::EmotionChanged` on updates.
 * `Conversation::add_*` merges consecutive same-role messages.
 * Use the `Motor` trait for host actions. Implementations live in `pete`.
 
@@ -81,10 +80,11 @@ This repository is a Rust workspace.
 
 ## LLM Integration
 
-* Fast LLMs (e.g. Ollama) for `Will`, `Voice`, `Heart`, `Combobulator`.
+* Fast LLMs (e.g. Ollama) for `Will`, `Voice`, `Combobulator`.
 * Slow/idle LLMs for `Memory`, `Narrator`.
 * Only `Will` may invoke `Voice::take_turn`.
-* `Countenance` trait should reflect current emotion via emoji.
+* `Voice::take_turn` extracts emoji and emits `Event::EmotionChanged`.
+* `Voice` will not speak until `Will::command_voice_to_speak` grants permission.
 
 ## Additional Suggestions
 

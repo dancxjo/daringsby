@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use psyche::ling::{Doer, Instruction};
-use psyche::{Heart, Impression, Summarizer, Will, WitReport};
+use psyche::{Impression, Summarizer, Will, WitReport};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 

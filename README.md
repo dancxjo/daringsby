@@ -81,23 +81,15 @@ let mouth = std::sync::Arc::new(psyche::TrimMouth::new(mouth));
 #[cfg(not(feature = "tts"))]
 let mouth = display.clone() as std::sync::Arc<dyn Mouth>;
 let mouth = std::sync::Arc::new(psyche::TrimMouth::new(mouth));
-let face = std::sync::Arc::new(pete::ChannelCountenance::new(psyche.event_sender()));
-let mouth = std::sync::Arc::new(psyche::EmojiMouth::new(mouth, face.clone()));
 psyche.set_mouth(mouth);
-psyche.set_countenance(face);
-psyche.set_emotion("😊");
-// Determine emotion from text using the Heart
-let heart = psyche::Heart::new(Box::new(DummyVoice));
-let imp = heart
-    .digest(&[psyche::Impression { headline: "".into(), details: None, raw_data: "Great!".to_string() }])
-    .await?;
-assert_eq!(imp.raw_data, "😊");
+psyche.set_emotion("😊"); // initial expression
 // Ask the Will what to do next
 let will = psyche::Will::new(Box::new(DummyVoice));
 let decision = will
     .digest(&[psyche::Impression { headline: "".into(), details: None, raw_data: "say hi".to_string() }])
     .await?;
 assert_eq!(decision.headline, "Speak.");
+will.command_voice_to_speak(None); // allow Pete to respond
 // Build a custom instruction with the prompt generator
 let custom = psyche::WillPrompt::default().build("say hi");
 assert!(custom.contains("Pete"));
@@ -136,6 +128,7 @@ cargo run -p pete --features tts -- \
 After starting the server, visit `http://127.0.0.1:3000/` in your browser. The page connects to `ws://localhost:3000/ws` and lets you chat with Pete in real time.
 A second WebSocket at `ws://localhost:3000/debug` streams debugging information from the Wits.
 When the page receives a `pete-says` message it echoes back `{type: "displayed", text}` so the server knows the line was shown. Connection status is shown in the sidebar.
+Pete conveys emotion directly in responses using emoji.
 Emotion updates arrive via `pete-emotion` messages containing an emoji string.
 
 Fetch the raw conversation log at `/conversation`:

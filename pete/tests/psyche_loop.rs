@@ -72,34 +72,6 @@ async fn test_speak_and_echo_loop() {
     assert!(heard_u.iter().any(|s| s.contains("Hello")));
 }
 
-#[tokio::test]
-async fn test_countenance_sets_emotion() {
-    use psyche::Countenance;
-    struct Recorder(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
-
-    impl Countenance for Recorder {
-        fn express(&self, emoji: &str) {
-            self.0.lock().unwrap().push(emoji.to_string());
-        }
-    }
-
-    let recorder = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let mut psyche = test_psyche(
-        Arc::new(TestMouth {
-            spoken: Default::default(),
-        }),
-        Arc::new(TestEar {
-            heard_self: Default::default(),
-            heard_user: Default::default(),
-        }),
-    );
-    psyche.set_countenance(Arc::new(Recorder(recorder.clone())));
-    psyche.set_emotion("😊");
-
-    let log = recorder.lock().unwrap().clone();
-    assert_eq!(log, vec!["😊"]);
-}
-
 fn test_psyche(mouth: Arc<dyn Mouth>, ear: Arc<dyn Ear>) -> psyche::Psyche {
     use futures::stream;
     use psyche::ling::{ChatStream, Chatter, Doer, Instruction, Message, Vectorizer};
