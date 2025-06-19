@@ -276,6 +276,10 @@ impl Psyche {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }
+            while let Ok(Sensation::HeardOwnVoice(msg)) = self.input_rx.try_recv() {
+                let mut conv = self.conversation.lock().await;
+                conv.add_assistant(msg);
+            }
             if self.speak_when_spoken_to && !self.pending_user_message {
                 match self.input_rx.recv().await {
                     Some(Sensation::HeardUserVoice(msg)) => {
@@ -346,11 +350,6 @@ impl Psyche {
                                     self.is_speaking = true;
                                     self.countenance.express(&self.emotion);
                                     self.mouth.speak(&sentence).await;
-                                    self.ear.hear_self_say(&sentence).await;
-                                    {
-                                        let mut conv = self.conversation.lock().await;
-                                        conv.add_assistant(sentence.clone());
-                                    }
                                     self.is_speaking = false;
                                 }
                             }
@@ -374,11 +373,6 @@ impl Psyche {
                     self.is_speaking = true;
                     self.countenance.express(&self.emotion);
                     self.mouth.speak(trimmed).await;
-                    self.ear.hear_self_say(trimmed).await;
-                    {
-                        let mut conv = self.conversation.lock().await;
-                        conv.add_assistant(trimmed.to_string());
-                    }
                     self.is_speaking = false;
                 }
 

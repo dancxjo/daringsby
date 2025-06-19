@@ -15,6 +15,21 @@ function loadApp() {
   return app;
 }
 
+function loadAppWithSocket() {
+  const html = fs.readFileSync(path.join(__dirname, '../..', 'index.html'), 'utf8');
+  const dom = new JSDOM(html, { runScripts: 'dangerously' });
+  const { window } = dom;
+  global.document = window.document;
+  global.window = window;
+  window.navigator.mediaDevices = { getUserMedia: () => Promise.resolve({}) };
+  const socket = { send: jest.fn() };
+  window.WebSocket = jest.fn(() => socket);
+  const app = window.chatApp();
+  app.$refs = { log: document.createElement('div'), player: {}, video: {} };
+  app.connect();
+  return { app, socket };
+}
+
 test('playNext loads audio and sends ack', () => {
   const app = loadApp();
   app.audioQueue.push({ audio: 'UklGRg==', text: 'hi' });
@@ -24,4 +39,11 @@ test('playNext loads audio and sends ack', () => {
   app.$refs.player.onended();
   expect(app.ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'played', text: 'hi' }));
   expect(app.playing).toBe(false);
+});
+
+test('displayed ack sent when text arrives', () => {
+  const { app, socket } = loadAppWithSocket();
+  socket.onmessage({ data: JSON.stringify({ kind: 'pete-says', text: 'hi' }) });
+  expect(app.log[0].text).toBe('hi');
+  expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: 'displayed', text: 'hi' }));
 });
