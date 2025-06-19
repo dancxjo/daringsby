@@ -21,7 +21,7 @@ function loadApp() {
 
 test('debug messages append thoughts', () => {
   const { app, socket } = loadApp();
-  const msg = JSON.stringify({ type: 'wit', name: 'Will', prompt: 'go', output: 'ok' });
+  const msg = JSON.stringify({ type: 'Think', data: 'Will: go => ok' });
   socket.onmessage({ data: msg });
   expect(app.thoughts[0]).toBe('Will: go => ok');
 });

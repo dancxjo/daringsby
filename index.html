@@ -116,11 +116,13 @@
           this.ws.onmessage = (ev) => {
             try {
               const data = JSON.parse(ev.data);
-              if (data.kind === 'pete-emotion') {
-                this.emotion = data.text;
-              } else if (data.kind === 'pete-speech') {
-                this.audioQueue.push({ audio: data.audio, text: data.text });
+              if (data.type === 'Emote') {
+                this.emotion = data.data;
+              } else if (data.type === 'Say') {
+                this.audioQueue.push({ audio: data.data.audio, text: data.data.words });
                 this.playNext();
+              } else if (data.type === 'Heard') {
+                this.append('user', data.data);
               }
             } catch (err) {
               console.error('WS message error:', err);
@@ -146,8 +148,8 @@
           this.debugWs.onmessage = (ev) => {
             try {
               const d = JSON.parse(ev.data);
-              if (d.type === 'wit') {
-                this.thoughts.push(`${d.name}: ${d.prompt} => ${d.output}`);
+              if (d.type === 'Think') {
+                this.thoughts.push(d.data);
               }
             } catch (err) {
               console.error('Debug message error:', err);
