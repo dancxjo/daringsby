@@ -102,6 +102,8 @@
                 this.emotion = data.text;
               } else if (data.text) {
                 this.pendingText += data.text;
+                this.append('system', data.text);
+                this.ws.send(JSON.stringify({ type: 'displayed', text: data.text }));
               }
               if (data.audio) {
                 const text = this.pendingText;

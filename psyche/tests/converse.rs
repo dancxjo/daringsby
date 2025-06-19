@@ -228,7 +228,10 @@ async fn adds_message_after_voice_heard() {
     while let Ok(evt) = events.recv().await {
         match evt {
             Event::StreamChunk(_) => saw_chunk = true,
-            Event::IntentionToSay(_) => break,
+            Event::IntentionToSay(t) => {
+                input.send(Sensation::HeardOwnVoice(t)).unwrap();
+                break;
+            }
             Event::SpeechAudio(_) => {}
             Event::EmotionChanged(_) => {}
         }
@@ -538,6 +541,8 @@ async fn voice_response_is_echoed() {
     while let Ok(evt) = events.recv().await {
         if let Event::IntentionToSay(msg) = evt {
             assert_eq!(msg, "hi 🙂");
+            ear.hear_self_say(&msg).await;
+            input.send(Sensation::HeardOwnVoice(msg)).unwrap();
             break;
         }
     }
