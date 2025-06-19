@@ -54,8 +54,8 @@ async fn websocket_forwards_audio() {
         .unwrap();
     let msg = socket.next().await.unwrap().unwrap();
     let value: serde_json::Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
-    assert_eq!(value["type"], "pete-speech");
-    assert_eq!(value["audio"], "UklGRg==");
-    assert_eq!(value["text"], "hi");
+    assert_eq!(value["type"], "Say");
+    assert_eq!(value["data"]["audio"], "UklGRg==");
+    assert_eq!(value["data"]["words"], "hi");
     server.abort();
 }

@@ -46,13 +46,20 @@ pub enum WsRequest {
 }
 
 #[derive(Serialize)]
-struct WsResponse<'a> {
-    #[serde(rename = "type")]
-    kind: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    text: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    audio: Option<String>,
+#[serde(tag = "type", content = "data")]
+enum WsResponse {
+    #[serde(rename = "Say")]
+    Say {
+        words: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        audio: Option<String>,
+    },
+    #[serde(rename = "Emote")]
+    Emote(String),
+    #[serde(rename = "Think")]
+    Think(String),
+    #[serde(rename = "Heard")]
+    Heard(String),
 }
 
 /// Serve the chat page.
@@ -94,7 +101,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
             evt = events.recv() => {
                 match evt {
                     Ok(Event::Speech { text, audio }) => {
-                        let payload = serde_json::to_string(&WsResponse { kind: "pete-speech", text: Some(text), audio }).unwrap();
+                        let payload = serde_json::to_string(&WsResponse::Say { words: text, audio }).unwrap();
                         if socket.send(WsMessage::Text(payload.into())).await.is_err() {
                             error!("failed sending speech");
                             break;
@@ -102,7 +109,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                     }
                     Ok(Event::StreamChunk(_)) => {},
                     Ok(Event::EmotionChanged(emo)) => {
-                        let payload = serde_json::to_string(&WsResponse { kind: "pete-emotion", text: Some(emo), audio: None }).unwrap();
+                        let payload = serde_json::to_string(&WsResponse::Emote(emo)).unwrap();
                         if socket.send(WsMessage::Text(payload.into())).await.is_err() {
                             error!("failed sending emotion");
                             break;
@@ -119,7 +126,12 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                             match req {
                                 WsRequest::User { message, .. } => {
                                     debug!("user message: {}", message);
-                                    let _ = state.user_input.send(message);
+                                    let _ = state.user_input.send(message.clone());
+                                    let payload = serde_json::to_string(&WsResponse::Heard(message)).unwrap();
+                                    if socket.send(WsMessage::Text(payload.into())).await.is_err() {
+                                        error!("failed sending heard ack");
+                                        break;
+                                    }
                                 }
                                 WsRequest::Played { text } => {
                                     debug!("played ack: {}", text);
@@ -160,21 +172,7 @@ async fn handle_wit_socket(mut socket: WebSocket, state: AppState) {
     info!("wit websocket connected");
     let mut rx = state.wits.resubscribe();
     while let Ok(report) = rx.recv().await {
-        #[derive(Serialize)]
-        struct WitMsg<'a> {
-            #[serde(rename = "type")]
-            kind: &'a str,
-            name: &'a str,
-            prompt: &'a str,
-            output: &'a str,
-        }
-        let msg = serde_json::to_string(&WitMsg {
-            kind: "wit",
-            name: &report.name,
-            prompt: &report.prompt,
-            output: &report.output,
-        })
-        .unwrap();
+        let msg = serde_json::to_string(&WsResponse::Think(report.output.clone())).unwrap();
         if socket.send(WsMessage::Text(msg.into())).await.is_err() {
             break;
         }

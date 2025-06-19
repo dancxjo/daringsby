@@ -50,7 +50,7 @@ test('playNext loads audio and sends ack', () => {
 test('speech event appends text and queues audio', () => {
   const { app, socket } = loadAppWithSocket();
   socket.onmessage({
-    data: JSON.stringify({ kind: 'pete-speech', text: 'hello', audio: 'AA==' })
+    data: JSON.stringify({ type: 'Say', data: { words: 'hello', audio: 'AA==' } })
   });
   expect(app.log[0].text).toBe('hello');
   expect(app.playing).toBe(true);

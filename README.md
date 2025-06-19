@@ -127,9 +127,15 @@ cargo run -p pete --features tts -- \
 
 After starting the server, visit `http://127.0.0.1:3000/` in your browser. The page connects to `ws://localhost:3000/ws` and lets you chat with Pete in real time.
 A second WebSocket at `ws://localhost:3000/debug` streams debugging information from the Wits.
-Speech arrives as `pete-speech` messages containing text and an optional base64 audio payload. The browser plays the audio while showing the text. Connection status is shown in the sidebar.
-Pete conveys emotion directly in responses using emoji.
-Emotion updates arrive via `pete-emotion` messages containing an emoji string.
+Speech arrives as `Say` messages:
+```json
+{ "type": "Say", "data": { "words": "hi", "audio": "UklGRg==" } }
+```
+Emotion updates arrive via `Emote` messages containing an emoji string:
+```json
+{ "type": "Emote", "data": "😐" }
+```
+Debug thoughts are sent as `Think` messages and user utterances are echoed back as `Heard` messages. Connection status is shown in the sidebar.
 
 Fetch the raw conversation log at `/conversation`:
 

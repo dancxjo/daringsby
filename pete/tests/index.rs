@@ -14,5 +14,5 @@ async fn serves_index_html() {
     assert!(resp.0.contains("<ul id=\"log\""));
     assert!(resp.0.contains("<li :class=\"msg.role\""));
     assert!(resp.0.contains("id=\"face\""));
-    assert!(resp.0.contains("pete-emotion"));
+    assert!(resp.0.contains("Emote"));
 }
