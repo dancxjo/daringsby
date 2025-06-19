@@ -116,15 +116,14 @@ impl Voice {
         if trimmed.is_empty() {
             return;
         }
-        info!("assistant intends to say: {}", trimmed);
-        let _ = self.events.send(Event::IntentionToSay(trimmed.to_string()));
+        info!("assistant speaking: {}", trimmed);
         let (text, emojis) = extract_emojis(trimmed);
         for e in emojis {
             let _ = self.events.send(Event::EmotionChanged(e.clone()));
         }
         if !text.trim().is_empty() {
             let mouth = { self.mouth.lock().unwrap().clone() };
-            mouth.speak(&text).await;
+            mouth.speak(trimmed).await;
         }
     }
 }

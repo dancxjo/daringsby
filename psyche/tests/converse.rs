@@ -93,7 +93,7 @@ async fn no_empty_stream_chunks() {
                     got_non_empty_chunk = true;
                 }
             }
-            Event::IntentionToSay(msg) => {
+            Event::Speech { .. } => {
                 handle.abort();
                 break;
             }
@@ -194,7 +194,7 @@ async fn waits_for_user_when_configured() {
         .unwrap();
 
     while let Ok(evt) = events.recv().await {
-        if matches!(evt, Event::IntentionToSay(_)) {
+        if matches!(evt, Event::Speech { .. }) {
             break;
         }
     }
@@ -225,7 +225,7 @@ async fn interrupts_when_user_speaks() {
     let handle = tokio::spawn(async move { psyche.run().await });
 
     while let Ok(evt) = events.recv().await {
-        if let Event::IntentionToSay(msg) = evt {
+        if let Event::Speech { .. } = evt {
             input.send(Sensation::HeardUserVoice("hi".into())).unwrap();
             break;
         }
@@ -280,7 +280,7 @@ async fn speaking_flag_clears_after_echo() {
     let handle = tokio::spawn(async move { psyche.run().await });
 
     while let Ok(evt) = events.recv().await {
-        if matches!(evt, Event::IntentionToSay(_)) {
+        if matches!(evt, Event::Speech { .. }) {
             break;
         }
     }
@@ -442,8 +442,8 @@ async fn no_intention_event_for_empty_response() {
     let psyche = handle.await.unwrap();
 
     while let Ok(evt) = events.try_recv() {
-        if let Event::IntentionToSay(msg) = evt {
-            panic!("should not intend to say: {:?}", msg);
+        if let Event::Speech { .. } = evt {
+            panic!("should not speak: {:?}", evt);
         }
     }
 
@@ -499,10 +499,10 @@ async fn voice_response_is_echoed() {
     let handle = tokio::spawn(async move { psyche.run().await });
 
     while let Ok(evt) = events.recv().await {
-        if let Event::IntentionToSay(msg) = evt {
-            assert_eq!(msg, "hi 🙂");
-            ear.hear_self_say(&msg).await;
-            input.send(Sensation::HeardOwnVoice(msg)).unwrap();
+        if let Event::Speech { text, .. } = evt {
+            assert_eq!(text, "hi 🙂");
+            ear.hear_self_say(&text).await;
+            input.send(Sensation::HeardOwnVoice(text)).unwrap();
             break;
         }
     }

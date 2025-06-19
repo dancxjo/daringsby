@@ -32,7 +32,7 @@ This repository is a Rust workspace.
 * Do **not** emit `Event::IntentionToSay` for empty or whitespace-only text.
 * Skip sending `Event::StreamChunk` when the chunk is empty or whitespace.
 * Build prompts using dedicated structs like `WillPrompt`.
-* `ChannelMouth` emits `Event::IntentionToSay` per parsed sentence.
+* `ChannelMouth` emits `Event::Speech` per parsed sentence without audio.
 * `Conversation::add_*` merges consecutive same-role messages.
 * Use the `Motor` trait for host actions. Implementations live in `pete`.
 
@@ -61,6 +61,7 @@ This repository is a Rust workspace.
 * Build the `pete` binary with `--features tts` to enable audio.
 * Stub TTS in tests to avoid delays.
 * Do not include the `style_wav` parameter when calling Coqui TTS.
+* Speech is emitted via `Event::Speech { text, audio }`.
 
 ## Specialized Notes
 

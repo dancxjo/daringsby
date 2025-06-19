@@ -129,18 +129,12 @@ async fn roundtrip_speech() {
     );
     psyche.set_speak_when_spoken_to(true);
     let input = psyche.input_sender();
-    let events = psyche.subscribe();
     let handle = tokio::spawn(async move { psyche.run().await });
     input
         .send(Sensation::HeardUserVoice("hello".into()))
         .unwrap();
-    let mut events = events;
-    while let Ok(evt) = events.recv().await {
-        if let psyche::Event::IntentionToSay(msg) = evt {
-            input.send(Sensation::HeardOwnVoice(msg)).unwrap();
-            break;
-        }
-    }
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    input.send(Sensation::HeardOwnVoice("Hi".into())).unwrap();
     handle.await.unwrap();
     assert!(!spoken.lock().await.is_empty());
 }

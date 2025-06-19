@@ -47,11 +47,15 @@ async fn websocket_forwards_audio() {
         .await
         .unwrap();
     event_tx
-        .send(Event::SpeechAudio("UklGRg==".into()))
+        .send(Event::Speech {
+            text: "hi".into(),
+            audio: Some("UklGRg==".into()),
+        })
         .unwrap();
     let msg = socket.next().await.unwrap().unwrap();
     let value: serde_json::Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
-    assert_eq!(value["type"], "pete-audio");
+    assert_eq!(value["type"], "pete-speech");
     assert_eq!(value["audio"], "UklGRg==");
+    assert_eq!(value["text"], "hi");
     server.abort();
 }

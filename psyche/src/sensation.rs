@@ -4,10 +4,8 @@ use serde::Serialize;
 pub enum Event {
     /// A partial chunk of the assistant's response.
     StreamChunk(String),
-    /// The assistant intends to say the given response.
-    IntentionToSay(String),
-    /// Base64-encoded WAV audio representing the spoken sentence.
-    SpeechAudio(String),
+    /// The assistant spoke a line of dialogue. Optional base64-encoded WAV audio accompanies the text.
+    Speech { text: String, audio: Option<String> },
     /// The psyche's emotional expression changed.
     EmotionChanged(String),
 }
