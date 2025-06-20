@@ -33,36 +33,36 @@ pub struct AppState {
 }
 
 #[derive(Deserialize)]
-#[serde(tag = "type", rename_all = "kebab-case")]
+#[serde(tag = "type", rename_all = "lowercase")]
 pub enum WsRequest {
-    User {
-        message: String,
-        #[allow(dead_code)]
-        name: Option<String>,
-    },
-    Played {
-        text: String,
-    },
-    Image {
-        mime: String,
-        base64: String,
-    },
+    Text { data: String },
+    Echo { data: String },
+    See { data: String, at: Option<String> },
+    Hear { data: String, at: Option<String> },
+    Geolocate { data: GeoLoc, at: Option<String> },
+    Sense { data: serde_json::Value },
+}
+
+#[derive(Deserialize)]
+pub struct GeoLoc {
+    pub longitude: f64,
+    pub latitude: f64,
 }
 
 #[derive(Serialize)]
 #[serde(tag = "type", content = "data")]
 enum WsResponse {
-    #[serde(rename = "Say")]
+    #[serde(rename = "say")]
     Say {
         words: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         audio: Option<String>,
     },
-    #[serde(rename = "Emote")]
+    #[serde(rename = "emote")]
     Emote(String),
-    #[serde(rename = "Think")]
+    #[serde(rename = "think")]
     Think(String),
-    #[serde(rename = "Heard")]
+    #[serde(rename = "heard")]
     Heard(String),
 }
 
@@ -124,7 +124,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                     Some(Ok(WsMessage::Text(text))) => {
                         if let Ok(req) = serde_json::from_str::<WsRequest>(&text) {
                             match req {
-                                WsRequest::User { message, .. } => {
+                                WsRequest::Text { data: message } => {
                                     debug!("user message: {}", message);
                                     let _ = state.user_input.send(message.clone());
                                     let payload = serde_json::to_string(&WsResponse::Heard(message)).unwrap();
@@ -133,13 +133,24 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                                         break;
                                     }
                                 }
-                                WsRequest::Played { text } => {
+                                WsRequest::Echo { data: text } => {
                                     debug!("played ack: {}", text);
                                     state.ear.hear_self_say(&text).await;
                                 }
-                                WsRequest::Image { mime, base64 } => {
-                                    debug!("image received");
-                                    state.eye.sense(ImageData { mime, base64 }).await;
+                                WsRequest::See { data, .. } => {
+                                    if let Some((mime, base64)) = parse_data_url(&data) {
+                                        debug!("image received");
+                                        state.eye.sense(ImageData { mime, base64 }).await;
+                                    }
+                                }
+                                WsRequest::Hear { .. } => {
+                                    debug!("audio fragment received");
+                                }
+                                WsRequest::Geolocate { .. } => {
+                                    debug!("geolocation received");
+                                }
+                                WsRequest::Sense { .. } => {
+                                    debug!("sense event received");
                                 }
                             }
                         }
@@ -196,6 +207,14 @@ pub async fn conversation_log(State(state): State<AppState>) -> impl IntoRespons
         })
         .collect();
     axum::Json(entries)
+}
+
+fn parse_data_url(url: &str) -> Option<(String, String)> {
+    let (prefix, data) = url.split_once(',')?;
+    let mime = prefix
+        .trim_start_matches("data:")
+        .trim_end_matches(";base64");
+    Some((mime.to_string(), data.to_string()))
 }
 
 pub async fn listen_user_input(mut rx: mpsc::UnboundedReceiver<String>, ear: Arc<dyn Ear>) {

@@ -108,7 +108,7 @@ export default function AudioQueue(
 
         logger.debug(`Playing message at: ${message.at}`);
         try {
-          await playSound(message.data.wav, () => {
+          await playSound(message.data.audio, () => {
             serverRef.current?.send({
               type: MessageType.Echo,
               data: message.data.words,

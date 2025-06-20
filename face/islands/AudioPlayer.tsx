@@ -89,7 +89,7 @@ export default function AudioPlayer(
   const handleMessage = useCallback(
     (message: SayMessage) => {
       logger.debug(`handleMessage called with message at: ${message.at}`);
-      playSound(message.data.wav, () => {
+      playSound(message.data.audio, () => {
         serverRef.current?.send({
           type: MessageType.Echo,
           data: message.data.words,

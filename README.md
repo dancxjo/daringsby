@@ -127,9 +127,9 @@ cargo run -p pete --features tts -- \
 
 After starting the server, connect your own WebSocket client to `ws://localhost:3000/ws`.
 A second WebSocket at `ws://localhost:3000/debug` streams debugging information from the Wits.
-Speech arrives as `Say` messages:
+Speech arrives as `say` messages:
 ```json
-{ "type": "Say", "data": { "words": "hi", "audio": "UklGRg==" } }
+{ "type": "say", "data": { "words": "hi", "audio": "UklGRg==" } }
 ```
 Emotion updates arrive via `Emote` messages containing an emoji string:
 ```json

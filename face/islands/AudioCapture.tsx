@@ -5,6 +5,8 @@ import { HearMessage } from "../lib/daringsby/network/messages/HearMessage.ts";
 import { MessageType } from "../lib/daringsby/network/messages/MessageType.ts";
 import { arrayBufferToBase64 } from "../lib/daringsby/utils/buffer_transformations.ts";
 
+let currentMimeType = "";
+
 export const mediaStream = signal<MediaStream | null>(null);
 
 interface SpeechInputProps {
@@ -71,6 +73,7 @@ function setupMicrophone(
     return () => {};
   }
 
+  currentMimeType = mimeType;
   navigator.mediaDevices
     .getUserMedia({ audio: true })
     .then((stream) => {
@@ -150,7 +153,10 @@ async function processFragmentData(
     logger.info("onFragment is being called");
     await props.onSample({
       type: MessageType.Hear,
-      data: arrayBufferToBase64(segData),
+      data: {
+        base64: arrayBufferToBase64(segData),
+        mime: currentMimeType,
+      },
       at: new Date().toISOString(),
     });
   } catch (error) {
