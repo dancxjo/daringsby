@@ -4,6 +4,7 @@
   const mien = document.getElementById("mien");
   const words = document.getElementById("words");
   const thought = document.getElementById("thought");
+  const player = document.getElementById("audio-player");
   const audioQueue = [];
   let playing = false;
 
@@ -21,15 +22,15 @@
       return;
     }
     playing = true;
-    const audio = new Audio(`data:audio/wav;base64,${next}`);
     const done = () => {
-      audio.removeEventListener("ended", done);
-      audio.removeEventListener("error", done);
+      player.removeEventListener("ended", done);
+      player.removeEventListener("error", done);
       playNext();
     };
-    audio.addEventListener("ended", done);
-    audio.addEventListener("error", done);
-    audio.play().catch((err) => {
+    player.src = `data:audio/wav;base64,${next}`;
+    player.addEventListener("ended", done, { once: true });
+    player.addEventListener("error", done, { once: true });
+    player.play().catch((err) => {
       console.error("audio", err);
       done();
     });
