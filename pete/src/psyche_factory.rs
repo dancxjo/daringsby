@@ -95,10 +95,11 @@ pub fn ollama_psyche(host: &str, model: &str) -> anyhow::Result<Psyche> {
         Box::new(OllamaProvider::new(host, model)?),
         wit_tx.clone(),
     ))));
-    psyche.register_typed_wit(Arc::new(WillWit::new(
-        Will::with_debug(Box::new(OllamaProvider::new(host, model)?), wit_tx.clone()),
-        psyche.voice(),
-    )));
+    let will = Arc::new(Will::with_debug(
+        Box::new(OllamaProvider::new(host, model)?),
+        wit_tx.clone(),
+    ));
+    psyche.register_typed_wit(Arc::new(WillWit::new(will, psyche.voice())));
     psyche.register_typed_wit(Arc::new(MemoryWit::new(memory.clone())));
     psyche.register_typed_wit(Arc::new(HeartWit::new(
         Box::new(OllamaProvider::new(host, model)?),

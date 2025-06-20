@@ -10,7 +10,7 @@ use std::sync::{
 /// Accumulates awareness statements and periodically decides what to do or
 /// say next. After generating a decision it commands the [`Voice`] to speak.
 pub struct WillWit {
-    will: Will,
+    will: Arc<Will>,
     buffer: Mutex<Vec<Impression<String>>>,
     voice: Arc<Voice>,
     ticks: AtomicUsize,
@@ -19,7 +19,8 @@ pub struct WillWit {
 impl WillWit {
     /// Create a new `WillWit` using `will` to decide actions and allowing
     /// `voice` to speak.
-    pub fn new(will: Will, voice: Arc<Voice>) -> Self {
+    pub fn new(will: Arc<Will>, voice: Arc<Voice>) -> Self {
+        voice.set_will(will.clone());
         Self {
             will,
             buffer: Mutex::new(Vec::new()),

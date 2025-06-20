@@ -48,7 +48,7 @@ async fn permits_every_third_tick() {
     let (tx, _rx) = broadcast::channel(8);
     let voice = Arc::new(Voice::new(llm.clone(), mouth, tx));
     voice.take_turn("init", &[]).await.unwrap();
-    let will = Will::new(Box::new(SpyLLM::default()));
+    let will = Arc::new(Will::new(Box::new(SpyLLM::default())));
     let wit = WillWit::new(will, voice.clone());
 
     for _ in 0..2 {
