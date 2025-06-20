@@ -1,6 +1,7 @@
 use crate::ImageData;
 use crate::Impression;
 use crate::ling::{Doer, Instruction};
+use crate::traits::observer::SensationObserver;
 use crate::traits::wit::Wit;
 use async_trait::async_trait;
 use lingproc::ImageData as LImageData;
@@ -65,5 +66,16 @@ impl Wit<ImageData, ImageData> for VisionWit {
             });
         }
         Some(Impression::new(how, None::<String>, img))
+    }
+}
+
+#[async_trait]
+impl SensationObserver for VisionWit {
+    async fn observe_sensation(&self, sensation: &crate::Sensation) {
+        if let crate::Sensation::Of(any) = sensation {
+            if let Some(img) = any.downcast_ref::<ImageData>() {
+                self.observe(img.clone()).await;
+            }
+        }
     }
 }

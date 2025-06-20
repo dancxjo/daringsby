@@ -44,7 +44,7 @@ pub fn dummy_psyche() -> Psyche {
         ear,
     );
     let wit_tx = psyche.wit_sender();
-    psyche.register_typed_wit(Arc::new(psyche::VisionWit::with_debug(
+    psyche.register_observing_wit(Arc::new(psyche::VisionWit::with_debug(
         Arc::new(Dummy),
         wit_tx,
     )));
@@ -76,7 +76,7 @@ pub fn ollama_psyche(host: &str, model: &str) -> anyhow::Result<Psyche> {
         ear,
     );
     let wit_tx = psyche.wit_sender();
-    psyche.register_typed_wit(Arc::new(psyche::VisionWit::with_debug(
+    psyche.register_observing_wit(Arc::new(psyche::VisionWit::with_debug(
         Arc::new(psyche::ling::OllamaProvider::new(host, model)?),
         wit_tx,
     )));
