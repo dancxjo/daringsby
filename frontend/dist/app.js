@@ -23,12 +23,16 @@
       return;
     }
     playing = true;
+
     const done = () => {
       player.removeEventListener("ended", done);
       player.removeEventListener("error", done);
-      ws.send(JSON.stringify({ type: "Echo", data: next.text }));
+      if (next.text) {
+        ws.send(JSON.stringify({ type: "Echo", data: next.text }));
+      }
       playNext();
     };
+
     if (next.audio) {
       player.src = `data:audio/wav;base64,${next.audio}`;
       player.addEventListener("ended", done, { once: true });
@@ -41,6 +45,7 @@
       done();
     }
   }
+
   function handleMessage(ev) {
     try {
       const m = JSON.parse(ev.data);
@@ -123,6 +128,7 @@
       }
     }
   }
+
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     setupWebcam();
   }
@@ -151,6 +157,7 @@
       console.error("audio", e);
     }
   }
+
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     setupAudio();
   }
