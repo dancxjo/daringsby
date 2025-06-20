@@ -1,5 +1,4 @@
 use crate::ling::{Chatter, Doer, Message, Role, Vectorizer};
-use crate::prompt::PromptBuilder;
 use crate::sensation::{Event, Sensation, WitReport};
 use crate::traits::wit;
 use crate::traits::wit::{ErasedWit, Wit};
@@ -50,7 +49,7 @@ impl Conversation {
         self.log.push(Message { role, content });
     }
 
-    fn tail(&self, n: usize) -> Vec<Message> {
+    pub fn tail(&self, n: usize) -> Vec<Message> {
         let len = self.log.len();
         self.log[len.saturating_sub(n)..].to_vec()
     }
@@ -87,9 +86,7 @@ pub struct Psyche {
     connections: Option<Arc<AtomicUsize>>,
     wits: Vec<Arc<dyn wit::ErasedWit + Send + Sync>>,
     wit_tx: broadcast::Sender<WitReport>,
-    prompt_context: Arc<Mutex<String>>,
-    voice_prompt: crate::prompt::VoicePrompt,
-    senses: Vec<String>,
+    ling: Arc<Mutex<crate::Ling>>,
     observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
     sensation_buffer: Arc<Mutex<VecDeque<Sensation>>>,
     last_ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
@@ -109,6 +106,11 @@ impl Psyche {
         let (wit_tx, _r2) = broadcast::channel(16);
         let (input_tx, input_rx) = mpsc::unbounded_channel();
         let voice = crate::voice::Voice::new(Arc::from(voice), mouth, events_tx.clone());
+        let conversation = Arc::new(Mutex::new(Conversation::default()));
+        let ling = Arc::new(Mutex::new(crate::Ling::new(
+            DEFAULT_SYSTEM_PROMPT,
+            conversation.clone(),
+        )));
         Self {
             narrator,
             voice: Arc::new(voice),
@@ -123,16 +125,14 @@ impl Psyche {
             wit_tx,
             input_tx,
             input_rx,
-            conversation: Arc::new(Mutex::new(Conversation::default())),
+            conversation,
             echo_timeout: Duration::from_secs(1),
             is_speaking: false,
             speak_when_spoken_to: false,
             pending_user_message: true,
             connections: None,
             wits: Vec::new(),
-            prompt_context: Arc::new(Mutex::new(String::new())),
-            voice_prompt: crate::prompt::VoicePrompt,
-            senses: Vec::new(),
+            ling,
             observers: Vec::new(),
             sensation_buffer: Arc::new(Mutex::new(VecDeque::new())),
             last_ticks: Arc::new(Mutex::new(HashMap::new())),
@@ -142,24 +142,25 @@ impl Psyche {
     /// Specify the base instructions provided to the language model.
     pub fn set_system_prompt(&mut self, prompt: impl Into<String>) {
         self.system_prompt = prompt.into();
+        if let Ok(mut ling) = self.ling.try_lock() {
+            ling.set_system_prompt(self.system_prompt.clone());
+        }
     }
 
     /// Retrieve the system prompt currently in use.
-    pub fn system_prompt(&self) -> &str {
-        &self.system_prompt
+    pub fn system_prompt(&self) -> String {
+        self.ling
+            .try_lock()
+            .map(|l| l.system_prompt().to_string())
+            .unwrap_or_default()
     }
 
     /// Build the system prompt with descriptions of Pete's body.
     pub fn described_system_prompt(&self) -> String {
-        if self.senses.is_empty() {
-            return self.system_prompt.clone();
-        }
-        let mut out = format!("{}\n\nYou perceive through:", self.system_prompt);
-        for s in &self.senses {
-            out.push_str("\n- ");
-            out.push_str(s);
-        }
-        out
+        self.ling
+            .try_lock()
+            .map(|l| l.described_system_prompt())
+            .unwrap_or_default()
     }
 
     /// Limit the number of conversation turns to `turns`.
@@ -194,13 +195,14 @@ impl Psyche {
 
     /// Update the additional context appended to the system prompt.
     pub async fn update_prompt_context(&self, context: impl Into<String>) {
-        let mut ctx = self.prompt_context.lock().await;
-        *ctx = context.into();
+        self.ling.lock().await.add_context_note(&context.into());
     }
 
     /// Record a description of an attached sense.
     pub fn add_sense(&mut self, description: String) {
-        self.senses.push(description);
+        if let Ok(mut ling) = self.ling.try_lock() {
+            ling.add_sense(description);
+        }
     }
 
     /// Obtain the sender used to broadcast [`WitReport`]s.
@@ -230,11 +232,6 @@ impl Psyche {
     /// Swap out the [`Mouth`] used for speech output.
     pub fn set_mouth(&mut self, mouth: Arc<dyn Mouth>) {
         self.voice.set_mouth(mouth);
-    }
-
-    /// Replace the [`VoicePrompt`] used to build the system prompt.
-    pub fn set_voice_prompt(&mut self, prompt: crate::prompt::VoicePrompt) {
-        self.voice_prompt = prompt;
     }
 
     /// Swap out the [`Memory`] implementation.
@@ -409,22 +406,19 @@ impl Psyche {
             }
 
             let history = {
-                let conv = self.conversation.lock().await;
-                conv.tail(self.max_history)
+                self.ling
+                    .lock()
+                    .await
+                    .get_conversation_tail(self.max_history)
+                    .await
             };
-            let context = { self.prompt_context.lock().await.clone() };
-            let base = self.described_system_prompt();
-            let system_prompt = if context.is_empty() {
-                base
-            } else {
-                format!("{}\n{}", base, context)
-            };
-            let prompt = self.voice_prompt.build(&system_prompt);
+            let prompt = { self.ling.lock().await.build_prompt().await };
             self.is_speaking = true;
             if let Err(e) = self.voice.take_turn(&prompt, &history).await {
                 error!(?e, "voice chat failed");
                 break;
             }
+            self.ling.lock().await.flush();
             self.is_speaking = false;
             self.pending_user_message = !self.speak_when_spoken_to;
             turns += 1;
@@ -438,8 +432,7 @@ impl Psyche {
     async fn experience(
         memory: Arc<dyn Memory>,
         wits: Vec<Arc<dyn ErasedWit + Send + Sync>>,
-        context: Arc<Mutex<String>>,
-        voice: Arc<crate::voice::Voice>,
+        ling: Arc<Mutex<crate::Ling>>,
         buffer: Arc<Mutex<VecDeque<Sensation>>>,
         ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
@@ -471,8 +464,6 @@ impl Psyche {
             for wit in &wits {
                 let wit = wit.clone();
                 let memory = memory.clone();
-                let context = context.clone();
-                let voice = voice.clone();
                 let ticks = ticks.clone();
                 tasks.push(tokio::spawn(async move {
                     let name = wit.name();
@@ -488,17 +479,20 @@ impl Psyche {
                         if let Err(e) = memory.store_serializable(&impression).await {
                             error!(?e, "memory store failed");
                         }
-                        let headline = impression.headline.clone();
-                        {
-                            let mut ctx = context.lock().await;
-                            *ctx = headline.clone();
-                        }
-                        voice.update_prompt_context(&headline).await;
+                        Some(impression)
+                    } else {
+                        None
                     }
                 }));
             }
+            let mut imps = Vec::new();
             for t in tasks {
-                let _ = t.await;
+                if let Ok(Some(i)) = t.await {
+                    imps.push(i);
+                }
+            }
+            if !imps.is_empty() {
+                ling.lock().await.add_impressions(&imps).await;
             }
             tokio::time::sleep(EXPERIENCE_TICK).await;
         }
@@ -509,14 +503,12 @@ impl Psyche {
         info!("psyche run started");
         let wits = self.wits.clone();
         let mem = self.memory.clone();
-        let ctx = self.prompt_context.clone();
-        let voice = self.voice.clone();
         let buf = self.sensation_buffer.clone();
         let ticks = self.last_ticks.clone();
         let observers = self.observers.clone();
-        let experience_handle = tokio::spawn(Self::experience(
-            mem, wits, ctx, voice, buf, ticks, observers,
-        ));
+        let ling = self.ling.clone();
+        let experience_handle =
+            tokio::spawn(Self::experience(mem, wits, ling, buf, ticks, observers));
         let converse_handle = tokio::spawn(self.converse());
         let psyche = converse_handle.await.expect("converse task panicked");
         experience_handle.abort();
