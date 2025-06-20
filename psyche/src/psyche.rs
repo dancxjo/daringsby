@@ -88,6 +88,7 @@ pub struct Psyche {
     prompt_context: Arc<Mutex<String>>,
     voice_prompt: crate::prompt::VoicePrompt,
     senses: Vec<String>,
+    observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
 }
 
 impl Psyche {
@@ -128,6 +129,7 @@ impl Psyche {
             prompt_context: Arc::new(Mutex::new(String::new())),
             voice_prompt: crate::prompt::VoicePrompt,
             senses: Vec::new(),
+            observers: Vec::new(),
         }
     }
 
@@ -258,6 +260,26 @@ impl Psyche {
             .push(Arc::new(wit::WitAdapter::new(wit)) as Arc<dyn ErasedWit + Send + Sync>);
     }
 
+    /// Register a component that listens for [`Sensation`]s.
+    pub fn register_observer(
+        &mut self,
+        obs: Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>,
+    ) {
+        self.observers.push(obs);
+    }
+
+    /// Register a [`Wit`] that also observes [`Sensation`]s.
+    pub fn register_observing_wit<I, O, T>(&mut self, wit: Arc<T>)
+    where
+        T: Wit<I, O> + crate::traits::observer::SensationObserver + Send + Sync + 'static,
+        I: 'static,
+        O: Serialize + Send + Sync + 'static,
+    {
+        self.register_observer(wit.clone());
+        self.wits
+            .push(Arc::new(wit::WitAdapter::new(wit)) as Arc<dyn ErasedWit + Send + Sync>);
+    }
+
     fn still_conversing(&self, turns: usize) -> bool {
         turns < self.max_turns
     }
@@ -283,6 +305,12 @@ impl Psyche {
         self.speak_when_spoken_to
     }
 
+    async fn notify_observers(&self, sensation: &Sensation) {
+        for obs in &self.observers {
+            obs.observe_sensation(sensation).await;
+        }
+    }
+
     /// Main loop that handles the conversation with the assistant.
     async fn converse(mut self) -> Self {
         info!("psyche conversation started");
@@ -293,25 +321,40 @@ impl Psyche {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }
-            while let Ok(Sensation::HeardOwnVoice(msg)) = self.input_rx.try_recv() {
-                let mut conv = self.conversation.lock().await;
-                conv.add_assistant(msg);
+            while let Ok(s) = self.input_rx.try_recv() {
+                match s {
+                    Sensation::HeardOwnVoice(ref msg) => {
+                        let mut conv = self.conversation.lock().await;
+                        conv.add_assistant(msg.clone());
+                    }
+                    Sensation::HeardUserVoice(ref msg) => {
+                        let mut conv = self.conversation.lock().await;
+                        conv.add_user(msg.clone());
+                    }
+                    Sensation::Of(_) => {}
+                }
+                self.notify_observers(&s).await;
             }
             if self.speak_when_spoken_to && !self.pending_user_message {
                 match self.input_rx.recv().await {
                     Some(Sensation::HeardUserVoice(msg)) => {
                         debug!("heard user voice: {}", msg);
                         self.ear.hear_user_say(&msg).await;
+                        self.notify_observers(&Sensation::HeardUserVoice(msg.clone()))
+                            .await;
                         self.pending_user_message = true;
                         continue;
                     }
                     Some(Sensation::HeardOwnVoice(msg)) => {
                         debug!("Received HeardOwnVoice: '{}'", msg);
                         self.ear.hear_self_say(&msg).await;
+                        self.notify_observers(&Sensation::HeardOwnVoice(msg.clone()))
+                            .await;
                         continue;
                     }
-                    Some(Sensation::Of(_)) => {
+                    Some(s @ Sensation::Of(_)) => {
                         debug!("received non-voice sensation while waiting");
+                        self.notify_observers(&s).await;
                         continue;
                     }
                     None => break,

@@ -7,10 +7,12 @@ mod voice;
 pub mod traits {
     pub mod ear;
     pub mod mouth;
+    pub mod observer;
     pub mod wit;
 
     pub use ear::Ear;
     pub use mouth::Mouth;
+    pub use observer::SensationObserver;
     pub use wit::{ErasedWit, Summarizer, Wit, WitAdapter};
 }
 
@@ -52,7 +54,7 @@ pub use types::ImageData;
 
 pub use psyche::{Conversation, Psyche};
 pub use sensation::{Event, Sensation, WitReport};
-pub use traits::{Ear, ErasedWit, Mouth, Summarizer, Wit, WitAdapter};
+pub use traits::{Ear, ErasedWit, Mouth, SensationObserver, Summarizer, Wit, WitAdapter};
 pub use voice::{Voice, extract_emojis};
 pub use wits::{
     BasicMemory, GraphStore, Memory, Neo4jClient, NoopMemory, QdrantClient, VisionWit, Will,
