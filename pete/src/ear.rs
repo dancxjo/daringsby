@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::{Ear, Sensation};
+use psyche::{Ear, Sensation, Voice};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -13,6 +13,7 @@ pub struct ChannelEar {
     forward: mpsc::UnboundedSender<Sensation>,
     conversation: Arc<Mutex<psyche::Conversation>>, // share log from psyche
     speaking: Arc<AtomicBool>,
+    voice: Arc<Voice>,
 }
 
 impl ChannelEar {
@@ -21,11 +22,13 @@ impl ChannelEar {
         forward: mpsc::UnboundedSender<Sensation>,
         conversation: Arc<Mutex<psyche::Conversation>>,
         speaking: Arc<AtomicBool>,
+        voice: Arc<Voice>,
     ) -> Self {
         Self {
             forward,
             conversation,
             speaking,
+            voice,
         }
     }
 }
@@ -35,6 +38,7 @@ impl Ear for ChannelEar {
     async fn hear_self_say(&self, text: &str) {
         self.speaking.store(false, Ordering::SeqCst);
         debug!("ear heard self say: {}", text);
+        self.voice.permit(None);
         let _ = self
             .forward
             .send(Sensation::HeardOwnVoice(text.to_string()));

@@ -15,6 +15,7 @@ async fn returns_log_json() {
         psyche.input_sender(),
         conversation.clone(),
         Arc::new(AtomicBool::new(false)),
+        psyche.voice(),
     ));
     let (bus, _user_rx) = EventBus::new();
     let bus = Arc::new(bus);

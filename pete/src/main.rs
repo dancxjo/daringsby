@@ -84,14 +84,15 @@ async fn main() -> anyhow::Result<()> {
     psyche.set_emotion("😐");
     psyche.set_connection_counter(connections.clone());
     let conversation = psyche.conversation();
+    let voice = psyche.voice();
     let ear = Arc::new(ChannelEar::new(
         psyche.input_sender(),
         conversation.clone(),
         speaking.clone(),
+        voice.clone(),
     ));
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
     psyche.add_sense(eye.description());
-    let voice = psyche.voice();
     tokio::spawn(listen_user_input(user_rx, ear.clone(), voice.clone()));
 
     if let Some(secs) = cli.auto_voice {

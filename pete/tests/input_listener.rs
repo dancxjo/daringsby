@@ -6,15 +6,16 @@ use tokio::sync::mpsc;
 async fn records_user_input() {
     let mut psyche = dummy_psyche();
     let conv = psyche.conversation();
+    let voice = psyche.voice();
     let speaking = std::sync::Arc::new(AtomicBool::new(false));
     let ear = std::sync::Arc::new(ChannelEar::new(
         psyche.input_sender(),
         conv.clone(),
         speaking,
+        voice.clone(),
     ));
     let (tx, rx) = mpsc::unbounded_channel();
 
-    let voice = psyche.voice();
     tokio::spawn(listen_user_input(rx, ear, voice));
 
     tx.send("hello".to_string()).unwrap();
