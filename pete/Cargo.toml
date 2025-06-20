@@ -47,3 +47,8 @@ cucumber = "0.21"
 name = "e2e"
 harness = false
 required-features = ["e2e"]
+
+[[bin]]
+name = "pete"
+path = "src/main.rs"
+default-run = "pete"
