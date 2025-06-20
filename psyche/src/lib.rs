@@ -62,6 +62,7 @@ pub use sensor::Sensor;
 pub use trim_mouth::TrimMouth;
 pub use types::ImageData;
 
+pub use ling::{Feeling, Ling};
 pub use psyche::{Conversation, Psyche};
 pub use sensation::{Event, Sensation, WitReport};
 pub use traits::{Ear, ErasedWit, Mouth, SensationObserver, Summarizer, Wit, WitAdapter};
