@@ -4,9 +4,8 @@ use axum::{
         State,
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
     },
-    http::StatusCode,
     response::{Html, IntoResponse},
-    routing::{get, get_service},
+    routing::get,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{
@@ -14,7 +13,6 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 use tokio::sync::{broadcast, mpsc};
-use tower_http::services::ServeDir;
 use tracing::{debug, error, info};
 
 use psyche::{Ear, Event, ImageData, Sensor, ling::Role};
@@ -232,11 +230,7 @@ pub async fn listen_user_input(mut rx: mpsc::UnboundedReceiver<String>, ear: Arc
 /// Build the application router with the provided state.
 pub fn app(state: AppState) -> Router {
     Router::new()
-        .nest_service(
-            "/",
-            get_service(ServeDir::new("frontend/dist"))
-                .handle_error(|_| async { StatusCode::INTERNAL_SERVER_ERROR }),
-        )
+        .route("/", get(index))
         .route("/ws", get(ws_handler))
         .route("/log", get(log_ws_handler))
         .route("/debug", get(wit_ws_handler))

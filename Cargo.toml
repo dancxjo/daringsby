@@ -1,3 +1,3 @@
 [workspace]
-members = ["psyche", "pete", "lingproc", "shared", "frontend"]
+members = ["psyche", "pete", "lingproc", "shared"]
 resolver = "2"
