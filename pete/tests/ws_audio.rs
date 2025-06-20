@@ -12,10 +12,12 @@ use std::sync::{
 async fn websocket_forwards_audio() {
     let mut psyche = dummy_psyche();
     let conversation = psyche.conversation();
+    let voice = psyche.voice();
     let ear = Arc::new(ChannelEar::new(
         psyche.input_sender(),
         conversation.clone(),
         Arc::new(AtomicBool::new(false)),
+        voice,
     ));
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
     psyche.add_sense(eye.description());

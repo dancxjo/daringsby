@@ -6,7 +6,7 @@ use psyche::{
     ling::{ChatStream, Chatter, Doer, Instruction, Message, Vectorizer},
 };
 use std::sync::{Arc, atomic::AtomicBool};
-use tokio::sync::{Mutex, broadcast, mpsc};
+use tokio::sync::{Mutex, broadcast};
 use tokio_stream::once;
 
 #[derive(Default, cucumber::World)]
@@ -61,9 +61,6 @@ impl PipelineWorld {
         let bus = Arc::new(bus);
         let speaking = Arc::new(AtomicBool::new(false));
         let mouth = Arc::new(ChannelMouth::new(bus.clone(), speaking.clone())) as Arc<dyn Mouth>;
-        let (ux, ur) = mpsc::unbounded_channel();
-        let conv = Arc::new(Mutex::new(psyche::Conversation::default()));
-        let ear = Arc::new(ChannelEar::new(ux, conv.clone(), speaking));
         let llm = FixedLLM {
             reply: self.response.clone().unwrap_or_else(|| "hi".into()),
         };
@@ -73,18 +70,25 @@ impl PipelineWorld {
             Box::new(llm),
             Arc::new(psyche::NoopMemory),
             mouth,
-            ear.clone(),
+            Arc::new(psyche::NoopEar),
         );
         psyche.set_turn_limit(1);
         psyche.set_speak_when_spoken_to(true);
+        let conversation = psyche.conversation();
+        let voice = psyche.voice();
+        let ear = Arc::new(ChannelEar::new(
+            psyche.input_sender(),
+            conversation.clone(),
+            speaking,
+            voice.clone(),
+        ));
         let psyche = psyche.run();
         tokio::spawn(async move {
             psyche.await;
         });
         self.events = Some(bus.subscribe_events());
         self.ear = Some(ear);
-        self.convo = Some(conv);
-        drop(ur);
+        self.convo = Some(conversation);
     }
 
     async fn drain(&mut self) {
