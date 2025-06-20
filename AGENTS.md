@@ -105,5 +105,6 @@ The previous Deno-based client has been removed. Update the files in
 * Be mindful of the single-CPU assumption — prefer concurrency without heavy parallelism.
 * When skipping speech for empty responses, increment the turn counter so the conversation loop can exit.
 * Log Coqui TTS request URLs with `info!(%url, "requesting TTS")` to ease debugging misconfigured endpoints.
+* Log each Wit tick with its name and keep loops alive even when idle.
 
 This document reflects the current cognitive and runtime architecture of Pete Daringsby. Keep it consistent with the latest design discussions and behavior changes.

@@ -66,13 +66,16 @@ impl Voice {
     }
 
     pub async fn take_turn(&self, system_prompt: &str, history: &[Message]) -> anyhow::Result<()> {
+        info!("voice take_turn called");
         {
             let mut ready = self.ready.lock().unwrap();
             if !*ready {
+                info!("voice not ready, returning early");
                 return Ok(());
             }
             *ready = false;
         }
+        info!("voice permitted, generating speech");
         let extra = self.extra_prompt.lock().unwrap().take();
         let prompt = if let Some(extra) = extra {
             format!("{}\n{}", system_prompt, extra)

@@ -18,6 +18,11 @@ pub trait Wit<Input, Output>: Send + Sync {
 
     /// Periodically called to emit a summarized [`Impression`].
     async fn tick(&self) -> Option<Impression<Output>>;
+
+    /// Human readable name used for logging.
+    fn name(&self) -> &'static str {
+        std::any::type_name::<Self>()
+    }
 }
 
 /// Type-erased wrapper enabling heterogeneous [`Wit`]s to be stored together.
@@ -25,6 +30,9 @@ pub trait Wit<Input, Output>: Send + Sync {
 pub trait ErasedWit: Send + Sync {
     /// Execute a tick and return an [`Impression`] with the payload serialized.
     async fn tick_erased(&self) -> Option<Impression<Value>>;
+
+    /// Name of this [`Wit`]. Used for debugging.
+    fn name(&self) -> &'static str;
 }
 
 /// Adapter allowing any [`Wit`] to be used as an [`ErasedWit`].
@@ -56,6 +64,10 @@ where
                     raw_data: raw,
                 })
         })
+    }
+
+    fn name(&self) -> &'static str {
+        self.inner.name()
     }
 }
 
