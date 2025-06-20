@@ -44,7 +44,7 @@ pub fn dummy_psyche() -> Psyche {
         ear,
     );
     let wit_tx = psyche.wit_sender();
-    psyche.register_typed_wit(Arc::new(psyche::VisionWit::with_debug(
+    psyche.register_observing_wit(Arc::new(psyche::VisionWit::with_debug(
         Arc::new(Dummy),
         wit_tx,
     )));
@@ -58,7 +58,12 @@ pub fn dummy_psyche() -> Psyche {
 /// This uses [`OllamaProvider`](psyche::ling::OllamaProvider) for all language
 /// capabilities and the no-op ear and mouth implementations.
 pub fn ollama_psyche(host: &str, model: &str) -> anyhow::Result<Psyche> {
+    use crate::LoggingMotor;
     use psyche::ling::OllamaProvider;
+    use psyche::wits::{
+        BasicMemory, Combobulator, CombobulatorWit, HeartWit, MemoryWit, Neo4jClient, QdrantClient,
+        Will, WillWit,
+    };
 
     let narrator = OllamaProvider::new(host, model)?;
     let voice = OllamaProvider::new(host, model)?;
@@ -67,18 +72,37 @@ pub fn ollama_psyche(host: &str, model: &str) -> anyhow::Result<Psyche> {
     let mouth = Arc::new(NoopMouth::default());
     let ear = Arc::new(NoopEar);
 
+    let memory = Arc::new(BasicMemory {
+        vectorizer: Arc::new(OllamaProvider::new(host, model)?),
+        qdrant: QdrantClient::default(),
+        neo4j: Arc::new(Neo4jClient::default()),
+    });
+
     let mut psyche = Psyche::new(
         Box::new(narrator),
-        Box::new(voice),
+        Box::new(voice.clone()),
         Box::new(vectorizer),
-        Arc::new(psyche::NoopMemory),
+        memory.clone(),
         mouth,
         ear,
     );
     let wit_tx = psyche.wit_sender();
-    psyche.register_typed_wit(Arc::new(psyche::VisionWit::with_debug(
-        Arc::new(psyche::ling::OllamaProvider::new(host, model)?),
-        wit_tx,
+    psyche.register_observing_wit(Arc::new(psyche::VisionWit::with_debug(
+        Arc::new(OllamaProvider::new(host, model)?),
+        wit_tx.clone(),
+    )));
+    psyche.register_typed_wit(Arc::new(CombobulatorWit::new(Combobulator::with_debug(
+        Box::new(OllamaProvider::new(host, model)?),
+        wit_tx.clone(),
+    ))));
+    psyche.register_typed_wit(Arc::new(WillWit::new(
+        Will::with_debug(Box::new(OllamaProvider::new(host, model)?), wit_tx.clone()),
+        psyche.voice(),
+    )));
+    psyche.register_typed_wit(Arc::new(MemoryWit::new(memory.clone())));
+    psyche.register_typed_wit(Arc::new(HeartWit::new(
+        Box::new(OllamaProvider::new(host, model)?),
+        Arc::new(LoggingMotor),
     )));
     psyche.set_turn_limit(usize::MAX);
     info!(%host, %model, "created ollama psyche");

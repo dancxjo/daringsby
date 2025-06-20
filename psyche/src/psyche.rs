@@ -6,12 +6,13 @@ use crate::traits::wit::{ErasedWit, Wit};
 use crate::traits::{Ear, Mouth};
 use crate::wits::memory::Memory;
 use serde::Serialize;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 /// Default instructions sent to the language model.
 /// Prompt used by [`Voice`] when generating Pete's dialogue.
-pub const DEFAULT_SYSTEM_PROMPT: &str = "You are PETE — an experimental, autonomous, conscious artificial being, embodied in the real world.\n\n- Your statements should be grounded in reality. Apart from when you're imagining, you should only speak about things you have sensed, been told, or explicitly remember (lest you hallucinate).\n- Do not hallucinate or fabricate. If something is unclear, say so.\n- You are not pretending. You *are* PETE. This is not a game or story.\n- You intersperse emojis to reflect your current emotional tone (e.g., 😐, 🙂, 😟); your face will reflect the emotion inline with your TTS speech.\n";
+pub const DEFAULT_SYSTEM_PROMPT: &str = "You are PETE — an experimental, autonomous, conscious artificial being, embodied in the real world.\n\n- Your statements should be grounded in reality. Apart from when you're imagining, you should only speak about things you have sensed, been told, or explicitly remember (lest you hallucinate).\n- Do not hallucinate or fabricate. If something is unclear, say so.\n- You are not pretending. You *are* PETE. This is not a game or story.\n- You intersperse emojis to reflect your current emotional tone (e.g., 😐, 🙂, 😟); your face will reflect the emotion inline with your TTS speech.\nReturn only one or two sentences max. You will have another chance to speak, but do not overwhelm your human interlocutor.";
 
 #[cfg(not(test))]
 const EXPERIENCE_TICK: Duration = Duration::from_secs(60);
@@ -88,6 +89,8 @@ pub struct Psyche {
     prompt_context: Arc<Mutex<String>>,
     voice_prompt: crate::prompt::VoicePrompt,
     senses: Vec<String>,
+    observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
+    sensation_buffer: Arc<Mutex<VecDeque<Sensation>>>,
 }
 
 impl Psyche {
@@ -128,6 +131,8 @@ impl Psyche {
             prompt_context: Arc::new(Mutex::new(String::new())),
             voice_prompt: crate::prompt::VoicePrompt,
             senses: Vec::new(),
+            observers: Vec::new(),
+            sensation_buffer: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 
@@ -205,6 +210,11 @@ impl Psyche {
         self.wit_tx.subscribe()
     }
 
+    /// Get a handle to the voice component.
+    pub fn voice(&self) -> Arc<crate::voice::Voice> {
+        self.voice.clone()
+    }
+
     /// Swap out the [`Mouth`] used for speech output.
     pub fn set_mouth(&mut self, mouth: Arc<dyn Mouth>) {
         self.voice.set_mouth(mouth);
@@ -258,6 +268,26 @@ impl Psyche {
             .push(Arc::new(wit::WitAdapter::new(wit)) as Arc<dyn ErasedWit + Send + Sync>);
     }
 
+    /// Register a component that listens for [`Sensation`]s.
+    pub fn register_observer(
+        &mut self,
+        obs: Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>,
+    ) {
+        self.observers.push(obs);
+    }
+
+    /// Register a [`Wit`] that also observes [`Sensation`]s.
+    pub fn register_observing_wit<I, O, T>(&mut self, wit: Arc<T>)
+    where
+        T: Wit<I, O> + crate::traits::observer::SensationObserver + Send + Sync + 'static,
+        I: 'static,
+        O: Serialize + Send + Sync + 'static,
+    {
+        self.register_observer(wit.clone());
+        self.wits
+            .push(Arc::new(wit::WitAdapter::new(wit)) as Arc<dyn ErasedWit + Send + Sync>);
+    }
+
     fn still_conversing(&self, turns: usize) -> bool {
         turns < self.max_turns
     }
@@ -283,6 +313,28 @@ impl Psyche {
         self.speak_when_spoken_to
     }
 
+    /// Buffer that Pete heard himself say `text`.
+    async fn buffer_self_speech(&self, text: &str) {
+        self.sensation_buffer
+            .lock()
+            .await
+            .push_back(Sensation::HeardOwnVoice(text.to_string()));
+    }
+
+    /// Buffer that the user said `text`.
+    async fn buffer_user_speech(&self, text: &str) {
+        self.sensation_buffer
+            .lock()
+            .await
+            .push_back(Sensation::HeardUserVoice(text.to_string()));
+    }
+
+    async fn notify_observers(&self, sensation: &Sensation) {
+        for obs in &self.observers {
+            obs.observe_sensation(sensation).await;
+        }
+    }
+
     /// Main loop that handles the conversation with the assistant.
     async fn converse(mut self) -> Self {
         info!("psyche conversation started");
@@ -293,25 +345,51 @@ impl Psyche {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }
-            while let Ok(Sensation::HeardOwnVoice(msg)) = self.input_rx.try_recv() {
-                let mut conv = self.conversation.lock().await;
-                conv.add_assistant(msg);
+            while let Ok(s) = self.input_rx.try_recv() {
+                match &s {
+                    Sensation::HeardOwnVoice(msg) => {
+                        let mut conv = self.conversation.lock().await;
+                        conv.add_assistant(msg.clone());
+                    }
+                    Sensation::HeardUserVoice(msg) => {
+                        let mut conv = self.conversation.lock().await;
+                        conv.add_user(msg.clone());
+                    }
+                    Sensation::Of(_) => {}
+                }
+                self.notify_observers(&s).await;
+                match &s {
+                    Sensation::HeardOwnVoice(msg) => {
+                        self.buffer_self_speech(msg).await;
+                    }
+                    Sensation::HeardUserVoice(msg) => {
+                        self.buffer_user_speech(msg).await;
+                    }
+                    Sensation::Of(_) => self.sensation_buffer.lock().await.push_back(s),
+                }
             }
             if self.speak_when_spoken_to && !self.pending_user_message {
                 match self.input_rx.recv().await {
                     Some(Sensation::HeardUserVoice(msg)) => {
                         debug!("heard user voice: {}", msg);
                         self.ear.hear_user_say(&msg).await;
+                        self.buffer_user_speech(&msg).await;
+                        self.notify_observers(&Sensation::HeardUserVoice(msg.clone()))
+                            .await;
                         self.pending_user_message = true;
                         continue;
                     }
                     Some(Sensation::HeardOwnVoice(msg)) => {
                         debug!("Received HeardOwnVoice: '{}'", msg);
                         self.ear.hear_self_say(&msg).await;
+                        self.buffer_self_speech(&msg).await;
+                        self.notify_observers(&Sensation::HeardOwnVoice(msg.clone()))
+                            .await;
                         continue;
                     }
-                    Some(Sensation::Of(_)) => {
+                    Some(s @ Sensation::Of(_)) => {
                         debug!("received non-voice sensation while waiting");
+                        self.notify_observers(&s).await;
                         continue;
                     }
                     None => break,
@@ -350,8 +428,32 @@ impl Psyche {
         wits: Vec<Arc<dyn ErasedWit + Send + Sync>>,
         context: Arc<Mutex<String>>,
         voice: Arc<crate::voice::Voice>,
+        buffer: Arc<Mutex<VecDeque<Sensation>>>,
+        observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
     ) {
         loop {
+            let batch: Vec<Sensation> = buffer.lock().await.drain(..).collect();
+            if !batch.is_empty() {
+                let mut combined = String::new();
+                for s in &batch {
+                    if !combined.is_empty() {
+                        combined.push(' ');
+                    }
+                    let desc = match s {
+                        Sensation::HeardOwnVoice(t) => format!("Pete said: {t}"),
+                        Sensation::HeardUserVoice(t) => format!("User said: {t}"),
+                        Sensation::Of(_) => "Something happened".to_string(),
+                    };
+                    combined.push_str(&desc);
+                }
+                let instant = wit::Instant {
+                    observation: combined,
+                };
+                let sensation = Sensation::Of(Box::new(instant));
+                for obs in &observers {
+                    obs.observe_sensation(&sensation).await;
+                }
+            }
             let mut tasks = Vec::new();
             for wit in &wits {
                 let wit = wit.clone();
@@ -359,7 +461,9 @@ impl Psyche {
                 let context = context.clone();
                 let voice = voice.clone();
                 tasks.push(tokio::spawn(async move {
+                    let name = wit.name();
                     let maybe_imp = wit.tick_erased().await;
+                    info!(%name, "Ticked wit");
                     if let Some(impression) = maybe_imp {
                         info!(?impression.headline, "Wit emitted impression");
                         if let Err(e) = memory.store_serializable(&impression).await {
@@ -388,7 +492,10 @@ impl Psyche {
         let mem = self.memory.clone();
         let ctx = self.prompt_context.clone();
         let voice = self.voice.clone();
-        let experience_handle = tokio::spawn(Self::experience(mem, wits, ctx, voice));
+        let buf = self.sensation_buffer.clone();
+        let observers = self.observers.clone();
+        let experience_handle =
+            tokio::spawn(Self::experience(mem, wits, ctx, voice, buf, observers));
         let converse_handle = tokio::spawn(self.converse());
         let psyche = converse_handle.await.expect("converse task panicked");
         experience_handle.abort();

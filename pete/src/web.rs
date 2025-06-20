@@ -217,10 +217,15 @@ fn parse_data_url(url: &str) -> Option<(String, String)> {
     Some((mime.to_string(), data.to_string()))
 }
 
-pub async fn listen_user_input(mut rx: mpsc::UnboundedReceiver<String>, ear: Arc<dyn Ear>) {
+pub async fn listen_user_input(
+    mut rx: mpsc::UnboundedReceiver<String>,
+    ear: Arc<dyn Ear>,
+    voice: Arc<psyche::Voice>,
+) {
     while let Some(msg) = rx.recv().await {
         debug!("forwarding user input: {}", msg);
         ear.hear_user_say(&msg).await;
+        voice.permit(None);
     }
 }
 

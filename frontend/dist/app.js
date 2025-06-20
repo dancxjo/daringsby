@@ -1,14 +1,16 @@
 (function () {
   const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${wsProtocol}//${location.hostname}:3000/ws`);
+  const debugWs = new WebSocket(`${wsProtocol}//${location.hostname}:3000/debug`);
   const mien = document.getElementById("mien");
   const words = document.getElementById("words");
   const thought = document.getElementById("thought");
+  const player = document.getElementById("audio-player");
   const audioQueue = [];
   let playing = false;
 
-  function enqueueAudio(b64) {
-    audioQueue.push(b64);
+  function enqueueAudio(item) {
+    audioQueue.push(item);
     if (!playing) {
       playNext();
     }
@@ -21,20 +23,30 @@
       return;
     }
     playing = true;
-    const audio = new Audio(`data:audio/wav;base64,${next}`);
+
     const done = () => {
-      audio.removeEventListener("ended", done);
-      audio.removeEventListener("error", done);
+      player.removeEventListener("ended", done);
+      player.removeEventListener("error", done);
+      if (next.text) {
+        ws.send(JSON.stringify({ type: "Echo", data: next.text }));
+      }
       playNext();
     };
-    audio.addEventListener("ended", done);
-    audio.addEventListener("error", done);
-    audio.play().catch((err) => {
-      console.error("audio", err);
+
+    if (next.audio) {
+      player.src = `data:audio/wav;base64,${next.audio}`;
+      player.addEventListener("ended", done, { once: true });
+      player.addEventListener("error", done, { once: true });
+      player.play().catch((err) => {
+        console.error("audio", err);
+        done();
+      });
+    } else {
       done();
-    });
+    }
   }
-  ws.onmessage = (ev) => {
+
+  function handleMessage(ev) {
     try {
       const m = JSON.parse(ev.data);
       switch (m.type) {
@@ -46,13 +58,16 @@
         case "say":
           words.textContent += "\n" + m.data.words;
           words.scrollTop = words.scrollHeight;
-          if (m.data.audio) {
-            enqueueAudio(m.data.audio);
-          }
+          enqueueAudio({ audio: m.data.audio || null, text: m.data.words });
           break;
         case "Think":
         case "think":
           thought.textContent = m.data;
+          if (m.data && m.data.trim() !== "") {
+            thought.style.display = "flex";
+          } else {
+            thought.style.display = "none";
+          }
           break;
         case "Heard":
         case "heard":
@@ -62,7 +77,10 @@
     } catch (e) {
       console.error(e);
     }
-  };
+  }
+
+  ws.onmessage = handleMessage;
+  debugWs.onmessage = handleMessage;
 
   document.getElementById("text-form").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -110,6 +128,7 @@
       }
     }
   }
+
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     setupWebcam();
   }
@@ -138,6 +157,7 @@
       console.error("audio", e);
     }
   }
+
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     setupAudio();
   }

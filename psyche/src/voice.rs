@@ -47,8 +47,18 @@ impl Voice {
     }
 
     pub fn permit(&self, prompt: Option<String>) {
+        let mut ready = self.ready.lock().unwrap();
+        if *ready {
+            return;
+        }
+        *ready = true;
+        drop(ready);
         *self.extra_prompt.lock().unwrap() = prompt;
-        *self.ready.lock().unwrap() = true;
+    }
+
+    /// Returns `true` if the voice is currently permitted to speak.
+    pub fn ready(&self) -> bool {
+        *self.ready.lock().unwrap()
     }
 
     pub async fn update_prompt_context(&self, ctx: &str) {
@@ -56,13 +66,16 @@ impl Voice {
     }
 
     pub async fn take_turn(&self, system_prompt: &str, history: &[Message]) -> anyhow::Result<()> {
+        info!("voice take_turn called");
         {
             let mut ready = self.ready.lock().unwrap();
             if !*ready {
+                info!("voice not ready, returning early");
                 return Ok(());
             }
             *ready = false;
         }
+        info!("voice permitted, generating speech");
         let extra = self.extra_prompt.lock().unwrap().take();
         let prompt = if let Some(extra) = extra {
             format!("{}\n{}", system_prompt, extra)

@@ -48,6 +48,10 @@ The previous Deno-based client has been removed. Update the files in
 `frontend/dist` directly to change the interface.
 * Queue audio playback on the client so clips never overlap.
 * Define CSS variables in `styles.css` to control colors and fonts.
+* Reuse a single `<audio>` element for speech playback so controls remain visible.
+* After playing speech audio, send an `Echo` message with the spoken text so the conversation log records assistant dialogue.
+* Define CSS variables in `styles.css` to control colors and fonts.
+* Keep the thought bubble hidden until there is text to display.
 * Serve over HTTPS by passing `--tls-cert` and `--tls-key` to the `pete` binary.
 
 ## Communication
@@ -91,6 +95,8 @@ The previous Deno-based client has been removed. Update the files in
 * Only `Will` may invoke `Voice::take_turn`.
 * `Voice::take_turn` extracts emoji and emits `Event::EmotionChanged`.
 * `Voice` will not speak until `Will::command_voice_to_speak` grants permission.
+* `Voice::permit` is idempotent and returns early when already ready.
+* `WillWit::tick` may call `voice.permit(Some(prompt))` to trigger speech when rules allow.
 
 ## Additional Suggestions
 
@@ -100,5 +106,6 @@ The previous Deno-based client has been removed. Update the files in
 * Be mindful of the single-CPU assumption — prefer concurrency without heavy parallelism.
 * When skipping speech for empty responses, increment the turn counter so the conversation loop can exit.
 * Log Coqui TTS request URLs with `info!(%url, "requesting TTS")` to ease debugging misconfigured endpoints.
+* Log each Wit tick with its name and keep loops alive even when idle.
 
 This document reflects the current cognitive and runtime architecture of Pete Daringsby. Keep it consistent with the latest design discussions and behavior changes.

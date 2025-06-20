@@ -14,7 +14,8 @@ async fn records_user_input() {
     ));
     let (tx, rx) = mpsc::unbounded_channel();
 
-    tokio::spawn(listen_user_input(rx, ear));
+    let voice = psyche.voice();
+    tokio::spawn(listen_user_input(rx, ear, voice));
 
     tx.send("hello".to_string()).unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(10)).await;

@@ -90,7 +90,8 @@ async fn main() -> anyhow::Result<()> {
     psyche.add_sense(eye.description());
     let (user_tx, user_rx) = mpsc::unbounded_channel();
 
-    tokio::spawn(listen_user_input(user_rx, ear.clone()));
+    let voice = psyche.voice();
+    tokio::spawn(listen_user_input(user_rx, ear.clone(), voice.clone()));
 
     let wit_rx = psyche.wit_reports();
     tokio::spawn(async move {

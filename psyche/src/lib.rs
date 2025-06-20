@@ -7,24 +7,34 @@ mod voice;
 pub mod traits {
     pub mod ear;
     pub mod mouth;
+    pub mod observer;
     pub mod wit;
 
     pub use ear::Ear;
     pub use mouth::Mouth;
+    pub use observer::SensationObserver;
     pub use wit::{ErasedWit, Summarizer, Wit, WitAdapter};
 }
 
 pub mod wit;
 pub mod wits {
     pub mod combobulator;
+    pub mod combobulator_wit;
+    pub mod heart_wit;
     pub mod memory;
+    pub mod memory_wit;
     pub mod vision_wit;
     pub mod will;
+    pub mod will_wit;
 
     pub use combobulator::Combobulator;
+    pub use combobulator_wit::CombobulatorWit;
+    pub use heart_wit::HeartWit;
     pub use memory::{BasicMemory, GraphStore, Memory, Neo4jClient, NoopMemory, QdrantClient};
+    pub use memory_wit::MemoryWit;
     pub use vision_wit::VisionWit;
     pub use will::Will;
+    pub use will_wit::WillWit;
 }
 
 mod and_mouth;
@@ -52,8 +62,9 @@ pub use types::ImageData;
 
 pub use psyche::{Conversation, Psyche};
 pub use sensation::{Event, Sensation, WitReport};
-pub use traits::{Ear, ErasedWit, Mouth, Summarizer, Wit, WitAdapter};
+pub use traits::{Ear, ErasedWit, Mouth, SensationObserver, Summarizer, Wit, WitAdapter};
 pub use voice::{Voice, extract_emojis};
 pub use wits::{
-    BasicMemory, GraphStore, Memory, Neo4jClient, NoopMemory, QdrantClient, VisionWit, Will,
+    BasicMemory, CombobulatorWit, GraphStore, HeartWit, Memory, MemoryWit, Neo4jClient, NoopMemory,
+    QdrantClient, VisionWit, Will, WillWit,
 };
