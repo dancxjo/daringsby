@@ -47,6 +47,7 @@ Navigate to `http://localhost:3000/` to load the web face which connects to
 The previous Deno-based client has been removed. Update the files in
 `frontend/dist` directly to change the interface.
 * Queue audio playback on the client so clips never overlap.
+* Serve over HTTPS by passing `--tls-cert` and `--tls-key` to the `pete` binary.
 
 ## Communication
 

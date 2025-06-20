@@ -1,3 +1,4 @@
+use axum_server::tls_rustls::RustlsConfig;
 use clap::Parser;
 use pete::EyeSensor;
 use pete::{
@@ -39,6 +40,12 @@ struct Cli {
     /// Optional language ID for the TTS voice
     #[arg(long)]
     tts_language_id: Option<String>,
+    /// Path to TLS certificate in PEM format
+    #[arg(long)]
+    tls_cert: Option<String>,
+    /// Path to TLS private key in PEM format
+    #[arg(long)]
+    tls_key: Option<String>,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -104,7 +111,14 @@ async fn main() -> anyhow::Result<()> {
 
     let addr: SocketAddr = cli.addr.parse()?;
     info!(%addr, "listening");
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app.into_make_service()).await?;
+    if let (Some(cert), Some(key)) = (cli.tls_cert.as_deref(), cli.tls_key.as_deref()) {
+        let config = RustlsConfig::from_pem_file(cert, key).await?;
+        axum_server::bind_rustls(addr, config)
+            .serve(app.into_make_service())
+            .await?;
+    } else {
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        axum::serve(listener, app.into_make_service()).await?;
+    }
     Ok(())
 }

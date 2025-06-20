@@ -122,12 +122,19 @@ cargo run -p pete --features tts -- \
   --ollama-url http://localhost:11434 --model mistral \
   --tts-url http://localhost:5002/api/tts \
   --tts-speaker-id p376
+
+To serve the interface over HTTPS provide a certificate and key:
+
+```sh
+cargo run -p pete -- \
+  --ollama-url http://localhost:11434 --model mistral \
+  --tls-cert cert.pem --tls-key key.pem
 ```
 ## Web Interface
 
-After starting the server, navigate to `http://localhost:3000/` to open the built-in web face.
-The interface communicates over WebSocket at `ws://localhost:3000/ws`.
-Another WebSocket at `ws://localhost:3000/debug` streams debugging information from the Wits.
+After starting the server, navigate to `http://localhost:3000/` (or `https://localhost:3000/` when TLS is enabled) to open the built-in web face.
+The interface communicates over WebSocket at `ws://localhost:3000/ws` (or `wss://localhost:3000/ws` when using HTTPS).
+Another WebSocket at `/debug` streams debugging information from the Wits.
 Speech arrives as `say` messages:
 ```json
 { "type": "say", "data": { "words": "hi", "audio": "UklGRg==" } }
