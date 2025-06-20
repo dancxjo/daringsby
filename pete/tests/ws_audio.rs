@@ -24,6 +24,7 @@ async fn websocket_forwards_audio() {
     let (wit_tx, _) = broadcast::channel(8);
     let (log_tx, _) = broadcast::channel(8);
     let (user_tx, _user_rx) = mpsc::unbounded_channel();
+    let debug = psyche.debug_handle();
     let state = AppState {
         user_input: user_tx,
         events: Arc::new(event_tx.subscribe()),
@@ -33,6 +34,7 @@ async fn websocket_forwards_audio() {
         eye,
         conversation,
         connections: Arc::new(AtomicUsize::new(0)),
+        psyche_debug: debug,
     };
     let app = Router::new()
         .route("/ws", get(ws_handler))

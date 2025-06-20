@@ -123,6 +123,8 @@ cargo run -p pete --features tts -- \
   --tts-url http://localhost:5002/api/tts \
   --tts-speaker-id p376
 
+Use `--auto-voice N` to have Pete speak automatically every N seconds during development.
+
 To serve the interface over HTTPS provide a certificate and key:
 
 ```sh
@@ -135,6 +137,8 @@ cargo run -p pete -- \
 After starting the server, navigate to `http://localhost:3000/` (or `https://localhost:3000/` when TLS is enabled) to open the built-in web face.
 The interface communicates over WebSocket at `ws://localhost:3000/ws` (or `wss://localhost:3000/ws` when using HTTPS).
 Another WebSocket at `/debug` streams debugging information from the Wits.
+The `/debug/psyche` HTTP endpoint returns JSON with the sensation buffer length
+and last tick time for each registered Wit.
 Speech arrives as `say` messages:
 ```json
 { "type": "say", "data": { "words": "hi", "audio": "UklGRg==" } }
@@ -160,3 +164,9 @@ Which returns JSON like:
 ### Logging
 
 Set `RUST_LOG=info` when running the server to enable helpful tracing output.
+
+### Simulation Utility
+
+Run `cargo run -p pete --bin simulate -- text "hello"` to send a text message to
+the running server. Use the `image` subcommand with a file path to simulate an
+image sensation.
