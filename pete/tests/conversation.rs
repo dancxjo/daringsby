@@ -23,6 +23,7 @@ async fn returns_log_json() {
     let (user_tx, _user_rx) = mpsc::unbounded_channel();
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
     psyche.add_sense(eye.description());
+    let debug = psyche.debug_handle();
     let state = AppState {
         user_input: user_tx,
         events: Arc::new(event_tx.subscribe()),
@@ -32,6 +33,7 @@ async fn returns_log_json() {
         eye,
         conversation,
         connections: Arc::new(AtomicUsize::new(1)),
+        psyche_debug: debug,
     };
     let resp = conversation_log(State(state)).await.into_response();
     let body = body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();

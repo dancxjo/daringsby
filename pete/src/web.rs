@@ -30,6 +30,7 @@ pub struct AppState {
     pub eye: Arc<dyn Sensor<ImageData>>,
     pub conversation: Arc<tokio::sync::Mutex<psyche::Conversation>>,
     pub connections: Arc<AtomicUsize>,
+    pub psyche_debug: psyche::DebugHandle,
 }
 
 #[derive(Deserialize)]
@@ -209,6 +210,11 @@ pub async fn conversation_log(State(state): State<AppState>) -> impl IntoRespons
     axum::Json(entries)
 }
 
+pub async fn psyche_debug(State(state): State<AppState>) -> impl IntoResponse {
+    let info = state.psyche_debug.snapshot().await;
+    axum::Json(info)
+}
+
 fn parse_data_url(url: &str) -> Option<(String, String)> {
     let (prefix, data) = url.split_once(',')?;
     let mime = prefix
@@ -235,6 +241,7 @@ pub fn app(state: AppState) -> Router {
         .route("/ws", get(ws_handler))
         .route("/log", get(log_ws_handler))
         .route("/debug", get(wit_ws_handler))
+        .route("/debug/psyche", get(psyche_debug))
         .route("/conversation", get(conversation_log))
         .fallback_service(
             get_service(ServeDir::new("frontend/dist"))

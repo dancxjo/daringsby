@@ -6,7 +6,7 @@ use crate::traits::wit::{ErasedWit, Wit};
 use crate::traits::{Ear, Mouth};
 use crate::wits::memory::Memory;
 use serde::Serialize;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -18,6 +18,7 @@ pub const DEFAULT_SYSTEM_PROMPT: &str = "You are PETE — an experimental, auton
 const EXPERIENCE_TICK: Duration = Duration::from_secs(60);
 #[cfg(test)]
 const EXPERIENCE_TICK: Duration = Duration::from_millis(10);
+use chrono::{DateTime, Utc};
 use tokio::sync::{Mutex, broadcast, mpsc};
 use tracing::{debug, error, info};
 
@@ -91,6 +92,7 @@ pub struct Psyche {
     senses: Vec<String>,
     observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
     sensation_buffer: Arc<Mutex<VecDeque<Sensation>>>,
+    last_ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
 }
 
 impl Psyche {
@@ -133,6 +135,7 @@ impl Psyche {
             senses: Vec::new(),
             observers: Vec::new(),
             sensation_buffer: Arc::new(Mutex::new(VecDeque::new())),
+            last_ticks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -208,6 +211,15 @@ impl Psyche {
     /// Subscribe to debugging reports from [`Wit`]s.
     pub fn wit_reports(&self) -> broadcast::Receiver<WitReport> {
         self.wit_tx.subscribe()
+    }
+
+    /// Obtain a handle for reading debug info.
+    pub fn debug_handle(&self) -> crate::debug::DebugHandle {
+        crate::debug::DebugHandle {
+            buffer: self.sensation_buffer.clone(),
+            ticks: self.last_ticks.clone(),
+            wits: self.wits.iter().map(|w| w.name().to_string()).collect(),
+        }
     }
 
     /// Get a handle to the voice component.
@@ -429,6 +441,7 @@ impl Psyche {
         context: Arc<Mutex<String>>,
         voice: Arc<crate::voice::Voice>,
         buffer: Arc<Mutex<VecDeque<Sensation>>>,
+        ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
     ) {
         loop {
@@ -460,9 +473,15 @@ impl Psyche {
                 let memory = memory.clone();
                 let context = context.clone();
                 let voice = voice.clone();
+                let ticks = ticks.clone();
                 tasks.push(tokio::spawn(async move {
                     let name = wit.name();
                     let maybe_imp = wit.tick_erased().await;
+                    let now = Utc::now();
+                    {
+                        let mut map = ticks.lock().await;
+                        map.insert(name.to_string(), now);
+                    }
                     info!(%name, "Ticked wit");
                     if let Some(impression) = maybe_imp {
                         info!(?impression.headline, "Wit emitted impression");
@@ -493,9 +512,11 @@ impl Psyche {
         let ctx = self.prompt_context.clone();
         let voice = self.voice.clone();
         let buf = self.sensation_buffer.clone();
+        let ticks = self.last_ticks.clone();
         let observers = self.observers.clone();
-        let experience_handle =
-            tokio::spawn(Self::experience(mem, wits, ctx, voice, buf, observers));
+        let experience_handle = tokio::spawn(Self::experience(
+            mem, wits, ctx, voice, buf, ticks, observers,
+        ));
         let converse_handle = tokio::spawn(self.converse());
         let psyche = converse_handle.await.expect("converse task panicked");
         experience_handle.abort();

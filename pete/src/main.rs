@@ -46,6 +46,9 @@ struct Cli {
     /// Path to TLS private key in PEM format
     #[arg(long)]
     tls_key: Option<String>,
+    /// Allow the voice to speak every N seconds automatically
+    #[arg(long)]
+    auto_voice: Option<u64>,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -93,7 +96,19 @@ async fn main() -> anyhow::Result<()> {
     let voice = psyche.voice();
     tokio::spawn(listen_user_input(user_rx, ear.clone(), voice.clone()));
 
+    if let Some(secs) = cli.auto_voice {
+        let v = voice.clone();
+        tokio::spawn(async move {
+            let dur = std::time::Duration::from_secs(secs);
+            loop {
+                tokio::time::sleep(dur).await;
+                v.permit(None);
+            }
+        });
+    }
+
     let wit_rx = psyche.wit_reports();
+    let debug_handle = psyche.debug_handle();
     tokio::spawn(async move {
         psyche.run().await;
     });
@@ -107,6 +122,7 @@ async fn main() -> anyhow::Result<()> {
         eye: eye.clone(),
         conversation,
         connections,
+        psyche_debug: debug_handle,
     };
     let app = app(state);
 

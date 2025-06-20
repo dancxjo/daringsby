@@ -25,6 +25,8 @@ futures = "0.3"
 urlencoding = "2"
 tower-http = { version = "0.6", features = ["fs"] }
 axum-server = { version = "0.7", features = ["tls-rustls"] }
+tokio-tungstenite = "0.27"
+mime_guess = "2"
 
 [features]
 default = []
@@ -38,7 +40,6 @@ dioxus-ssr = "0.4.3"
 [dev-dependencies]
 assert_cmd = "2"
 futures = "0.3"
-tokio-tungstenite = "0.27"
 httpmock = "0.6"
 cucumber = "0.21"
 

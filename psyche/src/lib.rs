@@ -39,6 +39,7 @@ pub mod wits {
 
 mod and_mouth;
 
+mod debug;
 mod impression;
 pub mod ling;
 mod motor;
@@ -50,6 +51,7 @@ mod trim_mouth;
 mod types;
 
 pub use and_mouth::AndMouth;
+pub use debug::{DebugHandle, DebugInfo};
 pub use impression::Impression;
 pub use motor::{Motor, NoopMotor};
 pub use plain_mouth::PlainMouth;
