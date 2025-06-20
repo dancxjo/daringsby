@@ -72,8 +72,8 @@ There is no bundled web client. Use your own WebSocket client to connect to
 * Document all new CLI arguments and environment flags.
 * Avoid `echo $?`; rely on return values/output checks.
 * Favor TDD/BDD when adding features; write failing tests first.
-* The Sycamore frontend is compiled with `trunk`. Do not commit the generated
-  `frontend/dist` directory; add it to `.gitignore` and build fresh when needed.
+* There is no bundled frontend. Connect your own WebSocket client to
+  `ws://localhost:3000/ws`.
 
 ## LLM Integration
 

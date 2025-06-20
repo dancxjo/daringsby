@@ -125,7 +125,7 @@ cargo run -p pete --features tts -- \
 ```
 ## Web Interface
 
-After starting the server, visit `http://127.0.0.1:3000/` in your browser. The page connects to `ws://localhost:3000/ws` and lets you chat with Pete in real time.
+After starting the server, connect your own WebSocket client to `ws://localhost:3000/ws`.
 A second WebSocket at `ws://localhost:3000/debug` streams debugging information from the Wits.
 Speech arrives as `Say` messages:
 ```json
