@@ -125,8 +125,9 @@ cargo run -p pete --features tts -- \
 ```
 ## Web Interface
 
-After starting the server, connect your own WebSocket client to `ws://localhost:3000/ws`.
-A second WebSocket at `ws://localhost:3000/debug` streams debugging information from the Wits.
+After starting the server, navigate to `http://localhost:3000/` to open the built-in web face.
+The interface communicates over WebSocket at `ws://localhost:3000/ws`.
+Another WebSocket at `ws://localhost:3000/debug` streams debugging information from the Wits.
 Speech arrives as `say` messages:
 ```json
 { "type": "say", "data": { "words": "hi", "audio": "UklGRg==" } }
