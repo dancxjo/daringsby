@@ -46,6 +46,7 @@ async fn prehension_summarizes_buffer() {
         "I see a man frowning".to_string(),
     ))
     .await;
-    let result = wit.tick().await.unwrap();
-    assert_eq!(result.headline, "Travis suddenly becomes sad");
+    let result = wit.tick().await;
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].headline, "Travis suddenly becomes sad");
 }

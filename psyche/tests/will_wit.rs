@@ -54,13 +54,13 @@ async fn permits_every_third_tick() {
     for _ in 0..2 {
         wit.observe(Impression::new("", None::<String>, "hi".into()))
             .await;
-        let _ = wit.tick().await.unwrap();
+        assert!(!wit.tick().await.is_empty());
         voice.take_turn("sys", &[]).await.unwrap();
     }
 
     wit.observe(Impression::new("", None::<String>, "hey".into()))
         .await;
-    let _ = wit.tick().await.unwrap();
+    assert!(!wit.tick().await.is_empty());
     voice.take_turn("sys", &[]).await.unwrap();
 
     let prompts = llm.0.lock().await.clone();

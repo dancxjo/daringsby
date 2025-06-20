@@ -16,8 +16,8 @@ pub trait Wit<Input, Output>: Send + Sync {
     /// Feed an incoming input (e.g. Sensation or lower-level Impression).
     async fn observe(&self, input: Input);
 
-    /// Periodically called to emit a summarized [`Impression`].
-    async fn tick(&self) -> Option<Impression<Output>>;
+    /// Periodically called to emit zero or more summarized [`Impression`]s.
+    async fn tick(&self) -> Vec<Impression<Output>>;
 
     /// Human readable name used for logging.
     fn name(&self) -> &'static str {
@@ -28,8 +28,8 @@ pub trait Wit<Input, Output>: Send + Sync {
 /// Type-erased wrapper enabling heterogeneous [`Wit`]s to be stored together.
 #[async_trait]
 pub trait ErasedWit: Send + Sync {
-    /// Execute a tick and return an [`Impression`] with the payload serialized.
-    async fn tick_erased(&self) -> Option<Impression<Value>>;
+    /// Execute a tick and return serialized [`Impression`]s.
+    async fn tick_erased(&self) -> Vec<Impression<Value>>;
 
     /// Name of this [`Wit`]. Used for debugging.
     fn name(&self) -> &'static str;
@@ -52,18 +52,23 @@ impl<I, O> ErasedWit for WitAdapter<I, O>
 where
     O: Serialize + Send + Sync + 'static,
 {
-    async fn tick_erased(&self) -> Option<Impression<Value>> {
-        self.inner.tick().await.and_then(|imp| {
-            serde_json::to_value(imp.raw_data)
-                .ok()
-                .map(|raw| Impression {
-                    id: imp.id,
-                    timestamp: imp.timestamp,
-                    headline: imp.headline,
-                    details: imp.details,
-                    raw_data: raw,
-                })
-        })
+    async fn tick_erased(&self) -> Vec<Impression<Value>> {
+        self.inner
+            .tick()
+            .await
+            .into_iter()
+            .filter_map(|imp| {
+                serde_json::to_value(imp.raw_data)
+                    .ok()
+                    .map(|raw| Impression {
+                        id: imp.id,
+                        timestamp: imp.timestamp,
+                        headline: imp.headline,
+                        details: imp.details,
+                        raw_data: raw,
+                    })
+            })
+            .collect()
     }
 
     fn name(&self) -> &'static str {
@@ -447,17 +452,20 @@ mod tests {
             self.data.lock().unwrap().push(input);
         }
 
-        async fn tick(&self) -> Option<Impression<String>> {
+        async fn tick(&self) -> Vec<Impression<String>> {
             let mut data = self.data.lock().unwrap();
+            if data.is_empty() {
+                return Vec::new();
+            }
             let summary = data.join(", ");
             data.clear();
-            Some(Impression {
+            vec![Impression {
                 id: Uuid::new_v4(),
                 timestamp: Utc::now(),
                 headline: format!("Summarized {} items", summary.split(", ").count()),
                 details: Some(summary),
                 raw_data: "dummy".to_string(),
-            })
+            }]
         }
     }
 
@@ -468,8 +476,10 @@ mod tests {
         };
         wit.observe("foo".to_string()).await;
         wit.observe("bar".to_string()).await;
-        let result = wit.tick().await.unwrap();
+        let result = wit.tick().await;
+        assert_eq!(result.len(), 1);
+        let result = &result[0];
         assert!(result.headline.contains("Summarized 2"));
-        assert_eq!(result.details.unwrap(), "foo, bar");
+        assert_eq!(result.details.as_deref().unwrap(), "foo, bar");
     }
 }

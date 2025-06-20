@@ -27,11 +27,11 @@ impl Wit<Impression<Value>, ()> for MemoryWit {
         self.buffer.lock().unwrap().push(input);
     }
 
-    async fn tick(&self) -> Option<Impression<()>> {
+    async fn tick(&self) -> Vec<Impression<()>> {
         let items = {
             let mut buf = self.buffer.lock().unwrap();
             if buf.is_empty() {
-                return None;
+                return Vec::new();
             }
             let data = buf.drain(..).collect::<Vec<_>>();
             data
@@ -40,6 +40,6 @@ impl Wit<Impression<Value>, ()> for MemoryWit {
             debug!("memory storing impression: {}", imp.headline);
             let _ = self.memory.store(&imp).await;
         }
-        None
+        Vec::new()
     }
 }

@@ -33,7 +33,8 @@ async fn updates_emotion_on_tick() {
     let wit = HeartWit::new(Box::new(DummyLLM), motor.clone());
     wit.observe(Impression::new("", None::<String>, "test".to_string()))
         .await;
-    let _ = wit.tick().await.unwrap();
+    let out = wit.tick().await;
+    assert_eq!(out.len(), 1);
     let emos = motor.0.lock().unwrap().clone();
     assert_eq!(emos, vec!["😊".to_string()]);
 }

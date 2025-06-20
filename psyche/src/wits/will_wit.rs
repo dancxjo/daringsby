@@ -35,17 +35,20 @@ impl Wit<Impression<String>, String> for WillWit {
         self.buffer.lock().unwrap().push(input);
     }
 
-    async fn tick(&self) -> Option<Impression<String>> {
+    async fn tick(&self) -> Vec<Impression<String>> {
         let inputs = {
             let mut buf = self.buffer.lock().unwrap();
             if buf.is_empty() {
-                return None;
+                return Vec::new();
             }
             let data = buf.clone();
             buf.clear();
             data
         };
-        let decision = self.will.digest(&inputs).await.ok()?;
+        let decision = match self.will.digest(&inputs).await {
+            Ok(d) => d,
+            Err(_) => return Vec::new(),
+        };
 
         let count = self.ticks.fetch_add(1, Ordering::SeqCst) + 1;
         let mut prompt = None;
@@ -60,6 +63,6 @@ impl Wit<Impression<String>, String> for WillWit {
         }
 
         self.will.command_voice_to_speak(&self.voice, None);
-        Some(decision)
+        vec![decision]
     }
 }

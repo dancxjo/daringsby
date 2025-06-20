@@ -21,7 +21,9 @@ async fn captions_image() {
         base64: "zzz".into(),
     })
     .await;
-    let imp = wit.tick().await.unwrap();
+    let out = wit.tick().await;
+    assert_eq!(out.len(), 1);
+    let imp = &out[0];
     assert!(imp.headline.starts_with("I "));
     assert_eq!(imp.raw_data.mime, "image/png");
 }

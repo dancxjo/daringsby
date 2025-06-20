@@ -64,17 +64,20 @@ where
         self.buffer.lock().unwrap().push(input);
     }
 
-    async fn tick(&self) -> Option<Impression<O>> {
+    async fn tick(&self) -> Vec<Impression<O>> {
         let inputs = {
             let mut buf = self.buffer.lock().unwrap();
             if buf.is_empty() {
-                return None;
+                return Vec::new();
             }
             let data = buf.clone();
             buf.clear();
             data
         };
         debug!("prehension digesting {} items", inputs.len());
-        self.summarizer.digest(&inputs).await.ok()
+        match self.summarizer.digest(&inputs).await {
+            Ok(imp) => vec![imp],
+            Err(_) => Vec::new(),
+        }
     }
 }

@@ -1,8 +1,7 @@
 use crate::{
-    Impression,
+    Impression, Summarizer,
     wit::{Episode, Wit},
     wits::Combobulator,
-    Summarizer,
 };
 use async_trait::async_trait;
 use std::sync::Mutex;
@@ -29,16 +28,19 @@ impl Wit<Impression<Episode>, String> for CombobulatorWit {
         self.buffer.lock().unwrap().push(input);
     }
 
-    async fn tick(&self) -> Option<Impression<String>> {
+    async fn tick(&self) -> Vec<Impression<String>> {
         let inputs = {
             let mut buf = self.buffer.lock().unwrap();
             if buf.is_empty() {
-                return None;
+                return Vec::new();
             }
             let data = buf.clone();
             buf.clear();
             data
         };
-        self.combobulator.digest(&inputs).await.ok()
+        match self.combobulator.digest(&inputs).await {
+            Ok(i) => vec![i],
+            Err(_) => Vec::new(),
+        }
     }
 }
