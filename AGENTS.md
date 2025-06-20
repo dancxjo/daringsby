@@ -94,6 +94,8 @@ The previous Deno-based client has been removed. Update the files in
 * Only `Will` may invoke `Voice::take_turn`.
 * `Voice::take_turn` extracts emoji and emits `Event::EmotionChanged`.
 * `Voice` will not speak until `Will::command_voice_to_speak` grants permission.
+* `Voice::permit` is idempotent and returns early when already ready.
+* `WillWit::tick` may call `voice.permit(Some(prompt))` to trigger speech when rules allow.
 
 ## Additional Suggestions
 

@@ -47,8 +47,18 @@ impl Voice {
     }
 
     pub fn permit(&self, prompt: Option<String>) {
+        let mut ready = self.ready.lock().unwrap();
+        if *ready {
+            return;
+        }
+        *ready = true;
+        drop(ready);
         *self.extra_prompt.lock().unwrap() = prompt;
-        *self.ready.lock().unwrap() = true;
+    }
+
+    /// Returns `true` if the voice is currently permitted to speak.
+    pub fn ready(&self) -> bool {
+        *self.ready.lock().unwrap()
     }
 
     pub async fn update_prompt_context(&self, ctx: &str) {
