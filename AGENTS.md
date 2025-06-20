@@ -41,6 +41,13 @@ This repository is a Rust workspace.
 There is no bundled web client. Use your own WebSocket client to connect to
 `ws://localhost:3000/ws`.
 
+### Frontend Notes
+
+* The Fresh app in `/face` acts only as a client and no longer runs its own
+  WebSocket server.
+* After adding or removing routes in `/face`, run `deno task manifest` to
+  regenerate `fresh.gen.ts`.
+
 ## Communication
 
 * Expose WebSocket chat at `/ws`, forwarding all `Psyche` events.
