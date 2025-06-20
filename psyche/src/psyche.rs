@@ -463,7 +463,6 @@ impl Psyche {
             let mut tasks = Vec::new();
             for wit in &wits {
                 let wit = wit.clone();
-                let memory = memory.clone();
                 let ticks = ticks.clone();
                 tasks.push(tokio::spawn(async move {
                     let name = wit.name();
@@ -476,9 +475,6 @@ impl Psyche {
                     info!(%name, "Ticked wit");
                     for impression in &imps {
                         info!(headline = ?impression.headline, "Wit emitted impression");
-                        if let Err(e) = memory.store_serializable(impression).await {
-                            error!(?e, "memory store failed");
-                        }
                     }
                     imps
                 }));
@@ -490,6 +486,9 @@ impl Psyche {
                 }
             }
             if !imps.is_empty() {
+                if let Err(e) = memory.store_all(&imps).await {
+                    error!(?e, "memory store failed");
+                }
                 ling.lock().await.add_impressions(&imps).await;
             }
             tokio::time::sleep(EXPERIENCE_TICK).await;

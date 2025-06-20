@@ -37,12 +37,8 @@ async fn run_once(
     let mut tasks = Vec::new();
     for wit in &wits {
         let wit = wit.clone();
-        let memory = memory.clone();
         tasks.push(tokio::spawn(async move {
             let imps = wit.tick_erased().await;
-            for imp in &imps {
-                let _ = memory.store_serializable(imp).await;
-            }
             imps
         }));
     }
@@ -53,6 +49,7 @@ async fn run_once(
         }
     }
     if !all.is_empty() {
+        let _ = memory.store_all(&all).await;
         ling.lock().await.add_impressions(&all).await;
     }
 }

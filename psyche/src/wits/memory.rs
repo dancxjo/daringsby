@@ -12,6 +12,14 @@ use tracing::info;
 pub trait Memory: Send + Sync {
     /// Persist the given impression.
     async fn store(&self, impression: &Impression<Value>) -> Result<()>;
+
+    /// Persist multiple impressions.
+    async fn store_all(&self, impressions: &[Impression<Value>]) -> Result<()> {
+        for imp in impressions {
+            self.store(imp).await?;
+        }
+        Ok(())
+    }
 }
 
 impl dyn Memory {
@@ -29,6 +37,25 @@ impl dyn Memory {
             raw_data: raw,
         };
         self.store(&erased).await
+    }
+
+    /// Helper to store multiple serializable impressions.
+    pub async fn store_all_serializable<T: Serialize + Send + Sync>(
+        &self,
+        impressions: &[Impression<T>],
+    ) -> Result<()> {
+        let mut erased = Vec::with_capacity(impressions.len());
+        for imp in impressions {
+            let raw = serde_json::to_value(&imp.raw_data)?;
+            erased.push(Impression {
+                id: imp.id,
+                timestamp: imp.timestamp,
+                headline: imp.headline.clone(),
+                details: imp.details.clone(),
+                raw_data: raw,
+            });
+        }
+        self.store_all(&erased).await
     }
 }
 
