@@ -1,18 +1,8 @@
 use pete::index;
 
 #[tokio::test]
-async fn serves_index_html() {
+async fn serves_status_text() {
     let resp = index().await;
-    assert!(resp.0.contains("ws://localhost:3000/ws"));
-    assert!(resp.0.contains("WS:"));
-    assert_eq!(resp.0.matches("new WebSocket").count(), 2);
-    assert!(
-        resp.0
-            .contains("this.log[this.log.length - 1].text += text")
-    );
-    assert!(resp.0.contains("audioQueue"));
-    assert!(resp.0.contains("<ul id=\"log\""));
-    assert!(resp.0.contains("<li :class=\"msg.role\""));
-    assert!(resp.0.contains("id=\"face\""));
-    assert!(resp.0.contains("Emote"));
+    assert!(resp.0.contains("WebSocket server"));
+    assert!(resp.0.contains("/ws"));
 }

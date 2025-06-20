@@ -62,10 +62,10 @@ enum WsResponse {
     Heard(String),
 }
 
-/// Serve the chat page.
+/// Serve a minimal status page.
 pub async fn index() -> Html<&'static str> {
-    info!("serving index page");
-    Html(include_str!("../../index.html"))
+    info!("index requested");
+    Html("WebSocket server is running. Connect your client to /ws")
 }
 
 /// Upgrade the request to a WebSocket connection and forward events.
