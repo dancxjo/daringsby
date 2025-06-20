@@ -13,6 +13,7 @@ pub struct Voice {
     events: broadcast::Sender<Event>,
     ready: Arc<Mutex<bool>>,
     extra_prompt: Arc<Mutex<Option<String>>>,
+    will: Arc<Mutex<Option<Arc<crate::wits::Will>>>>,
 }
 
 impl Clone for Voice {
@@ -23,6 +24,7 @@ impl Clone for Voice {
             events: self.events.clone(),
             ready: self.ready.clone(),
             extra_prompt: self.extra_prompt.clone(),
+            will: self.will.clone(),
         }
     }
 }
@@ -39,11 +41,16 @@ impl Voice {
             events,
             ready: Arc::new(Mutex::new(true)),
             extra_prompt: Arc::new(Mutex::new(None)),
+            will: Arc::new(Mutex::new(None)),
         }
     }
 
     pub fn set_mouth(&self, mouth: Arc<dyn Mouth + Send + Sync>) {
         *self.mouth.lock().unwrap() = mouth;
+    }
+
+    pub fn set_will(&self, will: Arc<crate::wits::Will>) {
+        *self.will.lock().unwrap() = Some(will);
     }
 
     pub fn permit(&self, prompt: Option<String>) {
@@ -84,6 +91,7 @@ impl Voice {
         };
         if let Ok(mut stream) = self.chatter.chat(&prompt, history).await {
             let mut buf = String::new();
+            let mut full = String::new();
             let mut leftover = String::new();
             let mut pending: VecDeque<String> = VecDeque::new();
             let segmenter = Segmenter::new().expect("segmenter init");
@@ -94,6 +102,7 @@ impl Voice {
                         if !chunk.trim().is_empty() {
                             let _ = self.events.send(Event::StreamChunk(chunk.clone()));
                         }
+                        full.push_str(&chunk);
                         buf.push_str(&leftover);
                         buf.push_str(&chunk);
                         let mut segs: Vec<String> =
@@ -119,6 +128,10 @@ impl Voice {
             }
             while let Some(sentence) = pending.pop_front() {
                 self.emit_sentence(&sentence).await;
+            }
+            let will = { self.will.lock().unwrap().clone() };
+            if let Some(w) = will {
+                w.handle_llm_output(&full).await;
             }
         }
         Ok(())

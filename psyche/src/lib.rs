@@ -43,6 +43,7 @@ mod debug;
 mod impression;
 pub mod ling;
 mod motor;
+pub mod motorcall;
 mod plain_mouth;
 mod prehension;
 mod prompt;
