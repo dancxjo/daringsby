@@ -42,21 +42,27 @@ impl Wit<ImageData, ImageData> for VisionWit {
         self.buffer.lock().unwrap().push(input);
     }
 
-    async fn tick(&self) -> Option<Impression<ImageData>> {
+    async fn tick(&self) -> Vec<Impression<ImageData>> {
         let img = {
             let mut buf = self.buffer.lock().unwrap();
-            buf.pop()
-        }?;
+            match buf.pop() {
+                Some(i) => i,
+                None => return Vec::new(),
+            }
+        };
 
         debug!("vision wit captioning image");
-        let caption = self
+        let caption = match self
             .doer
             .follow(Instruction {
                 command: "You are seeing this image directly, as if with your own eyes. Describe it in a single sentence, in the first person.".into(),
                 images: vec![LImageData { mime: img.mime.clone(), base64: img.base64.clone() }],
             })
             .await
-            .ok()?;
+        {
+            Ok(c) => c,
+            Err(_) => return Vec::new(),
+        };
         let how = caption.trim().to_string();
         if let Some(tx) = &self.tx {
             let _ = tx.send(crate::WitReport {
@@ -65,7 +71,7 @@ impl Wit<ImageData, ImageData> for VisionWit {
                 output: how.clone(),
             });
         }
-        Some(Impression::new(how, None::<String>, img))
+        vec![Impression::new(how, None::<String>, img)]
     }
 }
 

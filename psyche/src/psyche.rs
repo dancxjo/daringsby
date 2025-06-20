@@ -258,7 +258,7 @@ impl Psyche {
     /// # #[async_trait]
     /// # impl Wit<(), ()> for MyWit {
     /// #   async fn observe(&self, _: ()) {}
-    /// #   async fn tick(&self) -> Option<psyche::Impression<()>> { None }
+    /// #   async fn tick(&self) -> Vec<psyche::Impression<()>> { Vec::new() }
     /// # }
     /// let wit = std::sync::Arc::new(MyWit);
     /// psyche.register_typed_wit(wit);
@@ -467,28 +467,26 @@ impl Psyche {
                 let ticks = ticks.clone();
                 tasks.push(tokio::spawn(async move {
                     let name = wit.name();
-                    let maybe_imp = wit.tick_erased().await;
+                    let imps = wit.tick_erased().await;
                     let now = Utc::now();
                     {
                         let mut map = ticks.lock().await;
                         map.insert(name.to_string(), now);
                     }
                     info!(%name, "Ticked wit");
-                    if let Some(impression) = maybe_imp {
-                        info!(?impression.headline, "Wit emitted impression");
-                        if let Err(e) = memory.store_serializable(&impression).await {
+                    for impression in &imps {
+                        info!(headline = ?impression.headline, "Wit emitted impression");
+                        if let Err(e) = memory.store_serializable(impression).await {
                             error!(?e, "memory store failed");
                         }
-                        Some(impression)
-                    } else {
-                        None
                     }
+                    imps
                 }));
             }
             let mut imps = Vec::new();
             for t in tasks {
-                if let Ok(Some(i)) = t.await {
-                    imps.push(i);
+                if let Ok(items) = t.await {
+                    imps.extend(items);
                 }
             }
             if !imps.is_empty() {

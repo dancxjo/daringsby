@@ -30,11 +30,11 @@ impl Wit<Impression<String>, String> for HeartWit {
         self.buffer.lock().unwrap().push(input);
     }
 
-    async fn tick(&self) -> Option<Impression<String>> {
+    async fn tick(&self) -> Vec<Impression<String>> {
         let inputs = {
             let mut buf = self.buffer.lock().unwrap();
             if buf.is_empty() {
-                return None;
+                return Vec::new();
             }
             let data = buf.clone();
             buf.clear();
@@ -49,9 +49,12 @@ impl Wit<Impression<String>, String> for HeartWit {
             command: format!("What emoji reflects Pete's mood? {summary}"),
             images: Vec::new(),
         };
-        let resp = self.doer.follow(instruction).await.ok()?;
+        let resp = match self.doer.follow(instruction).await {
+            Ok(r) => r,
+            Err(_) => return Vec::new(),
+        };
         let mood = resp.trim().to_string();
         self.motor.set_emotion(&mood).await;
-        Some(Impression::new(mood.clone(), Some(summary), mood))
+        vec![Impression::new(mood.clone(), Some(summary), mood)]
     }
 }
