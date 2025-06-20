@@ -17,7 +17,9 @@ async fn vision_wit_receives_images() {
 
     let mut got = false;
     for _ in 0..5 {
-        if let Ok(r) = tokio::time::timeout(Duration::from_millis(50), reports.recv()).await {
+        if let Ok(Ok(r)) =
+            tokio::time::timeout(Duration::from_millis(50), reports.recv()).await
+        {
             if r.name == "VisionWit" {
                 got = true;
                 break;

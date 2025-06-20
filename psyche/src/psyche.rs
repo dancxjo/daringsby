@@ -207,6 +207,11 @@ impl Psyche {
         self.wit_tx.subscribe()
     }
 
+    /// Get a handle to the voice component.
+    pub fn voice(&self) -> Arc<crate::voice::Voice> {
+        self.voice.clone()
+    }
+
     /// Swap out the [`Mouth`] used for speech output.
     pub fn set_mouth(&mut self, mouth: Arc<dyn Mouth>) {
         self.voice.set_mouth(mouth);
