@@ -38,18 +38,8 @@ This repository is a Rust workspace.
 
 ## Frontend
 
-* Keep `index.html` minimal.
-* It should connect to `ws://localhost:3000/ws`.
-* Show WebSocket connection status for debugging.
-* Use Alpine.js for client binding.
-* Render chat log as `<ul>` with `<li>` per message.
-* Style user and system messages distinctly for clarity.
-* Keep `index.html` and `pete/build.rs` in sync.
-* Front-end tests live under `frontend/` and run with `npm test`.
-* Run `npm install` first if dependencies are missing.
-* End-to-end tests are under `pete/tests` and require the `e2e` Cargo feature.
-  Run with `cargo test --features e2e`.
-* Surface front-end errors in the console and show them on the page via `chatApp().error`.
+There is no bundled web client. Use your own WebSocket client to connect to
+`ws://localhost:3000/ws`.
 
 ## Communication
 
@@ -81,6 +71,7 @@ This repository is a Rust workspace.
 * Keep README examples up to date with public APIs.
 * Document all new CLI arguments and environment flags.
 * Avoid `echo $?`; rely on return values/output checks.
+* Favor TDD/BDD when adding features; write failing tests first.
 
 ## LLM Integration
 
