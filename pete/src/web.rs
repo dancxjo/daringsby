@@ -232,7 +232,7 @@ pub fn app(state: AppState) -> Router {
         .route("/debug", get(wit_ws_handler))
         .route("/conversation", get(conversation_log))
         .fallback_service(
-            get_service(ServeDir::new("../frontend/dist"))
+            get_service(ServeDir::new("frontend/dist"))
                 .handle_error(|_| async { StatusCode::INTERNAL_SERVER_ERROR }),
         )
         .with_state(state)
