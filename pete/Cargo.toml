@@ -24,6 +24,7 @@ base64 = { version = "0.21" }
 futures = "0.3"
 urlencoding = "2"
 tower-http = { version = "0.6", features = ["fs"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
 
 [features]
 default = []
