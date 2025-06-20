@@ -1,13 +1,12 @@
 use axum::{Router, routing::get, serve};
 use futures::StreamExt;
-use pete::{AppState, ChannelEar, EyeSensor, dummy_psyche, ws_handler};
+use pete::{AppState, ChannelEar, EventBus, EyeSensor, dummy_psyche, ws_handler};
 use psyche::Event;
 use psyche::Sensor;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize},
 };
-use tokio::sync::{broadcast, mpsc};
 
 #[tokio::test]
 async fn websocket_forwards_audio() {
@@ -20,16 +19,11 @@ async fn websocket_forwards_audio() {
     ));
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
     psyche.add_sense(eye.description());
-    let (event_tx, _) = broadcast::channel(8);
-    let (wit_tx, _) = broadcast::channel(8);
-    let (log_tx, _) = broadcast::channel(8);
-    let (user_tx, _user_rx) = mpsc::unbounded_channel();
+    let (bus, _user_rx) = EventBus::new();
+    let bus = Arc::new(bus);
     let debug = psyche.debug_handle();
     let state = AppState {
-        user_input: user_tx,
-        events: Arc::new(event_tx.subscribe()),
-        logs: Arc::new(log_tx.subscribe()),
-        wits: Arc::new(wit_tx.subscribe()),
+        bus: bus.clone(),
         ear,
         eye,
         conversation,
@@ -48,12 +42,10 @@ async fn websocket_forwards_audio() {
     let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{}/ws", addr))
         .await
         .unwrap();
-    event_tx
-        .send(Event::Speech {
-            text: "hi".into(),
-            audio: Some("UklGRg==".into()),
-        })
-        .unwrap();
+    bus.publish_event(Event::Speech {
+        text: "hi".into(),
+        audio: Some("UklGRg==".into()),
+    });
     let msg = socket.next().await.unwrap().unwrap();
     let value: serde_json::Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
     assert_eq!(value["type"], "say");

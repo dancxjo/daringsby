@@ -1,10 +1,10 @@
+use crate::EventBus;
 use async_trait::async_trait;
 use psyche::{Event, Mouth};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use tokio::sync::broadcast;
 use tracing::debug;
 
 /// Simple mouth implementation that does not produce audio.
@@ -14,14 +14,14 @@ use tracing::debug;
 /// shared speaking flag.
 #[derive(Clone)]
 pub struct ChannelMouth {
-    events: broadcast::Sender<Event>,
+    bus: Arc<EventBus>,
     speaking: Arc<AtomicBool>,
 }
 
 impl ChannelMouth {
-    /// Create a new `ChannelMouth` that sends events on `events`.
-    pub fn new(events: broadcast::Sender<Event>, speaking: Arc<AtomicBool>) -> Self {
-        Self { events, speaking }
+    /// Create a new `ChannelMouth` that publishes speech on `bus`.
+    pub fn new(bus: Arc<EventBus>, speaking: Arc<AtomicBool>) -> Self {
+        Self { bus, speaking }
     }
 }
 
@@ -34,7 +34,7 @@ impl Mouth for ChannelMouth {
         for sentence in seg.segment(text) {
             let sent = sentence.trim();
             if !sent.is_empty() {
-                let _ = self.events.send(Event::Speech {
+                self.bus.publish_event(Event::Speech {
                     text: sent.to_string(),
                     audio: None,
                 });

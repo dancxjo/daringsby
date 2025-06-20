@@ -17,15 +17,13 @@ use tokio::sync::{broadcast, mpsc};
 use tower_http::services::ServeDir;
 use tracing::{debug, error, info};
 
+use crate::EventBus;
 use psyche::{Ear, Event, ImageData, Sensor, ling::Role};
 
 /// State shared across HTTP handlers and WebSocket tasks.
 #[derive(Clone)]
 pub struct AppState {
-    pub user_input: mpsc::UnboundedSender<String>,
-    pub events: Arc<broadcast::Receiver<Event>>,
-    pub logs: Arc<broadcast::Receiver<String>>,
-    pub wits: Arc<broadcast::Receiver<psyche::WitReport>>,
+    pub bus: Arc<EventBus>,
     pub ear: Arc<dyn Ear>,
     pub eye: Arc<dyn Sensor<ImageData>>,
     pub conversation: Arc<tokio::sync::Mutex<psyche::Conversation>>,
@@ -96,7 +94,7 @@ pub async fn wit_ws_handler(
 async fn handle_socket(mut socket: WebSocket, state: AppState) {
     info!("websocket connected");
     state.connections.fetch_add(1, Ordering::SeqCst);
-    let mut events = state.events.resubscribe();
+    let mut events = state.bus.subscribe_events();
     loop {
         tokio::select! {
             evt = events.recv() => {
@@ -127,7 +125,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                             match req {
                                 WsRequest::Text { data: message } => {
                                     debug!("user message: {}", message);
-                                    let _ = state.user_input.send(message.clone());
+                                    let _ = state.bus.user_input_sender().send(message.clone());
                                     let payload = serde_json::to_string(&WsResponse::Heard(message)).unwrap();
                                     if socket.send(WsMessage::Text(payload.into())).await.is_err() {
                                         error!("failed sending heard ack");
@@ -168,7 +166,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 
 async fn handle_log_socket(mut socket: WebSocket, state: AppState) {
     info!("log websocket connected");
-    let mut logs = state.logs.resubscribe();
+    let mut logs = state.bus.subscribe_logs();
     while let Ok(line) = logs.recv().await {
         if socket.send(WsMessage::Text(line.into())).await.is_err() {
             break;
@@ -179,7 +177,7 @@ async fn handle_log_socket(mut socket: WebSocket, state: AppState) {
 
 async fn handle_wit_socket(mut socket: WebSocket, state: AppState) {
     info!("wit websocket connected");
-    let mut rx = state.wits.resubscribe();
+    let mut rx = state.bus.subscribe_wits();
     while let Ok(report) = rx.recv().await {
         let msg = serde_json::to_string(&WsResponse::Think(report.output.clone())).unwrap();
         if socket.send(WsMessage::Text(msg.into())).await.is_err() {

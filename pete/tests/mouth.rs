@@ -1,12 +1,13 @@
-use pete::ChannelMouth;
+use pete::{ChannelMouth, EventBus};
 use psyche::{Event, Mouth};
 use std::sync::{Arc, atomic::AtomicBool};
-use tokio::sync::broadcast;
 
 #[tokio::test]
 async fn sends_sentence_by_sentence() {
-    let (tx, mut rx) = broadcast::channel(8);
-    let mouth = ChannelMouth::new(tx.clone(), Arc::new(AtomicBool::new(false)));
+    let (bus, _) = EventBus::new();
+    let bus = Arc::new(bus);
+    let mut rx = bus.subscribe_events();
+    let mouth = ChannelMouth::new(bus.clone(), Arc::new(AtomicBool::new(false)));
     mouth.speak("Hello world. How are you?").await;
     assert_eq!(
         rx.recv().await.unwrap(),
