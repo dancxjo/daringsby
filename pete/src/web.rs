@@ -4,8 +4,9 @@ use axum::{
         State,
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
     },
+    http::StatusCode,
     response::{Html, IntoResponse},
-    routing::get,
+    routing::{get, get_service},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{
@@ -13,6 +14,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 use tokio::sync::{broadcast, mpsc};
+use tower_http::services::ServeDir;
 use tracing::{debug, error, info};
 
 use psyche::{Ear, Event, ImageData, Sensor, ling::Role};
@@ -33,16 +35,18 @@ pub struct AppState {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum WsRequest {
-    /// A message from the user.
     User {
         message: String,
         #[allow(dead_code)]
         name: Option<String>,
     },
-    /// Confirmation that audio for the line was played.
-    Played { text: String },
-    /// A base64-encoded image snapshot.
-    Image { mime: String, base64: String },
+    Played {
+        text: String,
+    },
+    Image {
+        mime: String,
+        base64: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -62,19 +66,16 @@ enum WsResponse {
     Heard(String),
 }
 
-/// Serve a minimal status page.
 pub async fn index() -> Html<&'static str> {
     info!("index requested");
     Html("WebSocket server is running. Connect your client to /ws")
 }
 
-/// Upgrade the request to a WebSocket connection and forward events.
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
     info!("websocket upgrade initiated");
     ws.on_upgrade(move |socket| async move { handle_socket(socket, state).await })
 }
 
-/// Upgrade to a WebSocket streaming log output.
 pub async fn log_ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
@@ -83,7 +84,6 @@ pub async fn log_ws_handler(
     ws.on_upgrade(move |socket| async move { handle_log_socket(socket, state).await })
 }
 
-/// Upgrade to a WebSocket streaming wit debug output.
 pub async fn wit_ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
@@ -139,10 +139,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                                 }
                                 WsRequest::Image { mime, base64 } => {
                                     debug!("image received");
-                                    state
-                                        .eye
-                                        .sense(ImageData { mime, base64 })
-                                        .await;
+                                    state.eye.sense(ImageData { mime, base64 }).await;
                                 }
                             }
                         }
@@ -180,7 +177,6 @@ async fn handle_wit_socket(mut socket: WebSocket, state: AppState) {
     info!("wit websocket disconnected");
 }
 
-/// Return the raw conversation log as JSON.
 pub async fn conversation_log(State(state): State<AppState>) -> impl IntoResponse {
     let conv = state.conversation.lock().await;
     #[derive(Serialize)]
@@ -202,24 +198,6 @@ pub async fn conversation_log(State(state): State<AppState>) -> impl IntoRespons
     axum::Json(entries)
 }
 
-/// Listen for user input messages and record them in the conversation.
-///
-/// Each received message is forwarded to the running [`Psyche`] via
-/// `Sensation::HeardUserVoice` and appended to the shared conversation log.
-///
-/// ```no_run
-/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// # use pete::{dummy_psyche, listen_user_input, ChannelEar};
-/// # use tokio::sync::mpsc;
-/// let mut psyche = dummy_psyche();
-/// let conv = psyche.conversation();
-/// let speaking = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-/// let ear = std::sync::Arc::new(ChannelEar::new(psyche.input_sender(), conv.clone(), speaking));
-/// let (tx, rx) = mpsc::unbounded_channel();
-/// tokio::spawn(listen_user_input(rx, ear));
-/// # tx.send("hi".into()).unwrap();
-/// # });
-/// ```
 pub async fn listen_user_input(mut rx: mpsc::UnboundedReceiver<String>, ear: Arc<dyn Ear>) {
     while let Some(msg) = rx.recv().await {
         debug!("forwarding user input: {}", msg);
@@ -227,7 +205,6 @@ pub async fn listen_user_input(mut rx: mpsc::UnboundedReceiver<String>, ear: Arc
     }
 }
 
-/// Build the application router with the provided state.
 pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/", get(index))
@@ -235,5 +212,9 @@ pub fn app(state: AppState) -> Router {
         .route("/log", get(log_ws_handler))
         .route("/debug", get(wit_ws_handler))
         .route("/conversation", get(conversation_log))
+        .fallback_service(
+            get_service(ServeDir::new("../frontend/dist"))
+                .handle_error(|_| async { StatusCode::INTERNAL_SERVER_ERROR }),
+        )
         .with_state(state)
 }

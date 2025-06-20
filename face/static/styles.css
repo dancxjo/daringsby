@@ -1,0 +1,177 @@
+.mien,
+.Mien {
+    text-align: center;
+    color: var(--bs-primary);
+    width: 100%;
+    /* Set container width */
+    white-space: nowrap;
+    /* Keep the text on one line */
+    overflow: hidden;
+    /* Hide anything that overflows */
+    text-overflow: ellipsis;
+    /* Add ellipsis if content overflows */
+    font-size: calc(100vw / 5);
+    /* Set a default font size relative to viewport */
+
+    display: inline-block;
+    line-height: 2;
+    /* Keeps emoji size aligned closely */
+    vertical-align: middle;
+
+    /* Adjusts font size automatically to fit inside container */
+    font-size: 10vw;
+}
+
+/* Styling for spoken words */
+.spoken-words {
+    font-size: var(--bs-font-size-lg);
+    color: var(--bs-secondary);
+    margin-top: 1rem;
+    width: 100%;
+    height: 10rem;
+}
+
+/* Override Bootstrap's button styling */
+.btn-primary {
+    background-color: var(--bs-primary);
+    border: none;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    border-radius: var(--bs-border-radius);
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary:hover {
+    background-color: darken(var(--bs-primary), 10%);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.2);
+}
+
+/* Override Bootstrap's form-control styling */
+.form-control {
+    border-radius: var(--bs-border-radius);
+    padding: 0.75rem;
+    border: 1px solid var(--bs-secondary);
+    box-shadow: inset 0 0.25rem 0.5rem rgba(0, 0, 0, 0.05);
+    transition: box-shadow 0.2s ease;
+}
+
+.form-control:focus {
+    box-shadow: 0 0 0 0.2rem rgba(78, 115, 223, 0.25);
+    border-color: var(--bs-primary);
+}
+
+/* Additional styling for responsiveness */
+@media (max-width: 768px) {
+    .live-connection-output {
+        margin-top: 2rem;
+    }
+}
+
+.lieve-connection {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+}
+
+.face {
+    background-color: black;
+    color: white;
+}
+
+.face video {
+    opacity: 0.5;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+    /* To ensure the video covers the entire area without distortion */
+}
+
+.face .mien {
+    font-size: 30em;
+    text-align: center;
+    font-size: calc(100vw / 3) !important;
+    /* line-height: 1; */
+}
+
+body {
+    background-color: orange;
+}
+
+.thought-bubble {
+    display: flex;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 30px;
+    min-width: 40px;
+    max-width: 100%;
+    min-height: 40px;
+    margin: 20px;
+    position: relative;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.thought-bubble:before,
+.thought-bubble:after {
+    content: "";
+    background-color: #fff;
+    border-radius: 50%;
+    display: block;
+    position: absolute;
+    z-index: -1;
+}
+
+.thought-bubble:before {
+    width: 44px;
+    height: 44px;
+    top: -12px;
+    left: 28px;
+    box-shadow: -50px 30px 0 -12px #fff;
+}
+
+.thought-bubble:after {
+    bottom: -10px;
+    right: 26px;
+    width: 30px;
+    height: 30px;
+    box-shadow: 40px -34px 0 0 #fff,
+        -28px -6px 0 -2px #fff,
+        -24px 17px 0 -6px #fff,
+        -5px 25px 0 -10px #fff;
+
+}
+
+.spoken-words {
+    white-space: pre;
+    position: relative;
+    background-color: #fff;
+    padding: 0.5em;
+    border-radius: 1rem;
+    box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, .3), 0 0.0625rem 0.125rem rgba(0, 0, 0, .2);
+}
+
+.spoken-words::before {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 0;
+    bottom: 100%;
+    left: 1.5em;
+    border: .75rem solid transparent;
+    border-top: none;
+
+    border-bottom-color: #fff;
+    filter: drop-shadow(0 -0.0625rem 0.0625rem rgba(0, 0, 0, .1));
+}
