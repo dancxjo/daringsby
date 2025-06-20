@@ -1,6 +1,7 @@
 (function () {
   const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${wsProtocol}//${location.hostname}:3000/ws`);
+  const debugWs = new WebSocket(`${wsProtocol}//${location.hostname}:3000/debug`);
   const mien = document.getElementById("mien");
   const words = document.getElementById("words");
   const thought = document.getElementById("thought");
@@ -35,7 +36,7 @@
       done();
     });
   }
-  ws.onmessage = (ev) => {
+  function handleMessage(ev) {
     try {
       const m = JSON.parse(ev.data);
       switch (m.type) {
@@ -68,7 +69,10 @@
     } catch (e) {
       console.error(e);
     }
-  };
+  }
+
+  ws.onmessage = handleMessage;
+  debugWs.onmessage = handleMessage;
 
   document.getElementById("text-form").addEventListener("submit", (e) => {
     e.preventDefault();
