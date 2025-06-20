@@ -54,6 +54,11 @@
         case "Think":
         case "think":
           thought.textContent = m.data;
+          if (m.data && m.data.trim() !== "") {
+            thought.style.display = "flex";
+          } else {
+            thought.style.display = "none";
+          }
           break;
         case "Heard":
         case "heard":
