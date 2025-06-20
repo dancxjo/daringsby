@@ -53,8 +53,9 @@ struct Cli {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
-    let (log_tx, _log_rx) = tokio::sync::broadcast::channel(100);
-    init_logging(log_tx.clone());
+    let (bus, user_rx) = pete::EventBus::new();
+    let bus = Arc::new(bus);
+    init_logging(bus.log_sender());
     let cli = Cli::parse();
 
     info!(%cli.addr, "starting server");
@@ -65,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(feature = "tts")]
     let base_mouth: Arc<dyn Mouth> = {
         let tts = Arc::new(TtsMouth::new(
-            psyche.event_sender(),
+            bus.event_sender(),
             speaking.clone(),
             Arc::new(CoquiTts::new(
                 cli.tts_url,
@@ -77,12 +78,11 @@ async fn main() -> anyhow::Result<()> {
     };
     #[cfg(not(feature = "tts"))]
     let base_mouth: Arc<dyn Mouth> =
-        Arc::new(ChannelMouth::new(psyche.event_sender(), speaking.clone())) as Arc<dyn Mouth>;
+        Arc::new(ChannelMouth::new(bus.clone(), speaking.clone())) as Arc<dyn Mouth>;
     let mouth = Arc::new(TrimMouth::new(base_mouth)) as Arc<dyn Mouth>;
     psyche.set_mouth(mouth.clone());
     psyche.set_emotion("😐");
     psyche.set_connection_counter(connections.clone());
-    let events = Arc::new(psyche.subscribe());
     let conversation = psyche.conversation();
     let ear = Arc::new(ChannelEar::new(
         psyche.input_sender(),
@@ -91,8 +91,6 @@ async fn main() -> anyhow::Result<()> {
     ));
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
     psyche.add_sense(eye.description());
-    let (user_tx, user_rx) = mpsc::unbounded_channel();
-
     let voice = psyche.voice();
     tokio::spawn(listen_user_input(user_rx, ear.clone(), voice.clone()));
 
@@ -107,17 +105,20 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    let wit_rx = psyche.wit_reports();
+    let mut wit_rx = psyche.wit_reports();
     let debug_handle = psyche.debug_handle();
+    let bus_clone = bus.clone();
+    tokio::spawn(async move {
+        while let Ok(r) = wit_rx.recv().await {
+            bus_clone.publish_wit(r);
+        }
+    });
     tokio::spawn(async move {
         psyche.run().await;
     });
 
     let state = AppState {
-        user_input: user_tx,
-        events: events.clone(),
-        logs: Arc::new(log_tx.subscribe()),
-        wits: Arc::new(wit_rx),
+        bus: bus.clone(),
         ear: ear.clone(),
         eye: eye.clone(),
         conversation,

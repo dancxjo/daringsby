@@ -61,11 +61,13 @@ let psyche = Psyche::new(
 );
 // replace the dummy mouth with your own implementation
 let speaking = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-let display = std::sync::Arc::new(pete::ChannelMouth::new(psyche.event_sender(), speaking.clone()));
+let (bus, _rx) = pete::EventBus::new();
+let bus = std::sync::Arc::new(bus);
+let display = std::sync::Arc::new(pete::ChannelMouth::new(bus.clone(), speaking.clone()));
 #[cfg(feature = "tts")]
 let tts = std::sync::Arc::new(psyche::PlainMouth::new(
     std::sync::Arc::new(pete::TtsMouth::new(
-        psyche.event_sender(),
+        bus.event_sender(),
         speaking.clone(),
         std::sync::Arc::new(pete::CoquiTts::new(
             "http://localhost:5002/api/tts",

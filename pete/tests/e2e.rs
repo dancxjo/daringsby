@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use cucumber::{World as _, given, then, when};
-use pete::{ChannelEar, ChannelMouth};
+use pete::{ChannelEar, ChannelMouth, EventBus};
 use psyche::{
     self, Ear, Event, Mouth,
     ling::{ChatStream, Chatter, Doer, Instruction, Message, Vectorizer},
@@ -57,9 +57,10 @@ impl PipelineWorld {
         if self.events.is_some() {
             return;
         }
-        let (tx, _) = broadcast::channel(8);
+        let (bus, _) = EventBus::new();
+        let bus = Arc::new(bus);
         let speaking = Arc::new(AtomicBool::new(false));
-        let mouth = Arc::new(ChannelMouth::new(tx.clone(), speaking.clone())) as Arc<dyn Mouth>;
+        let mouth = Arc::new(ChannelMouth::new(bus.clone(), speaking.clone())) as Arc<dyn Mouth>;
         let (ux, ur) = mpsc::unbounded_channel();
         let conv = Arc::new(Mutex::new(psyche::Conversation::default()));
         let ear = Arc::new(ChannelEar::new(ux, conv.clone(), speaking));
@@ -80,7 +81,7 @@ impl PipelineWorld {
         tokio::spawn(async move {
             psyche.await;
         });
-        self.events = Some(tx.subscribe());
+        self.events = Some(bus.subscribe_events());
         self.ear = Some(ear);
         self.convo = Some(conv);
         drop(ur);

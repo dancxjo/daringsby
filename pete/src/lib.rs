@@ -3,6 +3,7 @@
 //! This crate exposes helpers for running the Pete chatbot server and interacting with a [`psyche::Psyche`] instance. It wires HTTP and WebSocket endpoints to the psyche and provides mouth/ear implementations.
 
 mod ear;
+mod event_bus;
 mod logging;
 mod motor;
 mod mouth;
@@ -14,6 +15,7 @@ mod tts_mouth;
 mod web;
 
 pub use ear::{ChannelEar, NoopEar};
+pub use event_bus::EventBus;
 pub use logging::init_logging;
 pub use motor::LoggingMotor;
 pub use mouth::{ChannelMouth, NoopMouth};
