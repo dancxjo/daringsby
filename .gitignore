@@ -9,3 +9,4 @@ Cargo.lock
 debug.log
 frontend/node_modules
 frontend/package-lock.json
+frontend/dist
