@@ -22,12 +22,16 @@
     }
     playing = true;
     const audio = new Audio(`data:audio/wav;base64,${next}`);
-    audio.onended = () => {
+    const done = () => {
+      audio.removeEventListener("ended", done);
+      audio.removeEventListener("error", done);
       playNext();
     };
+    audio.addEventListener("ended", done);
+    audio.addEventListener("error", done);
     audio.play().catch((err) => {
       console.error("audio", err);
-      playNext();
+      done();
     });
   }
   ws.onmessage = (ev) => {
@@ -41,6 +45,7 @@
         case "Say":
         case "say":
           words.textContent += "\n" + m.data.words;
+          words.scrollTop = words.scrollHeight;
           if (m.data.audio) {
             enqueueAudio(m.data.audio);
           }
