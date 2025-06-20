@@ -461,7 +461,9 @@ impl Psyche {
                 let context = context.clone();
                 let voice = voice.clone();
                 tasks.push(tokio::spawn(async move {
+                    let name = wit.name();
                     let maybe_imp = wit.tick_erased().await;
+                    info!(%name, "Ticked wit");
                     if let Some(impression) = maybe_imp {
                         info!(?impression.headline, "Wit emitted impression");
                         if let Err(e) = memory.store_serializable(&impression).await {
