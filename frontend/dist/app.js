@@ -8,8 +8,8 @@
   const audioQueue = [];
   let playing = false;
 
-  function enqueueAudio(b64) {
-    audioQueue.push(b64);
+  function enqueueAudio(item) {
+    audioQueue.push(item);
     if (!playing) {
       playNext();
     }
@@ -25,15 +25,20 @@
     const done = () => {
       player.removeEventListener("ended", done);
       player.removeEventListener("error", done);
+      ws.send(JSON.stringify({ type: "Echo", data: next.text }));
       playNext();
     };
-    player.src = `data:audio/wav;base64,${next}`;
-    player.addEventListener("ended", done, { once: true });
-    player.addEventListener("error", done, { once: true });
-    player.play().catch((err) => {
-      console.error("audio", err);
+    if (next.audio) {
+      player.src = `data:audio/wav;base64,${next.audio}`;
+      player.addEventListener("ended", done, { once: true });
+      player.addEventListener("error", done, { once: true });
+      player.play().catch((err) => {
+        console.error("audio", err);
+        done();
+      });
+    } else {
       done();
-    });
+    }
   }
   ws.onmessage = (ev) => {
     try {
@@ -47,9 +52,7 @@
         case "say":
           words.textContent += "\n" + m.data.words;
           words.scrollTop = words.scrollHeight;
-          if (m.data.audio) {
-            enqueueAudio(m.data.audio);
-          }
+          enqueueAudio({ audio: m.data.audio || null, text: m.data.words });
           break;
         case "Think":
         case "think":
