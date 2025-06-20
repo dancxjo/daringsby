@@ -68,7 +68,7 @@ enum WsResponse {
 
 pub async fn index() -> Html<&'static str> {
     info!("index requested");
-    Html("WebSocket server is running. Connect your client to /ws")
+    Html(include_str!("../../frontend/dist/index.html"))
 }
 
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {

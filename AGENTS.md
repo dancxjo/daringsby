@@ -38,15 +38,14 @@ This repository is a Rust workspace.
 
 ## Frontend
 
-There is no bundled web client. Use your own WebSocket client to connect to
+Static assets live under `frontend/dist` and are served by the `pete` binary.
+Navigate to `http://localhost:3000/` to load the web face which connects to
 `ws://localhost:3000/ws`.
 
 ### Frontend Notes
 
-* The Fresh app in `/face` acts only as a client and no longer runs its own
-  WebSocket server.
-* After adding or removing routes in `/face`, run `deno task manifest` to
-  regenerate `fresh.gen.ts`.
+The previous Deno-based client has been removed. Update the files in
+`frontend/dist` directly to change the interface.
 
 ## Communication
 
