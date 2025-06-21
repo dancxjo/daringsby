@@ -43,7 +43,11 @@ impl Conversation {
     fn append_or_new(&mut self, role: Role, content: String) {
         if let Some(last) = self.log.last_mut() {
             if last.role == role {
+                if !last.content.is_empty() && !content.is_empty() {
+                    last.content.push(' ');
+                }
                 last.content.push_str(&content);
+                last.content = last.content.trim().to_string();
                 return;
             }
         }

@@ -62,8 +62,6 @@ enum WsResponse {
     Emote(String),
     #[serde(rename = "think")]
     Think(WitReport),
-    #[serde(rename = "heard")]
-    Heard(String),
 }
 
 pub async fn index() -> Html<&'static str> {
@@ -126,12 +124,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                             match req {
                                 WsRequest::Text { data: message } => {
                                     debug!("user message: {}", message);
-                                    let _ = state.bus.user_input_sender().send(message.clone());
-                                    let payload = serde_json::to_string(&WsResponse::Heard(message)).unwrap();
-                                    if socket.send(WsMessage::Text(payload.into())).await.is_err() {
-                                        error!("failed sending heard ack");
-                                        break;
-                                    }
+                                    let _ = state.bus.user_input_sender().send(message);
                                 }
                                 WsRequest::Echo { data: text } => {
                                     debug!("played ack: {}", text);
