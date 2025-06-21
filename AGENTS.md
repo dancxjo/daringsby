@@ -96,6 +96,7 @@ The previous Deno-based client has been removed. Update the files in
 * Document all new CLI arguments and environment flags.
 * Avoid `echo $?`; rely on return values/output checks.
 * Favor TDD/BDD when adding features; write failing tests first.
+* Provide stub implementations for external ML components so tests run offline.
 * There is no bundled frontend. Connect your own WebSocket client to
   `ws://localhost:3000/ws`.
 

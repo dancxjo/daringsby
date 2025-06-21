@@ -20,6 +20,7 @@ pub mod wit;
 pub mod wits {
     pub mod combobulator;
     pub mod combobulator_wit;
+    pub mod face_wit;
     pub mod fond_du_coeur;
     pub mod fond_du_coeur_wit;
     pub mod heart_wit;
@@ -31,6 +32,7 @@ pub mod wits {
 
     pub use combobulator::Combobulator;
     pub use combobulator_wit::CombobulatorWit;
+    pub use face_wit::{DummyDetector, FaceDetector, FaceWit};
     pub use fond_du_coeur::FondDuCoeur;
     pub use fond_du_coeur_wit::FondDuCoeurWit;
     pub use heart_wit::HeartWit;
@@ -74,6 +76,7 @@ pub use sensation::{Event, Sensation, WitReport};
 pub use traits::{Ear, ErasedWit, Mouth, SensationObserver, Summarizer, Wit, WitAdapter};
 pub use voice::{Voice, extract_emojis};
 pub use wits::{
-    BasicMemory, CombobulatorWit, FondDuCoeur, FondDuCoeurWit, GraphStore, HeartWit, Memory,
-    MemoryWit, Neo4jClient, NoopMemory, QdrantClient, VisionWit, Will, WillWit,
+    BasicMemory, CombobulatorWit, DummyDetector, FaceDetector, FaceWit, FondDuCoeur,
+    FondDuCoeurWit, GraphStore, HeartWit, Memory, MemoryWit, Neo4jClient, NoopMemory, QdrantClient,
+    VisionWit, Will, WillWit,
 };
