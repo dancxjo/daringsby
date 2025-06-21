@@ -160,7 +160,7 @@ curl http://127.0.0.1:3000/conversation
 Which returns JSON like:
 
 ```json
-[{"role":"user","content":"Hi"}]
+[{"role":"system","content":"You are PETE \u2014 ..."}, {"role":"user","content":"Hi"}]
 ```
 
 ### Logging

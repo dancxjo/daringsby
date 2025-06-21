@@ -121,6 +121,7 @@ async fn main() -> anyhow::Result<()> {
             bus_events.publish_event(evt);
         }
     });
+    let system_prompt = psyche.system_prompt();
     tokio::spawn(async move {
         psyche.run().await;
     });
@@ -131,6 +132,7 @@ async fn main() -> anyhow::Result<()> {
         eye: eye.clone(),
         conversation,
         connections,
+        system_prompt: Arc::new(tokio::sync::Mutex::new(system_prompt)),
         psyche_debug: debug_handle,
     };
     let app = app(state);

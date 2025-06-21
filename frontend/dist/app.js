@@ -193,4 +193,19 @@
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     setupAudio();
   }
+
+  async function updateConversation() {
+    try {
+      const resp = await fetch("/conversation");
+      const msgs = await resp.json();
+      document.getElementById("conversation-log").textContent = msgs
+        .map((m) => `${m.role}: ${m.content}`)
+        .join("\n");
+    } catch (e) {
+      console.error("conversation", e);
+    }
+  }
+
+  setInterval(updateConversation, 2000);
+  updateConversation();
 })();

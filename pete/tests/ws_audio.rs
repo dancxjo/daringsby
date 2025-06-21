@@ -30,6 +30,7 @@ async fn websocket_forwards_audio() {
         eye,
         conversation,
         connections: Arc::new(AtomicUsize::new(0)),
+        system_prompt: Arc::new(tokio::sync::Mutex::new(psyche.system_prompt())),
         psyche_debug: debug,
     };
     let app = Router::new()

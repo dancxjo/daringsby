@@ -28,11 +28,14 @@ async fn returns_log_json() {
         eye,
         conversation,
         connections: Arc::new(AtomicUsize::new(1)),
+        system_prompt: Arc::new(tokio::sync::Mutex::new(psyche.system_prompt())),
         psyche_debug: debug,
     };
     let resp = conversation_log(State(state)).await.into_response();
     let body = body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let msgs: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(msgs[0]["role"], "user");
-    assert_eq!(msgs[0]["content"], "hi");
+    assert_eq!(msgs[0]["role"], "system");
+    assert!(msgs[0]["content"].as_str().unwrap().contains("PETE"));
+    assert_eq!(msgs[1]["role"], "user");
+    assert_eq!(msgs[1]["content"], "hi");
 }
