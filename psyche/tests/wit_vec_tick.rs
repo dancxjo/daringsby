@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::{Conversation, ErasedWit, Impression, Ling, Memory, Wit, WitAdapter};
+use psyche::{Conversation, ErasedWit, Impression, Ling, Memory, Stimulus, Wit, WitAdapter};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Mutex as AsyncMutex;
@@ -10,7 +10,7 @@ struct RecMemory(AsyncMutex<Vec<String>>);
 #[async_trait]
 impl Memory for RecMemory {
     async fn store(&self, impression: &Impression<Value>) -> anyhow::Result<()> {
-        self.0.lock().await.push(impression.headline.clone());
+        self.0.lock().await.push(impression.summary.clone());
         Ok(())
     }
 }
@@ -62,12 +62,20 @@ async fn multiple_impressions_flow_to_memory_and_context() {
 
     let wit = Arc::new(DummyWit {
         outputs: Mutex::new(vec![
-            vec![Impression::new("c", None::<String>, ())],
+            vec![Impression::new(
+                vec![Stimulus::new(())],
+                "c",
+                None::<String>,
+            )],
             vec![
-                Impression::new("b", None::<String>, ()),
-                Impression::new("b2", None::<String>, ()),
+                Impression::new(vec![Stimulus::new(())], "b", None::<String>),
+                Impression::new(vec![Stimulus::new(())], "b2", None::<String>),
             ],
-            vec![Impression::new("a", None::<String>, ())],
+            vec![Impression::new(
+                vec![Stimulus::new(())],
+                "a",
+                None::<String>,
+            )],
             Vec::new(),
         ]),
     });

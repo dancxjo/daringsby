@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use psyche::ling::Vectorizer;
-use psyche::{BasicMemory, GraphStore, Impression, Memory, QdrantClient};
+use psyche::{BasicMemory, GraphStore, Impression, Memory, QdrantClient, Stimulus};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
@@ -37,7 +37,7 @@ async fn memory_logs_cypher() {
 
     <dyn Memory>::store_serializable(
         &mem,
-        &Impression::new("hello", None::<String>, json!({"x":1})),
+        &Impression::new(vec![Stimulus::new(json!({"x":1}))], "hello", None::<String>),
     )
     .await
     .unwrap();

@@ -15,8 +15,7 @@ use tracing::debug;
 ///
 /// # Example
 /// ```
-/// use psyche::{Prehension, wit::Summarizer};
-/// use psyche::Impression;
+/// use psyche::{Prehension, Stimulus, Impression, wit::Summarizer};
 /// use async_trait::async_trait;
 ///
 /// struct Echo;
@@ -26,8 +25,12 @@ use tracing::debug;
 ///         &self,
 ///         inputs: &[Impression<String>],
 ///     ) -> anyhow::Result<Impression<String>> {
-///         let joined = inputs.iter().map(|i| i.raw_data.clone()).collect::<Vec<_>>().join(" ");
-///         Ok(Impression::new(joined.clone(), None::<String>, joined))
+///         let joined = inputs
+///             .iter()
+///             .flat_map(|i| i.stimuli.iter().map(|s| s.what.clone()))
+///             .collect::<Vec<_>>()
+///             .join(" ");
+///         Ok(Impression::new(vec![Stimulus::new(joined.clone())], joined, None::<String>))
 ///     }
 /// }
 /// let wit = Prehension::new(Echo);

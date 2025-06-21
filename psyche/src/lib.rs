@@ -44,7 +44,7 @@ pub mod wits {
 mod and_mouth;
 
 mod debug;
-mod impression;
+
 pub mod ling;
 pub mod model;
 mod motor;
@@ -58,8 +58,7 @@ mod types;
 
 pub use and_mouth::AndMouth;
 pub use debug::{DebugHandle, DebugInfo, debug_enabled, disable_debug, enable_debug};
-pub use impression::Impression;
-pub use model::{Experience, Impression as NewImpression, Stimulus};
+pub use model::{Experience, Impression, Stimulus};
 pub use motor::{Motor, NoopMotor};
 pub use plain_mouth::PlainMouth;
 pub use prehension::Prehension;

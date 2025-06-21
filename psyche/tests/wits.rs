@@ -1,37 +1,31 @@
-use chrono::Utc;
 use psyche::wit::{EpisodeWit, Instant, InstantWit, MomentWit, SituationWit};
-use psyche::{Impression, Sensation, Summarizer};
-use uuid::Uuid;
+use psyche::{Impression, Sensation, Stimulus, Summarizer};
 
 #[tokio::test]
 async fn synthesizes_moment_from_instants() {
     let wit = MomentWit::default();
 
     let input = vec![
-        Impression {
-            id: Uuid::new_v4(),
-            timestamp: Utc::now(),
-            headline: "Saw a dog".into(),
-            details: Some("At 10:01, a golden retriever barked at Pete.".into()),
-            raw_data: Instant {
+        Impression::new(
+            vec![Stimulus::new(Instant {
                 observation: "a dog barked".into(),
-            },
-        },
-        Impression {
-            id: Uuid::new_v4(),
-            timestamp: Utc::now(),
-            headline: "Pete felt startled".into(),
-            details: Some("At 10:02, Pete's posture stiffened.".into()),
-            raw_data: Instant {
+            })],
+            "Saw a dog",
+            None::<String>,
+        ),
+        Impression::new(
+            vec![Stimulus::new(Instant {
                 observation: "Pete was startled".into(),
-            },
-        },
+            })],
+            "Pete felt startled",
+            None::<String>,
+        ),
     ];
 
     let output = wit.digest(&input).await.unwrap();
 
-    assert_eq!(output.raw_data.summary.contains("dog"), true);
-    assert_eq!(output.raw_data.summary.contains("startled"), true);
+    assert_eq!(output.stimuli[0].what.summary.contains("dog"), true);
+    assert_eq!(output.stimuli[0].what.summary.contains("startled"), true);
 }
 
 #[tokio::test]
@@ -42,13 +36,13 @@ async fn instant_to_episode_pipeline() {
     let episode_wit = EpisodeWit::default();
 
     let sensation = Impression::new(
+        vec![Stimulus::new(Sensation::HeardUserVoice("hello".into()))],
         "",
         None::<String>,
-        Sensation::HeardUserVoice("hello".into()),
     );
     let instant = instant_wit.digest(&[sensation]).await.unwrap();
     let moment = moment_wit.digest(&[instant.clone()]).await.unwrap();
     let situation = situation_wit.digest(&[moment.clone()]).await.unwrap();
     let episode = episode_wit.digest(&[situation]).await.unwrap();
-    assert!(!episode.raw_data.summary.is_empty());
+    assert!(!episode.stimuli[0].what.summary.is_empty());
 }

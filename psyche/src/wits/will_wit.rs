@@ -1,4 +1,4 @@
-use crate::{Impression, Summarizer, voice::Voice, wit::Wit, wits::Will};
+use crate::{Impression, Stimulus, Summarizer, voice::Voice, wit::Wit, wits::Will};
 use async_trait::async_trait;
 use std::sync::{
     Arc, Mutex,
@@ -66,16 +66,19 @@ impl Wit<Impression<String>, String> for WillWit {
         if count % 3 == 0 {
             prompt = Some("share a brief update".to_string());
         }
-        if inputs.iter().any(|i| i.raw_data.contains('?')) {
+        if inputs
+            .iter()
+            .any(|i| i.stimuli.iter().any(|s| s.what.contains('?')))
+        {
             prompt = Some("answer the user's question".to_string());
         }
 
         let mut out = vec![decision];
         if let Some(p) = prompt {
             out.push(Impression::new(
+                vec![Stimulus::new(format!("<take_turn>{}</take_turn>", p))],
                 "take_turn",
                 None::<String>,
-                format!("<take_turn>{}</take_turn>", p),
             ));
         }
         out

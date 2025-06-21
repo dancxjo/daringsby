@@ -1,5 +1,5 @@
 use crate::{
-    Impression, Motor,
+    Impression, Motor, Stimulus,
     ling::{Doer, Instruction},
     wit::Wit,
 };
@@ -44,7 +44,7 @@ impl Wit<Impression<String>, String> for HeartWit {
         };
         let summary = inputs
             .iter()
-            .map(|i| i.raw_data.clone())
+            .flat_map(|i| i.stimuli.iter().map(|s| s.what.clone()))
             .collect::<Vec<_>>()
             .join(" ");
         let instruction = Instruction {
@@ -57,7 +57,11 @@ impl Wit<Impression<String>, String> for HeartWit {
         };
         let mood = resp.trim().to_string();
         self.motor.set_emotion(&mood).await;
-        vec![Impression::new(mood.clone(), Some(summary), mood)]
+        vec![Impression::new(
+            vec![Stimulus::new(mood.clone())],
+            summary,
+            Some(mood),
+        )]
     }
 
     fn debug_label(&self) -> &'static str {

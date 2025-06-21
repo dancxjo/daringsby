@@ -72,7 +72,7 @@ impl Ling {
     /// Include impression headlines as context notes.
     pub async fn add_impressions<T>(&mut self, impressions: &[Impression<T>]) {
         for imp in impressions {
-            self.add_context_note(&imp.headline);
+            self.add_context_note(&imp.summary);
         }
     }
 

@@ -1,8 +1,6 @@
 use async_trait::async_trait;
-use chrono::Utc;
 use psyche::ling::{Doer, Instruction};
-use psyche::{Impression, Summarizer, wit::Episode, wits::Combobulator};
-use uuid::Uuid;
+use psyche::{Impression, Stimulus, Summarizer, wit::Episode, wits::Combobulator};
 
 #[derive(Clone)]
 struct Dummy;
@@ -18,17 +16,15 @@ impl Doer for Dummy {
 async fn returns_awareness_impression() {
     let combo = Combobulator::new(Box::new(Dummy));
     let imp = combo
-        .digest(&[Impression {
-            id: Uuid::new_v4(),
-            timestamp: Utc::now(),
-            headline: "".into(),
-            details: None,
-            raw_data: Episode {
+        .digest(&[Impression::new(
+            vec![Stimulus::new(Episode {
                 summary: "Pete looked around.".into(),
-            },
-        }])
+            })],
+            "",
+            None::<String>,
+        )])
         .await
         .unwrap();
-    assert_eq!(imp.raw_data, "All clear.");
-    assert_eq!(imp.headline, "All clear.");
+    assert_eq!(imp.stimuli[0].what, "All clear.");
+    assert_eq!(imp.summary, "All clear.");
 }

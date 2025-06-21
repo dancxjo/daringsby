@@ -1,5 +1,5 @@
 use crate::wit::{Moment, Wit};
-use crate::{Impression, wits::Memory};
+use crate::{Impression, Stimulus, wits::Memory};
 use async_trait::async_trait;
 use std::sync::{
     Arc, Mutex,
@@ -83,13 +83,17 @@ impl Wit<Impression<String>, Moment> for MemoryWit {
         // create summary
         let summary = items
             .iter()
-            .map(|i| i.headline.clone())
+            .map(|i| i.summary.clone())
             .collect::<Vec<_>>()
             .join(" ");
         let moment = Moment {
             summary: summary.clone(),
         };
-        let impression = Impression::new(summary.clone(), None::<String>, moment.clone());
+        let impression = Impression::new(
+            vec![Stimulus::new(moment.clone())],
+            summary.clone(),
+            None::<String>,
+        );
         if let Err(e) = self.memory.store_serializable(&impression).await {
             error!(?e, "failed to store memory summary");
         }

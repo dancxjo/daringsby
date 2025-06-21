@@ -1,10 +1,8 @@
-use crate::{Impression, Sensation, ling::Instruction};
+use crate::{Impression, Sensation, Stimulus, ling::Instruction};
 use async_trait::async_trait;
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value};
 use std::sync::Arc;
-use uuid::Uuid;
 
 /// A Wit is a layer of cognition that summarizes prior impressions into a more
 /// abstract one.
@@ -65,16 +63,23 @@ where
             .tick()
             .await
             .into_iter()
-            .filter_map(|imp| {
-                serde_json::to_value(imp.raw_data)
-                    .ok()
-                    .map(|raw| Impression {
-                        id: imp.id,
-                        timestamp: imp.timestamp,
-                        headline: imp.headline,
-                        details: imp.details,
-                        raw_data: raw,
+            .map(|imp| {
+                let stimuli = imp
+                    .stimuli
+                    .into_iter()
+                    .filter_map(|s| {
+                        serde_json::to_value(&s.what).ok().map(|what| Stimulus {
+                            what,
+                            timestamp: s.timestamp,
+                        })
                     })
+                    .collect();
+                Impression {
+                    stimuli,
+                    summary: imp.summary,
+                    emoji: imp.emoji,
+                    timestamp: imp.timestamp,
+                }
             })
             .collect()
     }
@@ -167,15 +172,17 @@ impl Summarizer<Sensation, Instant> for InstantWit {
     ) -> anyhow::Result<Impression<Instant>> {
         let mut combined = String::new();
         for imp in inputs {
-            if !combined.is_empty() {
-                combined.push(' ');
+            if let Some(stim) = imp.stimuli.first() {
+                if !combined.is_empty() {
+                    combined.push(' ');
+                }
+                let desc = match &stim.what {
+                    Sensation::HeardOwnVoice(t) => format!("Pete said: {t}"),
+                    Sensation::HeardUserVoice(t) => format!("User said: {t}"),
+                    Sensation::Of(_) => "Something happened".to_string(),
+                };
+                combined.push_str(&desc);
             }
-            let desc = match &imp.raw_data {
-                Sensation::HeardOwnVoice(t) => format!("Pete said: {t}"),
-                Sensation::HeardUserVoice(t) => format!("User said: {t}"),
-                Sensation::Of(_) => "Something happened".to_string(),
-            };
-            combined.push_str(&desc);
         }
         let prompt = format!(
             "Summarize the following sensations in one or two sentences:\n{}",
@@ -189,13 +196,10 @@ impl Summarizer<Sensation, Instant> for InstantWit {
             })
             .await?;
         let observation = resp.trim().to_string();
-        Ok(Impression {
-            id: Uuid::new_v4(),
-            timestamp: Utc::now(),
-            headline: observation.clone(),
-            details: Some(combined),
-            raw_data: Instant { observation },
-        })
+        let stim = Stimulus::new(Instant {
+            observation: observation.clone(),
+        });
+        Ok(Impression::new(vec![stim], observation, None::<String>))
     }
 }
 
@@ -237,18 +241,12 @@ impl Summarizer<Instant, Moment> for MomentWit {
         // Join headlines, details and observations into one paragraph.
         let mut combined = String::new();
         for imp in inputs {
-            if !combined.is_empty() {
-                combined.push(' ');
+            if let Some(stim) = imp.stimuli.first() {
+                if !combined.is_empty() {
+                    combined.push(' ');
+                }
+                combined.push_str(&stim.what.observation);
             }
-            if !imp.headline.is_empty() {
-                combined.push_str(&imp.headline);
-                combined.push(' ');
-            }
-            if let Some(details) = &imp.details {
-                combined.push_str(details);
-                combined.push(' ');
-            }
-            combined.push_str(&imp.raw_data.observation);
         }
         let combined = combined.trim().to_string();
 
@@ -267,13 +265,13 @@ impl Summarizer<Instant, Moment> for MomentWit {
             .await?;
         let summary = resp.trim().to_string();
 
-        Ok(Impression {
-            id: Uuid::new_v4(),
-            timestamp: Utc::now(),
-            headline: summary.clone(),
-            details: Some(combined),
-            raw_data: Moment { summary },
-        })
+        Ok(Impression::new(
+            vec![Stimulus::new(Moment {
+                summary: summary.clone(),
+            })],
+            summary,
+            None::<String>,
+        ))
     }
 }
 
@@ -313,10 +311,12 @@ impl Summarizer<Moment, Situation> for SituationWit {
     async fn digest(&self, inputs: &[Impression<Moment>]) -> anyhow::Result<Impression<Situation>> {
         let mut combined = String::new();
         for imp in inputs {
-            if !combined.is_empty() {
-                combined.push(' ');
+            if let Some(stim) = imp.stimuli.first() {
+                if !combined.is_empty() {
+                    combined.push(' ');
+                }
+                combined.push_str(&stim.what.summary);
             }
-            combined.push_str(&imp.raw_data.summary);
         }
         let prompt = format!(
             "Summarize the following moments in one or two sentences:\n{}",
@@ -330,13 +330,13 @@ impl Summarizer<Moment, Situation> for SituationWit {
             })
             .await?;
         let summary = resp.trim().to_string();
-        Ok(Impression {
-            id: Uuid::new_v4(),
-            timestamp: Utc::now(),
-            headline: summary.clone(),
-            details: Some(combined),
-            raw_data: Situation { summary },
-        })
+        Ok(Impression::new(
+            vec![Stimulus::new(Situation {
+                summary: summary.clone(),
+            })],
+            summary,
+            None::<String>,
+        ))
     }
 }
 
@@ -379,10 +379,12 @@ impl Summarizer<Situation, Episode> for EpisodeWit {
     ) -> anyhow::Result<Impression<Episode>> {
         let mut combined = String::new();
         for imp in inputs {
-            if !combined.is_empty() {
-                combined.push(' ');
+            if let Some(stim) = imp.stimuli.first() {
+                if !combined.is_empty() {
+                    combined.push(' ');
+                }
+                combined.push_str(&stim.what.summary);
             }
-            combined.push_str(&imp.raw_data.summary);
         }
         let prompt = format!(
             "Summarize these situations in one or two sentences:\n{}",
@@ -396,13 +398,13 @@ impl Summarizer<Situation, Episode> for EpisodeWit {
             })
             .await?;
         let summary = resp.trim().to_string();
-        Ok(Impression {
-            id: Uuid::new_v4(),
-            timestamp: Utc::now(),
-            headline: summary.clone(),
-            details: Some(combined),
-            raw_data: Episode { summary },
-        })
+        Ok(Impression::new(
+            vec![Stimulus::new(Episode {
+                summary: summary.clone(),
+            })],
+            summary,
+            None::<String>,
+        ))
     }
 }
 
@@ -425,15 +427,14 @@ mod tests {
         ) -> anyhow::Result<Impression<String>> {
             let input = inputs
                 .last()
-                .map(|i| i.raw_data.clone())
+                .and_then(|i| i.stimuli.first())
+                .map(|s| s.what.clone())
                 .unwrap_or_default();
-            Ok(Impression {
-                id: Uuid::new_v4(),
-                timestamp: Utc::now(),
-                headline: input.clone(),
-                details: None,
-                raw_data: input,
-            })
+            Ok(Impression::new(
+                vec![Stimulus::new(input.clone())],
+                input,
+                None::<String>,
+            ))
         }
     }
 
@@ -441,17 +442,15 @@ mod tests {
     async fn echo_wit_returns_impression() {
         let wit = EchoWit::default();
         let imp = wit
-            .digest(&[Impression {
-                id: Uuid::new_v4(),
-                timestamp: Utc::now(),
-                headline: "hi".into(),
-                details: None,
-                raw_data: "hi".to_string(),
-            }])
+            .digest(&[Impression::new(
+                vec![Stimulus::new("hi".to_string())],
+                "hi",
+                None::<String>,
+            )])
             .await
             .unwrap();
-        assert_eq!(imp.headline, "hi");
-        assert_eq!(imp.raw_data, "hi");
+        assert_eq!(imp.summary, "hi");
+        assert_eq!(imp.stimuli[0].what, "hi");
     }
 
     struct DummyWit {
@@ -471,13 +470,11 @@ mod tests {
             }
             let summary = data.join(", ");
             data.clear();
-            vec![Impression {
-                id: Uuid::new_v4(),
-                timestamp: Utc::now(),
-                headline: format!("Summarized {} items", summary.split(", ").count()),
-                details: Some(summary),
-                raw_data: "dummy".to_string(),
-            }]
+            vec![Impression::new(
+                vec![Stimulus::new("dummy".to_string())],
+                format!("Summarized {} items", summary.split(", ").count()),
+                None::<String>,
+            )]
         }
     }
 
@@ -491,7 +488,6 @@ mod tests {
         let result = wit.tick().await;
         assert_eq!(result.len(), 1);
         let result = &result[0];
-        assert!(result.headline.contains("Summarized 2"));
-        assert_eq!(result.details.as_deref().unwrap(), "foo, bar");
+        assert!(result.summary.contains("Summarized 2"));
     }
 }

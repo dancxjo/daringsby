@@ -1,13 +1,11 @@
 use crate::{
-    Impression, Summarizer,
+    Impression, Stimulus, Summarizer,
     ling::{Doer, Instruction},
     wit::Moment,
 };
 use async_trait::async_trait;
-use chrono::Utc;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
-use uuid::Uuid;
 
 /// Summarizes recent `Moment`s into a rolling life story.
 #[derive(Clone)]
@@ -49,10 +47,12 @@ impl Summarizer<Moment, String> for FondDuCoeur {
     async fn digest(&self, inputs: &[Impression<Moment>]) -> anyhow::Result<Impression<String>> {
         let mut combined = self.story();
         for imp in inputs {
-            if !combined.is_empty() {
-                combined.push(' ');
+            if let Some(stim) = imp.stimuli.first() {
+                if !combined.is_empty() {
+                    combined.push(' ');
+                }
+                combined.push_str(&stim.what.summary);
             }
-            combined.push_str(&imp.raw_data.summary);
         }
         let instruction = Instruction {
             command: format!("Summarize Pete's life story in one paragraph:\n{combined}"),
@@ -70,12 +70,10 @@ impl Summarizer<Moment, String> for FondDuCoeur {
                 });
             }
         }
-        Ok(Impression {
-            id: Uuid::new_v4(),
-            timestamp: Utc::now(),
-            headline: summary.clone(),
-            details: None,
-            raw_data: summary,
-        })
+        Ok(Impression::new(
+            vec![Stimulus::new(summary.clone())],
+            summary,
+            None::<String>,
+        ))
     }
 }

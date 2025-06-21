@@ -1,14 +1,12 @@
 use crate::prompt::PromptBuilder;
 use crate::{
-    Impression, Summarizer,
+    Impression, Stimulus, Summarizer,
     ling::{Doer, Instruction},
     wit::Episode,
 };
 use async_trait::async_trait;
-use chrono::Utc;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use uuid::Uuid;
 
 /// Summarizes recent [`Episode`]s into a short awareness statement.
 ///
@@ -16,7 +14,7 @@ use uuid::Uuid;
 ///
 /// # Example
 /// ```no_run
-/// # use psyche::{wits::Combobulator, ling::{Doer, Instruction}, Impression, Summarizer, wit::Episode};
+/// # use psyche::{wits::Combobulator, ling::{Doer, Instruction}, Impression, Stimulus, Summarizer, wit::Episode};
 /// # use async_trait::async_trait;
 /// # struct Dummy;
 /// # #[async_trait]
@@ -29,9 +27,13 @@ use uuid::Uuid;
 /// # async fn main() -> anyhow::Result<()> {
 /// let combo = Combobulator::new(Box::new(Dummy));
 /// let imp = combo
-///     .digest(&[Impression::new("", None::<String>, Episode { summary: "Pete looked around".into() })])
+///     .digest(&[Impression::new(
+///         vec![Stimulus::new(Episode { summary: "Pete looked around".into() })],
+///         "",
+///         None::<String>,
+///     )])
 ///     .await?;
-/// assert_eq!(imp.raw_data, "All clear.");
+/// assert_eq!(imp.summary, "All clear.");
 /// # Ok(())
 /// # }
 /// ```
@@ -74,10 +76,12 @@ impl Summarizer<Episode, String> for Combobulator {
     async fn digest(&self, inputs: &[Impression<Episode>]) -> anyhow::Result<Impression<String>> {
         let mut combined = String::new();
         for imp in inputs {
-            if !combined.is_empty() {
-                combined.push(' ');
+            if let Some(stim) = imp.stimuli.first() {
+                if !combined.is_empty() {
+                    combined.push(' ');
+                }
+                combined.push_str(&stim.what.summary);
             }
-            combined.push_str(&imp.raw_data.summary);
         }
         let instruction = Instruction {
             command: self.prompt.build(&combined),
@@ -94,12 +98,10 @@ impl Summarizer<Episode, String> for Combobulator {
                 });
             }
         }
-        Ok(Impression {
-            id: Uuid::new_v4(),
-            timestamp: Utc::now(),
-            headline: summary.clone(),
-            details: Some(combined),
-            raw_data: summary,
-        })
+        Ok(Impression::new(
+            vec![Stimulus::new(summary.clone())],
+            summary,
+            None::<String>,
+        ))
     }
 }
