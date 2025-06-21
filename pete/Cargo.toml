@@ -51,4 +51,3 @@ required-features = ["e2e"]
 [[bin]]
 name = "pete"
 path = "src/main.rs"
-default-run = "pete"

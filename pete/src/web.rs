@@ -263,7 +263,7 @@ pub fn app(state: AppState) -> Router {
         .route("/ws", get(ws_handler))
         .route("/log", get(log_ws_handler))
         .route("/debug", get(wit_ws_handler))
-        .route("/debug/wit/:label", post(toggle_wit_debug))
+        .route("/debug/wit/{label}", post(toggle_wit_debug))
         .route("/debug/psyche", get(psyche_debug))
         .route("/conversation", get(conversation_log))
         .fallback_service(
