@@ -13,6 +13,12 @@ level impressions and produces a higher-level `Impression<T>`. A lightweight
 periodic impressions of type `O`. The `Prehension` helper buffers incoming
 impressions and summarizes them using a `Summarizer`.
 
+The unified cognitive model centers on two types:
+
+* `Stimulus<T>` – any observed item or prior impression with a timestamp.
+* `Impression<T>` – interprets stimuli into a summarized thought with an optional emoji.
+* `Experience<T>` – a stored impression paired with a vector embedding and unique id.
+
 `Psyche` starts with a prompt asking the LLM to respond in one or two sentences at most. You can override it with `set_system_prompt`.
 Pete's mouth streams audio one sentence at a time so long replies don't block.
 

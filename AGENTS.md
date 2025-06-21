@@ -75,7 +75,7 @@ The previous Deno-based client has been removed. Update the files in
   tick-based summarization when possible.
 * Voice should **only** generate dialogue; all decisions routed through `Will`.
 * Memory graph (Neo4j) and embedding DB (Qdrant) must stay in sync.
-* Long-lived impressions are stored as `Impression<T>` with headline, detail, and raw data.
+* Long-lived memories are stored as `Experience<T>` combining an `Impression<T>` with an embedding and id.
 * Use `Prehension` when buffering impressions for summarization. `Wit` is generic over input and output types.
 * When adding new Wits that emit `WitReport`s, prefer constructors like
   `with_debug` and register them with `psyche.wit_sender()` so debug output is

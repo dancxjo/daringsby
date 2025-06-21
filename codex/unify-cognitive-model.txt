@@ -1,0 +1,7 @@
+Simplify the cognitive architecture around two core types:
+
+1. `Stimulus<T>` captures any observed input. It stores the observation (`what`) and a timestamp.
+2. `Impression<T>` interprets one or more stimuli and summarizes them with text and an optional emoji.
+3. `Experience<T>` represents a remembered impression by adding a vector `embedding` and unique `id`.
+
+These types enable recursive impressions and unify prior layers like `Instant` or `Episode` under a single model.
