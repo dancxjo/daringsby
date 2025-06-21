@@ -133,6 +133,12 @@ body {
     text-align: center;
 }
 
+#thought-image {
+    max-width: 80px;
+    max-height: 60px;
+    margin-right: 0.5rem;
+}
+
 .thought-bubble:before,
 .thought-bubble:after {
     content: "";

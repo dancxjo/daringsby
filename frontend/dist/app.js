@@ -5,6 +5,8 @@
   const mien = document.getElementById("mien");
   const words = document.getElementById("words");
   const thought = document.getElementById("thought");
+  const thoughtText = document.getElementById("thought-text");
+  const thoughtImage = document.getElementById("thought-image");
   const player = document.getElementById("audio-player");
   const audioQueue = [];
   let playing = false;
@@ -62,7 +64,7 @@
           break;
         case "Think":
         case "think":
-          thought.textContent = m.data;
+          thoughtText.textContent = m.data;
           if (m.data && m.data.trim() !== "") {
             thought.style.display = "flex";
           } else {
@@ -118,6 +120,8 @@
         canvas.height = video.videoHeight;
         canvas.getContext("2d").drawImage(video, 0, 0);
         const data = canvas.toDataURL("image/jpeg");
+        thoughtImage.src = data;
+        thoughtImage.style.display = "block";
         ws.send(JSON.stringify({ type: "See", data: data }));
       }, 1000);
     } catch (e) {
