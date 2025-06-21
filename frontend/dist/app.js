@@ -11,7 +11,32 @@
   const player = document.getElementById("audio-player");
   const audioQueue = [];
   const witOutputs = {};
+  const witDetails = {};
+  const witDebugContainer = document.getElementById("wit-debug");
   let playing = false;
+
+  function getWitDetail(name) {
+    let entry = witDetails[name];
+    if (!entry) {
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      const link = document.createElement("a");
+      link.href = `/debug/wit/${name.toLowerCase()}`;
+      link.target = "_blank";
+      link.textContent = "link";
+      summary.textContent = name + " ";
+      summary.appendChild(link);
+      const promptPre = document.createElement("pre");
+      const outputPre = document.createElement("pre");
+      details.appendChild(summary);
+      details.appendChild(promptPre);
+      details.appendChild(outputPre);
+      witDebugContainer.appendChild(details);
+      entry = { promptPre, outputPre };
+      witDetails[name] = entry;
+    }
+    return entry;
+  }
 
   function enqueueAudio(item) {
     audioQueue.push(item);
@@ -68,6 +93,13 @@
         case "think": {
           if (typeof m.data === "object" && m.data !== null) {
             witOutputs[m.data.name] = m.data.output;
+            const { promptPre, outputPre } = getWitDetail(m.data.name);
+            if (m.data.prompt !== undefined) {
+              promptPre.textContent = m.data.prompt;
+            }
+            if (m.data.output !== undefined) {
+              outputPre.textContent = m.data.output;
+            }
           } else {
             witOutputs["unknown"] = m.data;
           }
