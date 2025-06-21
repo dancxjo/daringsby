@@ -42,7 +42,7 @@ impl Doer for SpyLLM {
 }
 
 #[tokio::test]
-async fn permits_every_third_tick() {
+async fn emits_take_turn_every_third_tick() {
     let llm = Arc::new(SpyLLM::default());
     let mouth = Arc::new(RecMouth::default());
     let (tx, _rx) = broadcast::channel(8);
@@ -54,15 +54,15 @@ async fn permits_every_third_tick() {
     for _ in 0..2 {
         wit.observe(Impression::new("", None::<String>, "hi".into()))
             .await;
-        assert!(!wit.tick().await.is_empty());
-        voice.take_turn("sys", &[]).await.unwrap();
+        let imps = wit.tick().await;
+        assert!(imps.iter().all(|i| !i.raw_data.contains("<take_turn>")));
     }
 
     wit.observe(Impression::new("", None::<String>, "hey".into()))
         .await;
-    assert!(!wit.tick().await.is_empty());
-    voice.take_turn("sys", &[]).await.unwrap();
-
-    let prompts = llm.0.lock().await.clone();
-    assert!(prompts.last().unwrap().contains("share a brief update"));
+    let imps = wit.tick().await;
+    assert!(imps.iter().any(|i| {
+        i.raw_data
+            .contains("<take_turn>share a brief update</take_turn>")
+    }));
 }

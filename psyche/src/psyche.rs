@@ -18,6 +18,7 @@ const EXPERIENCE_TICK: Duration = Duration::from_secs(60);
 #[cfg(test)]
 const EXPERIENCE_TICK: Duration = Duration::from_millis(10);
 use chrono::{DateTime, Utc};
+use quick_xml::{Reader, events::Event as XmlEvent};
 use tokio::sync::{Mutex, broadcast, mpsc};
 use tracing::{debug, error, info};
 
@@ -90,6 +91,36 @@ pub struct Psyche {
     observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
     sensation_buffer: Arc<Mutex<VecDeque<Sensation>>>,
     last_ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
+    pending_turn: Arc<Mutex<Option<String>>>,
+}
+
+fn extract_tag(text: &str, name: &str) -> Option<String> {
+    let mut reader = Reader::from_str(text);
+    reader.trim_text(true);
+    let mut buf = Vec::new();
+    let mut inside = false;
+    let mut content = String::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(XmlEvent::Start(e)) if e.name().as_ref() == name.as_bytes() => {
+                inside = true;
+            }
+            Ok(XmlEvent::End(e)) if e.name().as_ref() == name.as_bytes() => {
+                break;
+            }
+            Ok(XmlEvent::Text(t)) if inside => {
+                content.push_str(&t.unescape().unwrap_or_default());
+            }
+            Ok(XmlEvent::Eof) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    if inside && !content.is_empty() {
+        Some(content)
+    } else {
+        None
+    }
 }
 
 impl Psyche {
@@ -111,6 +142,7 @@ impl Psyche {
             DEFAULT_SYSTEM_PROMPT,
             conversation.clone(),
         )));
+        let pending_turn = Arc::new(Mutex::new(None));
         Self {
             narrator,
             voice: Arc::new(voice),
@@ -136,6 +168,7 @@ impl Psyche {
             observers: Vec::new(),
             sensation_buffer: Arc::new(Mutex::new(VecDeque::new())),
             last_ticks: Arc::new(Mutex::new(HashMap::new())),
+            pending_turn,
         }
     }
 
@@ -405,24 +438,30 @@ impl Psyche {
                 }
             }
 
-            let history = {
-                self.ling
-                    .lock()
-                    .await
-                    .get_conversation_tail(self.max_history)
-                    .await
-            };
-            let prompt = { self.ling.lock().await.build_prompt().await };
-            self.is_speaking = true;
-            if let Err(e) = self.voice.take_turn(&prompt, &history).await {
-                error!(?e, "voice chat failed");
-                break;
+            if let Some(extra) = self.pending_turn.lock().await.take() {
+                let history = {
+                    self.ling
+                        .lock()
+                        .await
+                        .get_conversation_tail(self.max_history)
+                        .await
+                };
+                let mut prompt = { self.ling.lock().await.build_prompt().await };
+                prompt.push('\n');
+                prompt.push_str(&extra);
+                self.is_speaking = true;
+                if let Err(e) = self.voice.take_turn(&prompt, &history).await {
+                    error!(?e, "voice chat failed");
+                    break;
+                }
+                self.ling.lock().await.flush();
+                self.is_speaking = false;
+                self.pending_user_message = !self.speak_when_spoken_to;
+                turns += 1;
+                debug!("turn {} complete", turns);
+            } else {
+                tokio::time::sleep(Duration::from_millis(10)).await;
             }
-            self.ling.lock().await.flush();
-            self.is_speaking = false;
-            self.pending_user_message = !self.speak_when_spoken_to;
-            turns += 1;
-            debug!("turn {} complete", turns);
         }
         info!("psyche conversation ended");
         self
@@ -436,6 +475,7 @@ impl Psyche {
         buffer: Arc<Mutex<VecDeque<Sensation>>>,
         ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
+        pending_turn: Arc<Mutex<Option<String>>>,
     ) {
         loop {
             let batch: Vec<Sensation> = buffer.lock().await.drain(..).collect();
@@ -486,6 +526,13 @@ impl Psyche {
                 }
             }
             if !imps.is_empty() {
+                for imp in &imps {
+                    if let serde_json::Value::String(s) = &imp.raw_data {
+                        if let Some(p) = extract_tag(s, "take_turn") {
+                            *pending_turn.lock().await = Some(p);
+                        }
+                    }
+                }
                 if let Err(e) = memory.store_all(&imps).await {
                     error!(?e, "memory store failed");
                 }
@@ -504,8 +551,10 @@ impl Psyche {
         let ticks = self.last_ticks.clone();
         let observers = self.observers.clone();
         let ling = self.ling.clone();
-        let experience_handle =
-            tokio::spawn(Self::experience(mem, wits, ling, buf, ticks, observers));
+        let turn = self.pending_turn.clone();
+        let experience_handle = tokio::spawn(Self::experience(
+            mem, wits, ling, buf, ticks, observers, turn,
+        ));
         let converse_handle = tokio::spawn(self.converse());
         let psyche = converse_handle.await.expect("converse task panicked");
         experience_handle.abort();

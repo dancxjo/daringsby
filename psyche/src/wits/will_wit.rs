@@ -28,6 +28,14 @@ impl WillWit {
             ticks: AtomicUsize::new(0),
         }
     }
+
+    /// Override the [`Voice`] prompt builder.
+    pub fn set_prompt<P>(&self, prompt: P)
+    where
+        P: crate::prompt::PromptBuilder + Send + Sync + 'static,
+    {
+        self.voice.set_prompt(prompt);
+    }
 }
 
 #[async_trait]
@@ -59,11 +67,15 @@ impl Wit<Impression<String>, String> for WillWit {
         if inputs.iter().any(|i| i.raw_data.contains('?')) {
             prompt = Some("answer the user's question".to_string());
         }
-        if let Some(p) = prompt {
-            self.voice.permit(Some(p));
-        }
 
-        self.will.command_voice_to_speak(&self.voice, None);
-        vec![decision]
+        let mut out = vec![decision];
+        if let Some(p) = prompt {
+            out.push(Impression::new(
+                "take_turn",
+                None::<String>,
+                format!("<take_turn>{}</take_turn>", p),
+            ));
+        }
+        out
     }
 }
