@@ -53,6 +53,8 @@ The previous Deno-based client has been removed. Update the files in
 * Define CSS variables in `styles.css` to control colors and fonts.
 * Keep the thought bubble hidden until there is text to display.
 * Serve over HTTPS by passing `--tls-cert` and `--tls-key` to the `pete` binary.
+* Canvas elements that repeatedly call `getImageData` must obtain their context
+  with `{ willReadFrequently: true }`.
 
 ## Communication
 
