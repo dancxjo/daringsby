@@ -61,8 +61,8 @@ pub fn ollama_psyche(host: &str, model: &str) -> anyhow::Result<Psyche> {
     use crate::LoggingMotor;
     use psyche::ling::OllamaProvider;
     use psyche::wits::{
-        BasicMemory, Combobulator, CombobulatorWit, HeartWit, MemoryWit, Neo4jClient, QdrantClient,
-        Will, WillWit,
+        BasicMemory, Combobulator, CombobulatorWit, FondDuCoeur, FondDuCoeurWit, HeartWit,
+        MemoryWit, Neo4jClient, QdrantClient, Will, WillWit,
     };
 
     let narrator = OllamaProvider::new(host, model)?;
@@ -108,6 +108,10 @@ pub fn ollama_psyche(host: &str, model: &str) -> anyhow::Result<Psyche> {
         Box::new(OllamaProvider::new(host, model)?),
         Arc::new(LoggingMotor),
     )));
+    psyche.register_typed_wit(Arc::new(FondDuCoeurWit::new(FondDuCoeur::with_debug(
+        Box::new(OllamaProvider::new(host, model)?),
+        wit_tx.clone(),
+    ))));
     psyche.set_turn_limit(usize::MAX);
     info!(%host, %model, "created ollama psyche");
     Ok(psyche)
