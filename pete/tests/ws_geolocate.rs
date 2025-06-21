@@ -15,7 +15,6 @@ async fn websocket_forwards_geolocation() {
     let voice = psyche.voice();
     let ear = Arc::new(ChannelEar::new(
         psyche.input_sender(),
-        conversation.clone(),
         Arc::new(AtomicBool::new(false)),
         voice,
     ));
