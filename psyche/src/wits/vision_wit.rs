@@ -60,7 +60,7 @@ impl Wit<ImageData, ImageData> for VisionWit {
             match self
                 .doer
                 .follow(Instruction {
-                    command: "Describe only what you see in this image in a single sentence, in the first person.".into(),
+                    command: "Describe only what you see in this image in a single sentence, in the first person. Remember, this is what you are *seeing* in the first person, so unless you're looking into a mirror, you won't be seeing yourself.".into(),
                     images: vec![LImageData { mime: img.mime.clone(), base64: img.base64.clone() }],
                 })
                 .await
