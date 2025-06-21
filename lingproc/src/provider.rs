@@ -9,6 +9,7 @@ use ollama_rs::{
     generation::embeddings::request::{EmbeddingsInput, GenerateEmbeddingsRequest},
 };
 use tokio_stream::StreamExt;
+use tracing::debug;
 
 /// Provider backed by an Ollama server.
 #[derive(Clone)]
@@ -33,18 +34,20 @@ impl Doer for OllamaProvider {
     /// Follow an instruction via the Ollama API.
     async fn follow(&self, instruction: Instruction) -> Result<String> {
         use ollama_rs::generation::images::Image;
+        let Instruction { command, images } = instruction;
+        debug!(%command, image_count = images.len(), "ollama follow request");
 
-        let mut msg = ChatMessage::user(instruction.command);
-        if !instruction.images.is_empty() {
-            let images: Vec<Image> = instruction
-                .images
+        let mut msg = ChatMessage::user(command);
+        if !images.is_empty() {
+            let imgs: Vec<Image> = images
                 .into_iter()
                 .map(|i| Image::from_base64(i.base64))
                 .collect();
-            msg = msg.with_images(images);
+            msg = msg.with_images(imgs);
         }
         let req = ChatMessageRequest::new(self.model.clone(), vec![msg]);
         let res = self.client.send_chat_messages(req).await?;
+        debug!(response = %res.message.content, "ollama follow response");
         Ok(res.message.content)
     }
 }
@@ -61,14 +64,22 @@ impl Chatter for OllamaProvider {
             };
             msgs.push(m);
         }
+        debug!(%system_prompt, ?history, "ollama chat request");
         let req = ChatMessageRequest::new(self.model.clone(), msgs);
         let stream = self
             .client
             .send_chat_messages_stream(req)
             .await?
-            .map(|res| {
-                res.map(|r| r.message.content)
-                    .map_err(|_| anyhow!("ollama stream error"))
+            .map(|res| match res {
+                Ok(r) => {
+                    let chunk = r.message.content;
+                    debug!(%chunk, "ollama chat chunk");
+                    Ok(chunk)
+                }
+                Err(e) => {
+                    debug!(error = ?e, "ollama stream error");
+                    Err(anyhow!("ollama stream error"))
+                }
             });
         Ok(Box::pin(stream))
     }
@@ -80,8 +91,13 @@ impl Chatter for OllamaProvider {
 impl Vectorizer for OllamaProvider {
     /// Request text embeddings from Ollama.
     async fn vectorize(&self, text: &str) -> Result<Vec<f32>> {
+        debug!(?text, "ollama vectorize request");
         let req = GenerateEmbeddingsRequest::new(self.model.clone(), EmbeddingsInput::from(text));
         let res = self.client.generate_embeddings(req).await?;
+        debug!(
+            embedding_len = res.embeddings.len(),
+            "ollama vectorize response"
+        );
         Ok(res.embeddings.into_iter().next().unwrap_or_default())
     }
 }

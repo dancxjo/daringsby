@@ -118,6 +118,7 @@ The previous Deno-based client has been removed. Update the files in
 * When skipping speech for empty responses, increment the turn counter so the conversation loop can exit.
 * Log Coqui TTS request URLs with `info!(%url, "requesting TTS")` to ease debugging misconfigured endpoints.
 * Log each Wit tick with its name and keep loops alive even when idle.
+* Log Ollama prompts and streamed chunks with `debug!` for troubleshooting.
 * When introducing new CLI arguments or environment variables, update
   `.env.example` and README examples accordingly.
 
