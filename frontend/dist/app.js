@@ -125,6 +125,7 @@
       video.srcObject = stream;
       await video.play();
       const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
       setInterval(() => {
         if (video.videoWidth === 0) {
           video.play().catch(() => {});
@@ -132,7 +133,6 @@
         }
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        const ctx = canvas.getContext("2d");
         ctx.drawImage(video, 0, 0);
         const pixel = ctx.getImageData(
           Math.floor(canvas.width / 2),
