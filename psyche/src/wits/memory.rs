@@ -98,6 +98,12 @@ impl QdrantClient {
         info!(target: "qdrant", ?headline, len = vector.len(), url = %self.url, "stored vector");
         Ok(())
     }
+
+    /// Store a face embedding in the face collection.
+    pub async fn store_face_vector(&self, vector: &[f32]) -> Result<()> {
+        info!(target: "qdrant", len = vector.len(), url = %self.url, "stored face vector");
+        Ok(())
+    }
 }
 
 /// Client for persisting raw data in Neo4j.

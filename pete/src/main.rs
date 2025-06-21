@@ -5,10 +5,10 @@ use pete::{
 };
 #[cfg(feature = "tts")]
 use pete::{CoquiTts, TtsMouth};
-use pete::{EyeSensor, GeoSensor};
+use pete::{EyeSensor, FaceSensor, GeoSensor};
 #[cfg(feature = "tts")]
 use psyche::PlainMouth;
-use psyche::{Mouth, Sensor, TrimMouth};
+use psyche::{ImageData, Mouth, Sensation, Sensor, TrimMouth};
 use std::{
     net::SocketAddr,
     sync::{
@@ -134,8 +134,27 @@ async fn main() -> anyhow::Result<()> {
         speaking.clone(),
         voice.clone(),
     ));
-    let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
+    let (eye_tx, mut eye_rx) = mpsc::unbounded_channel();
+    let eye = Arc::new(EyeSensor::new(eye_tx));
+    let face_sensor = Arc::new(FaceSensor::new(
+        Arc::new(psyche::DummyDetector::default()),
+        psyche::QdrantClient::default(),
+        psyche.input_sender(),
+    ));
     psyche.add_sense(eye.description());
+    psyche.add_sense(face_sensor.description());
+    let forward = psyche.input_sender();
+    let face_clone = face_sensor.clone();
+    tokio::spawn(async move {
+        while let Some(s) = eye_rx.recv().await {
+            if let Sensation::Of(any) = &s {
+                if let Some(img) = any.downcast_ref::<ImageData>() {
+                    face_clone.sense(img.clone()).await;
+                }
+            }
+            let _ = forward.send(s);
+        }
+    });
     let geo = Arc::new(GeoSensor::new(psyche.input_sender()));
     psyche.add_sense(geo.description());
     tokio::spawn(listen_user_input(user_rx, ear.clone(), voice.clone()));
