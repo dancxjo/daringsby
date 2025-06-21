@@ -25,12 +25,28 @@ struct Cli {
     /// Address to bind the HTTP server
     #[arg(long, default_value = "127.0.0.1:3000")]
     addr: String,
-    /// URL of the Ollama server
-    #[arg(long, default_value = "http://localhost:11434")]
-    ollama_url: String,
-    /// Model name to use with Ollama
-    #[arg(long, default_value = "mistral")]
-    model: String,
+    /// URL of the chatter Ollama server
+    #[arg(long, env = "CHATTER_HOST", default_value = "http://localhost:11434")]
+    chatter_host: String,
+    /// Model name to use for chatter
+    #[arg(long, env = "CHATTER_MODEL", default_value = "mistral")]
+    chatter_model: String,
+    /// URL of the wits Ollama server
+    #[arg(long, env = "WITS_HOST", default_value = "http://localhost:11434")]
+    wits_host: String,
+    /// Model name to use for wits
+    #[arg(long, env = "WITS_MODEL", default_value = "mistral")]
+    wits_model: String,
+    /// URL of the embeddings Ollama server
+    #[arg(
+        long,
+        env = "EMBEDDINGS_HOST",
+        default_value = "http://localhost:11434"
+    )]
+    embeddings_host: String,
+    /// Model name to use for embeddings
+    #[arg(long, env = "EMBEDDINGS_MODEL", default_value = "mistral")]
+    embeddings_model: String,
     /// URL of the Coqui TTS server
     #[arg(long, default_value = "http://localhost:5002/api/tts")]
     tts_url: String,
@@ -60,7 +76,14 @@ async fn main() -> anyhow::Result<()> {
 
     info!(%cli.addr, "starting server");
 
-    let mut psyche = ollama_psyche(&cli.ollama_url, &cli.model)?;
+    let mut psyche = ollama_psyche(
+        &cli.chatter_host,
+        &cli.chatter_model,
+        &cli.wits_host,
+        &cli.wits_model,
+        &cli.embeddings_host,
+        &cli.embeddings_model,
+    )?;
     let speaking = Arc::new(AtomicBool::new(false));
     let connections = Arc::new(AtomicUsize::new(0));
     #[cfg(feature = "tts")]
