@@ -77,6 +77,9 @@ The previous Deno-based client has been removed. Update the files in
 * Memory graph (Neo4j) and embedding DB (Qdrant) must stay in sync.
 * Long-lived impressions are stored as `Impression<T>` with headline, detail, and raw data.
 * Use `Prehension` when buffering impressions for summarization. `Wit` is generic over input and output types.
+* When adding new Wits that emit `WitReport`s, prefer constructors like
+  `with_debug` and register them with `psyche.wit_sender()` so debug output is
+  available during tests.
 
 ## Contributor Notes
 
