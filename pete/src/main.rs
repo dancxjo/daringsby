@@ -130,7 +130,6 @@ async fn main() -> anyhow::Result<()> {
     let voice = psyche.voice();
     let ear = Arc::new(ChannelEar::new(
         psyche.input_sender(),
-        conversation.clone(),
         speaking.clone(),
         voice.clone(),
     ));

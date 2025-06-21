@@ -34,6 +34,7 @@ This repository is a Rust workspace.
 * Build prompts using dedicated structs like `WillPrompt`.
 * `ChannelMouth` emits `Event::Speech` per parsed sentence without audio.
 * `Conversation::add_*` merges consecutive same-role messages, inserting a space and trimming.
+* Only the `Psyche` loop should append to `Conversation`; `Ear` implementations forward sensations without modifying the log.
 * Use the `Motor` trait for host actions. Implementations live in `pete`.
 
 ## Frontend

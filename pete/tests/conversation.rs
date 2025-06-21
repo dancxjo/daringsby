@@ -13,7 +13,6 @@ async fn returns_log_json() {
     conversation.lock().await.add_user("hi".into());
     let ear = Arc::new(ChannelEar::new(
         psyche.input_sender(),
-        conversation.clone(),
         Arc::new(AtomicBool::new(false)),
         psyche.voice(),
     ));
