@@ -140,6 +140,17 @@ body {
     margin-right: 0.5rem;
 }
 
+#image-thumbnail {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    width: 80px;
+    height: 60px;
+    object-fit: cover;
+    border: 2px solid white;
+    z-index: 2;
+}
+
 .thought-bubble:before,
 .thought-bubble:after {
     content: "";
