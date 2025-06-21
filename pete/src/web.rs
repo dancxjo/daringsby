@@ -172,6 +172,10 @@ async fn handle_log_socket(mut socket: WebSocket, state: AppState) {
 
 async fn handle_wit_socket(mut socket: WebSocket, state: AppState) {
     info!("wit websocket connected");
+    if let Some(last) = state.bus.latest_wit() {
+        let msg = serde_json::to_string(&WsResponse::Think(last)).unwrap();
+        let _ = socket.send(WsMessage::Text(msg.into())).await;
+    }
     let mut rx = state.bus.subscribe_wits();
     while let Ok(report) = rx.recv().await {
         let msg = serde_json::to_string(&WsResponse::Think(report.clone())).unwrap();

@@ -1,4 +1,5 @@
 use psyche::{Event, WitReport};
+use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc};
 
 /// Central communication hub for Pete events and logs.
@@ -8,6 +9,7 @@ pub struct EventBus {
     logs: broadcast::Sender<String>,
     wits: broadcast::Sender<WitReport>,
     input: mpsc::UnboundedSender<String>,
+    latest_wit: Arc<Mutex<Option<WitReport>>>,
 }
 
 impl EventBus {
@@ -19,12 +21,14 @@ impl EventBus {
         let (logs, _) = broadcast::channel(100);
         let (wits, _) = broadcast::channel(16);
         let (input, rx) = mpsc::unbounded_channel();
+        let latest_wit = Arc::new(Mutex::new(None));
         (
             Self {
                 events,
                 logs,
                 wits,
                 input,
+                latest_wit,
             },
             rx,
         )
@@ -57,12 +61,18 @@ impl EventBus {
 
     /// Publish a [`WitReport`].
     pub fn publish_wit(&self, report: WitReport) {
+        *self.latest_wit.lock().unwrap() = Some(report.clone());
         let _ = self.wits.send(report);
     }
 
     /// Subscribe to [`WitReport`]s.
     pub fn subscribe_wits(&self) -> broadcast::Receiver<WitReport> {
         self.wits.subscribe()
+    }
+
+    /// Retrieve the most recent [`WitReport`], if any.
+    pub fn latest_wit(&self) -> Option<WitReport> {
+        self.latest_wit.lock().unwrap().clone()
     }
 
     /// Obtain a sender for incoming user text.

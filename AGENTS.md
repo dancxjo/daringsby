@@ -61,6 +61,8 @@ The previous Deno-based client has been removed. Update the files in
 
 * Expose WebSocket chat at `/ws`, forwarding all `Psyche` events.
 * Debug information from Wits streams via `/debug`.
+* The `EventBus` retains the last `WitReport` so new `/debug` subscribers see
+  recent output immediately.
 * SSE endpoints like `/chat` are deprecated; use WebSocket only.
 * Text messages no longer trigger `Heard` responses.
 
