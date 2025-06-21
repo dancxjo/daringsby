@@ -1,8 +1,9 @@
 # Daringsby Workspace
 
-This repository contains a Rust workspace with three crates:
+This repository contains a Rust workspace with multiple crates:
 
-- **psyche** – a library crate providing the `Psyche` type
+- **psyche_core** – minimal cognitive kernel built around `Stimulus` and `Impression`
+- **psyche** – higher-level abstractions built atop `psyche_core`
 - **lingproc** – helper LLM abstractions re-exported by `psyche`
 - **pete** – a binary crate depending on `psyche`
 
