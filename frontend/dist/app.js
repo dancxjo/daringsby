@@ -123,18 +123,34 @@
       const video = document.getElementById("webcam");
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       video.srcObject = stream;
+      await video.play();
       const canvas = document.createElement("canvas");
       setInterval(() => {
-        if (video.videoWidth === 0) return;
+        if (video.videoWidth === 0) {
+          video.play().catch(() => {});
+          return;
+        }
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        canvas.getContext("2d").drawImage(video, 0, 0);
-        const data = canvas.toDataURL("image/jpeg");
-        thoughtImage.src = data;
-        thoughtImage.style.display = "block";
-        imageThumbnail.src = data;
-        imageThumbnail.style.display = "block";
-        ws.send(JSON.stringify({ type: "See", data: data }));
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0);
+        const pixel = ctx.getImageData(
+          Math.floor(canvas.width / 2),
+          Math.floor(canvas.height / 2),
+          1,
+          1,
+        ).data;
+        const blank = pixel[0] === 0 && pixel[1] === 0 && pixel[2] === 0;
+        if (!blank) {
+          const data = canvas.toDataURL("image/jpeg");
+          thoughtImage.src = data;
+          thoughtImage.style.display = "block";
+          imageThumbnail.src = data;
+          imageThumbnail.style.display = "block";
+          ws.send(JSON.stringify({ type: "See", data: data }));
+        } else {
+          ws.send(JSON.stringify({ type: "See", data: "" }));
+        }
       }, 1000);
     } catch (e) {
       if (e && e.name === "NotFoundError") {

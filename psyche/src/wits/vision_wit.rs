@@ -52,16 +52,20 @@ impl Wit<ImageData, ImageData> for VisionWit {
         };
 
         debug!("vision wit captioning image");
-        let caption = match self
-            .doer
-            .follow(Instruction {
-                command: "You are seeing this image directly, as if with your own eyes. Describe it in a single sentence, in the first person.".into(),
-                images: vec![LImageData { mime: img.mime.clone(), base64: img.base64.clone() }],
-            })
-            .await
-        {
-            Ok(c) => c,
-            Err(_) => return Vec::new(),
+        let caption = if img.base64.is_empty() {
+            "I can't see anything.".to_string()
+        } else {
+            match self
+                .doer
+                .follow(Instruction {
+                    command: "Describe only what you see in this image in a single sentence, in the first person.".into(),
+                    images: vec![LImageData { mime: img.mime.clone(), base64: img.base64.clone() }],
+                })
+                .await
+            {
+                Ok(c) => c,
+                Err(_) => return Vec::new(),
+            }
         };
         let how = caption.trim().to_string();
         if let Some(tx) = &self.tx {
