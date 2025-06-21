@@ -104,6 +104,7 @@ async fn main() -> anyhow::Result<()> {
         &cli.neo4j_user,
         &cli.neo4j_pass,
     )?;
+    psyche.enable_all_debug().await;
     let speaking = Arc::new(AtomicBool::new(false));
     let connections = Arc::new(AtomicUsize::new(0));
     #[cfg(feature = "tts")]

@@ -265,6 +265,13 @@ impl Psyche {
         }
     }
 
+    /// Enable debugging for all registered Wits.
+    pub async fn enable_all_debug(&self) {
+        for label in self.wits.iter().map(|w| w.debug_label()) {
+            crate::debug::enable_debug(label).await;
+        }
+    }
+
     /// Get a handle to the voice component.
     pub fn voice(&self) -> Arc<crate::voice::Voice> {
         self.voice.clone()
