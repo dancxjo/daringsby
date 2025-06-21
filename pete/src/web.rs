@@ -1,12 +1,12 @@
 use axum::{
-    Router,
+    Json, Router,
     extract::{
-        State,
+        Path, State,
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
     },
     http::StatusCode,
     response::{Html, IntoResponse},
-    routing::{get, get_service},
+    routing::{get, get_service, post},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{
@@ -218,6 +218,23 @@ pub async fn psyche_debug(State(state): State<AppState>) -> impl IntoResponse {
     axum::Json(info)
 }
 
+#[derive(Deserialize)]
+pub struct ToggleDebug {
+    enable: bool,
+}
+
+pub async fn toggle_wit_debug(
+    Path(label): Path<String>,
+    Json(ToggleDebug { enable }): Json<ToggleDebug>,
+) -> impl IntoResponse {
+    if enable {
+        psyche::enable_debug(&label).await;
+    } else {
+        psyche::disable_debug(&label).await;
+    }
+    StatusCode::OK
+}
+
 fn parse_data_url(url: &str) -> Option<(String, String)> {
     let (prefix, data) = url.split_once(',')?;
     let mime = prefix
@@ -244,6 +261,7 @@ pub fn app(state: AppState) -> Router {
         .route("/ws", get(ws_handler))
         .route("/log", get(log_ws_handler))
         .route("/debug", get(wit_ws_handler))
+        .route("/debug/wit/:label", post(toggle_wit_debug))
         .route("/debug/psyche", get(psyche_debug))
         .route("/conversation", get(conversation_log))
         .fallback_service(

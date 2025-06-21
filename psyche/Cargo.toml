@@ -21,6 +21,7 @@ unicode-segmentation = "1"
 emojis = "0.6"
 pulldown-cmark = "0.9"
 quick-xml = "0.31"
+once_cell = "1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

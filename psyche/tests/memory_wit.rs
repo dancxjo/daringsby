@@ -21,6 +21,7 @@ impl Memory for DummyMemory {
 #[tokio::test]
 async fn summarizes_and_emits_report() {
     let (tx, mut rx) = broadcast::channel(8);
+    psyche::enable_debug("Memory").await;
     let mem = Arc::new(DummyMemory::default());
     let wit = MemoryWit::with_debug(mem.clone(), tx);
 
@@ -39,4 +40,5 @@ async fn summarizes_and_emits_report() {
     assert!(report.output.contains("h0"));
     assert_eq!(out.len(), 1);
     assert!(out[0].raw_data.summary.contains("h1"));
+    psyche::disable_debug("Memory").await;
 }

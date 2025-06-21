@@ -56,7 +56,7 @@ mod trim_mouth;
 mod types;
 
 pub use and_mouth::AndMouth;
-pub use debug::{DebugHandle, DebugInfo};
+pub use debug::{DebugHandle, DebugInfo, debug_enabled, disable_debug, enable_debug};
 pub use impression::Impression;
 pub use motor::{Motor, NoopMotor};
 pub use plain_mouth::PlainMouth;

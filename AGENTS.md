@@ -80,6 +80,8 @@ The previous Deno-based client has been removed. Update the files in
 * When adding new Wits that emit `WitReport`s, prefer constructors like
   `with_debug` and register them with `psyche.wit_sender()` so debug output is
   available during tests.
+* Tests expecting a `WitReport` must enable the matching debug label with
+  `psyche::debug::enable_debug(label).await`.
 
 ## Contributor Notes
 
