@@ -120,14 +120,19 @@ cargo test
 Run the web server with the built-in Ollama support:
 
 ```sh
-cargo run -p pete -- --ollama-url http://localhost:11434 --model mistral
+cargo run -p pete -- \
+  --chatter-host http://localhost:11434 --chatter-model mistral \
+  --wits-host http://localhost:11434 --wits-model mistral \
+  --embeddings-host http://localhost:11434 --embeddings-model mistral
 
 To enable audio output via Coqui TTS, build with the optional `tts` feature and
 provide the TTS server URL and optional voice parameters:
 
 ```sh
 cargo run -p pete --features tts -- \
-  --ollama-url http://localhost:11434 --model mistral \
+  --chatter-host http://localhost:11434 --chatter-model mistral \
+  --wits-host http://localhost:11434 --wits-model mistral \
+  --embeddings-host http://localhost:11434 --embeddings-model mistral \
   --tts-url http://localhost:5002/api/tts \
   --tts-speaker-id p376
 
@@ -137,7 +142,9 @@ To serve the interface over HTTPS provide a certificate and key:
 
 ```sh
 cargo run -p pete -- \
-  --ollama-url http://localhost:11434 --model mistral \
+  --chatter-host http://localhost:11434 --chatter-model mistral \
+  --wits-host http://localhost:11434 --wits-model mistral \
+  --embeddings-host http://localhost:11434 --embeddings-model mistral \
   --tls-cert cert.pem --tls-key key.pem
 ```
 ## Web Interface

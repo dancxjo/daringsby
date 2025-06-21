@@ -57,7 +57,14 @@ pub fn dummy_psyche() -> Psyche {
 ///
 /// This uses [`OllamaProvider`](psyche::ling::OllamaProvider) for all language
 /// capabilities and the no-op ear and mouth implementations.
-pub fn ollama_psyche(host: &str, model: &str) -> anyhow::Result<Psyche> {
+pub fn ollama_psyche(
+    chatter_host: &str,
+    chatter_model: &str,
+    wits_host: &str,
+    wits_model: &str,
+    embeddings_host: &str,
+    embeddings_model: &str,
+) -> anyhow::Result<Psyche> {
     use crate::LoggingMotor;
     use psyche::ling::OllamaProvider;
     use psyche::wits::{
@@ -65,15 +72,15 @@ pub fn ollama_psyche(host: &str, model: &str) -> anyhow::Result<Psyche> {
         MemoryWit, Neo4jClient, QdrantClient, Will, WillWit,
     };
 
-    let narrator = OllamaProvider::new(host, model)?;
-    let voice = OllamaProvider::new(host, model)?;
-    let vectorizer = OllamaProvider::new(host, model)?;
+    let narrator = OllamaProvider::new(chatter_host, chatter_model)?;
+    let voice = OllamaProvider::new(chatter_host, chatter_model)?;
+    let vectorizer = OllamaProvider::new(embeddings_host, embeddings_model)?;
 
     let mouth = Arc::new(NoopMouth::default());
     let ear = Arc::new(NoopEar);
 
     let memory = Arc::new(BasicMemory {
-        vectorizer: Arc::new(OllamaProvider::new(host, model)?),
+        vectorizer: Arc::new(OllamaProvider::new(embeddings_host, embeddings_model)?),
         qdrant: QdrantClient::default(),
         neo4j: Arc::new(Neo4jClient::default()),
     });
@@ -88,15 +95,15 @@ pub fn ollama_psyche(host: &str, model: &str) -> anyhow::Result<Psyche> {
     );
     let wit_tx = psyche.wit_sender();
     psyche.register_observing_wit(Arc::new(psyche::VisionWit::with_debug(
-        Arc::new(OllamaProvider::new(host, model)?),
+        Arc::new(OllamaProvider::new(wits_host, wits_model)?),
         wit_tx.clone(),
     )));
     psyche.register_typed_wit(Arc::new(CombobulatorWit::new(Combobulator::with_debug(
-        Box::new(OllamaProvider::new(host, model)?),
+        Box::new(OllamaProvider::new(wits_host, wits_model)?),
         wit_tx.clone(),
     ))));
     let will = Arc::new(Will::with_debug(
-        Box::new(OllamaProvider::new(host, model)?),
+        Box::new(OllamaProvider::new(wits_host, wits_model)?),
         wit_tx.clone(),
     ));
     psyche.register_typed_wit(Arc::new(WillWit::new(will, psyche.voice())));
@@ -105,14 +112,22 @@ pub fn ollama_psyche(host: &str, model: &str) -> anyhow::Result<Psyche> {
         wit_tx.clone(),
     )));
     psyche.register_typed_wit(Arc::new(HeartWit::new(
-        Box::new(OllamaProvider::new(host, model)?),
+        Box::new(OllamaProvider::new(wits_host, wits_model)?),
         Arc::new(LoggingMotor),
     )));
     psyche.register_typed_wit(Arc::new(FondDuCoeurWit::new(FondDuCoeur::with_debug(
-        Box::new(OllamaProvider::new(host, model)?),
+        Box::new(OllamaProvider::new(wits_host, wits_model)?),
         wit_tx.clone(),
     ))));
     psyche.set_turn_limit(usize::MAX);
-    info!(%host, %model, "created ollama psyche");
+    info!(
+        %chatter_host,
+        %chatter_model,
+        %wits_host,
+        %wits_model,
+        %embeddings_host,
+        %embeddings_model,
+        "created ollama psyche"
+    );
     Ok(psyche)
 }
