@@ -76,26 +76,56 @@ impl dyn Memory {
 }
 
 /// Client for storing vectors in Qdrant.
-#[derive(Clone, Default)]
-pub struct QdrantClient;
+#[derive(Clone)]
+pub struct QdrantClient {
+    pub url: String,
+}
+
+impl Default for QdrantClient {
+    fn default() -> Self {
+        Self {
+            url: "http://localhost:6333".into(),
+        }
+    }
+}
 
 impl QdrantClient {
+    pub fn new(url: String) -> Self {
+        Self { url }
+    }
     /// Store `vector` associated with `headline`.
     pub async fn store_vector(&self, headline: &str, vector: &[f32]) -> Result<()> {
-        info!(target: "qdrant", ?headline, len = vector.len(), "stored vector");
+        info!(target: "qdrant", ?headline, len = vector.len(), url = %self.url, "stored vector");
         Ok(())
     }
 }
 
 /// Client for persisting raw data in Neo4j.
-#[derive(Clone, Default)]
-pub struct Neo4jClient;
+#[derive(Clone)]
+pub struct Neo4jClient {
+    pub uri: String,
+    pub user: String,
+    pub pass: String,
+}
+
+impl Default for Neo4jClient {
+    fn default() -> Self {
+        Self {
+            uri: "bolt://localhost:7687".into(),
+            user: "neo4j".into(),
+            pass: "password".into(),
+        }
+    }
+}
 
 impl Neo4jClient {
+    pub fn new(uri: String, user: String, pass: String) -> Self {
+        Self { uri, user, pass }
+    }
     /// Store `data` in the graph database.
     pub async fn store_data(&self, data: &Value) -> Result<()> {
         let json = serde_json::to_string(data)?;
-        info!(target: "neo4j", %json, "stored data");
+        info!(target: "neo4j", %json, uri = %self.uri, user = %self.user, "stored data");
         Ok(())
     }
 }

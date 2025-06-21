@@ -48,10 +48,14 @@ struct Cli {
     #[arg(long, env = "EMBEDDINGS_MODEL", default_value = "mistral")]
     embeddings_model: String,
     /// URL of the Coqui TTS server
-    #[arg(long, default_value = "http://localhost:5002/api/tts")]
+    #[arg(
+        long,
+        env = "COQUI_URL",
+        default_value = "http://localhost:5002/api/tts"
+    )]
     tts_url: String,
     /// Optional speaker ID for the TTS voice
-    #[arg(long)]
+    #[arg(long, env = "SPEAKER")]
     tts_speaker_id: Option<String>,
     /// Optional language ID for the TTS voice
     #[arg(long)]
@@ -65,6 +69,18 @@ struct Cli {
     /// Allow the voice to speak every N seconds automatically
     #[arg(long)]
     auto_voice: Option<u64>,
+    /// URL of the Qdrant service
+    #[arg(long, env = "QDRANT_URL", default_value = "http://localhost:6333")]
+    qdrant_url: String,
+    /// Neo4j bolt URI
+    #[arg(long, env = "NEO4J_URI", default_value = "bolt://localhost:7687")]
+    neo4j_uri: String,
+    /// Neo4j username
+    #[arg(long, env = "NEO4J_USER", default_value = "neo4j")]
+    neo4j_user: String,
+    /// Neo4j password
+    #[arg(long, env = "NEO4J_PASS", default_value = "password")]
+    neo4j_pass: String,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -83,6 +99,10 @@ async fn main() -> anyhow::Result<()> {
         &cli.wits_model,
         &cli.embeddings_host,
         &cli.embeddings_model,
+        &cli.qdrant_url,
+        &cli.neo4j_uri,
+        &cli.neo4j_user,
+        &cli.neo4j_pass,
     )?;
     let speaking = Arc::new(AtomicBool::new(false));
     let connections = Arc::new(AtomicUsize::new(0));
