@@ -18,7 +18,7 @@ use tower_http::services::ServeDir;
 use tracing::{debug, error, info};
 
 use crate::EventBus;
-use psyche::{Ear, Event, ImageData, Sensor, ling::Role};
+use psyche::{Ear, Event, ImageData, Sensor, WitReport, ling::Role};
 
 /// State shared across HTTP handlers and WebSocket tasks.
 #[derive(Clone)]
@@ -60,7 +60,7 @@ enum WsResponse {
     #[serde(rename = "emote")]
     Emote(String),
     #[serde(rename = "think")]
-    Think(String),
+    Think(WitReport),
     #[serde(rename = "heard")]
     Heard(String),
 }
@@ -179,7 +179,7 @@ async fn handle_wit_socket(mut socket: WebSocket, state: AppState) {
     info!("wit websocket connected");
     let mut rx = state.bus.subscribe_wits();
     while let Ok(report) = rx.recv().await {
-        let msg = serde_json::to_string(&WsResponse::Think(report.output.clone())).unwrap();
+        let msg = serde_json::to_string(&WsResponse::Think(report.clone())).unwrap();
         if socket.send(WsMessage::Text(msg.into())).await.is_err() {
             break;
         }

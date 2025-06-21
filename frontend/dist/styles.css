@@ -169,6 +169,19 @@ body {
 
 }
 
+/* Debug tabs for wit reports */
+#thought-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.wit-report {
+    font-size: 0.75rem;
+    color: black;
+    text-align: left;
+}
+
 .spoken-words {
     white-space: pre-wrap;
     position: relative;

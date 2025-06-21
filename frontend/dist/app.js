@@ -5,10 +5,11 @@
   const mien = document.getElementById("mien");
   const words = document.getElementById("words");
   const thought = document.getElementById("thought");
-  const thoughtText = document.getElementById("thought-text");
+  const thoughtTabs = document.getElementById("thought-tabs");
   const thoughtImage = document.getElementById("thought-image");
   const player = document.getElementById("audio-player");
   const audioQueue = [];
+  const witOutputs = {};
   let playing = false;
 
   function enqueueAudio(item) {
@@ -63,14 +64,22 @@
           enqueueAudio({ audio: m.data.audio || null, text: m.data.words });
           break;
         case "Think":
-        case "think":
-          thoughtText.textContent = m.data;
-          if (m.data && m.data.trim() !== "") {
-            thought.style.display = "flex";
+        case "think": {
+          if (typeof m.data === "object" && m.data !== null) {
+            witOutputs[m.data.name] = m.data.output;
           } else {
-            thought.style.display = "none";
+            witOutputs["unknown"] = m.data;
           }
+          thoughtTabs.innerHTML = "";
+          Object.entries(witOutputs).forEach(([name, output]) => {
+            const div = document.createElement("div");
+            div.className = "wit-report";
+            div.textContent = `${name}: ${output}`;
+            thoughtTabs.appendChild(div);
+          });
+          thought.style.display = Object.keys(witOutputs).length ? "flex" : "none";
           break;
+        }
         case "Heard":
         case "heard":
           // ignore for now
