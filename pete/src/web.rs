@@ -28,6 +28,7 @@ pub struct AppState {
     pub eye: Arc<dyn Sensor<ImageData>>,
     pub conversation: Arc<tokio::sync::Mutex<psyche::Conversation>>,
     pub connections: Arc<AtomicUsize>,
+    pub system_prompt: Arc<tokio::sync::Mutex<String>>,
     pub psyche_debug: psyche::DebugHandle,
 }
 
@@ -194,22 +195,23 @@ async fn handle_wit_socket(mut socket: WebSocket, state: AppState) {
 
 pub async fn conversation_log(State(state): State<AppState>) -> impl IntoResponse {
     let conv = state.conversation.lock().await;
+    let prompt = state.system_prompt.lock().await.clone();
     #[derive(Serialize)]
     struct Entry {
         role: String,
         content: String,
     }
-    let entries: Vec<Entry> = conv
-        .all()
-        .iter()
-        .map(|m| Entry {
-            role: match m.role {
-                Role::User => "user".to_string(),
-                Role::Assistant => "assistant".to_string(),
-            },
-            content: m.content.clone(),
-        })
-        .collect();
+    let mut entries = vec![Entry {
+        role: "system".to_string(),
+        content: prompt,
+    }];
+    entries.extend(conv.all().iter().map(|m| Entry {
+        role: match m.role {
+            Role::User => "user".to_string(),
+            Role::Assistant => "assistant".to_string(),
+        },
+        content: m.content.clone(),
+    }));
     axum::Json(entries)
 }
 
