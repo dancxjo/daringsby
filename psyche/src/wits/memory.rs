@@ -1,5 +1,5 @@
-use crate::Impression;
 use crate::ling::Vectorizer;
+use crate::{Impression, Stimulus};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Serialize;
@@ -28,13 +28,21 @@ impl dyn Memory {
         &self,
         impression: &Impression<T>,
     ) -> Result<()> {
-        let raw = serde_json::to_value(&impression.raw_data)?;
+        let stimuli: Vec<Stimulus<Value>> = impression
+            .stimuli
+            .iter()
+            .map(|s| {
+                Ok(Stimulus {
+                    what: serde_json::to_value(&s.what)?,
+                    timestamp: s.timestamp,
+                })
+            })
+            .collect::<Result<_, serde_json::Error>>()?;
         let erased = Impression {
-            id: impression.id,
+            stimuli,
+            summary: impression.summary.clone(),
+            emoji: impression.emoji.clone(),
             timestamp: impression.timestamp,
-            headline: impression.headline.clone(),
-            details: impression.details.clone(),
-            raw_data: raw,
         };
         self.store(&erased).await
     }
@@ -46,13 +54,21 @@ impl dyn Memory {
     ) -> Result<()> {
         let mut erased = Vec::with_capacity(impressions.len());
         for imp in impressions {
-            let raw = serde_json::to_value(&imp.raw_data)?;
+            let stimuli: Vec<Stimulus<Value>> = imp
+                .stimuli
+                .iter()
+                .map(|s| {
+                    Ok(Stimulus {
+                        what: serde_json::to_value(&s.what)?,
+                        timestamp: s.timestamp,
+                    })
+                })
+                .collect::<Result<_, serde_json::Error>>()?;
             erased.push(Impression {
-                id: imp.id,
+                stimuli,
+                summary: imp.summary.clone(),
+                emoji: imp.emoji.clone(),
                 timestamp: imp.timestamp,
-                headline: imp.headline.clone(),
-                details: imp.details.clone(),
-                raw_data: raw,
             });
         }
         self.store_all(&erased).await
@@ -109,11 +125,13 @@ pub struct BasicMemory {
 #[async_trait]
 impl Memory for BasicMemory {
     async fn store(&self, impression: &Impression<Value>) -> Result<()> {
-        let vector = self.vectorizer.vectorize(&impression.headline).await?;
+        let vector = self.vectorizer.vectorize(&impression.summary).await?;
         self.qdrant
-            .store_vector(&impression.headline, &vector)
+            .store_vector(&impression.summary, &vector)
             .await?;
-        self.neo4j.store_data(&impression.raw_data).await?;
+        if let Some(stim) = impression.stimuli.first() {
+            self.neo4j.store_data(&stim.what).await?;
+        }
         Ok(())
     }
 }

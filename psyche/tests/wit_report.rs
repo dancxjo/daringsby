@@ -1,9 +1,7 @@
 use async_trait::async_trait;
-use chrono::Utc;
 use psyche::ling::{Doer, Instruction};
-use psyche::{Impression, Summarizer, Will, WitReport};
+use psyche::{Impression, Stimulus, Summarizer, Will, WitReport};
 use tokio::sync::broadcast;
-use uuid::Uuid;
 
 #[derive(Clone)]
 struct Dummy;
@@ -21,25 +19,21 @@ async fn will_sends_report() {
     let will = Will::with_debug(Box::new(Dummy), tx.clone());
     // no report when disabled
     let _ = will
-        .digest(&[Impression {
-            id: Uuid::new_v4(),
-            timestamp: Utc::now(),
-            headline: "".into(),
-            details: None,
-            raw_data: "go".to_string(),
-        }])
+        .digest(&[Impression::new(
+            vec![Stimulus::new("go".to_string())],
+            "",
+            None::<String>,
+        )])
         .await
         .unwrap();
     assert!(rx.try_recv().is_err());
     psyche::enable_debug("Will").await;
     let _ = will
-        .digest(&[Impression {
-            id: Uuid::new_v4(),
-            timestamp: Utc::now(),
-            headline: "".into(),
-            details: None,
-            raw_data: "go".to_string(),
-        }])
+        .digest(&[Impression::new(
+            vec![Stimulus::new("go".to_string())],
+            "",
+            None::<String>,
+        )])
         .await
         .unwrap();
     let report = rx.recv().await.unwrap();

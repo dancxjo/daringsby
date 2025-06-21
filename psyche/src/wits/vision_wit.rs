@@ -1,8 +1,8 @@
 use crate::ImageData;
-use crate::Impression;
 use crate::ling::{Doer, Instruction};
 use crate::traits::observer::SensationObserver;
 use crate::traits::wit::Wit;
+use crate::{Impression, Stimulus};
 use async_trait::async_trait;
 use lingproc::ImageData as LImageData;
 use std::sync::{Arc, Mutex};
@@ -79,7 +79,11 @@ impl Wit<ImageData, ImageData> for VisionWit {
                 });
             }
         }
-        vec![Impression::new(how, None::<String>, img)]
+        vec![Impression::new(
+            vec![Stimulus::new(img)],
+            how,
+            None::<String>,
+        )]
     }
 
     fn debug_label(&self) -> &'static str {

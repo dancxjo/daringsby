@@ -1,8 +1,6 @@
 use async_trait::async_trait;
-use chrono::Utc;
 use psyche::ling::{Doer, Instruction};
-use psyche::{Impression, Summarizer, Will};
-use uuid::Uuid;
+use psyche::{Impression, Stimulus, Summarizer, Will};
 
 #[derive(Clone)]
 struct Dummy;
@@ -18,15 +16,13 @@ impl Doer for Dummy {
 async fn returns_decision_impression() {
     let will = Will::new(Box::new(Dummy));
     let imp = will
-        .digest(&[Impression {
-            id: Uuid::new_v4(),
-            timestamp: Utc::now(),
-            headline: "".into(),
-            details: None,
-            raw_data: "now".to_string(),
-        }])
+        .digest(&[Impression::new(
+            vec![Stimulus::new("now".to_string())],
+            "",
+            None::<String>,
+        )])
         .await
         .unwrap();
-    assert_eq!(imp.raw_data, "Do it");
-    assert_eq!(imp.headline, "Do it");
+    assert_eq!(imp.stimuli[0].what, "Do it");
+    assert_eq!(imp.summary, "Do it");
 }

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use psyche::wit::Summarizer;
-use psyche::{Impression, Prehension, Wit};
+use psyche::{Impression, Prehension, Stimulus, Wit};
 
 #[derive(Default)]
 struct MoodSummarizer;
@@ -10,7 +10,7 @@ impl Summarizer<String, String> for MoodSummarizer {
     async fn digest(&self, inputs: &[Impression<String>]) -> anyhow::Result<Impression<String>> {
         let joined = inputs
             .iter()
-            .map(|i| i.raw_data.as_str())
+            .flat_map(|i| i.stimuli.iter().map(|s| s.what.as_str()))
             .collect::<Vec<_>>()
             .join(" ");
         let summary = if joined.contains("smiling")
@@ -21,7 +21,11 @@ impl Summarizer<String, String> for MoodSummarizer {
         } else {
             joined.clone()
         };
-        Ok(Impression::new(summary.clone(), Some(joined), summary))
+        Ok(Impression::new(
+            vec![Stimulus::new(summary.clone())],
+            summary,
+            Some(joined),
+        ))
     }
 }
 
@@ -29,24 +33,24 @@ impl Summarizer<String, String> for MoodSummarizer {
 async fn prehension_summarizes_buffer() {
     let wit = Prehension::new(MoodSummarizer::default());
     wit.observe(Impression::new(
+        vec![Stimulus::new("I see a man smiling".to_string())],
         "",
         None::<String>,
-        "I see a man smiling".to_string(),
     ))
     .await;
     wit.observe(Impression::new(
+        vec![Stimulus::new("I recognize Travis's face".to_string())],
         "",
         None::<String>,
-        "I recognize Travis's face".to_string(),
     ))
     .await;
     wit.observe(Impression::new(
+        vec![Stimulus::new("I see a man frowning".to_string())],
         "",
         None::<String>,
-        "I see a man frowning".to_string(),
     ))
     .await;
     let result = wit.tick().await;
     assert_eq!(result.len(), 1);
-    assert_eq!(result[0].headline, "Travis suddenly becomes sad");
+    assert_eq!(result[0].summary, "Travis suddenly becomes sad");
 }

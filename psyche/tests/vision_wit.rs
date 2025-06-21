@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use psyche::ling::{Doer, Instruction};
-use psyche::{ImageData, Impression, VisionWit, Wit};
+use psyche::{ImageData, Impression, Stimulus, VisionWit, Wit};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -24,6 +24,6 @@ async fn captions_image() {
     let out = wit.tick().await;
     assert_eq!(out.len(), 1);
     let imp = &out[0];
-    assert!(imp.headline.starts_with("I "));
-    assert_eq!(imp.raw_data.mime, "image/png");
+    assert!(imp.summary.starts_with("I "));
+    assert_eq!(imp.stimuli[0].what.mime, "image/png");
 }

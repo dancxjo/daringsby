@@ -518,7 +518,7 @@ impl Psyche {
                     }
                     info!(%name, "Ticked wit");
                     for impression in &imps {
-                        info!(headline = ?impression.headline, "Wit emitted impression");
+                        info!(summary = ?impression.summary, "Wit emitted impression");
                     }
                     imps
                 }));
@@ -531,9 +531,11 @@ impl Psyche {
             }
             if !imps.is_empty() {
                 for imp in &imps {
-                    if let serde_json::Value::String(s) = &imp.raw_data {
-                        if let Some(p) = extract_tag(s, "take_turn") {
-                            *pending_turn.lock().await = Some(p);
+                    for stim in &imp.stimuli {
+                        if let serde_json::Value::String(s) = &stim.what {
+                            if let Some(p) = extract_tag(s, "take_turn") {
+                                *pending_turn.lock().await = Some(p);
+                            }
                         }
                     }
                 }

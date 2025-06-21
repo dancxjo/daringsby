@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use psyche::ling::{Doer, Instruction};
 use psyche::wits::HeartWit;
-use psyche::{Impression, Motor, Wit};
+use psyche::{Impression, Motor, Stimulus, Wit};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -31,8 +31,12 @@ impl Motor for RecordingMotor {
 async fn updates_emotion_on_tick() {
     let motor = Arc::new(RecordingMotor::default());
     let wit = HeartWit::new(Box::new(DummyLLM), motor.clone());
-    wit.observe(Impression::new("", None::<String>, "test".to_string()))
-        .await;
+    wit.observe(Impression::new(
+        vec![Stimulus::new("test".to_string())],
+        "",
+        None::<String>,
+    ))
+    .await;
     let out = wit.tick().await;
     assert_eq!(out.len(), 1);
     let emos = motor.0.lock().unwrap().clone();

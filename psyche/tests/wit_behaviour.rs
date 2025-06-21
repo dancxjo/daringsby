@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::{Impression, Summarizer};
+use psyche::{Impression, Stimulus, Summarizer};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -9,9 +9,9 @@ struct DummyWit;
 impl Summarizer<String, String> for DummyWit {
     async fn digest(&self, _inputs: &[Impression<String>]) -> anyhow::Result<Impression<String>> {
         Ok(Impression::new(
+            vec![Stimulus::new("raw-dummy-data".to_string())],
             "Dummy headline",
             Some("This is a dummy impression."),
-            "raw-dummy-data".to_string(),
         ))
     }
 }
@@ -20,12 +20,9 @@ impl Summarizer<String, String> for DummyWit {
 async fn wit_should_generate_impression() {
     let wit = DummyWit;
     let result = wit.digest(&[]).await.unwrap();
-    assert_eq!(result.headline, "Dummy headline");
-    assert_eq!(
-        result.details.as_deref(),
-        Some("This is a dummy impression.")
-    );
-    assert_eq!(result.raw_data, "raw-dummy-data");
+    assert_eq!(result.summary, "Dummy headline");
+    assert_eq!(result.emoji.as_deref(), Some("This is a dummy impression."));
+    assert_eq!(result.stimuli[0].what, "raw-dummy-data");
 }
 
 #[tokio::test]
@@ -40,9 +37,9 @@ async fn multiple_wits_should_independently_generate_impressions() {
             _inputs: &[Impression<String>],
         ) -> anyhow::Result<Impression<String>> {
             Ok(Impression::new(
+                vec![Stimulus::new("another-raw".to_string())],
                 "Another headline",
                 Some("Another impression."),
-                "another-raw".to_string(),
             ))
         }
     }
@@ -52,6 +49,6 @@ async fn multiple_wits_should_independently_generate_impressions() {
 
     for wit in wits {
         let result = wit.digest(&[]).await.unwrap();
-        assert!(!result.headline.is_empty());
+        assert!(!result.summary.is_empty());
     }
 }

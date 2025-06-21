@@ -1,16 +1,14 @@
 use crate::motorcall::MotorRegistry;
 use crate::prompt::PromptBuilder;
 use crate::{
-    Impression, Summarizer,
+    Impression, Stimulus, Summarizer,
     ling::{Doer, Instruction},
 };
 use async_trait::async_trait;
-use chrono::Utc;
 use quick_xml::{Reader, events::Event};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use uuid::Uuid;
 
 /// Decide Pete's next action or speech using a language model.
 ///
@@ -21,7 +19,7 @@ use uuid::Uuid;
 ///
 /// # Example
 /// ```no_run
-/// # use psyche::{Will, ling::{Doer, Instruction}, Impression, Summarizer};
+/// # use psyche::{Will, ling::{Doer, Instruction}, Impression, Stimulus, Summarizer};
 /// # use async_trait::async_trait;
 /// # struct Dummy;
 /// # #[async_trait]
@@ -34,10 +32,14 @@ use uuid::Uuid;
 /// # async fn main() {
 /// let will = Will::new(Box::new(Dummy));
 /// let imp = will
-///     .digest(&[Impression::new("", None::<String>, "greet the user".to_string())])
+///     .digest(&[Impression::new(
+///         vec![Stimulus::new("greet the user".to_string())],
+///         "",
+///         None::<String>,
+///     )])
 ///     .await
 ///     .unwrap();
-/// assert_eq!(imp.raw_data, "Speak.");
+/// assert_eq!(imp.summary, "Speak.");
 /// # }
 /// ```
 #[derive(Clone)]
@@ -132,7 +134,8 @@ impl Summarizer<String, String> for Will {
     async fn digest(&self, inputs: &[Impression<String>]) -> anyhow::Result<Impression<String>> {
         let input = inputs
             .last()
-            .map(|i| i.raw_data.clone())
+            .and_then(|i| i.stimuli.last())
+            .map(|s| s.what.clone())
             .unwrap_or_default();
         let instruction = Instruction {
             command: self.prompt.build(&input),
@@ -149,12 +152,10 @@ impl Summarizer<String, String> for Will {
                 });
             }
         }
-        Ok(Impression {
-            id: Uuid::new_v4(),
-            timestamp: Utc::now(),
-            headline: decision.clone(),
-            details: None,
-            raw_data: decision,
-        })
+        Ok(Impression::new(
+            vec![Stimulus::new(decision.clone())],
+            decision,
+            None::<String>,
+        ))
     }
 }

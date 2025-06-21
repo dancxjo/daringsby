@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use psyche::ling::{ChatStream, Chatter, Doer, Instruction, Message};
 use psyche::{
-    Impression, Voice, Wit,
+    Impression, Stimulus, Voice, Wit,
     wits::{Will, WillWit},
 };
 use std::sync::Arc;
@@ -52,17 +52,29 @@ async fn emits_take_turn_every_third_tick() {
     let wit = WillWit::new(will, voice.clone());
 
     for _ in 0..2 {
-        wit.observe(Impression::new("", None::<String>, "hi".into()))
-            .await;
+        wit.observe(Impression::new(
+            vec![Stimulus::new("hi".to_string())],
+            "",
+            None::<String>,
+        ))
+        .await;
         let imps = wit.tick().await;
-        assert!(imps.iter().all(|i| !i.raw_data.contains("<take_turn>")));
+        assert!(
+            imps.iter()
+                .all(|i| !i.stimuli[0].what.contains("<take_turn>"))
+        );
     }
 
-    wit.observe(Impression::new("", None::<String>, "hey".into()))
-        .await;
+    wit.observe(Impression::new(
+        vec![Stimulus::new("hey".to_string())],
+        "",
+        None::<String>,
+    ))
+    .await;
     let imps = wit.tick().await;
     assert!(imps.iter().any(|i| {
-        i.raw_data
+        i.stimuli[0]
+            .what
             .contains("<take_turn>share a brief update</take_turn>")
     }));
 }

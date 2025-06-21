@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use psyche::{
-    Impression, Wit, WitReport,
+    Impression, Stimulus, Wit,
     wits::{Memory, MemoryWit},
 };
 use serde_json::Value;
@@ -13,7 +13,7 @@ struct DummyMemory(Arc<Mutex<Vec<String>>>);
 #[async_trait]
 impl Memory for DummyMemory {
     async fn store(&self, impression: &Impression<Value>) -> anyhow::Result<()> {
-        self.0.lock().unwrap().push(impression.headline.clone());
+        self.0.lock().unwrap().push(impression.summary.clone());
         Ok(())
     }
 }
@@ -27,9 +27,9 @@ async fn summarizes_and_emits_report() {
 
     for i in 0..5 {
         wit.observe(Impression::new(
+            vec![Stimulus::new(format!("d{i}"))],
             format!("h{i}"),
             None::<String>,
-            format!("d{i}"),
         ))
         .await;
     }
@@ -39,6 +39,6 @@ async fn summarizes_and_emits_report() {
     assert_eq!(report.name, "Memory");
     assert!(report.output.contains("h0"));
     assert_eq!(out.len(), 1);
-    assert!(out[0].raw_data.summary.contains("h1"));
+    assert!(out[0].stimuli[0].what.summary.contains("h1"));
     psyche::disable_debug("Memory").await;
 }

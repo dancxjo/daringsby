@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use psyche::ling::{ChatStream, Chatter, Doer, Instruction, Message, Vectorizer};
-use psyche::{Ear, Impression, Mouth, Psyche, Sensation, wit::Wit};
+use psyche::{Ear, Impression, Mouth, Psyche, Sensation, Stimulus, wit::Wit};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -68,9 +68,9 @@ impl Wit<(), String> for TakeTurnWit {
             Vec::new()
         } else {
             vec![Impression::new(
+                vec![Stimulus::new("<take_turn>hi</take_turn>".to_string())],
                 "turn",
                 None::<String>,
-                "<take_turn>hi</take_turn>".into(),
             )]
         }
     }
