@@ -48,11 +48,7 @@ pub fn dummy_psyche() -> Psyche {
         Arc::new(Dummy),
         wit_tx.clone(),
     )));
-    psyche.register_observing_wit(Arc::new(psyche::FaceWit::with_debug(
-        Arc::new(psyche::DummyDetector::default()),
-        psyche::QdrantClient::default(),
-        wit_tx,
-    )));
+    psyche.register_observing_wit(Arc::new(psyche::FaceMemoryWit::with_debug(wit_tx)));
     psyche.set_turn_limit(usize::MAX);
     info!("created dummy psyche");
     psyche
@@ -111,11 +107,7 @@ pub fn ollama_psyche(
         Arc::new(OllamaProvider::new(wits_host, wits_model)?),
         wit_tx.clone(),
     )));
-    psyche.register_observing_wit(Arc::new(psyche::FaceWit::with_debug(
-        Arc::new(psyche::DummyDetector::default()),
-        psyche::QdrantClient::new(qdrant_url.into()),
-        wit_tx.clone(),
-    )));
+    psyche.register_observing_wit(Arc::new(psyche::FaceMemoryWit::with_debug(wit_tx.clone())));
     psyche.register_typed_wit(Arc::new(CombobulatorWit::new(Combobulator::with_debug(
         Box::new(OllamaProvider::new(wits_host, wits_model)?),
         wit_tx.clone(),

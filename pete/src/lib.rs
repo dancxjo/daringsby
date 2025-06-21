@@ -19,6 +19,7 @@ pub use event_bus::EventBus;
 pub use logging::init_logging;
 pub use motor::LoggingMotor;
 pub use mouth::{ChannelMouth, NoopMouth};
+pub use psyche::FaceSensor;
 pub use psyche_factory::{dummy_psyche, ollama_psyche};
 pub use sensor::{eye::EyeSensor, geo::GeoSensor};
 pub use simulator::Simulator;
