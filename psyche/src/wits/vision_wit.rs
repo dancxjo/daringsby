@@ -17,6 +17,8 @@ pub struct VisionWit {
 }
 
 impl VisionWit {
+    /// Debug label for this Wit.
+    pub const LABEL: &'static str = "Vision";
     /// Create a new `VisionWit` using the provided [`Doer`].
     pub fn new(doer: Arc<dyn Doer>) -> Self {
         Self {
@@ -69,13 +71,19 @@ impl Wit<ImageData, ImageData> for VisionWit {
         };
         let how = caption.trim().to_string();
         if let Some(tx) = &self.tx {
-            let _ = tx.send(crate::WitReport {
-                name: "VisionWit".into(),
-                prompt: "image caption".into(),
-                output: how.clone(),
-            });
+            if crate::debug::debug_enabled(Self::LABEL).await {
+                let _ = tx.send(crate::WitReport {
+                    name: Self::LABEL.into(),
+                    prompt: "image caption".into(),
+                    output: how.clone(),
+                });
+            }
         }
         vec![Impression::new(how, None::<String>, img)]
+    }
+
+    fn debug_label(&self) -> &'static str {
+        Self::LABEL
     }
 }
 

@@ -23,6 +23,8 @@ pub struct MemoryWit {
 }
 
 impl MemoryWit {
+    /// Debug label for this Wit.
+    pub const LABEL: &'static str = "Memory";
     /// Create a new `MemoryWit` using `memory` as the storage backend.
     pub fn new(memory: Arc<dyn Memory>) -> Self {
         Self {
@@ -92,13 +94,19 @@ impl Wit<Impression<String>, Moment> for MemoryWit {
             error!(?e, "failed to store memory summary");
         }
         if let Some(tx) = &self.tx {
-            let _ = tx.send(crate::WitReport {
-                name: "Memory".into(),
-                prompt: "naive concat".into(),
-                output: summary.clone(),
-            });
+            if crate::debug::debug_enabled(Self::LABEL).await {
+                let _ = tx.send(crate::WitReport {
+                    name: Self::LABEL.into(),
+                    prompt: "naive concat".into(),
+                    output: summary.clone(),
+                });
+            }
         }
         debug!("memory summarized {} impressions", items.len());
         vec![impression]
+    }
+
+    fn debug_label(&self) -> &'static str {
+        Self::LABEL
     }
 }

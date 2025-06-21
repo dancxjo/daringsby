@@ -220,7 +220,11 @@ impl Psyche {
         crate::debug::DebugHandle {
             buffer: self.sensation_buffer.clone(),
             ticks: self.last_ticks.clone(),
-            wits: self.wits.iter().map(|w| w.name().to_string()).collect(),
+            wits: self
+                .wits
+                .iter()
+                .map(|w| w.debug_label().to_string())
+                .collect(),
         }
     }
 

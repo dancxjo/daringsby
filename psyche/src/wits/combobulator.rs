@@ -43,6 +43,8 @@ pub struct Combobulator {
 }
 
 impl Combobulator {
+    /// Debug label for this Wit.
+    pub const LABEL: &'static str = "Combobulator";
     /// Create a new `Combobulator` using the provided [`Doer`].
     pub fn new(doer: Box<dyn Doer>) -> Self {
         Self {
@@ -84,11 +86,13 @@ impl Summarizer<Episode, String> for Combobulator {
         let resp = self.doer.follow(instruction.clone()).await?;
         let summary = resp.trim().to_string();
         if let Some(tx) = &self.tx {
-            let _ = tx.send(crate::WitReport {
-                name: "Combobulator".into(),
-                prompt: instruction.command.clone(),
-                output: summary.clone(),
-            });
+            if crate::debug::debug_enabled(Self::LABEL).await {
+                let _ = tx.send(crate::WitReport {
+                    name: Self::LABEL.into(),
+                    prompt: instruction.command.clone(),
+                    output: summary.clone(),
+                });
+            }
         }
         Ok(Impression {
             id: Uuid::new_v4(),

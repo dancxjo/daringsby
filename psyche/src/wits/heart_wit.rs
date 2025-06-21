@@ -14,6 +14,8 @@ pub struct HeartWit {
 }
 
 impl HeartWit {
+    /// Debug label for this Wit.
+    pub const LABEL: &'static str = "Heart";
     /// Create a new `HeartWit` using the given LLM `doer` and host `motor`.
     pub fn new(doer: Box<dyn Doer>, motor: Arc<dyn Motor>) -> Self {
         Self {
@@ -56,5 +58,9 @@ impl Wit<Impression<String>, String> for HeartWit {
         let mood = resp.trim().to_string();
         self.motor.set_emotion(&mood).await;
         vec![Impression::new(mood.clone(), Some(summary), mood)]
+    }
+
+    fn debug_label(&self) -> &'static str {
+        Self::LABEL
     }
 }

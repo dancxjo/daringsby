@@ -1,9 +1,32 @@
 use chrono::{DateTime, Utc};
+use once_cell::sync::Lazy;
 use serde::Serialize;
-use std::{collections::HashMap, collections::VecDeque, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    sync::Arc,
+};
 use tokio::sync::Mutex;
 
 use crate::Sensation;
+
+/// Global filter controlling per-Wit debug output.
+pub static DEBUG_FILTER: Lazy<Arc<Mutex<HashSet<String>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashSet::new())));
+
+/// Check if debug output is enabled for `label`.
+pub async fn debug_enabled(label: &str) -> bool {
+    DEBUG_FILTER.lock().await.contains(label)
+}
+
+/// Enable debug output for `label`.
+pub async fn enable_debug(label: &str) {
+    DEBUG_FILTER.lock().await.insert(label.to_string());
+}
+
+/// Disable debug output for `label`.
+pub async fn disable_debug(label: &str) {
+    DEBUG_FILTER.lock().await.remove(label);
+}
 
 /// Snapshot of internal Psyche state for debugging.
 #[derive(Serialize)]

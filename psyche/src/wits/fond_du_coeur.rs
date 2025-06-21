@@ -18,6 +18,8 @@ pub struct FondDuCoeur {
 }
 
 impl FondDuCoeur {
+    /// Debug label for this summarizer.
+    pub const LABEL: &'static str = "Story";
     /// Create a new `FondDuCoeur` using the provided [`Doer`].
     pub fn new(doer: Box<dyn Doer>) -> Self {
         Self {
@@ -60,11 +62,13 @@ impl Summarizer<Moment, String> for FondDuCoeur {
         let summary = resp.trim().to_string();
         *self.story.lock().unwrap() = summary.clone();
         if let Some(tx) = &self.tx {
-            let _ = tx.send(crate::WitReport {
-                name: "Story".into(),
-                prompt: instruction.command.clone(),
-                output: summary.clone(),
-            });
+            if crate::debug::debug_enabled(Self::LABEL).await {
+                let _ = tx.send(crate::WitReport {
+                    name: Self::LABEL.into(),
+                    prompt: instruction.command.clone(),
+                    output: summary.clone(),
+                });
+            }
         }
         Ok(Impression {
             id: Uuid::new_v4(),

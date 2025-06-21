@@ -23,6 +23,11 @@ pub trait Wit<Input, Output>: Send + Sync {
     fn name(&self) -> &'static str {
         std::any::type_name::<Self>()
     }
+
+    /// Short static label used for debug filters.
+    fn debug_label(&self) -> &'static str {
+        self.name()
+    }
 }
 
 /// Type-erased wrapper enabling heterogeneous [`Wit`]s to be stored together.
@@ -33,6 +38,9 @@ pub trait ErasedWit: Send + Sync {
 
     /// Name of this [`Wit`]. Used for debugging.
     fn name(&self) -> &'static str;
+
+    /// Debug label of this [`Wit`].
+    fn debug_label(&self) -> &'static str;
 }
 
 /// Adapter allowing any [`Wit`] to be used as an [`ErasedWit`].
@@ -73,6 +81,10 @@ where
 
     fn name(&self) -> &'static str {
         self.inner.name()
+    }
+
+    fn debug_label(&self) -> &'static str {
+        self.inner.debug_label()
     }
 }
 

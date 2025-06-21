@@ -13,6 +13,8 @@ pub struct CombobulatorWit {
 }
 
 impl CombobulatorWit {
+    /// Debug label for this Wit.
+    pub const LABEL: &'static str = "CombobulatorWit";
     /// Create a new `CombobulatorWit` using the given summarizer.
     pub fn new(combobulator: Combobulator) -> Self {
         Self {
@@ -42,5 +44,9 @@ impl Wit<Impression<Episode>, String> for CombobulatorWit {
             Ok(i) => vec![i],
             Err(_) => Vec::new(),
         }
+    }
+
+    fn debug_label(&self) -> &'static str {
+        Self::LABEL
     }
 }

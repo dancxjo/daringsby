@@ -49,6 +49,8 @@ pub struct Will {
 }
 
 impl Will {
+    /// Debug label for this summarizer.
+    pub const LABEL: &'static str = "Will";
     /// Create a new `Will` using the provided [`Doer`].
     pub fn new(doer: Box<dyn Doer>) -> Self {
         Self {
@@ -139,11 +141,13 @@ impl Summarizer<String, String> for Will {
         let resp = self.doer.follow(instruction.clone()).await?;
         let decision = resp.trim().to_string();
         if let Some(tx) = &self.tx {
-            let _ = tx.send(crate::WitReport {
-                name: "Will".into(),
-                prompt: instruction.command.clone(),
-                output: decision.clone(),
-            });
+            if crate::debug::debug_enabled(Self::LABEL).await {
+                let _ = tx.send(crate::WitReport {
+                    name: Self::LABEL.into(),
+                    prompt: instruction.command.clone(),
+                    output: decision.clone(),
+                });
+            }
         }
         Ok(Impression {
             id: Uuid::new_v4(),

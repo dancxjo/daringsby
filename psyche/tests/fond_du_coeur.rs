@@ -18,6 +18,7 @@ impl Doer for Dummy {
 #[tokio::test]
 async fn summarizes_moments_into_story() {
     let (tx, mut rx) = broadcast::channel(8);
+    psyche::enable_debug("Story").await;
     let summarizer = FondDuCoeur::with_debug(Box::new(Dummy), tx);
     let wit = FondDuCoeurWit::new(summarizer.clone());
     wit.observe(Impression::new(
@@ -44,4 +45,5 @@ async fn summarizes_moments_into_story() {
     .await;
     let _ = wit.tick().await;
     assert!(summarizer.story().contains("story:"));
+    psyche::disable_debug("Story").await;
 }

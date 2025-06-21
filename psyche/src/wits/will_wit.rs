@@ -17,6 +17,8 @@ pub struct WillWit {
 }
 
 impl WillWit {
+    /// Debug label for this Wit.
+    pub const LABEL: &'static str = "WillWit";
     /// Create a new `WillWit` using `will` to decide actions and allowing
     /// `voice` to speak.
     pub fn new(will: Arc<Will>, voice: Arc<Voice>) -> Self {
@@ -65,5 +67,9 @@ impl Wit<Impression<String>, String> for WillWit {
 
         self.will.command_voice_to_speak(&self.voice, None);
         vec![decision]
+    }
+
+    fn debug_label(&self) -> &'static str {
+        Self::LABEL
     }
 }

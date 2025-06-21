@@ -13,6 +13,8 @@ pub struct FondDuCoeurWit {
 }
 
 impl FondDuCoeurWit {
+    /// Debug label for this Wit.
+    pub const LABEL: &'static str = "FondDuCoeurWit";
     /// Create a new `FondDuCoeurWit` using the given summarizer.
     pub fn new(summarizer: FondDuCoeur) -> Self {
         Self {
@@ -42,5 +44,9 @@ impl Wit<Impression<Moment>, String> for FondDuCoeurWit {
             Ok(i) => vec![i],
             Err(_) => Vec::new(),
         }
+    }
+
+    fn debug_label(&self) -> &'static str {
+        Self::LABEL
     }
 }

@@ -5,6 +5,7 @@ use tokio::time::Duration;
 #[tokio::test]
 async fn vision_wit_receives_images() {
     let mut psyche = dummy_psyche();
+    psyche::enable_debug("Vision").await;
     let mut reports = psyche.wit_reports();
     let tx = psyche.input_sender();
     let handle = tokio::spawn(async move { psyche.run().await });
@@ -18,7 +19,7 @@ async fn vision_wit_receives_images() {
     let mut got = false;
     for _ in 0..5 {
         if let Ok(Ok(r)) = tokio::time::timeout(Duration::from_millis(50), reports.recv()).await {
-            if r.name == "VisionWit" {
+            if r.name == "Vision" {
                 got = true;
                 break;
             }
@@ -27,5 +28,6 @@ async fn vision_wit_receives_images() {
 
     handle.abort();
     let _ = handle.await;
+    psyche::disable_debug("Vision").await;
     assert!(got);
 }
