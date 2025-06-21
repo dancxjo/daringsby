@@ -14,6 +14,7 @@ pub struct Voice {
     ready: Arc<Mutex<bool>>,
     extra_prompt: Arc<Mutex<Option<String>>>,
     will: Arc<Mutex<Option<Arc<crate::wits::Will>>>>,
+    prompt: Arc<Mutex<Box<dyn crate::prompt::PromptBuilder + Send + Sync>>>,
 }
 
 impl Clone for Voice {
@@ -25,6 +26,7 @@ impl Clone for Voice {
             ready: self.ready.clone(),
             extra_prompt: self.extra_prompt.clone(),
             will: self.will.clone(),
+            prompt: self.prompt.clone(),
         }
     }
 }
@@ -42,6 +44,8 @@ impl Voice {
             ready: Arc::new(Mutex::new(true)),
             extra_prompt: Arc::new(Mutex::new(None)),
             will: Arc::new(Mutex::new(None)),
+            prompt: Arc::new(Mutex::new(Box::new(crate::prompt::VoicePrompt)
+                as Box<dyn crate::prompt::PromptBuilder + Send + Sync>)),
         }
     }
 
@@ -51,6 +55,13 @@ impl Voice {
 
     pub fn set_will(&self, will: Arc<crate::wits::Will>) {
         *self.will.lock().unwrap() = Some(will);
+    }
+
+    pub fn set_prompt<P>(&self, prompt: P)
+    where
+        P: crate::prompt::PromptBuilder + Send + Sync + 'static,
+    {
+        *self.prompt.lock().unwrap() = Box::new(prompt);
     }
 
     pub fn permit(&self, prompt: Option<String>) {
@@ -84,10 +95,11 @@ impl Voice {
         }
         info!("voice permitted, generating speech");
         let extra = self.extra_prompt.lock().unwrap().take();
+        let base = { self.prompt.lock().unwrap().build(system_prompt) };
         let prompt = if let Some(extra) = extra {
-            format!("{}\n{}", system_prompt, extra)
+            format!("{}\n{}", base, extra)
         } else {
-            system_prompt.to_string()
+            base
         };
         if let Ok(mut stream) = self.chatter.chat(&prompt, history).await {
             let mut buf = String::new();
