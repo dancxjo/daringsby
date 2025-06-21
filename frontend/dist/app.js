@@ -7,6 +7,7 @@
   const thought = document.getElementById("thought");
   const thoughtTabs = document.getElementById("thought-tabs");
   const thoughtImage = document.getElementById("thought-image");
+  const imageThumbnail = document.getElementById("image-thumbnail");
   const player = document.getElementById("audio-player");
   const audioQueue = [];
   const witOutputs = {};
@@ -131,6 +132,8 @@
         const data = canvas.toDataURL("image/jpeg");
         thoughtImage.src = data;
         thoughtImage.style.display = "block";
+        imageThumbnail.src = data;
+        imageThumbnail.style.display = "block";
         ws.send(JSON.stringify({ type: "See", data: data }));
       }, 1000);
     } catch (e) {
