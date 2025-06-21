@@ -32,7 +32,7 @@ pub struct AppState {
 }
 
 #[derive(Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[serde(tag = "type", rename_all = "PascalCase")]
 pub enum WsRequest {
     Text { data: String },
     Echo { data: String },
