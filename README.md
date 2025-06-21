@@ -162,6 +162,8 @@ The interface communicates over WebSocket at `ws://localhost:3000/ws` (or `wss:/
 Another WebSocket at `/debug` streams debugging information from the Wits.
 The `/debug/psyche` HTTP endpoint returns JSON with the sensation buffer length
 and last tick time for each registered Wit.
+Navigate to `/debug/wit/{label}` to view the latest prompt and response for a
+specific Wit in real time.
 Speech arrives as `say` messages:
 ```json
 { "type": "say", "data": { "words": "hi", "audio": "UklGRg==" } }

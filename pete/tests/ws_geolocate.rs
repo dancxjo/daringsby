@@ -12,12 +12,10 @@ use tokio::sync::mpsc;
 async fn websocket_forwards_geolocation() {
     let mut psyche = dummy_psyche();
     let conversation = psyche.conversation();
-    let voice = psyche.voice();
     let ear = Arc::new(ChannelEar::new(
         psyche.input_sender(),
-        conversation.clone(),
         Arc::new(AtomicBool::new(false)),
-        voice,
+        psyche.voice(),
     ));
     // capture sensations sent by geo sensor
     let (tx, mut rx) = mpsc::unbounded_channel();
