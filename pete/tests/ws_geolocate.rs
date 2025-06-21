@@ -1,15 +1,15 @@
 use axum::{Router, routing::get, serve};
-use futures::StreamExt;
+use futures::{SinkExt, StreamExt};
 use pete::{AppState, ChannelEar, EventBus, EyeSensor, GeoSensor, dummy_psyche, ws_handler};
-use psyche::Event;
-use psyche::Sensor;
+use psyche::{GeoLoc, Sensor};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize},
 };
+use tokio::sync::mpsc;
 
 #[tokio::test]
-async fn websocket_forwards_audio() {
+async fn websocket_forwards_geolocation() {
     let mut psyche = dummy_psyche();
     let conversation = psyche.conversation();
     let voice = psyche.voice();
@@ -19,8 +19,10 @@ async fn websocket_forwards_audio() {
         Arc::new(AtomicBool::new(false)),
         voice,
     ));
+    // capture sensations sent by geo sensor
+    let (tx, mut rx) = mpsc::unbounded_channel();
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
-    let geo = Arc::new(GeoSensor::new(psyche.input_sender()));
+    let geo = Arc::new(GeoSensor::new(tx));
     psyche.add_sense(eye.description());
     psyche.add_sense(geo.description());
     let (bus, _user_rx) = EventBus::new();
@@ -48,14 +50,24 @@ async fn websocket_forwards_audio() {
     let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{}/ws", addr))
         .await
         .unwrap();
-    bus.publish_event(Event::Speech {
-        text: "hi".into(),
-        audio: Some("UklGRg==".into()),
+    let msg = serde_json::json!({
+        "type": "Geolocate",
+        "data": { "longitude": 1.0, "latitude": 2.0 }
     });
-    let msg = socket.next().await.unwrap().unwrap();
-    let value: serde_json::Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
-    assert_eq!(value["type"], "say");
-    assert_eq!(value["data"]["audio"], "UklGRg==");
-    assert_eq!(value["data"]["words"], "hi");
+    socket
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            msg.to_string().into(),
+        ))
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let sensation = rx.try_recv().expect("no sensation received");
+    if let psyche::Sensation::Of(any) = sensation {
+        let loc = any.downcast_ref::<GeoLoc>().expect("wrong type");
+        assert_eq!(loc.longitude, 1.0);
+        assert_eq!(loc.latitude, 2.0);
+    } else {
+        panic!("unexpected sensation variant");
+    }
     server.abort();
 }

@@ -66,7 +66,7 @@ pub use prompt::{CombobulatorPrompt, PromptBuilder, VoicePrompt, WillPrompt};
 pub use psyche::DEFAULT_SYSTEM_PROMPT;
 pub use sensor::Sensor;
 pub use trim_mouth::TrimMouth;
-pub use types::ImageData;
+pub use types::{GeoLoc, ImageData};
 
 pub use ling::{Feeling, Ling};
 pub use psyche::{Conversation, Psyche};

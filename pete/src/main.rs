@@ -1,11 +1,11 @@
 use axum_server::tls_rustls::RustlsConfig;
 use clap::Parser;
-use pete::EyeSensor;
 use pete::{
     AppState, ChannelEar, ChannelMouth, app, init_logging, listen_user_input, ollama_psyche,
 };
 #[cfg(feature = "tts")]
 use pete::{CoquiTts, TtsMouth};
+use pete::{EyeSensor, GeoSensor};
 #[cfg(feature = "tts")]
 use psyche::PlainMouth;
 use psyche::{Mouth, Sensor, TrimMouth};
@@ -116,6 +116,8 @@ async fn main() -> anyhow::Result<()> {
     ));
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
     psyche.add_sense(eye.description());
+    let geo = Arc::new(GeoSensor::new(psyche.input_sender()));
+    psyche.add_sense(geo.description());
     tokio::spawn(listen_user_input(user_rx, ear.clone(), voice.clone()));
 
     if let Some(secs) = cli.auto_voice {
@@ -153,6 +155,7 @@ async fn main() -> anyhow::Result<()> {
         bus: bus.clone(),
         ear: ear.clone(),
         eye: eye.clone(),
+        geo: geo.clone(),
         conversation,
         connections,
         system_prompt: Arc::new(tokio::sync::Mutex::new(system_prompt)),

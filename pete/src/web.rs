@@ -18,7 +18,7 @@ use tower_http::services::ServeDir;
 use tracing::{debug, error, info};
 
 use crate::EventBus;
-use psyche::{Ear, Event, ImageData, Sensor, WitReport, ling::Role};
+use psyche::{Ear, Event, GeoLoc, ImageData, Sensor, WitReport, ling::Role};
 
 /// State shared across HTTP handlers and WebSocket tasks.
 #[derive(Clone)]
@@ -26,6 +26,7 @@ pub struct AppState {
     pub bus: Arc<EventBus>,
     pub ear: Arc<dyn Ear>,
     pub eye: Arc<dyn Sensor<ImageData>>,
+    pub geo: Arc<dyn Sensor<GeoLoc>>,
     pub conversation: Arc<tokio::sync::Mutex<psyche::Conversation>>,
     pub connections: Arc<AtomicUsize>,
     pub system_prompt: Arc<tokio::sync::Mutex<String>>,
@@ -41,12 +42,6 @@ pub enum WsRequest {
     Hear { data: String, at: Option<String> },
     Geolocate { data: GeoLoc, at: Option<String> },
     Sense { data: serde_json::Value },
-}
-
-#[derive(Deserialize)]
-pub struct GeoLoc {
-    pub longitude: f64,
-    pub latitude: f64,
 }
 
 #[derive(Serialize)]
@@ -151,8 +146,9 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                                 WsRequest::Hear { .. } => {
                                     debug!("audio fragment received");
                                 }
-                                WsRequest::Geolocate { .. } => {
+                                WsRequest::Geolocate { data, .. } => {
                                     debug!("geolocation received");
+                                    state.geo.sense(data).await;
                                 }
                                 WsRequest::Sense { .. } => {
                                     debug!("sense event received");
