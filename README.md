@@ -123,7 +123,11 @@ Run the web server with the built-in Ollama support:
 cargo run -p pete -- \
   --chatter-host http://localhost:11434 --chatter-model mistral \
   --wits-host http://localhost:11434 --wits-model mistral \
-  --embeddings-host http://localhost:11434 --embeddings-model mistral
+  --embeddings-host http://localhost:11434 --embeddings-model mistral \
+  --qdrant-url http://localhost:6333 \
+  --neo4j-uri bolt://localhost:7687 \
+  --neo4j-user neo4j \
+  --neo4j-pass password
 
 To enable audio output via Coqui TTS, build with the optional `tts` feature and
 provide the TTS server URL and optional voice parameters:
@@ -133,6 +137,10 @@ cargo run -p pete --features tts -- \
   --chatter-host http://localhost:11434 --chatter-model mistral \
   --wits-host http://localhost:11434 --wits-model mistral \
   --embeddings-host http://localhost:11434 --embeddings-model mistral \
+  --qdrant-url http://localhost:6333 \
+  --neo4j-uri bolt://localhost:7687 \
+  --neo4j-user neo4j \
+  --neo4j-pass password \
   --tts-url http://localhost:5002/api/tts \
   --tts-speaker-id p376
 

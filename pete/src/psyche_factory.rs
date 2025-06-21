@@ -64,6 +64,10 @@ pub fn ollama_psyche(
     wits_model: &str,
     embeddings_host: &str,
     embeddings_model: &str,
+    qdrant_url: &str,
+    neo4j_uri: &str,
+    neo4j_user: &str,
+    neo4j_pass: &str,
 ) -> anyhow::Result<Psyche> {
     use crate::LoggingMotor;
     use psyche::ling::OllamaProvider;
@@ -81,8 +85,12 @@ pub fn ollama_psyche(
 
     let memory = Arc::new(BasicMemory {
         vectorizer: Arc::new(OllamaProvider::new(embeddings_host, embeddings_model)?),
-        qdrant: QdrantClient::default(),
-        neo4j: Arc::new(Neo4jClient::default()),
+        qdrant: QdrantClient::new(qdrant_url.into()),
+        neo4j: Arc::new(Neo4jClient::new(
+            neo4j_uri.into(),
+            neo4j_user.into(),
+            neo4j_pass.into(),
+        )),
     });
 
     let mut psyche = Psyche::new(
@@ -127,6 +135,8 @@ pub fn ollama_psyche(
         %wits_model,
         %embeddings_host,
         %embeddings_model,
+        %qdrant_url,
+        %neo4j_uri,
         "created ollama psyche"
     );
     Ok(psyche)
