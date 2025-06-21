@@ -20,7 +20,7 @@ pub use logging::init_logging;
 pub use motor::LoggingMotor;
 pub use mouth::{ChannelMouth, NoopMouth};
 pub use psyche_factory::{dummy_psyche, ollama_psyche};
-pub use sensor::eye::EyeSensor;
+pub use sensor::{eye::EyeSensor, geo::GeoSensor};
 pub use simulator::Simulator;
 #[cfg(feature = "tts")]
 pub use tts_mouth::{CoquiTts, Tts, TtsMouth, TtsStream};
