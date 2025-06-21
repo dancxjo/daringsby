@@ -114,6 +114,10 @@ body {
     color: white;
 }
 
+.thought {
+    color: black;
+}
+
 .thought-bubble {
     display: flex;
     background-color: #fff;
