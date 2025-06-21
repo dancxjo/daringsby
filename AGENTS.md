@@ -33,7 +33,7 @@ This repository is a Rust workspace.
 * Skip sending `Event::StreamChunk` when the chunk is empty or whitespace.
 * Build prompts using dedicated structs like `WillPrompt`.
 * `ChannelMouth` emits `Event::Speech` per parsed sentence without audio.
-* `Conversation::add_*` merges consecutive same-role messages.
+* `Conversation::add_*` merges consecutive same-role messages, inserting a space and trimming.
 * Use the `Motor` trait for host actions. Implementations live in `pete`.
 
 ## Frontend
@@ -61,6 +61,7 @@ The previous Deno-based client has been removed. Update the files in
 * Expose WebSocket chat at `/ws`, forwarding all `Psyche` events.
 * Debug information from Wits streams via `/debug`.
 * SSE endpoints like `/chat` are deprecated; use WebSocket only.
+* Text messages no longer trigger `Heard` responses.
 
 ## Audio / TTS
 

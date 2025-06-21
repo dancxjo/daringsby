@@ -170,7 +170,7 @@ Emotion updates arrive via `Emote` messages containing an emoji string:
 ```json
 { "type": "Emote", "data": "😐" }
 ```
-Debug thoughts are sent as `Think` messages and user utterances are echoed back as `Heard` messages. Connection status is shown in the sidebar.
+Debug thoughts are sent as `Think` messages. Connection status is shown in the sidebar.
 
 Fetch the raw conversation log at `/conversation`:
 
