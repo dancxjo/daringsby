@@ -138,8 +138,13 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                                 }
                                 WsRequest::See { data, .. } => {
                                     if let Some((mime, base64)) = parse_data_url(&data) {
-                                        debug!("image received");
-                                        state.eye.sense(ImageData { mime, base64 }).await;
+                                        if base64.trim().is_empty() {
+                                            debug!("blank image ignored");
+                                            state.eye.sense(ImageData { mime, base64: String::new() }).await;
+                                        } else {
+                                            debug!("image received");
+                                            state.eye.sense(ImageData { mime, base64 }).await;
+                                        }
                                     }
                                 }
                                 WsRequest::Hear { .. } => {

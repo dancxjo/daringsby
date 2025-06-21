@@ -32,10 +32,18 @@ impl OllamaProvider {
 impl Doer for OllamaProvider {
     /// Follow an instruction via the Ollama API.
     async fn follow(&self, instruction: Instruction) -> Result<String> {
-        let req = ChatMessageRequest::new(
-            self.model.clone(),
-            vec![ChatMessage::user(instruction.command)],
-        );
+        use ollama_rs::generation::images::Image;
+
+        let mut msg = ChatMessage::user(instruction.command);
+        if !instruction.images.is_empty() {
+            let images: Vec<Image> = instruction
+                .images
+                .into_iter()
+                .map(|i| Image::from_base64(i.base64))
+                .collect();
+            msg = msg.with_images(images);
+        }
+        let req = ChatMessageRequest::new(self.model.clone(), vec![msg]);
         let res = self.client.send_chat_messages(req).await?;
         Ok(res.message.content)
     }
