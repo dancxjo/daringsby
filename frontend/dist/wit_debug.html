@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Wit Debug</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <h1 id="title"></h1>
+  <pre id="prompt" class="well"></pre>
+  <pre id="stream" class="well"></pre>
+  <script>
+    (function(){
+      const label = location.pathname.split('/').pop();
+      document.getElementById('title').textContent = `Debug for ${label}`;
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${proto}//${location.host}/debug`);
+      const promptEl = document.getElementById('prompt');
+      const streamEl = document.getElementById('stream');
+      ws.onmessage = (ev) => {
+        try {
+          const m = JSON.parse(ev.data);
+          if ((m.type === 'Think' || m.type === 'think') && m.data.name.toLowerCase() === label) {
+            promptEl.textContent = m.data.prompt;
+            streamEl.textContent = m.data.output;
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+    })();
+  </script>
+</body>
+</html>

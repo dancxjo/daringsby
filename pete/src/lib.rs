@@ -26,5 +26,5 @@ pub use simulator::Simulator;
 pub use tts_mouth::{CoquiTts, Tts, TtsMouth, TtsStream};
 pub use web::{
     AppState, WsRequest, app, conversation_log, index, listen_user_input, log_ws_handler,
-    psyche_debug, toggle_wit_debug, ws_handler,
+    psyche_debug, toggle_wit_debug, wit_debug_page, ws_handler,
 };

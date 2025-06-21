@@ -230,6 +230,10 @@ pub async fn toggle_wit_debug(
     StatusCode::OK
 }
 
+pub async fn wit_debug_page(Path(_label): Path<String>) -> Html<&'static str> {
+    Html(include_str!("../../frontend/dist/wit_debug.html"))
+}
+
 fn parse_data_url(url: &str) -> Option<(String, String)> {
     let (prefix, data) = url.split_once(',')?;
     let mime = prefix
@@ -256,7 +260,10 @@ pub fn app(state: AppState) -> Router {
         .route("/ws", get(ws_handler))
         .route("/log", get(log_ws_handler))
         .route("/debug", get(wit_ws_handler))
-        .route("/debug/wit/{label}", post(toggle_wit_debug))
+        .route(
+            "/debug/wit/{label}",
+            get(wit_debug_page).post(toggle_wit_debug),
+        )
         .route("/debug/psyche", get(psyche_debug))
         .route("/conversation", get(conversation_log))
         .fallback_service(
