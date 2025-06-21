@@ -114,6 +114,13 @@ async fn main() -> anyhow::Result<()> {
             bus_clone.publish_wit(r);
         }
     });
+    let mut event_rx = psyche.subscribe();
+    let bus_events = bus.clone();
+    tokio::spawn(async move {
+        while let Ok(evt) = event_rx.recv().await {
+            bus_events.publish_event(evt);
+        }
+    });
     tokio::spawn(async move {
         psyche.run().await;
     });
