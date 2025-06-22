@@ -1,4 +1,4 @@
-:root{--bs-primary:#0d6efd;--bs-secondary:#6c757d;--bs-border-radius:.375rem;--bs-font-size-lg:1.25rem;--panel-bg:#f8f8f8;--panel-hover:#eee;}
+:root{--bs-primary:#0d6efd;--bs-secondary:#6c757d;--bs-border-radius:.375rem;--bs-font-size-lg:1.25rem;--panel-bg:#f8f8f8;--panel-hover:#eee;--panel-border:#fff;}
 
 @media (prefers-color-scheme: dark){
     :root{
@@ -233,6 +233,7 @@ pre {
 details {
     background-color: var(--panel-bg);
     border-radius: 0.5em;
+    border: 1px solid var(--panel-border);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     padding: 1em;
     margin-bottom: 1em;
