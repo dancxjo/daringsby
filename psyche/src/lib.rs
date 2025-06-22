@@ -73,6 +73,7 @@ pub mod sensors {
     #[cfg(feature = "face")]
     pub use face::{DummyDetector, FaceDetector, FaceInfo, FaceSensor};
 }
+mod pending_turn;
 mod trim_mouth;
 mod types;
 
@@ -81,6 +82,7 @@ pub use debug::{DebugHandle, DebugInfo, debug_enabled, disable_debug, enable_deb
 pub use instruction::{Instruction, parse_instructions};
 pub use model::{Experience, Impression, Stimulus};
 pub use motor::{Motor, NoopMotor};
+pub use pending_turn::PendingTurn;
 pub use plain_mouth::PlainMouth;
 pub use prehension::Prehension;
 pub use prompt::{CombobulatorPrompt, ContextualPrompt, PromptBuilder, VoicePrompt, WillPrompt};

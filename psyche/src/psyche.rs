@@ -17,8 +17,10 @@ pub const DEFAULT_SYSTEM_PROMPT: &str = "You are PETE — an experimental, auton
 const DEFAULT_EXPERIENCE_TICK: Duration = Duration::from_secs(60);
 #[cfg(test)]
 const DEFAULT_EXPERIENCE_TICK: Duration = Duration::from_millis(10);
+use crate::pending_turn::PendingTurn;
 /// Default size for internal broadcast channels.
 pub const DEFAULT_CHANNEL_CAPACITY: usize = 16;
+
 use chrono::{DateTime, Utc};
 use futures::FutureExt;
 use quick_xml::{Reader, events::Event as XmlEvent};
@@ -102,7 +104,7 @@ pub struct Psyche {
     observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
     sensation_buffer: Arc<Mutex<VecDeque<Arc<Sensation>>>>,
     last_ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
-    pending_turn: Arc<Mutex<Option<String>>>,
+    pending_turn: Arc<PendingTurn>,
     topic_bus: crate::topics::TopicBus,
 }
 
@@ -188,7 +190,7 @@ impl Psyche {
             DEFAULT_SYSTEM_PROMPT,
             conversation.clone(),
         )));
-        let pending_turn = Arc::new(Mutex::new(None));
+        let pending_turn = Arc::new(PendingTurn::default());
         Self {
             narrator,
             voice: Arc::new(voice),
@@ -515,7 +517,7 @@ impl Psyche {
                 }
             }
 
-            if let Some(extra) = self.pending_turn.lock().await.take() {
+            if let Some(extra) = self.pending_turn.take() {
                 let history = {
                     self.ling
                         .lock()
@@ -570,7 +572,7 @@ impl Psyche {
         ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         mem: Arc<dyn Memory>,
         ling: Arc<Mutex<crate::Ling>>,
-        pending_turn: Arc<Mutex<Option<String>>>,
+        pending_turn: Arc<PendingTurn>,
         tick: Duration,
     ) {
         loop {
@@ -587,7 +589,7 @@ impl Psyche {
                 for stim in &imp.stimuli {
                     if let serde_json::Value::String(s) = &stim.what {
                         if let Some(p) = extract_tag(s, "take_turn") {
-                            *pending_turn.lock().await = Some(p);
+                            pending_turn.set(p);
                         }
                     }
                 }
