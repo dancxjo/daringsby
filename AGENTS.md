@@ -98,6 +98,7 @@ The previous Deno-based client has been removed. Update the files in
 * Favor TDD/BDD when adding features; write failing tests first.
 * Provide stub implementations for external ML components so tests run offline.
 * `FaceSensor` uses `DummyDetector` for tests; real detectors may require OpenCV.
+* `FaceSensor` caches the last embedding to avoid redundant vectors.
 * There is no bundled frontend. Connect your own WebSocket client to
   `ws://localhost:3000/ws`.
 * Give every new Wit a `LABEL` constant and a `with_debug` constructor for emitting `WitReport`s.
