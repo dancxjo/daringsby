@@ -101,6 +101,7 @@ impl Voice {
         } else {
             base
         };
+        info!(%prompt, "voice prompt");
         if let Ok(mut stream) = self.chatter.chat(&prompt, history).await {
             let mut buf = String::new();
             let mut full = String::new();
@@ -141,6 +142,7 @@ impl Voice {
             while let Some(sentence) = pending.pop_front() {
                 self.emit_sentence(&sentence).await;
             }
+            info!(%full, "voice full response");
             let will = { self.will.lock().unwrap().clone() };
             if let Some(w) = will {
                 w.handle_llm_output(&full).await;

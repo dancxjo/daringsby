@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
-use tracing::debug;
+use tracing::{debug, info};
 
 /// Wit that decides Pete's next action and publishes [`Instruction`]s.
 pub struct WillWit {
@@ -89,6 +89,7 @@ impl crate::wit::Wit<(), Instruction> for WillWit {
             out
         };
         let prompt_text = self.prompt.build(&items);
+        info!(prompt = %prompt_text, "will_wit prompt");
         let resp = match self
             .doer
             .follow(LlmInstruction {
@@ -103,6 +104,7 @@ impl crate::wit::Wit<(), Instruction> for WillWit {
                 return Vec::new();
             }
         };
+        info!(response = %resp, "will_wit response");
         let instructions = parse_instructions(&resp);
         let unique = {
             let mut hist = self.history.lock().unwrap();
