@@ -153,7 +153,7 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "ear"))]
     let ear: Arc<dyn Ear> = Arc::new(NoopEar) as Arc<dyn Ear>;
     #[cfg(feature = "eye")]
-    let (eye_tx, mut eye_rx) = mpsc::unbounded_channel();
+    let (eye_tx, mut eye_rx) = mpsc::channel(16);
     #[cfg(feature = "eye")]
     let eye: Arc<dyn Sensor<ImageData>> = {
         let sensor = Arc::new(EyeSensor::new(eye_tx)) as Arc<dyn Sensor<ImageData>>;
@@ -184,7 +184,7 @@ async fn main() -> anyhow::Result<()> {
                         face_clone.sense(img.clone()).await;
                     }
                 }
-                let _ = forward.send(s);
+                let _ = forward.send(s).await;
             }
         });
     }

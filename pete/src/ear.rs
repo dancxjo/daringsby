@@ -16,7 +16,7 @@ use tracing::{debug, info};
 /// [`Ear`] implementation that forwards heard text through a channel.
 #[derive(Clone)]
 pub struct ChannelEar {
-    forward: mpsc::UnboundedSender<Sensation>,
+    forward: mpsc::Sender<Sensation>,
     speaking: Arc<AtomicBool>,
     voice: Arc<Voice>,
 }
@@ -25,7 +25,7 @@ pub struct ChannelEar {
 impl ChannelEar {
     /// Create a new `ChannelEar` wired to the given channels.
     pub fn new(
-        forward: mpsc::UnboundedSender<Sensation>,
+        forward: mpsc::Sender<Sensation>,
         speaking: Arc<AtomicBool>,
         voice: Arc<Voice>,
     ) -> Self {
@@ -50,7 +50,8 @@ impl Ear for ChannelEar {
         self.voice.permit(None);
         let _ = self
             .forward
-            .send(Sensation::HeardOwnVoice(text.to_string()));
+            .send(Sensation::HeardOwnVoice(text.to_string()))
+            .await;
     }
 
     async fn hear_user_say(&self, text: &str) {
@@ -58,7 +59,8 @@ impl Ear for ChannelEar {
         debug!("ear heard user say: {}", text);
         let _ = self
             .forward
-            .send(Sensation::HeardUserVoice(text.to_string()));
+            .send(Sensation::HeardUserVoice(text.to_string()))
+            .await;
     }
 }
 

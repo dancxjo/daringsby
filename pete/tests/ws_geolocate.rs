@@ -18,7 +18,7 @@ async fn websocket_forwards_geolocation() {
         psyche.voice(),
     ));
     // capture sensations sent by geo sensor
-    let (tx, mut rx) = mpsc::unbounded_channel();
+    let (tx, mut rx) = mpsc::channel(16);
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
     let geo = Arc::new(GeoSensor::new(tx));
     psyche.add_sense(eye.description());
