@@ -17,6 +17,7 @@ pub struct MemoryWit {
     memory: Arc<dyn Memory>,
     buffer: Mutex<Vec<Impression<String>>>,
     collected: Mutex<Vec<Impression<String>>>,
+    instants: Mutex<Vec<Arc<crate::Instant>>>,
     ticks: AtomicUsize,
     threshold: usize,
     tx: Option<broadcast::Sender<crate::WitReport>>,
@@ -31,6 +32,7 @@ impl MemoryWit {
             memory,
             buffer: Mutex::new(Vec::new()),
             collected: Mutex::new(Vec::new()),
+            instants: Mutex::new(Vec::new()),
             ticks: AtomicUsize::new(0),
             threshold: 5,
             tx: None,
@@ -112,5 +114,14 @@ impl Wit<Impression<String>, Moment> for MemoryWit {
 
     fn debug_label(&self) -> &'static str {
         Self::LABEL
+    }
+}
+
+#[async_trait]
+impl crate::traits::observer::SensationObserver for MemoryWit {
+    async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
+        if let Some(instant) = payload.downcast_ref::<Arc<crate::Instant>>() {
+            self.instants.lock().unwrap().push(instant.clone());
+        }
     }
 }

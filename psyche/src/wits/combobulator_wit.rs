@@ -21,6 +21,7 @@ pub struct CombobulatorWit {
     last_caption_time: Mutex<Instant>,
     latest_image: Arc<Mutex<Option<ImageData>>>,
     llm_semaphore: Arc<Semaphore>,
+    instants: Mutex<Vec<Arc<crate::Instant>>>,
 }
 
 impl CombobulatorWit {
@@ -34,6 +35,16 @@ impl CombobulatorWit {
             last_caption_time: Mutex::new(Instant::now() - Duration::from_secs(30)),
             latest_image: Arc::new(Mutex::new(None)),
             llm_semaphore: Arc::new(Semaphore::new(2)),
+            instants: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl crate::traits::observer::SensationObserver for CombobulatorWit {
+    async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
+        if let Some(instant) = payload.downcast_ref::<Arc<crate::Instant>>() {
+            self.instants.lock().unwrap().push(instant.clone());
         }
     }
 }

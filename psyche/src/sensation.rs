@@ -1,4 +1,6 @@
+use chrono::{DateTime, Utc};
 use serde::Serialize;
+use std::sync::Arc;
 /// Event types emitted by the [`Psyche`] during conversation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
@@ -30,4 +32,13 @@ pub enum Sensation {
     HeardUserVoice(String),
     /// Arbitrary input that the assistant can process
     Of(Box<dyn std::any::Any + Send + Sync>),
+}
+
+/// A coherent bundle of recently perceived sensations.
+#[derive(Debug, Clone)]
+pub struct Instant {
+    /// Time the sensations were observed.
+    pub at: DateTime<Utc>,
+    /// The grouped sensations.
+    pub sensations: Vec<Arc<Sensation>>,
 }

@@ -1,5 +1,5 @@
-use crate::Sensation;
 use async_trait::async_trait;
+use std::any::Any;
 
 /// Observer of raw [`Sensation`] inputs.
 ///
@@ -7,6 +7,6 @@ use async_trait::async_trait;
 /// the conversation loop.
 #[async_trait]
 pub trait SensationObserver: Send + Sync {
-    /// Handle an incoming [`Sensation`].
-    async fn observe_sensation(&self, sensation: &Sensation);
+    /// Handle an incoming payload from the psyche.
+    async fn observe_sensation(&self, payload: &(dyn Any + Send + Sync));
 }

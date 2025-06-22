@@ -12,6 +12,7 @@ pub struct HeartWit {
     doer: Arc<dyn Doer>,
     motor: Arc<dyn Motor>,
     buffer: Mutex<Vec<Impression<String>>>,
+    instants: Mutex<Vec<Arc<crate::Instant>>>,
     tx: Option<broadcast::Sender<crate::WitReport>>,
 }
 
@@ -24,6 +25,7 @@ impl HeartWit {
             doer: doer.into(),
             motor,
             buffer: Mutex::new(Vec::new()),
+            instants: Mutex::new(Vec::new()),
             tx: None,
         }
     }
@@ -91,5 +93,14 @@ impl Wit<Impression<String>, String> for HeartWit {
 
     fn debug_label(&self) -> &'static str {
         Self::LABEL
+    }
+}
+
+#[async_trait]
+impl crate::traits::observer::SensationObserver for HeartWit {
+    async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
+        if let Some(instant) = payload.downcast_ref::<Arc<crate::Instant>>() {
+            self.instants.lock().unwrap().push(instant.clone());
+        }
     }
 }

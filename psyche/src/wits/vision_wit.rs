@@ -140,10 +140,12 @@ impl VisionWit {
 
 #[async_trait]
 impl SensationObserver for VisionWit {
-    async fn observe_sensation(&self, sensation: &crate::Sensation) {
-        if let crate::Sensation::Of(any) = sensation {
-            if let Some(img) = any.downcast_ref::<ImageData>() {
-                self.observe(img.clone()).await;
+    async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
+        if let Some(sensation) = payload.downcast_ref::<crate::Sensation>() {
+            if let crate::Sensation::Of(any) = sensation {
+                if let Some(img) = any.downcast_ref::<ImageData>() {
+                    self.observe(img.clone()).await;
+                }
             }
         }
     }

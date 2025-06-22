@@ -240,19 +240,21 @@ impl crate::traits::wit::Wit<Sensation, String> for EntityWit {
 
 #[async_trait]
 impl crate::traits::observer::SensationObserver for EntityWit {
-    async fn observe_sensation(&self, sensation: &Sensation) {
-        match sensation {
-            Sensation::HeardUserVoice(t) => {
-                self.observe(Sensation::HeardUserVoice(t.clone())).await;
-            }
-            Sensation::HeardOwnVoice(t) => {
-                self.observe(Sensation::HeardOwnVoice(t.clone())).await;
-            }
-            Sensation::Of(any) => {
-                if let Some(face) = any.downcast_ref::<FaceInfo>() {
-                    self.observe(Sensation::Of(Box::new(face.clone()))).await;
-                } else if let Some(obj) = any.downcast_ref::<ObjectInfo>() {
-                    self.observe(Sensation::Of(Box::new(obj.clone()))).await;
+    async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
+        if let Some(sensation) = payload.downcast_ref::<Sensation>() {
+            match sensation {
+                Sensation::HeardUserVoice(t) => {
+                    self.observe(Sensation::HeardUserVoice(t.clone())).await;
+                }
+                Sensation::HeardOwnVoice(t) => {
+                    self.observe(Sensation::HeardOwnVoice(t.clone())).await;
+                }
+                Sensation::Of(any) => {
+                    if let Some(face) = any.downcast_ref::<FaceInfo>() {
+                        self.observe(Sensation::Of(Box::new(face.clone()))).await;
+                    } else if let Some(obj) = any.downcast_ref::<ObjectInfo>() {
+                        self.observe(Sensation::Of(Box::new(obj.clone()))).await;
+                    }
                 }
             }
         }

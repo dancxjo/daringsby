@@ -119,10 +119,12 @@ impl Wit<FaceInfo, FaceInfo> for FaceMemoryWit {
 
 #[async_trait]
 impl SensationObserver for FaceMemoryWit {
-    async fn observe_sensation(&self, s: &Sensation) {
-        if let Sensation::Of(any) = s {
-            if let Some(info) = any.downcast_ref::<FaceInfo>() {
-                self.observe(info.clone()).await;
+    async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
+        if let Some(s) = payload.downcast_ref::<Sensation>() {
+            if let Sensation::Of(any) = s {
+                if let Some(info) = any.downcast_ref::<FaceInfo>() {
+                    self.observe(info.clone()).await;
+                }
             }
         }
     }
