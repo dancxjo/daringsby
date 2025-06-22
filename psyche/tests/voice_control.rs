@@ -92,6 +92,8 @@ async fn no_speech_without_command() {
         ear,
     );
     psyche.set_turn_limit(1);
+    psyche.set_fallback_turn_enabled(false);
+    psyche.set_fallback_turn_enabled(false);
     let input = psyche.input_sender();
     let handle = tokio::spawn(async move { psyche.run().await });
     input
@@ -122,6 +124,35 @@ async fn speaks_when_commanded() {
     psyche.set_turn_limit(1);
     psyche.register_typed_wit(Arc::new(TakeTurnWit(AtomicBool::new(false))));
     let handle = tokio::spawn(async move { psyche.run().await });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    handle.abort();
+    let _ = handle.await;
+    assert!(!mouth_rec.0.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn speaks_with_fallback_when_no_wit() {
+    let mouth_rec = Arc::new(RecMouth::default());
+    let (_tx, _rx) = broadcast::channel::<psyche::Event>(8);
+    let voice = Box::new(RecLLM::default()) as Box<dyn Chatter>;
+    let mouth = mouth_rec.clone() as Arc<dyn Mouth>;
+    let ear = Arc::new(DummyEar) as Arc<dyn Ear>;
+    let mut psyche = Psyche::new(
+        Box::new(RecLLM::default()),
+        voice,
+        Box::new(RecLLM::default()),
+        Arc::new(psyche::NoopMemory),
+        mouth,
+        ear,
+    );
+    psyche.set_turn_limit(1);
+    // fallback enabled by default
+    let input = psyche.input_sender();
+    let handle = tokio::spawn(async move { psyche.run().await });
+    input
+        .send(Sensation::HeardUserVoice("hi".into()))
+        .await
+        .unwrap();
     tokio::time::sleep(Duration::from_millis(50)).await;
     handle.abort();
     let _ = handle.await;

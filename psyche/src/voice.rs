@@ -13,7 +13,7 @@ use tracing::{debug, info, warn};
 
 pub struct Voice {
     chatter: Arc<dyn Chatter>,
-    mouth: Arc<dyn Mouth + Send + Sync>,
+    mouth: Arc<Mutex<Arc<dyn Mouth + Send + Sync>>>,
     events: broadcast::Sender<Event>,
     ready: AtomicBool,
     extra_prompt: Arc<Mutex<Option<String>>>,
@@ -45,7 +45,7 @@ impl Voice {
     ) -> Self {
         Self {
             chatter,
-            mouth,
+            mouth: Arc::new(Mutex::new(mouth)),
             events,
             ready: AtomicBool::new(true),
             extra_prompt: Arc::new(Mutex::new(None)),
@@ -56,8 +56,8 @@ impl Voice {
         }
     }
 
-    pub fn set_mouth(&mut self, mouth: Arc<dyn Mouth + Send + Sync>) {
-        self.mouth = mouth;
+    pub fn set_mouth(&self, mouth: Arc<dyn Mouth + Send + Sync>) {
+        *self.mouth.lock().unwrap() = mouth;
     }
 
     pub fn set_will(&self, will: Arc<crate::wits::Will>) {
@@ -168,7 +168,7 @@ impl Voice {
         }
         if !text.trim().is_empty() {
             tokio::time::sleep(Duration::from_millis(20)).await;
-            let mouth = self.mouth.clone();
+            let mouth = { self.mouth.lock().unwrap().clone() };
             mouth.speak(trimmed).await;
         }
     }

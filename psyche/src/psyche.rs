@@ -145,6 +145,7 @@ pub struct Psyche {
     last_ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
     pending_turn: Arc<PendingTurn>,
     topic_bus: crate::topics::TopicBus,
+    fallback_turn: bool,
 }
 
 #[doc(hidden)]
@@ -258,6 +259,7 @@ impl Psyche {
             last_ticks: Arc::new(Mutex::new(HashMap::new())),
             pending_turn,
             topic_bus: crate::topics::TopicBus::new(capacity),
+            fallback_turn: true,
         }
     }
 
@@ -380,7 +382,7 @@ impl Psyche {
 
     /// Swap out the [`Mouth`] used for speech output.
     pub fn set_mouth(&mut self, mouth: Arc<dyn Mouth>) {
-        Arc::make_mut(&mut self.voice).set_mouth(mouth);
+        self.voice.set_mouth(mouth);
     }
 
     /// Swap out the [`Memory`] implementation.
@@ -481,6 +483,16 @@ impl Psyche {
         matches!(self.speak_policy, SpeakPolicy::WhenSpokenTo { .. })
     }
 
+    /// Enable or disable the default fallback turn when no Wit sets a turn.
+    pub fn set_fallback_turn_enabled(&mut self, enabled: bool) {
+        self.fallback_turn = enabled;
+    }
+
+    /// Returns `true` if the fallback turn is enabled.
+    pub fn fallback_turn_enabled(&self) -> bool {
+        self.fallback_turn
+    }
+
     /// Buffer that Pete heard himself say `text`.
     async fn buffer_self_speech(&self, text: &str) {
         self.sensation_buffer
@@ -525,6 +537,9 @@ impl Psyche {
                         let mut conv = self.conversation.lock().await;
                         conv.add_user(msg.clone());
                         self.buffer_user_speech(msg).await;
+                        if self.pending_turn.is_empty() && self.fallback_turn {
+                            self.pending_turn.set("I'm listening.".to_string());
+                        }
                     }
                     Sensation::Of(_) => {
                         self.sensation_buffer.lock().await.push_back(arc.clone());
@@ -538,6 +553,9 @@ impl Psyche {
                         debug!("heard user voice: {}", msg);
                         self.ear.hear_user_say(&msg).await;
                         self.buffer_user_speech(&msg).await;
+                        if self.pending_turn.is_empty() && self.fallback_turn {
+                            self.pending_turn.set("I'm listening.".to_string());
+                        }
                         self.notify_observers(&Sensation::HeardUserVoice(msg.clone()))
                             .await;
                         self.speak_policy.received_user_message();
@@ -562,14 +580,13 @@ impl Psyche {
             }
 
             if let Some(extra) = self.pending_turn.take() {
-                let history = {
-                    self.ling
-                        .lock()
-                        .await
-                        .get_conversation_tail(self.max_history)
-                        .await
+                debug!(%extra, "pending_turn being processed");
+                let (history, mut prompt) = {
+                    let mut ling = self.ling.lock().await;
+                    let hist = ling.get_conversation_tail(self.max_history).await;
+                    let prompt = ling.build_prompt().await;
+                    (hist, prompt)
                 };
-                let mut prompt = { self.ling.lock().await.build_prompt().await };
                 prompt.push('\n');
                 prompt.push_str(&extra);
                 info!(%prompt, "conversation prompt");
@@ -585,6 +602,7 @@ impl Psyche {
                 turns += 1;
                 debug!("turn {} complete", turns);
             } else {
+                debug!("no pending_turn available this tick");
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
         }

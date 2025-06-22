@@ -145,6 +145,7 @@ cargo run -p pete --features tts -- \
   --tts-speaker-id p376
 
 Use `--auto-voice N` to have Pete speak automatically every N seconds during development.
+The default fallback response of "I'm listening." can be disabled with `--no-fallback-turn`.
 
 To serve the interface over HTTPS provide a certificate and key:
 
