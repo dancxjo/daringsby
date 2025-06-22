@@ -12,6 +12,8 @@ pub enum Instruction {
     Emote(String),
     /// Move to the named location.
     Move { to: String },
+    /// End the current episode and summarize it.
+    BreakEpisode,
 }
 
 /// Parse a list of [`Instruction`]s from a short XML snippet.
@@ -61,6 +63,7 @@ pub fn parse_instructions(text: &str) -> Vec<Instruction> {
                         "move" => out.push(Instruction::Move {
                             to: attrs.get("to").cloned().unwrap_or_default(),
                         }),
+                        "break-episode" => out.push(Instruction::BreakEpisode),
                         other => debug!(%other, "unknown instruction tag"),
                     }
                     content.clear();
@@ -78,6 +81,7 @@ pub fn parse_instructions(text: &str) -> Vec<Instruction> {
                     "move" => out.push(Instruction::Move {
                         to: attrs.get("to").cloned().unwrap_or_default(),
                     }),
+                    "break-episode" => out.push(Instruction::BreakEpisode),
                     other => debug!(%other, "unknown empty instruction"),
                 }
             }
