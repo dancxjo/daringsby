@@ -100,6 +100,7 @@ The previous Deno-based client has been removed. Update the files in
 * `FaceSensor` uses `DummyDetector` for tests; real detectors may require OpenCV.
 * There is no bundled frontend. Connect your own WebSocket client to
   `ws://localhost:3000/ws`.
+* Give every new Wit a `LABEL` constant and a `with_debug` constructor for emitting `WitReport`s.
 
 ## LLM Integration
 
