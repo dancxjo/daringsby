@@ -5,7 +5,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use tracing::debug;
+use tracing::{debug, info};
 
 /// Simple mouth implementation that does not produce audio.
 ///
@@ -29,6 +29,7 @@ impl ChannelMouth {
 impl Mouth for ChannelMouth {
     async fn speak(&self, text: &str) {
         self.speaking.store(true, Ordering::SeqCst);
+        info!(%text, "mouth speaking");
         debug!("mouth speaking: {}", text);
         let seg = pragmatic_segmenter::Segmenter::new().expect("segmenter init");
         for sentence in seg.segment(text) {
@@ -44,6 +45,7 @@ impl Mouth for ChannelMouth {
     }
     async fn interrupt(&self) {
         self.speaking.store(false, Ordering::SeqCst);
+        info!("mouth interrupted");
         debug!("mouth interrupted");
     }
     fn speaking(&self) -> bool {

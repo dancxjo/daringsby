@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use psyche::{GeoLoc, Sensation, Sensor};
 use tokio::sync::mpsc;
-use tracing::debug;
+use tracing::{debug, info};
 
 /// Sensor forwarding geolocation updates to the psyche.
 #[derive(Clone)]
@@ -19,6 +19,7 @@ impl GeoSensor {
 #[async_trait]
 impl Sensor<GeoLoc> for GeoSensor {
     async fn sense(&self, loc: GeoLoc) {
+        info!("geo sensor received location");
         debug!("geo sensor received location");
         let _ = self.forward.send(Sensation::Of(Box::new(loc)));
     }

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use psyche::{ImageData, Sensation, Sensor};
 use tokio::sync::mpsc;
-use tracing::debug;
+use tracing::{debug, info};
 
 /// Sensor that forwards webcam images to the psyche.
 #[derive(Clone)]
@@ -19,6 +19,7 @@ impl EyeSensor {
 #[async_trait]
 impl Sensor<ImageData> for EyeSensor {
     async fn sense(&self, image: ImageData) {
+        info!("eye sensed image");
         debug!("eye sensed image");
         let _ = self.forward.send(Sensation::Of(Box::new(image)));
     }

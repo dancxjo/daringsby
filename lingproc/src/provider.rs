@@ -9,7 +9,7 @@ use ollama_rs::{
     generation::embeddings::request::{EmbeddingsInput, GenerateEmbeddingsRequest},
 };
 use tokio_stream::StreamExt;
-use tracing::debug;
+use tracing::{debug, info};
 
 /// Provider backed by an Ollama server.
 #[derive(Clone)]
@@ -21,11 +21,11 @@ pub struct OllamaProvider {
 impl OllamaProvider {
     /// Create a new provider for `model` hosted at `host`.
     pub fn new(host: impl AsRef<str>, model: impl Into<String>) -> Result<Self> {
-        let client = Ollama::try_new(host.as_ref())?;
-        Ok(Self {
-            client,
-            model: model.into(),
-        })
+        let host_ref = host.as_ref();
+        let model = model.into();
+        let client = Ollama::try_new(host_ref)?;
+        info!(%host_ref, %model, "creating Ollama provider");
+        Ok(Self { client, model })
     }
 }
 
@@ -35,6 +35,7 @@ impl Doer for OllamaProvider {
     async fn follow(&self, instruction: Instruction) -> Result<String> {
         use ollama_rs::generation::images::Image;
         let Instruction { command, images } = instruction;
+        info!(%command, image_count = images.len(), "ollama follow");
         debug!(%command, image_count = images.len(), "ollama follow request");
 
         let mut msg = ChatMessage::user(command);
@@ -64,6 +65,7 @@ impl Chatter for OllamaProvider {
             };
             msgs.push(m);
         }
+        info!(history_len = history.len(), "ollama chat");
         debug!(%system_prompt, ?history, "ollama chat request");
         let req = ChatMessageRequest::new(self.model.clone(), msgs);
         let stream = self
@@ -91,6 +93,7 @@ impl Chatter for OllamaProvider {
 impl Vectorizer for OllamaProvider {
     /// Request text embeddings from Ollama.
     async fn vectorize(&self, text: &str) -> Result<Vec<f32>> {
+        info!(len = text.len(), "ollama vectorize");
         debug!(?text, "ollama vectorize request");
         let req = GenerateEmbeddingsRequest::new(self.model.clone(), EmbeddingsInput::from(text));
         let res = self.client.generate_embeddings(req).await?;

@@ -161,6 +161,7 @@ pub struct BasicMemory {
 #[async_trait]
 impl Memory for BasicMemory {
     async fn store(&self, impression: &Impression<Value>) -> Result<()> {
+        info!(summary = %impression.summary, "memory store");
         let vector = self.vectorizer.vectorize(&impression.summary).await?;
         self.qdrant
             .store_vector(&impression.summary, &vector)
