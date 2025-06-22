@@ -11,8 +11,8 @@ use pete::FaceSensor;
 use pete::GeoSensor;
 use pete::HeartbeatSensor;
 use pete::{
-    AppState, ChannelMouth, NoopEar, NoopSensor, app, init_logging, listen_user_input,
-    ollama_psyche,
+    AppState, ChannelMouth, LoggingMotor, NoopEar, NoopMouth, NoopSensor, app, init_logging,
+    listen_user_input,
 };
 #[cfg(feature = "tts")]
 use pete::{CoquiTts, TtsMouth};
@@ -107,18 +107,75 @@ async fn main() -> anyhow::Result<()> {
 
     info!(%cli.addr, "starting server");
 
-    let mut psyche = ollama_psyche(
-        &cli.chatter_host,
-        &cli.chatter_model,
-        &cli.wits_host,
-        &cli.wits_model,
-        &cli.embeddings_host,
-        &cli.embeddings_model,
-        &cli.qdrant_url,
-        &cli.neo4j_uri,
-        &cli.neo4j_user,
-        &cli.neo4j_pass,
-    )?;
+    use psyche::ling::OllamaProvider;
+    use psyche::wits::{
+        BasicMemory, Combobulator, CombobulatorWit, FaceMemoryWit, FondDuCoeur, HeartWit,
+        IdentityWit, MemoryWit, Neo4jClient, QdrantClient, VisionWit, WillWit,
+    };
+
+    let narrator = OllamaProvider::new(&cli.chatter_host, &cli.chatter_model)?;
+    let voice_provider = OllamaProvider::new(&cli.chatter_host, &cli.chatter_model)?;
+    let vectorizer = OllamaProvider::new(&cli.embeddings_host, &cli.embeddings_model)?;
+
+    let memory = Arc::new(BasicMemory {
+        vectorizer: Arc::new(OllamaProvider::new(
+            &cli.embeddings_host,
+            &cli.embeddings_model,
+        )?),
+        qdrant: QdrantClient::new(cli.qdrant_url.clone()),
+        neo4j: Arc::new(Neo4jClient::new(
+            cli.neo4j_uri.clone(),
+            cli.neo4j_user.clone(),
+            cli.neo4j_pass.clone(),
+        )),
+    });
+
+    let mouth_placeholder = Arc::new(NoopMouth::default());
+    let ear_placeholder = Arc::new(NoopEar);
+    let mut psyche = psyche::Psyche::new(
+        Box::new(narrator),
+        Box::new(voice_provider.clone()),
+        Box::new(vectorizer),
+        memory.clone(),
+        mouth_placeholder,
+        ear_placeholder,
+    );
+    psyche.set_turn_limit(usize::MAX);
+    psyche
+        .voice()
+        .set_prompt(psyche::ContextualPrompt::new(psyche.topic_bus()));
+
+    let wit_tx = psyche.wit_sender();
+    psyche.register_observing_wit(Arc::new(VisionWit::with_debug(
+        Arc::new(OllamaProvider::new(&cli.wits_host, &cli.wits_model)?),
+        wit_tx.clone(),
+    )));
+    psyche.register_observing_wit(Arc::new(FaceMemoryWit::with_debug(wit_tx.clone())));
+    psyche.register_typed_wit(Arc::new(CombobulatorWit::new(Combobulator::with_debug(
+        Box::new(OllamaProvider::new(&cli.wits_host, &cli.wits_model)?),
+        wit_tx.clone(),
+    ))));
+    psyche.register_typed_wit(Arc::new(WillWit::with_debug(
+        psyche.topic_bus(),
+        Arc::new(OllamaProvider::new(&cli.wits_host, &cli.wits_model)?),
+        Some(wit_tx.clone()),
+    )));
+    psyche.register_typed_wit(Arc::new(MemoryWit::with_debug(
+        memory.clone(),
+        wit_tx.clone(),
+    )));
+    psyche.register_typed_wit(Arc::new(HeartWit::with_debug(
+        Box::new(OllamaProvider::new(&cli.wits_host, &cli.wits_model)?),
+        Arc::new(LoggingMotor),
+        wit_tx.clone(),
+    )));
+    psyche.register_typed_wit(Arc::new(IdentityWit::new(FondDuCoeur::with_debug(
+        Box::new(OllamaProvider::new(&cli.wits_host, &cli.wits_model)?),
+        wit_tx.clone(),
+    ))));
+    for w in psyche.debug_handle().snapshot().await.active_wits {
+        tracing::debug!(%w, "registered wit");
+    }
     psyche.enable_all_debug().await;
     psyche.set_fallback_turn_enabled(!cli.no_fallback_turn);
     let speaking = Arc::new(AtomicBool::new(false));
@@ -202,9 +259,10 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "geo"))]
     let geo: Arc<dyn Sensor<GeoLoc>> = Arc::new(NoopSensor) as Arc<dyn Sensor<GeoLoc>>;
 
-    let heartbeat = HeartbeatSensor::new(psyche.input_sender());
-    let mut senses = Vec::new();
-    senses.push(heartbeat.describe());
+    let _heartbeat = HeartbeatSensor::new(psyche.input_sender());
+    psyche.add_sense(
+        "Heartbeat. This triggers a pulse every minute, like a ticking internal clock.".into(),
+    );
     tokio::spawn(listen_user_input(user_rx, ear.clone(), voice.clone()));
 
     if let Some(secs) = cli.auto_voice {
@@ -233,7 +291,6 @@ async fn main() -> anyhow::Result<()> {
             bus_events.publish_event(evt);
         }
     });
-    psyche.add_sense("Pete experiences a heartbeat sensation roughly every minute, which reminds him that time is passing.".into());
     let system_prompt = psyche.described_system_prompt();
     psyche.set_system_prompt(system_prompt.clone());
     tokio::spawn(async move {
