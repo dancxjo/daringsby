@@ -1,80 +1,51 @@
 use async_trait::async_trait;
-use psyche::ling::{ChatStream, Chatter, Doer, Instruction, Message};
-use psyche::{
-    Impression, Stimulus, Voice, Wit,
-    wits::{Will, WillWit},
-};
+use futures::StreamExt;
+use psyche::ling::{Doer, Instruction as LlmInstruction};
+use psyche::topics::{Topic, TopicBus};
+use psyche::{Impression, Stimulus, Wit};
+use psyche::{Instruction, wits::WillWit};
 use std::sync::Arc;
-use tokio::sync::broadcast;
-use tokio_stream::once;
 
-#[derive(Clone, Default)]
-struct SpyLLM(Arc<tokio::sync::Mutex<Vec<String>>>);
-
-#[derive(Clone, Default)]
-struct RecMouth(Arc<tokio::sync::Mutex<Vec<String>>>);
+#[derive(Clone)]
+struct DummyDoer(&'static str);
 
 #[async_trait]
-impl psyche::Mouth for RecMouth {
-    async fn speak(&self, t: &str) {
-        self.0.lock().await.push(t.to_string());
-    }
-    async fn interrupt(&self) {}
-    fn speaking(&self) -> bool {
-        false
+impl Doer for DummyDoer {
+    async fn follow(&self, _i: LlmInstruction) -> anyhow::Result<String> {
+        Ok(self.0.to_string())
     }
 }
 
-#[async_trait]
-impl Chatter for SpyLLM {
-    async fn chat(&self, s: &str, _h: &[Message]) -> anyhow::Result<ChatStream> {
-        self.0.lock().await.push(s.to_string());
-        Ok(Box::pin(once(Ok("ok".into()))))
-    }
-    async fn update_prompt_context(&self, _c: &str) {}
-}
-
-#[async_trait]
-impl Doer for SpyLLM {
-    async fn follow(&self, _i: Instruction) -> anyhow::Result<String> {
-        Ok("ok".into())
-    }
+fn publish_sample(bus: &TopicBus) {
+    bus.publish(
+        Topic::Moment,
+        Impression::new(vec![Stimulus::new("hi".to_string())], "hi", None::<String>),
+    );
 }
 
 #[tokio::test]
-async fn emits_take_turn_every_third_tick() {
-    let llm = Arc::new(SpyLLM::default());
-    let mouth = Arc::new(RecMouth::default());
-    let (tx, _rx) = broadcast::channel(8);
-    let voice = Arc::new(Voice::new(llm.clone(), mouth, tx));
-    voice.take_turn("init", &[]).await.unwrap();
-    let will = Arc::new(Will::new(Box::new(SpyLLM::default())));
-    let wit = WillWit::new(will, voice.clone());
+async fn publishes_parsed_instructions() {
+    let bus = TopicBus::new(8);
+    let wit = WillWit::new(bus.clone(), Arc::new(DummyDoer("<say>Hello</say>")));
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    publish_sample(&bus);
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let mut sub = bus.subscribe(Topic::Instruction);
+    tokio::pin!(sub);
+    let out = wit.tick().await;
+    assert!(matches!(out[0].stimuli[0].what, Instruction::Say { .. }));
+    let payload = sub.next().await.unwrap();
+    let ins = payload.downcast::<Instruction>().unwrap();
+    assert!(matches!(&*ins, Instruction::Say { text, .. } if text == "Hello"));
+}
 
-    for _ in 0..2 {
-        wit.observe(Impression::new(
-            vec![Stimulus::new("hi".to_string())],
-            "",
-            None::<String>,
-        ))
-        .await;
-        let imps = wit.tick().await;
-        assert!(
-            imps.iter()
-                .all(|i| !i.stimuli[0].what.contains("<take_turn>"))
-        );
-    }
-
-    wit.observe(Impression::new(
-        vec![Stimulus::new("hey".to_string())],
-        "",
-        None::<String>,
-    ))
-    .await;
+#[tokio::test]
+async fn handles_invalid_xml_gracefully() {
+    let bus = TopicBus::new(8);
+    let wit = WillWit::new(bus.clone(), Arc::new(DummyDoer("<<bad")));
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    publish_sample(&bus);
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     let imps = wit.tick().await;
-    assert!(imps.iter().any(|i| {
-        i.stimuli[0]
-            .what
-            .contains("<take_turn>share a brief update</take_turn>")
-    }));
+    assert!(imps.is_empty());
 }

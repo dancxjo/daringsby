@@ -1,5 +1,6 @@
 //! Core cognitive engine powering Pete.
 
+mod instruction;
 pub mod psyche;
 pub mod sensation;
 pub mod topics;
@@ -67,6 +68,7 @@ mod types;
 
 pub use and_mouth::AndMouth;
 pub use debug::{DebugHandle, DebugInfo, debug_enabled, disable_debug, enable_debug};
+pub use instruction::{Instruction, parse_instructions};
 pub use model::{Experience, Impression, Stimulus};
 pub use motor::{Motor, NoopMotor};
 pub use plain_mouth::PlainMouth;
