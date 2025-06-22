@@ -40,7 +40,7 @@
     max-height: 8rem;
     overflow-y: auto;
     overflow-wrap: anywhere;
-    white-space: pre-wrap;
+    white-space: normal;
 }
 
 /* Override Bootstrap's button styling */
@@ -201,8 +201,13 @@ body {
     text-align: left;
 }
 
+pre {
+    white-space: normal;
+    overflow-x: auto;
+}
+
 .spoken-words {
-    white-space: pre-wrap;
+    white-space: normal;
     position: relative;
     background-color: #fff;
     padding: 0.5em;
