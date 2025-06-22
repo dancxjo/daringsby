@@ -17,6 +17,10 @@ pub const DEFAULT_SYSTEM_PROMPT: &str = "You are PETE — an experimental, auton
 const DEFAULT_EXPERIENCE_TICK: Duration = Duration::from_secs(60);
 #[cfg(test)]
 const DEFAULT_EXPERIENCE_TICK: Duration = Duration::from_millis(10);
+#[cfg(not(test))]
+const DEFAULT_ACTIVE_EXPERIENCE_TICK: Duration = Duration::from_secs(5);
+#[cfg(test)]
+const DEFAULT_ACTIVE_EXPERIENCE_TICK: Duration = Duration::from_millis(5);
 use crate::pending_turn::PendingTurn;
 /// Default size for internal broadcast channels.
 pub const DEFAULT_CHANNEL_CAPACITY: usize = 16;
@@ -134,6 +138,8 @@ pub struct Psyche {
     echo_timeout: Duration,
     /// Delay between experience ticks.
     experience_tick: Duration,
+    /// Faster tick rate during active conversation.
+    active_experience_tick: Duration,
     is_speaking: Arc<AtomicBool>,
     speak_policy: SpeakPolicy,
     connections: Option<Arc<AtomicUsize>>,
@@ -249,6 +255,7 @@ impl Psyche {
             conversation,
             echo_timeout: Duration::from_secs(1),
             experience_tick: DEFAULT_EXPERIENCE_TICK,
+            active_experience_tick: DEFAULT_ACTIVE_EXPERIENCE_TICK,
             is_speaking: Arc::new(AtomicBool::new(false)),
             speak_policy: SpeakPolicy::Always,
             connections: None,
@@ -302,9 +309,19 @@ impl Psyche {
         self.experience_tick = dur;
     }
 
+    /// Adjust the delay for active experience ticks.
+    pub fn set_active_experience_tick(&mut self, dur: Duration) {
+        self.active_experience_tick = dur;
+    }
+
     /// Retrieve the current experience tick duration.
     pub fn experience_tick(&self) -> Duration {
         self.experience_tick
+    }
+
+    /// Retrieve the current active experience tick duration.
+    pub fn active_experience_tick(&self) -> Duration {
+        self.active_experience_tick
     }
 
     /// Attach an atomic counter tracking active WebSocket connections.
@@ -616,7 +633,9 @@ impl Psyche {
         buffer: Arc<Mutex<VecDeque<Arc<Sensation>>>>,
         observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
         bus: crate::topics::TopicBus,
-        tick: Duration,
+        idle_tick: Duration,
+        active_tick: Duration,
+        speaking: Arc<AtomicBool>,
     ) {
         loop {
             let batch: Vec<Arc<Sensation>> = buffer.lock().await.drain(..).collect();
@@ -636,6 +655,11 @@ impl Psyche {
                 debug!("Published Instant with {} sensations", batch.len());
             }
             let jitter = rand::thread_rng().gen_range(0..50);
+            let tick = if speaking.load(Ordering::SeqCst) || !batch.is_empty() {
+                active_tick
+            } else {
+                idle_tick
+            };
             tokio::time::sleep(tick + Duration::from_millis(jitter)).await;
         }
     }
@@ -712,7 +736,14 @@ impl Psyche {
             tasks.spawn(fut);
         }
 
-        tasks.spawn(Self::experience(buf, observers, bus, tick));
+        tasks.spawn(Self::experience(
+            buf,
+            observers,
+            bus,
+            self.experience_tick,
+            self.active_experience_tick,
+            Arc::clone(&self.is_speaking),
+        ));
         let converse_handle = tokio::spawn(self.converse());
 
         let psyche = match converse_handle.await {
