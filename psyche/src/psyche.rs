@@ -72,6 +72,44 @@ impl Conversation {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum SpeakPolicy {
+    /// Pete can respond whenever a turn is pending.
+    Always,
+    /// Pete only responds after hearing a user message.
+    /// The flag tracks whether such a message has been received.
+    WhenSpokenTo { user_message_pending: bool },
+}
+
+impl SpeakPolicy {
+    fn waiting_for_user(&self) -> bool {
+        matches!(
+            self,
+            SpeakPolicy::WhenSpokenTo {
+                user_message_pending: false
+            }
+        )
+    }
+
+    fn received_user_message(&mut self) {
+        if let SpeakPolicy::WhenSpokenTo {
+            user_message_pending,
+        } = self
+        {
+            *user_message_pending = true;
+        }
+    }
+
+    fn after_speech(&mut self) {
+        if let SpeakPolicy::WhenSpokenTo {
+            user_message_pending,
+        } = self
+        {
+            *user_message_pending = false;
+        }
+    }
+}
+
 /// The core AI engine coordinating conversation.
 ///
 /// `Psyche` drives interactions with language models and orchestrates IO via the [`Mouth`] and [`Ear`] traits. Instantiate it and call [`Psyche::run`] to start the loop.
@@ -95,8 +133,7 @@ pub struct Psyche {
     /// Delay between experience ticks.
     experience_tick: Duration,
     is_speaking: bool,
-    speak_when_spoken_to: bool,
-    pending_user_message: bool,
+    speak_policy: SpeakPolicy,
     connections: Option<Arc<AtomicUsize>>,
     wits: Vec<Arc<dyn wit::ErasedWit + Send + Sync>>,
     wit_tx: broadcast::Sender<WitReport>,
@@ -209,8 +246,7 @@ impl Psyche {
             echo_timeout: Duration::from_secs(1),
             experience_tick: DEFAULT_EXPERIENCE_TICK,
             is_speaking: false,
-            speak_when_spoken_to: false,
-            pending_user_message: true,
+            speak_policy: SpeakPolicy::Always,
             connections: None,
             wits: Vec::new(),
             ling,
@@ -428,13 +464,18 @@ impl Psyche {
 
     /// Enable or disable waiting for user input before speaking.
     pub fn set_speak_when_spoken_to(&mut self, enabled: bool) {
-        self.speak_when_spoken_to = enabled;
-        self.pending_user_message = !enabled;
+        self.speak_policy = if enabled {
+            SpeakPolicy::WhenSpokenTo {
+                user_message_pending: false,
+            }
+        } else {
+            SpeakPolicy::Always
+        };
     }
 
     /// Returns `true` if the psyche waits for user messages before speaking.
     pub fn speak_when_spoken_to(&self) -> bool {
-        self.speak_when_spoken_to
+        matches!(self.speak_policy, SpeakPolicy::WhenSpokenTo { .. })
     }
 
     /// Buffer that Pete heard himself say `text`.
@@ -488,7 +529,7 @@ impl Psyche {
                 }
                 self.notify_observers(arc.as_ref()).await;
             }
-            if self.speak_when_spoken_to && !self.pending_user_message {
+            if self.speak_policy.waiting_for_user() {
                 match self.input_rx.recv().await {
                     Some(Sensation::HeardUserVoice(msg)) => {
                         debug!("heard user voice: {}", msg);
@@ -496,7 +537,7 @@ impl Psyche {
                         self.buffer_user_speech(&msg).await;
                         self.notify_observers(&Sensation::HeardUserVoice(msg.clone()))
                             .await;
-                        self.pending_user_message = true;
+                        self.speak_policy.received_user_message();
                         continue;
                     }
                     Some(Sensation::HeardOwnVoice(msg)) => {
@@ -536,7 +577,7 @@ impl Psyche {
                 }
                 self.ling.lock().await.flush();
                 self.is_speaking = false;
-                self.pending_user_message = !self.speak_when_spoken_to;
+                self.speak_policy.after_speech();
                 turns += 1;
                 debug!("turn {} complete", turns);
             } else {
