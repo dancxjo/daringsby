@@ -28,10 +28,10 @@ pub mod wits {
     pub mod fond_du_coeur;
     pub mod heart_wit;
     pub mod identity_wit;
-    pub mod instant_wit;
     pub mod memory;
     pub mod memory_wit;
     pub mod moment_wit;
+    pub mod quick;
     pub mod situation_wit;
     pub mod vision_wit;
     pub mod will;
@@ -45,10 +45,10 @@ pub mod wits {
     pub use fond_du_coeur::FondDuCoeur;
     pub use heart_wit::HeartWit;
     pub use identity_wit::IdentityWit;
-    pub use instant_wit::InstantWit;
     pub use memory::{BasicMemory, GraphStore, Memory, Neo4jClient, NoopMemory, QdrantClient};
     pub use memory_wit::MemoryWit;
     pub use moment_wit::MomentWit;
+    pub use quick::Quick;
     pub use situation_wit::SituationWit;
     pub use vision_wit::VisionWit;
     pub use will::Will;
