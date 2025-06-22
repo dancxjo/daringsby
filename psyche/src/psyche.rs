@@ -19,6 +19,7 @@ const EXPERIENCE_TICK: Duration = Duration::from_secs(60);
 const EXPERIENCE_TICK: Duration = Duration::from_millis(10);
 use chrono::{DateTime, Utc};
 use quick_xml::{Reader, events::Event as XmlEvent};
+use std::any::Any;
 use tokio::sync::{Mutex, broadcast, mpsc};
 use tracing::{debug, error, info};
 
@@ -96,6 +97,7 @@ pub struct Psyche {
     sensation_buffer: Arc<Mutex<VecDeque<Sensation>>>,
     last_ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
     pending_turn: Arc<Mutex<Option<String>>>,
+    topic_bus: crate::topics::TopicBus,
 }
 
 fn extract_tag(text: &str, name: &str) -> Option<String> {
@@ -173,6 +175,7 @@ impl Psyche {
             sensation_buffer: Arc::new(Mutex::new(VecDeque::new())),
             last_ticks: Arc::new(Mutex::new(HashMap::new())),
             pending_turn,
+            topic_bus: crate::topics::TopicBus::new(16),
         }
     }
 
@@ -223,6 +226,12 @@ impl Psyche {
     /// Obtain a sender for queuing [`Sensation`]s to the conversation loop.
     pub fn input_sender(&self) -> mpsc::UnboundedSender<Sensation> {
         self.input_tx.clone()
+    }
+
+    /// Publish a raw sensory impression on the [`TopicBus`].
+    pub fn feel(&self, payload: impl Any + Send + Sync + 'static) {
+        self.topic_bus
+            .publish(crate::topics::Topic::Instant, payload);
     }
 
     /// Obtain the sender used to broadcast conversation [`Event`]s.
@@ -352,6 +361,11 @@ impl Psyche {
     /// Get a handle to the shared conversation history.
     pub fn conversation(&self) -> Arc<Mutex<Conversation>> {
         self.conversation.clone()
+    }
+
+    /// Access the shared [`TopicBus`].
+    pub fn topic_bus(&self) -> crate::topics::TopicBus {
+        self.topic_bus.clone()
     }
 
     /// Returns `true` if speech has been dispatched but not yet echoed.
