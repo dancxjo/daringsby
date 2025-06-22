@@ -15,12 +15,6 @@
   const witDebugContainer = document.getElementById("wit-debug");
   let playing = false;
 
-  document.addEventListener("keydown", (e) => {
-    if (e.altKey && e.code === "Backquote") {
-      document.body.classList.toggle("retro-tabs");
-    }
-  });
-
   function getWitDetail(name) {
     let entry = witDetails[name];
     if (!entry) {
