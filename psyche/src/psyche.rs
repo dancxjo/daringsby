@@ -21,6 +21,7 @@ use crate::pending_turn::PendingTurn;
 /// Default size for internal broadcast channels.
 pub const DEFAULT_CHANNEL_CAPACITY: usize = 16;
 
+use crate::task_group::TaskGroup;
 use chrono::{DateTime, Utc};
 use futures::FutureExt;
 use quick_xml::{Reader, events::Event as XmlEvent};
@@ -602,7 +603,11 @@ impl Psyche {
         }
     }
 
-    /// Start the conversation and background tasks. Returns the updated [`Psyche`] when finished.
+    /// Start the conversation and background tasks.
+    ///
+    /// All spawned tasks are tracked and aborted on drop. This ensures
+    /// background loops do not outlive the [`Psyche`] if `run` is cancelled.
+    /// Returns the updated [`Psyche`] when finished.
     pub async fn run(self) -> Self {
         info!("psyche run started");
         let buf = self.sensation_buffer.clone();
@@ -613,7 +618,7 @@ impl Psyche {
         let ling = self.ling.clone();
         let pending = self.pending_turn.clone();
 
-        let mut wit_handles = Vec::new();
+        let mut tasks = TaskGroup::new();
         for wit in &self.wits {
             let wit = wit.clone();
             let ticks = ticks.clone();
@@ -635,21 +640,19 @@ impl Psyche {
                     error!(%name, ?e, "wit loop panicked");
                 }
             });
-            wit_handles.push(tokio::spawn(fut));
+            tasks.spawn(fut);
         }
 
-        let experience_handle =
-            tokio::spawn(Self::experience(buf, observers, bus, self.experience_tick));
+        tasks.spawn(Self::experience(buf, observers, bus, self.experience_tick));
         let converse_handle = tokio::spawn(self.converse());
-        let psyche = converse_handle.await.expect("converse task panicked");
-        experience_handle.abort();
-        let _ = experience_handle.await;
-        for h in &wit_handles {
-            h.abort();
-        }
-        for h in wit_handles {
-            let _ = h.await;
-        }
+        let psyche = match converse_handle.await {
+            Ok(p) => p,
+            Err(e) => {
+                tasks.shutdown().await;
+                panic!("converse task panicked: {e:?}");
+            }
+        };
+        tasks.shutdown().await;
         info!("psyche run finished");
         psyche
     }
