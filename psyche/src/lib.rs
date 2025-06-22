@@ -29,6 +29,7 @@ pub mod wits {
     pub mod instant_wit;
     pub mod memory;
     pub mod memory_wit;
+    pub mod moment_wit;
     pub mod vision_wit;
     pub mod will;
     pub mod will_wit;
@@ -42,6 +43,7 @@ pub mod wits {
     pub use instant_wit::InstantWit;
     pub use memory::{BasicMemory, GraphStore, Memory, Neo4jClient, NoopMemory, QdrantClient};
     pub use memory_wit::MemoryWit;
+    pub use moment_wit::MomentWit;
     pub use vision_wit::VisionWit;
     pub use will::Will;
     pub use will_wit::WillWit;
