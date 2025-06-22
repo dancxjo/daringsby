@@ -1,4 +1,13 @@
-:root{--bs-primary:#0d6efd;--bs-secondary:#6c757d;--bs-border-radius:.375rem;--bs-font-size-lg:1.25rem;--panel-bg:#f8f8f8;--panel-hover:#eee;--panel-border:#fff;}
+:root{
+    --bs-primary:#0d6efd;
+    --bs-secondary:#6c757d;
+    --bs-border-radius:.375rem;
+    --bs-font-size-lg:1.25rem;
+    --panel-bg:#f8f8f8;
+    --panel-hover:#eee;
+    --panel-border:#fff;
+    --font-family:'Fira Sans', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
 
 @media (prefers-color-scheme: dark){
     :root{
@@ -120,6 +129,7 @@ body {
     background-color: black;
     color: white;
     overflow: hidden;
+    font-family: var(--font-family);
 }
 
 #thought {
