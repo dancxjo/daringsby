@@ -199,9 +199,9 @@ button:hover {
   background-color: #222;
   border: 1px solid #333;
   padding: 0.5rem;
-  color: white;
+  color: #aaa;
   position: relative;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .sidebar details::before {
