@@ -11,6 +11,7 @@ This repository is a Rust workspace.
 ## Running & Testing
 
 * Run tests with `cargo test` from the repository root.
+* Some tests check debug logs; set `RUST_LOG=debug` when running them.
 * Format with `cargo fmt`.
 * Use `tracing` macros for all logging.
 * Initialize logging in binaries with `tracing_subscriber::fmt::init()`.

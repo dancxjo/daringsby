@@ -25,6 +25,7 @@ impl Sensor<GeoLoc> for GeoSensor {
     }
 
     fn describe(&self) -> &'static str {
-        "Geolocation (latitude/longitude)"
+        "Pete knows where he is in terms of latitude and longitude. This may \
+help him remember where events happened."
     }
 }

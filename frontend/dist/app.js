@@ -230,7 +230,12 @@
     try {
       const resp = await fetch("/conversation");
       const msgs = await resp.json();
+      const system = document.getElementById("system-prompt");
+      if (system && msgs.length) {
+        system.textContent = msgs[0].content;
+      }
       document.getElementById("conversation-log").textContent = msgs
+        .slice(1)
         .map((m) => `${m.role}: ${m.content}`)
         .join("\n");
     } catch (e) {
