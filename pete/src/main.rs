@@ -1,14 +1,22 @@
 use axum_server::tls_rustls::RustlsConfig;
 use clap::Parser;
+#[cfg(feature = "ear")]
+use pete::ChannelEar;
+#[cfg(feature = "eye")]
+use pete::EyeSensor;
+#[cfg(feature = "face")]
+use pete::FaceSensor;
+#[cfg(feature = "geo")]
+use pete::GeoSensor;
 use pete::{
-    AppState, ChannelEar, ChannelMouth, app, init_logging, listen_user_input, ollama_psyche,
+    AppState, ChannelMouth, NoopEar, NoopSensor, app, init_logging, listen_user_input,
+    ollama_psyche,
 };
 #[cfg(feature = "tts")]
 use pete::{CoquiTts, TtsMouth};
-use pete::{EyeSensor, FaceSensor, GeoSensor};
 #[cfg(feature = "tts")]
 use psyche::PlainMouth;
-use psyche::{ImageData, Mouth, Sensation, Sensor, TrimMouth};
+use psyche::{Ear, GeoLoc, ImageData, Mouth, Sensation, Sensor, TrimMouth};
 use std::{
     net::SocketAddr,
     sync::{
@@ -129,34 +137,63 @@ async fn main() -> anyhow::Result<()> {
     psyche.set_connection_counter(connections.clone());
     let conversation = psyche.conversation();
     let voice = psyche.voice();
-    let ear = Arc::new(ChannelEar::new(
-        psyche.input_sender(),
-        speaking.clone(),
-        voice.clone(),
-    ));
+    let mut senses: Vec<&'static str> = Vec::new();
+    #[cfg(feature = "ear")]
+    let ear: Arc<dyn Ear> = {
+        senses.push("Audio input (user voice)");
+        Arc::new(ChannelEar::new(
+            psyche.input_sender(),
+            speaking.clone(),
+            voice.clone(),
+        )) as Arc<dyn Ear>
+    };
+    #[cfg(not(feature = "ear"))]
+    let ear: Arc<dyn Ear> = Arc::new(NoopEar) as Arc<dyn Ear>;
+    #[cfg(feature = "eye")]
     let (eye_tx, mut eye_rx) = mpsc::unbounded_channel();
-    let eye = Arc::new(EyeSensor::new(eye_tx));
+    #[cfg(feature = "eye")]
+    let eye: Arc<dyn Sensor<ImageData>> = {
+        let sensor = Arc::new(EyeSensor::new(eye_tx)) as Arc<dyn Sensor<ImageData>>;
+        senses.push(sensor.describe());
+        sensor
+    };
+    #[cfg(not(feature = "eye"))]
+    let eye: Arc<dyn Sensor<ImageData>> = Arc::new(NoopSensor) as Arc<dyn Sensor<ImageData>>;
+
+    #[cfg(feature = "face")]
     let face_sensor = Arc::new(FaceSensor::new(
         Arc::new(psyche::DummyDetector::default()),
         psyche::QdrantClient::default(),
         psyche.topic_bus(),
     ));
-    psyche.add_sense(eye.description());
-    psyche.add_sense(face_sensor.description());
-    let forward = psyche.input_sender();
-    let face_clone = face_sensor.clone();
-    tokio::spawn(async move {
-        while let Some(s) = eye_rx.recv().await {
-            if let Sensation::Of(any) = &s {
-                if let Some(img) = any.downcast_ref::<ImageData>() {
-                    face_clone.sense(img.clone()).await;
+    #[cfg(feature = "face")]
+    {
+        senses.push(face_sensor.describe());
+    }
+    #[cfg(all(feature = "eye", feature = "face"))]
+    {
+        let forward = psyche.input_sender();
+        let face_clone = face_sensor.clone();
+        tokio::spawn(async move {
+            while let Some(s) = eye_rx.recv().await {
+                if let Sensation::Of(any) = &s {
+                    if let Some(img) = any.downcast_ref::<ImageData>() {
+                        face_clone.sense(img.clone()).await;
+                    }
                 }
+                let _ = forward.send(s);
             }
-            let _ = forward.send(s);
-        }
-    });
-    let geo = Arc::new(GeoSensor::new(psyche.input_sender()));
-    psyche.add_sense(geo.description());
+        });
+    }
+
+    #[cfg(feature = "geo")]
+    let geo: Arc<dyn Sensor<GeoLoc>> = {
+        let g = Arc::new(GeoSensor::new(psyche.input_sender())) as Arc<dyn Sensor<GeoLoc>>;
+        senses.push(g.describe());
+        g
+    };
+    #[cfg(not(feature = "geo"))]
+    let geo: Arc<dyn Sensor<GeoLoc>> = Arc::new(NoopSensor) as Arc<dyn Sensor<GeoLoc>>;
     tokio::spawn(listen_user_input(user_rx, ear.clone(), voice.clone()));
 
     if let Some(secs) = cli.auto_voice {
@@ -185,7 +222,11 @@ async fn main() -> anyhow::Result<()> {
             bus_events.publish_event(evt);
         }
     });
-    let system_prompt = psyche.system_prompt();
+    let system_prompt = format!(
+        "These are the only senses Pete has:\n- {}",
+        senses.join("\n- ")
+    );
+    psyche.set_system_prompt(system_prompt.clone());
     tokio::spawn(async move {
         psyche.run().await;
     });

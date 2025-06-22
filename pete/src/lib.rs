@@ -14,14 +14,21 @@ mod simulator;
 mod tts_mouth;
 mod web;
 
-pub use ear::{ChannelEar, NoopEar};
+#[cfg(feature = "ear")]
+pub use ear::ChannelEar;
+pub use ear::NoopEar;
 pub use event_bus::EventBus;
 pub use logging::init_logging;
 pub use motor::LoggingMotor;
 pub use mouth::{ChannelMouth, NoopMouth};
+#[cfg(feature = "face")]
 pub use psyche::FaceSensor;
 pub use psyche_factory::{dummy_psyche, ollama_psyche};
-pub use sensor::{eye::EyeSensor, geo::GeoSensor};
+pub use sensor::NoopSensor;
+#[cfg(feature = "eye")]
+pub use sensor::eye::EyeSensor;
+#[cfg(feature = "geo")]
+pub use sensor::geo::GeoSensor;
 pub use simulator::Simulator;
 #[cfg(feature = "tts")]
 pub use tts_mouth::{CoquiTts, Tts, TtsMouth, TtsStream};

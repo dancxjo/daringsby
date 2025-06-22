@@ -1,12 +1,18 @@
 use async_trait::async_trait;
-use psyche::{Ear, Sensation, Voice};
+use psyche::Ear;
+#[cfg(feature = "ear")]
+use psyche::{Sensation, Voice};
+#[cfg(feature = "ear")]
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+#[cfg(feature = "ear")]
 use tokio::sync::mpsc;
+#[cfg(feature = "ear")]
 use tracing::{debug, info};
 
+#[cfg(feature = "ear")]
 /// [`Ear`] implementation that forwards heard text through a channel.
 #[derive(Clone)]
 pub struct ChannelEar {
@@ -15,6 +21,7 @@ pub struct ChannelEar {
     voice: Arc<Voice>,
 }
 
+#[cfg(feature = "ear")]
 impl ChannelEar {
     /// Create a new `ChannelEar` wired to the given channels.
     pub fn new(
@@ -30,6 +37,7 @@ impl ChannelEar {
     }
 }
 
+#[cfg(feature = "ear")]
 #[async_trait]
 impl Ear for ChannelEar {
     async fn hear_self_say(&self, text: &str) {

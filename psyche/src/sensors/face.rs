@@ -103,7 +103,7 @@ impl Sensor<ImageData> for FaceSensor {
         }
     }
 
-    fn description(&self) -> String {
-        "Face sensor".into()
+    fn describe(&self) -> &'static str {
+        "Face detection (embeddings)"
     }
 }

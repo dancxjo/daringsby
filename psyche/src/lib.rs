@@ -68,7 +68,9 @@ mod prehension;
 mod prompt;
 mod sensor;
 pub mod sensors {
+    #[cfg(feature = "face")]
     pub mod face;
+    #[cfg(feature = "face")]
     pub use face::{DummyDetector, FaceDetector, FaceInfo, FaceSensor};
 }
 mod trim_mouth;
@@ -91,6 +93,7 @@ pub use types::{GeoLoc, ImageData, ObjectInfo};
 pub use ling::{Feeling, Ling};
 pub use psyche::{Conversation, Psyche};
 pub use sensation::{Event, Sensation, WitReport};
+#[cfg(feature = "face")]
 pub use sensors::{DummyDetector, FaceDetector, FaceInfo, FaceSensor};
 pub use traits::{Ear, ErasedWit, Mouth, SensationObserver, Summarizer, Wit, WitAdapter};
 pub use voice::{Voice, extract_emojis};
