@@ -1,87 +1,144 @@
-use crate::{Impression, Stimulus, Summarizer, voice::Voice, wit::Wit, wits::Will};
+use crate::instruction::{Instruction, parse_instructions};
+use crate::ling::{Doer, Instruction as LlmInstruction};
+use crate::prompt::{PromptBuilder, WillPrompt};
+use crate::topics::{Topic, TopicBus};
+use crate::{Impression, Stimulus, WitReport};
 use async_trait::async_trait;
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicUsize, Ordering},
-};
+use futures::StreamExt;
+use std::sync::{Arc, Mutex};
+use tokio::sync::broadcast;
+use tracing::debug;
 
-/// Wit driving Pete's actions via the [`Will`] summarizer.
-///
-/// Accumulates awareness statements and periodically decides what to do or
-/// say next. After generating a decision it commands the [`Voice`] to speak.
+/// Wit that decides Pete's next action and publishes [`Instruction`]s.
 pub struct WillWit {
-    will: Arc<Will>,
-    buffer: Mutex<Vec<Impression<String>>>,
-    voice: Arc<Voice>,
-    ticks: AtomicUsize,
+    bus: TopicBus,
+    doer: Arc<dyn Doer>,
+    prompt: WillPrompt,
+    buffer: Arc<Mutex<Vec<String>>>,
+    history: Arc<Mutex<Vec<Instruction>>>,
+    tx: Option<broadcast::Sender<WitReport>>,
 }
 
 impl WillWit {
-    /// Debug label for this Wit.
+    /// Debug label used for debugging filters.
     pub const LABEL: &'static str = "WillWit";
-    /// Create a new `WillWit` using `will` to decide actions and allowing
-    /// `voice` to speak.
-    pub fn new(will: Arc<Will>, voice: Arc<Voice>) -> Self {
-        voice.set_will(will.clone());
-        Self {
-            will,
-            buffer: Mutex::new(Vec::new()),
-            voice,
-            ticks: AtomicUsize::new(0),
-        }
+
+    /// Create a new `WillWit` subscribed to `bus` using `doer`.
+    pub fn new(bus: TopicBus, doer: Arc<dyn Doer>) -> Self {
+        Self::with_debug(bus, doer, None)
     }
 
-    /// Override the [`Voice`] prompt builder.
-    pub fn set_prompt<P>(&self, prompt: P)
-    where
-        P: crate::prompt::PromptBuilder + Send + Sync + 'static,
-    {
-        self.voice.set_prompt(prompt);
+    /// Replace the prompt builder.
+    pub fn set_prompt(&mut self, prompt: WillPrompt) {
+        self.prompt = prompt;
+    }
+
+    /// Create a new `WillWit` emitting [`WitReport`]s via `tx`.
+    pub fn with_debug(
+        bus: TopicBus,
+        doer: Arc<dyn Doer>,
+        tx: Option<broadcast::Sender<WitReport>>,
+    ) -> Self {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let history = Arc::new(Mutex::new(Vec::new()));
+        let buf_clone = buffer.clone();
+        let bus_clone = bus.clone();
+        tokio::spawn(async move {
+            let inst = bus_clone.subscribe(Topic::Instant);
+            let mom = bus_clone.subscribe(Topic::Moment);
+            tokio::pin!(inst);
+            tokio::pin!(mom);
+            loop {
+                tokio::select! {
+                    Some(p) = inst.next() => {
+                        if let Ok(i) = Arc::downcast::<Impression<String>>(p) {
+                            buf_clone.lock().unwrap().push(i.summary.clone());
+                        }
+                    }
+                    Some(p) = mom.next() => {
+                        if let Ok(i) = Arc::downcast::<Impression<String>>(p) {
+                            buf_clone.lock().unwrap().push(i.summary.clone());
+                        }
+                    }
+                }
+            }
+        });
+        Self {
+            bus,
+            doer,
+            prompt: WillPrompt,
+            buffer,
+            history,
+            tx,
+        }
     }
 }
 
 #[async_trait]
-impl Wit<Impression<String>, String> for WillWit {
-    async fn observe(&self, input: Impression<String>) {
-        self.buffer.lock().unwrap().push(input);
-    }
+impl crate::wit::Wit<(), Instruction> for WillWit {
+    async fn observe(&self, _: ()) {}
 
-    async fn tick(&self) -> Vec<Impression<String>> {
-        let inputs = {
+    async fn tick(&self) -> Vec<Impression<Instruction>> {
+        let items = {
             let mut buf = self.buffer.lock().unwrap();
             if buf.is_empty() {
                 return Vec::new();
             }
-            let data = buf.clone();
+            let out = buf.join(" \n");
             buf.clear();
-            data
+            out
         };
-        let decision = match self.will.digest(&inputs).await {
-            Ok(d) => d,
-            Err(_) => return Vec::new(),
-        };
-
-        let count = self.ticks.fetch_add(1, Ordering::SeqCst) + 1;
-        let mut prompt = None;
-        if count % 3 == 0 {
-            prompt = Some("share a brief update".to_string());
-        }
-        if inputs
-            .iter()
-            .any(|i| i.stimuli.iter().any(|s| s.what.contains('?')))
+        let prompt_text = self.prompt.build(&items);
+        let resp = match self
+            .doer
+            .follow(LlmInstruction {
+                command: prompt_text.clone(),
+                images: Vec::new(),
+            })
+            .await
         {
-            prompt = Some("answer the user's question".to_string());
+            Ok(r) => r,
+            Err(e) => {
+                debug!(?e, "will wit doer failed");
+                return Vec::new();
+            }
+        };
+        let instructions = parse_instructions(&resp);
+        let unique = {
+            let mut hist = self.history.lock().unwrap();
+            let mut unique = Vec::new();
+            for ins in instructions {
+                if hist.last().map_or(false, |h| h == &ins) {
+                    continue;
+                }
+                self.bus.publish(Topic::Instruction, ins.clone());
+                hist.push(ins.clone());
+                if hist.len() > 10 {
+                    hist.remove(0);
+                }
+                unique.push(ins);
+            }
+            unique
+        };
+        if let Some(tx) = &self.tx {
+            if crate::debug::debug_enabled(Self::LABEL).await {
+                let _ = tx.send(WitReport {
+                    name: Self::LABEL.into(),
+                    prompt: prompt_text,
+                    output: resp.clone(),
+                });
+            }
         }
-
-        let mut out = vec![decision];
-        if let Some(p) = prompt {
-            out.push(Impression::new(
-                vec![Stimulus::new(format!("<take_turn>{}</take_turn>", p))],
-                "take_turn",
-                None::<String>,
-            ));
-        }
-        out
+        unique
+            .into_iter()
+            .map(|ins| {
+                Impression::new(
+                    vec![Stimulus::new(ins.clone())],
+                    format!("{:?}", ins),
+                    None::<String>,
+                )
+            })
+            .collect()
     }
 
     fn debug_label(&self) -> &'static str {

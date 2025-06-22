@@ -74,7 +74,7 @@ pub fn ollama_psyche(
     use psyche::ling::OllamaProvider;
     use psyche::wits::{
         BasicMemory, Combobulator, CombobulatorWit, FondDuCoeur, FondDuCoeurWit, HeartWit,
-        MemoryWit, Neo4jClient, QdrantClient, Will, WillWit,
+        MemoryWit, Neo4jClient, QdrantClient, WillWit,
     };
 
     let narrator = OllamaProvider::new(chatter_host, chatter_model)?;
@@ -112,11 +112,10 @@ pub fn ollama_psyche(
         Box::new(OllamaProvider::new(wits_host, wits_model)?),
         wit_tx.clone(),
     ))));
-    let will = Arc::new(Will::with_debug(
-        Box::new(OllamaProvider::new(wits_host, wits_model)?),
-        wit_tx.clone(),
-    ));
-    psyche.register_typed_wit(Arc::new(WillWit::new(will, psyche.voice())));
+    psyche.register_typed_wit(Arc::new(WillWit::new(
+        psyche.topic_bus(),
+        Arc::new(OllamaProvider::new(wits_host, wits_model)?),
+    )));
     psyche.register_typed_wit(Arc::new(MemoryWit::with_debug(
         memory.clone(),
         wit_tx.clone(),
