@@ -422,23 +422,18 @@ impl Psyche {
                     Sensation::HeardOwnVoice(msg) => {
                         let mut conv = self.conversation.lock().await;
                         conv.add_assistant(msg.clone());
+                        self.buffer_self_speech(msg).await;
                     }
                     Sensation::HeardUserVoice(msg) => {
                         let mut conv = self.conversation.lock().await;
                         conv.add_user(msg.clone());
-                    }
-                    Sensation::Of(_) => {}
-                }
-                self.notify_observers(arc.as_ref()).await;
-                match &*arc {
-                    Sensation::HeardOwnVoice(msg) => {
-                        self.buffer_self_speech(msg).await;
-                    }
-                    Sensation::HeardUserVoice(msg) => {
                         self.buffer_user_speech(msg).await;
                     }
-                    Sensation::Of(_) => self.sensation_buffer.lock().await.push_back(arc.clone()),
+                    Sensation::Of(_) => {
+                        self.sensation_buffer.lock().await.push_back(arc.clone());
+                    }
                 }
+                self.notify_observers(arc.as_ref()).await;
             }
             if self.speak_when_spoken_to && !self.pending_user_message {
                 match self.input_rx.recv().await {
