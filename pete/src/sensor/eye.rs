@@ -25,6 +25,7 @@ impl Sensor<ImageData> for EyeSensor {
     }
 
     fn describe(&self) -> &'static str {
-        "Visual (images)"
+        "Pete can see through a webcam. Every few seconds, a new image is \
+passed to his perception system. He can describe what he sees and recognize people's faces."
     }
 }

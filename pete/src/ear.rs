@@ -35,6 +35,9 @@ impl ChannelEar {
             voice,
         }
     }
+
+    /// Human readable description of this sense.
+    pub const DESCRIPTION: &'static str = "Pete hears audio from the user, transcribed as text. He can respond to spoken questions and converse naturally.";
 }
 
 #[cfg(feature = "ear")]

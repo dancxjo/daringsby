@@ -104,6 +104,7 @@ impl Sensor<ImageData> for FaceSensor {
     }
 
     fn describe(&self) -> &'static str {
-        "Face detection (embeddings)"
+        "Pete tries to recognize faces in the images he sees. If he sees the \
+same face often, he may remember it."
     }
 }

@@ -141,10 +141,9 @@ async fn main() -> anyhow::Result<()> {
     psyche.set_connection_counter(connections.clone());
     let conversation = psyche.conversation();
     let voice = psyche.voice();
-    let mut senses: Vec<&'static str> = Vec::new();
     #[cfg(feature = "ear")]
     let ear: Arc<dyn Ear> = {
-        senses.push("Audio input (user voice)");
+        psyche.add_sense(ChannelEar::DESCRIPTION.into());
         Arc::new(ChannelEar::new(
             psyche.input_sender(),
             speaking.clone(),
@@ -158,7 +157,7 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(feature = "eye")]
     let eye: Arc<dyn Sensor<ImageData>> = {
         let sensor = Arc::new(EyeSensor::new(eye_tx)) as Arc<dyn Sensor<ImageData>>;
-        senses.push(sensor.describe());
+        psyche.add_sense(sensor.describe().into());
         sensor
     };
     #[cfg(not(feature = "eye"))]
@@ -172,7 +171,7 @@ async fn main() -> anyhow::Result<()> {
     ));
     #[cfg(feature = "face")]
     {
-        senses.push(face_sensor.describe());
+        psyche.add_sense(face_sensor.describe().into());
     }
     #[cfg(all(feature = "eye", feature = "face"))]
     {
@@ -193,7 +192,7 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(feature = "geo")]
     let geo: Arc<dyn Sensor<GeoLoc>> = {
         let g = Arc::new(GeoSensor::new(psyche.input_sender())) as Arc<dyn Sensor<GeoLoc>>;
-        senses.push(g.describe());
+        psyche.add_sense(g.describe().into());
         g
     };
     #[cfg(not(feature = "geo"))]
@@ -229,10 +228,8 @@ async fn main() -> anyhow::Result<()> {
             bus_events.publish_event(evt);
         }
     });
-    let system_prompt = format!(
-        "These are the only senses Pete has:\n- {}",
-        senses.join("\n- ")
-    );
+    psyche.add_sense("Pete experiences a heartbeat sensation roughly every minute, which reminds him that time is passing.".into());
+    let system_prompt = psyche.described_system_prompt();
     psyche.set_system_prompt(system_prompt.clone());
     tokio::spawn(async move {
         psyche.run().await;
