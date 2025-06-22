@@ -50,6 +50,7 @@ The previous Deno-based client has been removed. Update the files in
 `frontend/dist` directly to change the interface.
 * Queue audio playback on the client so clips never overlap.
 * Define CSS variables in `styles.css` to control colors and fonts.
+* Import web fonts in `index.html` and assign them via the `--font-family` CSS variable.
 * Reuse a single `<audio>` element for speech playback so controls remain visible.
 * After playing speech audio, send an `Echo` message with the spoken text so the conversation log records assistant dialogue.
 * Define CSS variables in `styles.css` to control colors and fonts.
