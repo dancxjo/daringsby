@@ -199,6 +199,7 @@ async fn main() -> anyhow::Result<()> {
     let geo: Arc<dyn Sensor<GeoLoc>> = Arc::new(NoopSensor) as Arc<dyn Sensor<GeoLoc>>;
 
     let heartbeat = HeartbeatSensor::new(psyche.input_sender());
+    let mut senses = Vec::new();
     senses.push(heartbeat.describe());
     tokio::spawn(listen_user_input(user_rx, ear.clone(), voice.clone()));
 
