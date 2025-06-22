@@ -21,7 +21,7 @@ use chrono::{DateTime, Utc};
 use quick_xml::{Reader, events::Event as XmlEvent};
 use std::any::Any;
 use tokio::sync::{Mutex, broadcast, mpsc};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// A minimal history of exchanged messages.
 ///
@@ -100,7 +100,8 @@ pub struct Psyche {
     topic_bus: crate::topics::TopicBus,
 }
 
-fn extract_tag(text: &str, name: &str) -> Option<String> {
+#[doc(hidden)]
+pub fn extract_tag(text: &str, name: &str) -> Option<String> {
     let mut reader = Reader::from_str(text);
     reader.trim_text(true);
     let mut buf = Vec::new();
@@ -118,6 +119,10 @@ fn extract_tag(text: &str, name: &str) -> Option<String> {
                 content.push_str(&t.unescape().unwrap_or_default());
             }
             Ok(XmlEvent::Eof) => break,
+            Err(e) => {
+                warn!(?e, "XML parsing failed; falling back to substring search");
+                return fallback_extract(text, name);
+            }
             _ => {}
         }
         buf.clear();
@@ -127,6 +132,14 @@ fn extract_tag(text: &str, name: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+fn fallback_extract(text: &str, name: &str) -> Option<String> {
+    let start_tag = format!("<{}>", name);
+    let end_tag = format!("</{}>", name);
+    let start = text.find(&start_tag)? + start_tag.len();
+    let end = text[start..].find(&end_tag)? + start;
+    Some(text[start..end].to_string())
 }
 
 impl Psyche {
