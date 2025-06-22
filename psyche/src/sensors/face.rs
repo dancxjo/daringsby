@@ -1,10 +1,10 @@
 use crate::Sensor;
+use crate::topics::TopicBus;
 use crate::wits::memory::QdrantClient;
 use crate::{ImageData, Sensation};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tracing::error;
 
 /// Information about a detected face.
@@ -40,20 +40,16 @@ impl FaceDetector for DummyDetector {
 pub struct FaceSensor {
     detector: Arc<dyn FaceDetector>,
     qdrant: QdrantClient,
-    tx: mpsc::UnboundedSender<Sensation>,
+    bus: TopicBus,
 }
 
 impl FaceSensor {
     /// Create a new sensor using the given `detector`, `qdrant` client and output channel `tx`.
-    pub fn new(
-        detector: Arc<dyn FaceDetector>,
-        qdrant: QdrantClient,
-        tx: mpsc::UnboundedSender<Sensation>,
-    ) -> Self {
+    pub fn new(detector: Arc<dyn FaceDetector>, qdrant: QdrantClient, bus: TopicBus) -> Self {
         Self {
             detector,
             qdrant,
-            tx,
+            bus,
         }
     }
 }
@@ -71,9 +67,10 @@ impl Sensor<ImageData> for FaceSensor {
                         crop,
                         embedding: embed,
                     };
-                    if let Err(e) = self.tx.send(Sensation::Of(Box::new(info))) {
-                        error!(?e, "failed sending face info");
-                    }
+                    self.bus.publish(
+                        crate::topics::Topic::Sensation,
+                        Sensation::Of(Box::new(info)),
+                    );
                 }
             }
             Err(e) => error!(?e, "face detection failed"),

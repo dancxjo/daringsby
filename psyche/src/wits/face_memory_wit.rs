@@ -1,6 +1,6 @@
+use crate::sensors::face::FaceInfo;
 use crate::traits::observer::SensationObserver;
 use crate::traits::wit::Wit;
-use crate::wits::face_sensor::FaceInfo;
 use crate::{Impression, Sensation, Stimulus};
 use async_trait::async_trait;
 use std::sync::{
