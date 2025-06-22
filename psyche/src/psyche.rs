@@ -18,6 +18,9 @@ const DEFAULT_EXPERIENCE_TICK: Duration = Duration::from_secs(60);
 #[cfg(test)]
 const DEFAULT_EXPERIENCE_TICK: Duration = Duration::from_millis(10);
 use crate::pending_turn::PendingTurn;
+/// Default size for internal broadcast channels.
+pub const DEFAULT_CHANNEL_CAPACITY: usize = 16;
+
 use chrono::{DateTime, Utc};
 use futures::FutureExt;
 use quick_xml::{Reader, events::Event as XmlEvent};
@@ -157,8 +160,29 @@ impl Psyche {
         mouth: Arc<dyn Mouth>,
         ear: Arc<dyn Ear>,
     ) -> Self {
-        let (events_tx, _r) = broadcast::channel(16);
-        let (wit_tx, _r2) = broadcast::channel(16);
+        Self::with_channel_capacity(
+            narrator,
+            voice,
+            vectorizer,
+            memory,
+            mouth,
+            ear,
+            DEFAULT_CHANNEL_CAPACITY,
+        )
+    }
+
+    /// Construct a [`Psyche`] with custom broadcast channel capacity.
+    pub fn with_channel_capacity(
+        narrator: Box<dyn Doer>,
+        voice: Box<dyn Chatter>,
+        vectorizer: Box<dyn Vectorizer>,
+        memory: Arc<dyn Memory>,
+        mouth: Arc<dyn Mouth>,
+        ear: Arc<dyn Ear>,
+        capacity: usize,
+    ) -> Self {
+        let (events_tx, _r) = broadcast::channel(capacity);
+        let (wit_tx, _r2) = broadcast::channel(capacity);
         let (input_tx, input_rx) = mpsc::unbounded_channel();
         let voice = crate::voice::Voice::new(Arc::from(voice), mouth, events_tx.clone());
         let conversation = Arc::new(Mutex::new(Conversation::default()));
@@ -194,7 +218,7 @@ impl Psyche {
             sensation_buffer: Arc::new(Mutex::new(VecDeque::<Arc<Sensation>>::new())),
             last_ticks: Arc::new(Mutex::new(HashMap::new())),
             pending_turn,
-            topic_bus: crate::topics::TopicBus::new(16),
+            topic_bus: crate::topics::TopicBus::new(capacity),
         }
     }
 
