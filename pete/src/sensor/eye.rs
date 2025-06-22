@@ -7,13 +7,13 @@ use tracing::{debug, info};
 /// Sensor that forwards webcam images to the psyche.
 #[derive(Clone)]
 pub struct EyeSensor {
-    forward: mpsc::UnboundedSender<Sensation>,
+    forward: mpsc::Sender<Sensation>,
     latest: Option<Arc<Mutex<Option<ImageData>>>>,
 }
 
 impl EyeSensor {
     /// Create a new `EyeSensor` using the provided channel.
-    pub fn new(forward: mpsc::UnboundedSender<Sensation>) -> Self {
+    pub fn new(forward: mpsc::Sender<Sensation>) -> Self {
         Self {
             forward,
             latest: None,
@@ -22,7 +22,7 @@ impl EyeSensor {
 
     /// Create a new `EyeSensor` that also writes the latest image to `latest`.
     pub fn with_latest(
-        forward: mpsc::UnboundedSender<Sensation>,
+        forward: mpsc::Sender<Sensation>,
         latest: Arc<Mutex<Option<ImageData>>>,
     ) -> Self {
         Self {
@@ -40,7 +40,7 @@ impl Sensor<ImageData> for EyeSensor {
         if let Some(buf) = &self.latest {
             *buf.lock().unwrap() = Some(image.clone());
         }
-        let _ = self.forward.send(Sensation::Of(Box::new(image)));
+        let _ = self.forward.send(Sensation::Of(Box::new(image))).await;
     }
 
     fn describe(&self) -> &'static str {

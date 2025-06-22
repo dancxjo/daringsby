@@ -15,6 +15,7 @@ async fn vision_wit_receives_images() {
         mime: "image/png".into(),
         base64: "zzz".into(),
     })))
+    .await
     .unwrap();
 
     let mut got = false;

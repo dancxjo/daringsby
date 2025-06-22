@@ -7,7 +7,7 @@ use crate::wits::memory::Memory;
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 /// Default instructions sent to the language model.
 /// Prompt used by [`Voice`] when generating Pete's dialogue.
@@ -25,6 +25,7 @@ use crate::task_group::TaskGroup;
 use chrono::{DateTime, Utc};
 use futures::FutureExt;
 use quick_xml::{Reader, events::Event as XmlEvent};
+use rand::Rng;
 use std::any::Any;
 use std::panic::AssertUnwindSafe;
 use tokio::sync::{Mutex, broadcast, mpsc};
@@ -127,13 +128,13 @@ pub struct Psyche {
     max_history: usize,
     max_turns: usize,
     events_tx: broadcast::Sender<Event>,
-    input_tx: mpsc::UnboundedSender<Sensation>,
-    input_rx: mpsc::UnboundedReceiver<Sensation>,
+    input_tx: mpsc::Sender<Sensation>,
+    input_rx: mpsc::Receiver<Sensation>,
     conversation: Arc<Mutex<Conversation>>,
     echo_timeout: Duration,
     /// Delay between experience ticks.
     experience_tick: Duration,
-    is_speaking: bool,
+    is_speaking: Arc<AtomicBool>,
     speak_policy: SpeakPolicy,
     connections: Option<Arc<AtomicUsize>>,
     wits: Vec<Arc<dyn wit::ErasedWit + Send + Sync>>,
@@ -176,7 +177,8 @@ pub fn extract_tag(text: &str, name: &str) -> Option<String> {
     if inside && !content.is_empty() {
         Some(content)
     } else {
-        None
+        debug!("fallback extracting tag" = %name);
+        fallback_extract(text, name)
     }
 }
 
@@ -221,7 +223,7 @@ impl Psyche {
     ) -> Self {
         let (events_tx, _r) = broadcast::channel(capacity);
         let (wit_tx, _r2) = broadcast::channel(capacity);
-        let (input_tx, input_rx) = mpsc::unbounded_channel();
+        let (input_tx, input_rx) = mpsc::channel(capacity);
         let voice = crate::voice::Voice::new(Arc::from(voice), mouth, events_tx.clone());
         let conversation = Arc::new(Mutex::new(Conversation::default()));
         let ling = Arc::new(Mutex::new(crate::Ling::new(
@@ -246,7 +248,7 @@ impl Psyche {
             conversation,
             echo_timeout: Duration::from_secs(1),
             experience_tick: DEFAULT_EXPERIENCE_TICK,
-            is_speaking: false,
+            is_speaking: Arc::new(AtomicBool::new(false)),
             speak_policy: SpeakPolicy::Always,
             connections: None,
             wits: Vec::new(),
@@ -314,7 +316,7 @@ impl Psyche {
     }
 
     /// Obtain a sender for queuing [`Sensation`]s to the conversation loop.
-    pub fn input_sender(&self) -> mpsc::UnboundedSender<Sensation> {
+    pub fn input_sender(&self) -> mpsc::Sender<Sensation> {
         self.input_tx.clone()
     }
 
@@ -460,7 +462,7 @@ impl Psyche {
 
     /// Returns `true` if speech has been dispatched but not yet echoed.
     pub fn speaking(&self) -> bool {
-        self.is_speaking
+        self.is_speaking.load(Ordering::SeqCst)
     }
 
     /// Enable or disable waiting for user input before speaking.
@@ -571,13 +573,14 @@ impl Psyche {
                 prompt.push('\n');
                 prompt.push_str(&extra);
                 info!(%prompt, "conversation prompt");
-                self.is_speaking = true;
+                self.is_speaking.store(true, Ordering::SeqCst);
                 if let Err(e) = self.voice.take_turn(&prompt, &history).await {
                     error!(?e, "voice chat failed");
                     break;
                 }
                 self.ling.lock().await.flush();
-                self.is_speaking = false;
+                debug!("prompt context flushed");
+                self.is_speaking.store(false, Ordering::SeqCst);
                 self.speak_policy.after_speech();
                 turns += 1;
                 debug!("turn {} complete", turns);
@@ -604,7 +607,8 @@ impl Psyche {
                 }
                 bus.publish(crate::topics::Topic::Sensation, s.clone());
             }
-            tokio::time::sleep(tick).await;
+            let jitter = rand::thread_rng().gen_range(0..50);
+            tokio::time::sleep(tick + Duration::from_millis(jitter)).await;
         }
     }
 
@@ -640,58 +644,60 @@ impl Psyche {
                 error!(?e, "memory store failed");
             }
             ling.lock().await.add_impressions(&imps).await;
-            tokio::time::sleep(tick).await;
+            let jitter = rand::thread_rng().gen_range(0..50);
+            tokio::time::sleep(tick + Duration::from_millis(jitter)).await;
         }
     }
-  /// Start the conversation and background tasks.
-  ///
-  /// All spawned tasks are tracked and aborted on drop. This ensures
-  /// background loops do not outlive the [`Psyche`] if `run` is cancelled.
-  /// Returns the updated [`Psyche`] when finished.
-  pub async fn run(self) -> Self {
-      info!("psyche run started");
-      let buf = Arc::clone(&self.sensation_buffer);
-      let observers = self.observers.clone();
-      let bus = self.topic_bus.clone();
-      let ticks = Arc::clone(&self.last_ticks);
-      let memory = Arc::clone(&self.memory);
-      let ling = Arc::clone(&self.ling);
-      let pending = Arc::clone(&self.pending_turn);
-      let tick = self.experience_tick;
+    /// Start the conversation and background tasks.
+    ///
+    /// All spawned tasks are tracked and aborted on drop. This ensures
+    /// background loops do not outlive the [`Psyche`] if `run` is cancelled.
+    /// Returns the updated [`Psyche`] when finished.
+    pub async fn run(self) -> Self {
+        info!("psyche run started");
+        let buf = Arc::clone(&self.sensation_buffer);
+        let observers = self.observers.clone();
+        let bus = self.topic_bus.clone();
+        let ticks = Arc::clone(&self.last_ticks);
+        let memory = Arc::clone(&self.memory);
+        let ling = Arc::clone(&self.ling);
+        let pending = Arc::clone(&self.pending_turn);
+        let tick = self.experience_tick;
 
-      let mut tasks = TaskGroup::new();
+        let mut tasks = TaskGroup::new();
 
-      for wit in &self.wits {
-          let wit = Arc::clone(wit);
-          let ticks = Arc::clone(&ticks);
-          let mem = Arc::clone(&memory);
-          let ling = Arc::clone(&ling);
-          let pending_turn = Arc::clone(&pending);
-          let name = wit.name().to_string();
+        for wit in &self.wits {
+            let wit = Arc::clone(wit);
+            let ticks = Arc::clone(&ticks);
+            let mem = Arc::clone(&memory);
+            let ling = Arc::clone(&ling);
+            let pending_turn = Arc::clone(&pending);
+            let name = wit.name().to_string();
 
-          let fut = AssertUnwindSafe(Self::wit_loop(wit, ticks, mem, ling, pending_turn, tick))
-              .catch_unwind()
-              .map(move |res| {
-                  if let Err(e) = res {
-                      error!(%name, ?e, "wit loop panicked");
-                  }
-              });
-          tasks.spawn(fut);
-      }
+            let fut = AssertUnwindSafe(Self::wit_loop(wit, ticks, mem, ling, pending_turn, tick))
+                .catch_unwind()
+                .map(move |res| {
+                    if let Err(e) = res {
+                        error!(%name, ?e, "wit loop panicked");
+                    }
+                });
+            tasks.spawn(fut);
+        }
 
-      tasks.spawn(Self::experience(buf, observers, bus, tick));
-      let converse_handle = tokio::spawn(self.converse());
+        tasks.spawn(Self::experience(buf, observers, bus, tick));
+        let converse_handle = tokio::spawn(self.converse());
 
-      let psyche = match converse_handle.await {
-          Ok(p) => p,
-          Err(e) => {
-              tasks.shutdown().await;
-              panic!("converse task panicked: {e:?}");
-          }
-      };
+        let psyche = match converse_handle.await {
+            Ok(p) => p,
+            Err(e) => {
+                error!(?e, "converse task panicked");
+                tasks.shutdown().await;
+                panic!("converse task panicked: {e:?}");
+            }
+        };
 
-      tasks.shutdown().await;
-      info!("psyche run finished");
-      psyche
-  }
+        tasks.shutdown().await;
+        info!("psyche run finished");
+        psyche
+    }
 }

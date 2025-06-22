@@ -94,7 +94,10 @@ async fn no_speech_without_command() {
     psyche.set_turn_limit(1);
     let input = psyche.input_sender();
     let handle = tokio::spawn(async move { psyche.run().await });
-    input.send(Sensation::HeardUserVoice("hi".into())).unwrap();
+    input
+        .send(Sensation::HeardUserVoice("hi".into()))
+        .await
+        .unwrap();
     tokio::time::sleep(Duration::from_millis(50)).await;
     handle.abort();
     let _ = handle.await;

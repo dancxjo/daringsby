@@ -6,12 +6,12 @@ use tracing::{debug, info};
 /// Sensor forwarding geolocation updates to the psyche.
 #[derive(Clone)]
 pub struct GeoSensor {
-    forward: mpsc::UnboundedSender<Sensation>,
+    forward: mpsc::Sender<Sensation>,
 }
 
 impl GeoSensor {
     /// Create a new `GeoSensor` using the provided channel.
-    pub fn new(forward: mpsc::UnboundedSender<Sensation>) -> Self {
+    pub fn new(forward: mpsc::Sender<Sensation>) -> Self {
         Self { forward }
     }
 }
@@ -21,7 +21,7 @@ impl Sensor<GeoLoc> for GeoSensor {
     async fn sense(&self, loc: GeoLoc) {
         info!("geo sensor received location");
         debug!("geo sensor received location");
-        let _ = self.forward.send(Sensation::Of(Box::new(loc)));
+        let _ = self.forward.send(Sensation::Of(Box::new(loc))).await;
     }
 
     fn describe(&self) -> &'static str {

@@ -12,18 +12,18 @@ pub struct HeartbeatSensor;
 
 impl HeartbeatSensor {
     /// Spawn a new heartbeat loop forwarding sensations through `forward`.
-    pub fn new(forward: mpsc::UnboundedSender<Sensation>) -> Self {
+    pub fn new(forward: mpsc::Sender<Sensation>) -> Self {
         Self::spawn(forward, Duration::from_secs(55), 10);
         Self
     }
 
     #[cfg(test)]
-    pub fn test_interval(forward: mpsc::UnboundedSender<Sensation>, secs: u64) -> Self {
+    pub fn test_interval(forward: mpsc::Sender<Sensation>, secs: u64) -> Self {
         Self::spawn(forward, Duration::from_secs(secs), 0);
         Self
     }
 
-    fn spawn(forward: mpsc::UnboundedSender<Sensation>, base: Duration, range: u64) {
+    fn spawn(forward: mpsc::Sender<Sensation>, base: Duration, range: u64) {
         tokio::spawn(async move {
             loop {
                 let secs = rand::thread_rng().gen_range(0..=range);
@@ -33,7 +33,7 @@ impl HeartbeatSensor {
                     timestamp: Utc::now(),
                 };
                 info!("heartbeat");
-                let _ = forward.send(Sensation::Of(Box::new(beat)));
+                let _ = forward.send(Sensation::Of(Box::new(beat))).await;
             }
         });
     }
