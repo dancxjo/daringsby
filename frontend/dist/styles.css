@@ -77,7 +77,6 @@ main {
   align-items: center;
   max-width: 80%;
   z-index: 1;
-  position: relative;
 }
 
 #thought::before,
