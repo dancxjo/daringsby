@@ -11,18 +11,18 @@
 </head>
 <body>
   <video id="webcam" autoplay muted playsinline></video>
-  <img id="image-thumbnail" class="image-thumbnail" alt="Last sent image" style="display:none;" />
-  <div id="face" class="face" style="position:relative;width:100vw;height:100vh;overflow:hidden;">
+  <img id="image-thumbnail" class="image-thumbnail" alt="Last sent image" />
+  <div id="face" class="face">
     <div id="mien" class="mien">😐</div>
-    <div id="thought" class="thought-bubble" style="display:none;position:absolute;top:10%;left:50%;transform:translateX(-50%);">
-      <img id="thought-image" alt="Webcam thumbnail" style="display:none;" />
+    <div id="thought" class="thought-bubble">
+      <img id="thought-image" alt="Webcam thumbnail" />
       <div id="thought-tabs"></div>
     </div>
-    <div id="words" class="spoken-words" style="position:absolute;bottom:10%;left:50%;transform:translateX(-50%);"></div>
-    <audio id="audio-player" style="display:none;position:absolute;bottom:0;left:0;width:100%;"></audio>
+    <div id="words" class="spoken-words"></div>
+    <audio id="audio-player"></audio>
   </div>
-  <form id="text-form" style="position:absolute;bottom:1rem;left:50%;transform:translateX(-50%);width:80%;display:flex;gap:0.5rem;">
-    <input id="text-input" class="form-control" type="text" style="flex:1;" autofocus />
+  <form id="text-form">
+    <input id="text-input" class="form-control" type="text" autofocus />
     <button type="submit" class="btn btn-primary">Send</button>
   </form>
   <details style="position:absolute;top:1rem;left:1rem;max-height:40vh;overflow:auto;">
