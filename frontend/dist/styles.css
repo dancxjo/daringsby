@@ -232,6 +232,9 @@ details {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     padding: 1em;
     margin-bottom: 1em;
+    max-width: 50vw;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 details > summary {
