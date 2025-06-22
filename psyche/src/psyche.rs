@@ -18,8 +18,10 @@ const DEFAULT_EXPERIENCE_TICK: Duration = Duration::from_secs(60);
 #[cfg(test)]
 const DEFAULT_EXPERIENCE_TICK: Duration = Duration::from_millis(10);
 use chrono::{DateTime, Utc};
+use futures::FutureExt;
 use quick_xml::{Reader, events::Event as XmlEvent};
 use std::any::Any;
+use std::panic::AssertUnwindSafe;
 use tokio::sync::{Mutex, broadcast, mpsc};
 use tracing::{debug, error, info, warn};
 
@@ -586,20 +588,29 @@ impl Psyche {
         let ling = self.ling.clone();
         let pending = self.pending_turn.clone();
 
+        let mut wit_handles = Vec::new();
         for wit in &self.wits {
             let wit = wit.clone();
             let ticks = ticks.clone();
             let mem = memory.clone();
             let ling = ling.clone();
             let pending_turn = pending.clone();
-            tokio::spawn(Self::wit_loop(
+            let name = wit.name().to_string();
+            let fut = AssertUnwindSafe(Self::wit_loop(
                 wit,
                 ticks,
                 mem,
                 ling,
                 pending_turn,
                 self.experience_tick,
-            ));
+            ))
+            .catch_unwind()
+            .map(move |res| {
+                if let Err(e) = res {
+                    error!(%name, ?e, "wit loop panicked");
+                }
+            });
+            wit_handles.push(tokio::spawn(fut));
         }
 
         let experience_handle =
@@ -608,6 +619,12 @@ impl Psyche {
         let psyche = converse_handle.await.expect("converse task panicked");
         experience_handle.abort();
         let _ = experience_handle.await;
+        for h in &wit_handles {
+            h.abort();
+        }
+        for h in wit_handles {
+            let _ = h.await;
+        }
         info!("psyche run finished");
         psyche
     }
