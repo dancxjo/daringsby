@@ -71,7 +71,12 @@ main {
   color: #000;
   padding: 1rem;
   border-radius: 2rem;
-  box-shadow: 0 0 1rem rgba(0, 0, 0, 0.2);
+  box-shadow:
+    -1rem -1rem 0 -0.5rem #fff,
+    1rem -1rem 0 -0.5rem #fff,
+    -1rem 1rem 0 -0.5rem #fff,
+    1rem 1rem 0 -0.5rem #fff,
+    0 0 1rem rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -85,20 +90,20 @@ main {
   position: absolute;
   background-color: #fff;
   border-radius: 50%;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 #thought::before {
   width: 1rem;
   height: 1rem;
   bottom: -0.6rem;
-  left: 1.5rem;
 }
 
 #thought::after {
   width: 0.6rem;
   height: 0.6rem;
   bottom: -1.3rem;
-  left: 0.5rem;
 }
 
 #thought-image {
