@@ -77,6 +77,29 @@ main {
   align-items: center;
   max-width: 80%;
   z-index: 1;
+  position: relative;
+}
+
+#thought::before,
+#thought::after {
+  content: "";
+  position: absolute;
+  background-color: #fff;
+  border-radius: 50%;
+}
+
+#thought::before {
+  width: 1rem;
+  height: 1rem;
+  bottom: -0.6rem;
+  left: 1.5rem;
+}
+
+#thought::after {
+  width: 0.6rem;
+  height: 0.6rem;
+  bottom: -1.3rem;
+  left: 0.5rem;
 }
 
 #thought-image {
