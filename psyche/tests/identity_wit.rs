@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use psyche::ling::{Doer, Instruction};
 use psyche::wit::{Moment, Wit};
-use psyche::wits::{FondDuCoeur, FondDuCoeurWit};
+use psyche::wits::{FondDuCoeur, IdentityWit};
 use psyche::{Impression, Stimulus};
 use tokio::sync::broadcast;
 
@@ -20,7 +20,7 @@ async fn summarizes_moments_into_story() {
     let (tx, mut rx) = broadcast::channel(8);
     psyche::enable_debug("Story").await;
     let summarizer = FondDuCoeur::with_debug(Box::new(Dummy), tx);
-    let wit = FondDuCoeurWit::new(summarizer.clone());
+    let wit = IdentityWit::new(summarizer.clone());
     wit.observe(Impression::new(
         vec![Stimulus::new(Moment {
             summary: "Pete woke".into(),

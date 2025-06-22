@@ -7,15 +7,15 @@ use async_trait::async_trait;
 use std::sync::Mutex;
 
 /// Wit that produces a single-paragraph life story from recent moments.
-pub struct FondDuCoeurWit {
+pub struct IdentityWit {
     summarizer: FondDuCoeur,
     buffer: Mutex<Vec<Impression<Moment>>>,
 }
 
-impl FondDuCoeurWit {
+impl IdentityWit {
     /// Debug label for this Wit.
-    pub const LABEL: &'static str = "FondDuCoeurWit";
-    /// Create a new `FondDuCoeurWit` using the given summarizer.
+    pub const LABEL: &'static str = "IdentityWit";
+    /// Create a new `IdentityWit` using the given summarizer.
     pub fn new(summarizer: FondDuCoeur) -> Self {
         Self {
             summarizer,
@@ -25,7 +25,7 @@ impl FondDuCoeurWit {
 }
 
 #[async_trait]
-impl Wit<Impression<Moment>, String> for FondDuCoeurWit {
+impl Wit<Impression<Moment>, String> for IdentityWit {
     async fn observe(&self, input: Impression<Moment>) {
         self.buffer.lock().unwrap().push(input);
     }
