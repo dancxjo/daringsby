@@ -81,7 +81,7 @@ pub use model::{Experience, Impression, Stimulus};
 pub use motor::{Motor, NoopMotor};
 pub use plain_mouth::PlainMouth;
 pub use prehension::Prehension;
-pub use prompt::{CombobulatorPrompt, PromptBuilder, VoicePrompt, WillPrompt};
+pub use prompt::{CombobulatorPrompt, ContextualPrompt, PromptBuilder, VoicePrompt, WillPrompt};
 pub use psyche::DEFAULT_SYSTEM_PROMPT;
 pub use sensor::Sensor;
 pub use topics::{Topic, TopicBus, TopicMessage};
