@@ -88,7 +88,7 @@ pub use psyche::DEFAULT_SYSTEM_PROMPT;
 pub use sensor::Sensor;
 pub use topics::{Topic, TopicBus, TopicMessage};
 pub use trim_mouth::TrimMouth;
-pub use types::{GeoLoc, ImageData, ObjectInfo};
+pub use types::{GeoLoc, Heartbeat, ImageData, ObjectInfo};
 
 pub use ling::{Feeling, Ling};
 pub use psyche::{Conversation, Psyche};

@@ -9,6 +9,7 @@ use pete::EyeSensor;
 use pete::FaceSensor;
 #[cfg(feature = "geo")]
 use pete::GeoSensor;
+use pete::HeartbeatSensor;
 use pete::{
     AppState, ChannelMouth, NoopEar, NoopSensor, app, init_logging, listen_user_input,
     ollama_psyche,
@@ -196,6 +197,9 @@ async fn main() -> anyhow::Result<()> {
     };
     #[cfg(not(feature = "geo"))]
     let geo: Arc<dyn Sensor<GeoLoc>> = Arc::new(NoopSensor) as Arc<dyn Sensor<GeoLoc>>;
+
+    let heartbeat = HeartbeatSensor::new(psyche.input_sender());
+    senses.push(heartbeat.describe());
     tokio::spawn(listen_user_input(user_rx, ear.clone(), voice.clone()));
 
     if let Some(secs) = cli.auto_voice {

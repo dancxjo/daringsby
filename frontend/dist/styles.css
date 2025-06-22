@@ -94,12 +94,11 @@
 }
 
 .face {
-    background-color: black;
     color: white;
 }
 
-.face video {
-    opacity: 0.5;
+video {
+    opacity: 0.25;
     position: fixed;
     top: 0;
     left: 0;
@@ -232,6 +231,9 @@ details {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     padding: 1em;
     margin-bottom: 1em;
+    max-width: 50vw;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 details > summary {
