@@ -105,3 +105,18 @@ impl Summarizer<Episode, String> for Combobulator {
         ))
     }
 }
+
+impl Combobulator {
+    /// Describe an image using the underlying [`Doer`].
+    pub async fn describe_image(&self, image: &crate::ImageData) -> anyhow::Result<String> {
+        use crate::ling::ImageData as LImageData;
+        let caption = self
+            .doer
+            .follow(Instruction {
+                command: "Describe only what you see in this image in a single sentence, in the first person. Remember, this is what you are *seeing* in the first person, so unless you're looking into a mirror, you won't be seeing yourself.".into(),
+                images: vec![LImageData { mime: image.mime.clone(), base64: image.base64.clone() }],
+            })
+            .await?;
+        Ok(caption.trim().to_string())
+    }
+}

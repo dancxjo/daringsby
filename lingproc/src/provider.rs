@@ -8,8 +8,9 @@ use ollama_rs::{
     generation::chat::{ChatMessage, request::ChatMessageRequest},
     generation::embeddings::request::{EmbeddingsInput, GenerateEmbeddingsRequest},
 };
+use std::time::Duration;
 use tokio_stream::StreamExt;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Provider backed by an Ollama server.
 #[derive(Clone)]
@@ -95,12 +96,32 @@ impl Vectorizer for OllamaProvider {
     async fn vectorize(&self, text: &str) -> Result<Vec<f32>> {
         info!(len = text.len(), "ollama vectorize");
         debug!(?text, "ollama vectorize request");
-        let req = GenerateEmbeddingsRequest::new(self.model.clone(), EmbeddingsInput::from(text));
-        let res = self.client.generate_embeddings(req).await?;
-        debug!(
-            embedding_len = res.embeddings.len(),
-            "ollama vectorize response"
-        );
-        Ok(res.embeddings.into_iter().next().unwrap_or_default())
+        let mut attempts = 0;
+        loop {
+            attempts += 1;
+            let req =
+                GenerateEmbeddingsRequest::new(self.model.clone(), EmbeddingsInput::from(text));
+            match self.client.generate_embeddings(req).await {
+                Ok(res) => {
+                    debug!(
+                        embedding_len = res.embeddings.len(),
+                        "ollama vectorize response"
+                    );
+                    return Ok(res.embeddings.into_iter().next().unwrap_or_default());
+                }
+                Err(e) => {
+                    if let ollama_rs::error::OllamaError::ReqwestError(ref re) = e {
+                        if re.is_connect() {
+                            warn!("🤖 vectorize failed: {}", re);
+                            if attempts < 2 {
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                                continue;
+                            }
+                        }
+                    }
+                    return Err(anyhow!(e));
+                }
+            }
+        }
     }
 }
