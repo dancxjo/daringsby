@@ -69,6 +69,7 @@ impl InstantWit {
                         loc.latitude, loc.longitude
                     )
                 } else {
+                    debug!("unrecognized sensation type: {:?}", any.type_id());
                     "Something happened".to_string()
                 }
             }

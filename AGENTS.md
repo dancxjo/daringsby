@@ -123,5 +123,7 @@ The previous Deno-based client has been removed. Update the files in
 * Log Ollama prompts and streamed chunks with `debug!` for troubleshooting.
 * When introducing new CLI arguments or environment variables, update
   `.env.example` and README examples accordingly.
+* Log unknown sensation types in `InstantWit::describe` to surface missing
+  downcasts.
 
 This document reflects the current cognitive and runtime architecture of Pete Daringsby. Keep it consistent with the latest design discussions and behavior changes.
