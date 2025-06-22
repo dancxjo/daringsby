@@ -253,3 +253,34 @@ details > summary::-webkit-details-marker {
 details > summary:hover {
     background-color: var(--panel-hover);
 }
+/* Retro mode styling */
+body.retro-tabs details {
+    background: linear-gradient(to bottom, #dcdcdc, #c0c0c0);
+    border: 2px solid #808080;
+    box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #fff;
+    border-radius: 6px;
+    padding: 0.5em;
+    margin-bottom: 1em;
+}
+body.retro-tabs details > summary {
+    font-variant: small-caps;
+    font-family: system-ui, sans-serif;
+    text-shadow: 1px 1px #fff;
+    background: linear-gradient(to bottom, #dcdcdc, #c0c0c0);
+    border-radius: 6px;
+    padding: 0.25em 0.5em;
+    cursor: pointer;
+    user-select: none;
+}
+body.retro-tabs details > summary:hover,
+body.retro-tabs details > summary:focus {
+    background: linear-gradient(to bottom, #c0c0c0, #a0a0a0);
+}
+body.retro-tabs details[open] {
+    animation: retro-flicker 0.2s ease-in-out;
+}
+@keyframes retro-flicker {
+    0% { filter: brightness(1); }
+    50% { filter: brightness(1.2); }
+    100% { filter: brightness(1); }
+}
