@@ -1,4 +1,5 @@
 use psyche::{Event, WitReport};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc};
 
@@ -9,7 +10,7 @@ pub struct EventBus {
     logs: broadcast::Sender<String>,
     wits: broadcast::Sender<WitReport>,
     input: mpsc::UnboundedSender<String>,
-    latest_wit: Arc<Mutex<Option<WitReport>>>,
+    latest_wits: Arc<Mutex<HashMap<String, WitReport>>>,
 }
 
 impl EventBus {
@@ -21,14 +22,14 @@ impl EventBus {
         let (logs, _) = broadcast::channel(100);
         let (wits, _) = broadcast::channel(16);
         let (input, rx) = mpsc::unbounded_channel();
-        let latest_wit = Arc::new(Mutex::new(None));
+        let latest_wits = Arc::new(Mutex::new(HashMap::new()));
         (
             Self {
                 events,
                 logs,
                 wits,
                 input,
-                latest_wit,
+                latest_wits,
             },
             rx,
         )
@@ -61,7 +62,10 @@ impl EventBus {
 
     /// Publish a [`WitReport`].
     pub fn publish_wit(&self, report: WitReport) {
-        *self.latest_wit.lock().unwrap() = Some(report.clone());
+        self.latest_wits
+            .lock()
+            .unwrap()
+            .insert(report.name.clone(), report.clone());
         let _ = self.wits.send(report);
     }
 
@@ -71,8 +75,8 @@ impl EventBus {
     }
 
     /// Retrieve the most recent [`WitReport`], if any.
-    pub fn latest_wit(&self) -> Option<WitReport> {
-        self.latest_wit.lock().unwrap().clone()
+    pub fn latest_wits(&self) -> Vec<WitReport> {
+        self.latest_wits.lock().unwrap().values().cloned().collect()
     }
 
     /// Obtain a sender for incoming user text.
