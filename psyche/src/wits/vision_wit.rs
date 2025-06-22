@@ -6,13 +6,29 @@ use crate::{Impression, Stimulus};
 use async_trait::async_trait;
 use lingproc::ImageData as LImageData;
 use std::sync::{Arc, Mutex};
-use tokio::sync::broadcast;
-use tracing::debug;
+use std::time::{Duration, Instant};
+use tokio::sync::{Semaphore, broadcast};
+use tracing::{debug, info};
+
+#[cfg(not(test))]
+const CAPTION_COOLDOWN: Duration = Duration::from_secs(10);
+#[cfg(test)]
+const CAPTION_COOLDOWN: Duration = Duration::from_millis(10);
+#[cfg(not(test))]
+const INITIAL_DELAY: Duration = Duration::from_secs(1);
+#[cfg(test)]
+const INITIAL_DELAY: Duration = Duration::from_millis(0);
+#[cfg(not(test))]
+const RUN_INTERVAL: Duration = Duration::from_secs(1);
+#[cfg(test)]
+const RUN_INTERVAL: Duration = Duration::from_millis(20);
 
 /// Wit producing first-person captions from images.
 pub struct VisionWit {
     doer: Arc<dyn Doer>,
-    buffer: Mutex<Vec<ImageData>>,
+    last_caption_time: Mutex<Instant>,
+    latest_image: Arc<Mutex<Option<ImageData>>>,
+    llm_semaphore: Arc<Semaphore>,
     tx: Option<broadcast::Sender<crate::WitReport>>,
 }
 
@@ -23,7 +39,9 @@ impl VisionWit {
     pub fn new(doer: Arc<dyn Doer>) -> Self {
         Self {
             doer,
-            buffer: Mutex::new(Vec::new()),
+            last_caption_time: Mutex::new(Instant::now() - CAPTION_COOLDOWN),
+            latest_image: Arc::new(Mutex::new(None)),
+            llm_semaphore: Arc::new(Semaphore::new(2)),
             tx: None,
         }
     }
@@ -31,9 +49,8 @@ impl VisionWit {
     /// Create a `VisionWit` that emits [`WitReport`]s using `tx`.
     pub fn with_debug(doer: Arc<dyn Doer>, tx: broadcast::Sender<crate::WitReport>) -> Self {
         Self {
-            doer,
-            buffer: Mutex::new(Vec::new()),
             tx: Some(tx),
+            ..Self::new(doer)
         }
     }
 }
@@ -41,19 +58,31 @@ impl VisionWit {
 #[async_trait]
 impl Wit<ImageData, ImageData> for VisionWit {
     async fn observe(&self, input: ImageData) {
-        self.buffer.lock().unwrap().push(input);
+        *self.latest_image.lock().unwrap() = Some(input);
     }
 
     async fn tick(&self) -> Vec<Impression<ImageData>> {
-        let img = {
-            let mut buf = self.buffer.lock().unwrap();
-            match buf.pop() {
-                Some(i) => i,
-                None => return Vec::new(),
+        let now = Instant::now();
+        {
+            let last = self.last_caption_time.lock().unwrap();
+            if now.duration_since(*last) < CAPTION_COOLDOWN {
+                return Vec::new();
             }
+        }
+
+        let img = {
+            let mut guard = self.latest_image.lock().unwrap();
+            guard.take()
         };
+        let img = match img {
+            Some(i) => i,
+            None => return Vec::new(),
+        };
+        *self.last_caption_time.lock().unwrap() = now;
 
         debug!("vision wit captioning image");
+        let permit = self.llm_semaphore.clone().acquire_owned().await.unwrap();
+        let start = Instant::now();
         let caption = if img.base64.is_empty() {
             "I can't see anything.".to_string()
         } else {
@@ -70,6 +99,8 @@ impl Wit<ImageData, ImageData> for VisionWit {
             }
         };
         let how = caption.trim().to_string();
+        info!(elapsed=?start.elapsed(), "image captioned");
+        drop(permit);
         if let Some(tx) = &self.tx {
             if crate::debug::debug_enabled(Self::LABEL).await {
                 let _ = tx.send(crate::WitReport {
@@ -88,6 +119,22 @@ impl Wit<ImageData, ImageData> for VisionWit {
 
     fn debug_label(&self) -> &'static str {
         Self::LABEL
+    }
+}
+
+impl VisionWit {
+    /// Continuously tick the wit at a fixed interval.
+    pub async fn run(self: Arc<Self>) {
+        tokio::time::sleep(INITIAL_DELAY).await;
+        loop {
+            self.tick().await;
+            tokio::time::sleep(RUN_INTERVAL).await;
+        }
+    }
+
+    /// Handle to the shared latest image buffer.
+    pub fn latest_image_handle(&self) -> Arc<Mutex<Option<ImageData>>> {
+        self.latest_image.clone()
     }
 }
 
