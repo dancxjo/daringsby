@@ -30,9 +30,14 @@ mime_guess = "2"
 dotenvy = "0.15"
 
 [features]
-default = []
+default = ["all-sensors"]
 tts = []
 e2e = []
+eye = []
+face = []
+geo = []
+ear = []
+all-sensors = ["eye", "face", "geo", "ear"]
 
 [build-dependencies]
 dioxus = { version = "0.4.3", default-features = false, features = ["html", "macro"] }

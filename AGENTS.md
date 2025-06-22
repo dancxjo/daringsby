@@ -130,3 +130,9 @@ The previous Deno-based client has been removed. Update the files in
   downcasts.
 
 This document reflects the current cognitive and runtime architecture of Pete Daringsby. Keep it consistent with the latest design discussions and behavior changes.
+
+## Sensor Features
+
+* Build with cargo features to include sensors.
+* Features: `eye`, `face`, `geo`, `ear`.
+* `all-sensors` enables them all and is used by default.

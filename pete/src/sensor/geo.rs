@@ -24,7 +24,7 @@ impl Sensor<GeoLoc> for GeoSensor {
         let _ = self.forward.send(Sensation::Of(Box::new(loc)));
     }
 
-    fn description(&self) -> String {
-        "GPS: Streams geolocation coordinates.".to_string()
+    fn describe(&self) -> &'static str {
+        "Geolocation (latitude/longitude)"
     }
 }

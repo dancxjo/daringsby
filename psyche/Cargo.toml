@@ -28,3 +28,11 @@ base64 = "0.21"
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = "0.3"
+
+[features]
+default = ["all-sensors"]
+eye = []
+face = []
+geo = []
+ear = []
+all-sensors = ["eye", "face", "geo", "ear"]
