@@ -511,7 +511,8 @@ impl Psyche {
 
     async fn notify_observers(&self, sensation: &Sensation) {
         for obs in &self.observers {
-            obs.observe_sensation(sensation).await;
+            obs.observe_sensation(sensation as &(dyn Any + Send + Sync))
+                .await;
         }
     }
 
@@ -621,9 +622,18 @@ impl Psyche {
             let batch: Vec<Arc<Sensation>> = buffer.lock().await.drain(..).collect();
             for s in &batch {
                 for obs in &observers {
-                    obs.observe_sensation(s.as_ref()).await;
+                    obs.observe_sensation(s.as_ref() as &(dyn Any + Send + Sync))
+                        .await;
                 }
                 bus.publish(crate::topics::Topic::Sensation, s.clone());
+            }
+            if !batch.is_empty() {
+                let instant = crate::sensation::Instant {
+                    at: Utc::now(),
+                    sensations: batch.clone(),
+                };
+                bus.publish(crate::topics::Topic::Instant, Arc::new(instant));
+                debug!("Published Instant with {} sensations", batch.len());
             }
             let jitter = rand::thread_rng().gen_range(0..50);
             tokio::time::sleep(tick + Duration::from_millis(jitter)).await;
