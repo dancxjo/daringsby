@@ -42,7 +42,7 @@ pub struct DebugInfo {
 /// Handle providing read-only access to debug information.
 #[derive(Clone)]
 pub struct DebugHandle {
-    pub(crate) buffer: Arc<Mutex<VecDeque<Sensation>>>,
+    pub(crate) buffer: Arc<Mutex<VecDeque<Arc<Sensation>>>>,
     pub(crate) ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
     pub(crate) wits: Vec<String>,
 }

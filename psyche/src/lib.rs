@@ -25,6 +25,7 @@ pub mod wits {
     pub mod fond_du_coeur;
     pub mod fond_du_coeur_wit;
     pub mod heart_wit;
+    pub mod instant_wit;
     pub mod memory;
     pub mod memory_wit;
     pub mod vision_wit;
@@ -37,6 +38,7 @@ pub mod wits {
     pub use fond_du_coeur::FondDuCoeur;
     pub use fond_du_coeur_wit::FondDuCoeurWit;
     pub use heart_wit::HeartWit;
+    pub use instant_wit::InstantWit;
     pub use memory::{BasicMemory, GraphStore, Memory, Neo4jClient, NoopMemory, QdrantClient};
     pub use memory_wit::MemoryWit;
     pub use vision_wit::VisionWit;
