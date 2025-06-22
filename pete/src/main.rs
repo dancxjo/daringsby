@@ -8,6 +8,7 @@ use pete::EyeSensor;
 use pete::FaceSensor;
 #[cfg(feature = "geo")]
 use pete::GeoSensor;
+use dotenvy::dotenv;
 use pete::{
     AppState, ChannelMouth, NoopEar, NoopSensor, app, init_logging, listen_user_input,
     ollama_psyche,
@@ -96,6 +97,8 @@ async fn main() -> anyhow::Result<()> {
     let (bus, user_rx) = pete::EventBus::new();
     let bus = Arc::new(bus);
     init_logging(bus.log_sender());
+    dotenv().ok();
+    let _ = dbg!(std::env::var("CHATTER_MODEL"));
     let cli = Cli::parse();
 
     info!(%cli.addr, "starting server");
