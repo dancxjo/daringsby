@@ -12,6 +12,7 @@ pub enum Topic {
     Instant,
     Moment,
     Situation,
+    Episode,
     Identity,
     Instruction,
     FaceInfo,
