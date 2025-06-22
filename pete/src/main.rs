@@ -1,5 +1,6 @@
 use axum_server::tls_rustls::RustlsConfig;
 use clap::Parser;
+use dotenvy::dotenv;
 use pete::{
     AppState, ChannelEar, ChannelMouth, app, init_logging, listen_user_input, ollama_psyche,
 };
@@ -88,6 +89,8 @@ async fn main() -> anyhow::Result<()> {
     let (bus, user_rx) = pete::EventBus::new();
     let bus = Arc::new(bus);
     init_logging(bus.log_sender());
+    dotenv().ok();
+    let _ = dbg!(std::env::var("CHATTER_MODEL"));
     let cli = Cli::parse();
 
     info!(%cli.addr, "starting server");
