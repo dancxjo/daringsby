@@ -59,7 +59,7 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: center;
-  line-height: 1;
+  line-height: 2;
 }
 
 #thought {
@@ -73,7 +73,7 @@ main {
   border-radius: 2rem;
   box-shadow: 0 0 1rem rgba(0, 0, 0, 0.2);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   max-width: 80%;
   z-index: 1;
@@ -178,8 +178,8 @@ button:hover {
 }
 
 .sidebar {
-  width: 300px;
-  max-width: 30vw;
+  width: 50vw;
+  max-width: 50vw;
   background-color: #111;
   color: white;
   overflow-y: auto;
