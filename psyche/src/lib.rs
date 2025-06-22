@@ -91,6 +91,7 @@ pub use trim_mouth::TrimMouth;
 pub use types::{GeoLoc, Heartbeat, ImageData, ObjectInfo};
 
 pub use ling::{Feeling, Ling};
+pub use psyche::extract_tag as test_extract_tag;
 pub use psyche::{Conversation, Psyche};
 pub use sensation::{Event, Sensation, WitReport};
 #[cfg(feature = "face")]
