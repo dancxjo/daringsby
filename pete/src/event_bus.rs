@@ -14,13 +14,32 @@ pub struct EventBus {
 }
 
 impl EventBus {
-    /// Create a new `EventBus` wrapping existing channels.
+    /// Default broadcast capacity for event and wit channels.
+    pub const DEFAULT_EVENT_CAPACITY: usize = 16;
+    /// Default broadcast capacity for log messages.
+    pub const DEFAULT_LOG_CAPACITY: usize = 100;
+
+    /// Create a new `EventBus` wrapping existing channels using default
+    /// capacities.
     ///
     /// Returns the bus and a receiver for user input.
     pub fn new() -> (Self, mpsc::UnboundedReceiver<String>) {
-        let (events, _) = broadcast::channel(16);
-        let (logs, _) = broadcast::channel(100);
-        let (wits, _) = broadcast::channel(16);
+        Self::with_capacities(
+            Self::DEFAULT_EVENT_CAPACITY,
+            Self::DEFAULT_LOG_CAPACITY,
+            Self::DEFAULT_EVENT_CAPACITY,
+        )
+    }
+
+    /// Create a bus using custom broadcast channel capacities.
+    pub fn with_capacities(
+        event_capacity: usize,
+        log_capacity: usize,
+        wit_capacity: usize,
+    ) -> (Self, mpsc::UnboundedReceiver<String>) {
+        let (events, _) = broadcast::channel(event_capacity);
+        let (logs, _) = broadcast::channel(log_capacity);
+        let (wits, _) = broadcast::channel(wit_capacity);
         let (input, rx) = mpsc::unbounded_channel();
         let latest_wits = Arc::new(Mutex::new(HashMap::new()));
         (
