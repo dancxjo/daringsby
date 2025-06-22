@@ -1,4 +1,15 @@
-:root{--bs-primary:#0d6efd;--bs-secondary:#6c757d;--bs-border-radius:.375rem;--bs-font-size-lg:1.25rem;--panel-bg:#f8f8f8;--panel-hover:#eee;--details-bg:#581845;--details-text:#f8f8f8;}
+
+:root{
+    --bs-primary:#0d6efd;
+    --bs-secondary:#6c757d;
+    --bs-border-radius:.375rem;
+    --bs-font-size-lg:1.25rem;
+    --panel-bg:#f8f8f8;
+    --panel-hover:#eee;
+    --panel-border:#fff;
+    --font-family:'Fira Sans', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --details-bg:#581845;--details-text:#f8f8f8;
+}
 
 @media (prefers-color-scheme: dark){
     :root{
@@ -122,6 +133,7 @@ body {
     background-color: black;
     color: white;
     overflow: hidden;
+    font-family: var(--font-family);
 }
 
 #thought {
@@ -236,6 +248,7 @@ details {
     background-color: var(--details-bg);
     color: var(--details-text);
     border-radius: 0.5em;
+    border: 1px solid var(--panel-border);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     padding: 1em;
     margin-bottom: 1em;
