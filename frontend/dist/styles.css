@@ -1,4 +1,11 @@
-:root{--bs-primary:#0d6efd;--bs-secondary:#6c757d;--bs-border-radius:.375rem;--bs-font-size-lg:1.25rem;}
+:root{--bs-primary:#0d6efd;--bs-secondary:#6c757d;--bs-border-radius:.375rem;--bs-font-size-lg:1.25rem;--panel-bg:#f8f8f8;--panel-hover:#eee;}
+
+@media (prefers-color-scheme: dark){
+    :root{
+        --panel-bg:#333;
+        --panel-hover:#555;
+    }
+}
 .mien,
 .Mien {
     text-align: center;
@@ -215,4 +222,30 @@ body {
 
     border-bottom-color: #fff;
     filter: drop-shadow(0 -0.0625rem 0.0625rem rgba(0, 0, 0, .1));
+}
+
+/* Styled panels for debug info */
+details {
+    background-color: var(--panel-bg);
+    border-radius: 0.5em;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    padding: 1em;
+    margin-bottom: 1em;
+}
+
+details > summary {
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+    margin: -1em -1em 1em;
+    padding: 0.5em 1em;
+    border-radius: 0.5em 0.5em 0 0;
+}
+
+details > summary::-webkit-details-marker {
+    display: none;
+}
+
+details > summary:hover {
+    background-color: var(--panel-hover);
 }
