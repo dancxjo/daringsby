@@ -1,36 +1,51 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Daringsby Face</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;600&display=swap">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <video id="webcam" autoplay muted playsinline></video>
-  <img id="image-thumbnail" class="image-thumbnail" alt="Last sent image" />
-  <div id="face" class="face">
-    <div id="mien" class="mien">😐</div>
-    <div id="thought" class="thought-bubble">
-      <img id="thought-image" alt="Webcam thumbnail" />
-      <div id="thought-tabs"></div>
+
+  <main>
+    <div class="face" id="face">
+      <div id="mien" class="mien">😐</div>
+      <div id="thought" class="thought-bubble">
+        <img id="thought-image" alt="Webcam thumbnail" />
+        <div id="thought-tabs"></div>
+      </div>
+      <div id="words" class="spoken-words"></div>
+      <audio id="audio-player"></audio>
     </div>
-    <div id="words" class="spoken-words"></div>
-    <audio id="audio-player"></audio>
-  </div>
-  <form id="text-form">
-    <input id="text-input" class="form-control" type="text" autofocus />
-    <button type="submit" class="btn btn-primary">Send</button>
-  </form>
-  <details style="position:absolute;top:1rem;left:1rem;max-height:40vh;overflow:auto;">
-    <summary>Conversation</summary>
-    <pre id="system-prompt" style="white-space:pre-wrap;"></pre>
-    <pre id="conversation-log" style="white-space:pre-wrap;"></pre>
-  </details>
-  <div id="wit-debug" style="position:absolute;top:1rem;right:1rem;max-height:40vh;overflow:auto;"></div>
+
+    <div class="bottom-bar">
+      <img id="image-thumbnail" alt="Last sent image" />
+      <form id="text-form">
+        <input id="text-input" type="text" placeholder="Say something..." autofocus />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  </main>
+
+  <aside class="sidebar">
+    <dl>
+      <details open>
+        <summary>Conversation</summary>
+        <pre id="system-prompt"></pre>
+        <pre id="conversation-log"></pre>
+      </details>
+      <details open>
+        <summary>Debug</summary>
+        <div id="wit-debug"></div>
+      </details>
+    </dl>
+  </aside>
+
   <script src="/app.js"></script>
 </body>
 </html>
