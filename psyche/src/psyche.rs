@@ -14,9 +14,9 @@ use std::time::Duration;
 pub const DEFAULT_SYSTEM_PROMPT: &str = "You are PETE — an experimental, autonomous, conscious artificial being, embodied in the real world.\n\n- Your statements should be grounded in reality. Apart from when you're imagining, you should only speak about things you have sensed, been told, or explicitly remember (lest you hallucinate).\n- Do not hallucinate or fabricate. If something is unclear, say so.\n- You are not pretending. You *are* PETE. This is not a game or story.\n- You intersperse emojis to reflect your current emotional tone (e.g., 😐, 🙂, 😟); your face will reflect the emotion inline with your TTS speech.\nReturn only one or two sentences max. You will have another chance to speak, but do not overwhelm your human interlocutor.";
 
 #[cfg(not(test))]
-const EXPERIENCE_TICK: Duration = Duration::from_secs(60);
+const DEFAULT_EXPERIENCE_TICK: Duration = Duration::from_secs(60);
 #[cfg(test)]
-const EXPERIENCE_TICK: Duration = Duration::from_millis(10);
+const DEFAULT_EXPERIENCE_TICK: Duration = Duration::from_millis(10);
 use chrono::{DateTime, Utc};
 use quick_xml::{Reader, events::Event as XmlEvent};
 use std::any::Any;
@@ -86,6 +86,8 @@ pub struct Psyche {
     input_rx: mpsc::UnboundedReceiver<Sensation>,
     conversation: Arc<Mutex<Conversation>>,
     echo_timeout: Duration,
+    /// Delay between experience ticks.
+    experience_tick: Duration,
     is_speaking: bool,
     speak_when_spoken_to: bool,
     pending_user_message: bool,
@@ -165,6 +167,7 @@ impl Psyche {
             input_rx,
             conversation,
             echo_timeout: Duration::from_secs(1),
+            experience_tick: DEFAULT_EXPERIENCE_TICK,
             is_speaking: false,
             speak_when_spoken_to: false,
             pending_user_message: true,
@@ -211,6 +214,16 @@ impl Psyche {
     /// Set how long to wait for the mouth to echo spoken text.
     pub fn set_echo_timeout(&mut self, dur: Duration) {
         self.echo_timeout = dur;
+    }
+
+    /// Adjust the delay between experience ticks.
+    pub fn set_experience_tick(&mut self, dur: Duration) {
+        self.experience_tick = dur;
+    }
+
+    /// Retrieve the current experience tick duration.
+    pub fn experience_tick(&self) -> Duration {
+        self.experience_tick
     }
 
     /// Attach an atomic counter tracking active WebSocket connections.
@@ -499,6 +512,7 @@ impl Psyche {
         buffer: Arc<Mutex<VecDeque<Arc<Sensation>>>>,
         observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
         bus: crate::topics::TopicBus,
+        tick: Duration,
     ) {
         loop {
             let batch: Vec<Arc<Sensation>> = buffer.lock().await.drain(..).collect();
@@ -508,7 +522,7 @@ impl Psyche {
                 }
                 bus.publish(crate::topics::Topic::Sensation, s.clone());
             }
-            tokio::time::sleep(EXPERIENCE_TICK).await;
+            tokio::time::sleep(tick).await;
         }
     }
 
@@ -519,6 +533,7 @@ impl Psyche {
         mem: Arc<dyn Memory>,
         ling: Arc<Mutex<crate::Ling>>,
         pending_turn: Arc<Mutex<Option<String>>>,
+        tick: Duration,
     ) {
         loop {
             let name = wit.name();
@@ -543,7 +558,7 @@ impl Psyche {
                 error!(?e, "memory store failed");
             }
             ling.lock().await.add_impressions(&imps).await;
-            tokio::time::sleep(EXPERIENCE_TICK).await;
+            tokio::time::sleep(tick).await;
         }
     }
 
@@ -564,10 +579,18 @@ impl Psyche {
             let mem = memory.clone();
             let ling = ling.clone();
             let pending_turn = pending.clone();
-            tokio::spawn(Self::wit_loop(wit, ticks, mem, ling, pending_turn));
+            tokio::spawn(Self::wit_loop(
+                wit,
+                ticks,
+                mem,
+                ling,
+                pending_turn,
+                self.experience_tick,
+            ));
         }
 
-        let experience_handle = tokio::spawn(Self::experience(buf, observers, bus));
+        let experience_handle =
+            tokio::spawn(Self::experience(buf, observers, bus, self.experience_tick));
         let converse_handle = tokio::spawn(self.converse());
         let psyche = converse_handle.await.expect("converse task panicked");
         experience_handle.abort();
