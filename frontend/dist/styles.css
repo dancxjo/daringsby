@@ -15,7 +15,6 @@ body {
   font-family: var(--font-family);
 }
 
-/* Face and mien */
 .face {
   color: white;
 }
@@ -25,7 +24,6 @@ body {
   text-align: center;
 }
 
-/* Mien title bar */
 .mien,
 .Mien {
   text-align: center;
@@ -40,7 +38,6 @@ body {
   line-height: 2;
 }
 
-/* Video background */
 video {
   opacity: 0.25;
   position: fixed;
@@ -52,7 +49,6 @@ video {
   pointer-events: none;
 }
 
-/* Spoken words bubble */
 .spoken-words {
   position: relative;
   background-color: #fff;
@@ -82,20 +78,40 @@ video {
   filter: drop-shadow(0 -0.0625rem 0.0625rem rgba(0, 0, 0, 0.1));
 }
 
-/* Details panel styling */
 details {
   position: absolute;
+  background-color: #222;
+  color: #f0f0f0;
   border-radius: 0.5em;
-  border: 1px solid var(--panel-border);
-  background-color: var(--panel-bg);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding-top: 3em;
-  max-width: 50vw;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  border: 1px solid #333;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  max-width: 25%;
+  min-width: 25%;
+  width: 25%;
+  overflow: hidden;
+  font-family: var(--font-family);
+  transition:
+    max-height 0.4s ease,
+    padding 0.3s ease,
+    width 0.4s ease,
+    min-width 0.4s ease,
+    max-width 0.4s ease;
+  max-height: 3.5em;
+  padding-top: 3.5em;
+  padding-bottom: 0;
 }
 
-/* Sticky summary inside details */
+details pre {
+  margin: 1em;
+}
+
+details[open] {
+  max-height: 60vh;
+  padding-bottom: 1em;
+  overflow-y: auto;
+  min-width: 60vh;
+}
+
 details > summary {
   background-color: #581845;
   color: #f8f8f8;
@@ -115,7 +131,6 @@ details > summary::-webkit-details-marker {
   display: none;
 }
 
-/* Thought bubble */
 .thought-bubble {
   display: flex;
   align-items: center;
@@ -172,7 +187,6 @@ details > summary::-webkit-details-marker {
   z-index: 2;
 }
 
-/* Bootstrap overrides */
 .btn-primary {
   background-color: var(--bs-primary);
   border: none;
@@ -184,7 +198,7 @@ details > summary::-webkit-details-marker {
 }
 
 .btn-primary:hover {
-  background-color: #0b5ed7; /* manually darkened */
+  background-color: #0b5ed7;
   box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.2);
 }
 
@@ -201,10 +215,12 @@ details > summary::-webkit-details-marker {
   box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
 }
 
-/* Live connection modal */
 .lieve-connection {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -212,7 +228,6 @@ details > summary::-webkit-details-marker {
   z-index: 1000;
 }
 
-/* Debug tab panels */
 #thought-tabs {
   display: flex;
   flex-direction: column;
@@ -231,6 +246,10 @@ pre {
 }
 
 @media (max-width: 768px) {
+  details {
+    max-width: 90vw;
+  }
+
   .live-connection-output {
     margin-top: 2rem;
   }
