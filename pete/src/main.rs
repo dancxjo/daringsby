@@ -259,9 +259,10 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "geo"))]
     let geo: Arc<dyn Sensor<GeoLoc>> = Arc::new(NoopSensor) as Arc<dyn Sensor<GeoLoc>>;
 
-    let heartbeat = HeartbeatSensor::new(psyche.input_sender());
-    let mut senses = Vec::new();
-    senses.push(heartbeat.describe());
+    let _heartbeat = HeartbeatSensor::new(psyche.input_sender());
+    psyche.add_sense(
+        "Heartbeat. This triggers a pulse every minute, like a ticking internal clock.".into(),
+    );
     tokio::spawn(listen_user_input(user_rx, ear.clone(), voice.clone()));
 
     if let Some(secs) = cli.auto_voice {
@@ -290,7 +291,6 @@ async fn main() -> anyhow::Result<()> {
             bus_events.publish_event(evt);
         }
     });
-    psyche.add_sense("Pete experiences a heartbeat sensation roughly every minute, which reminds him that time is passing.".into());
     let system_prompt = psyche.described_system_prompt();
     psyche.set_system_prompt(system_prompt.clone());
     tokio::spawn(async move {
