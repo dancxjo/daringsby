@@ -537,7 +537,9 @@ impl Psyche {
             tokio::spawn(async move {
                 loop {
                     let name = wit.name();
+                    debug!(%name, "tick start");
                     let imps = wit.tick_erased().await;
+                    debug!(%name, count = imps.len(), "tick finished");
                     let now = Utc::now();
                     {
                         let mut map = ticks.lock().await;

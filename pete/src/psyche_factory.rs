@@ -124,9 +124,10 @@ pub fn ollama_psyche(
         memory.clone(),
         wit_tx.clone(),
     )));
-    psyche.register_typed_wit(Arc::new(HeartWit::new(
+    psyche.register_typed_wit(Arc::new(HeartWit::with_debug(
         Box::new(OllamaProvider::new(wits_host, wits_model)?),
         Arc::new(LoggingMotor),
+        wit_tx.clone(),
     )));
     psyche.register_typed_wit(Arc::new(FondDuCoeurWit::new(FondDuCoeur::with_debug(
         Box::new(OllamaProvider::new(wits_host, wits_model)?),
