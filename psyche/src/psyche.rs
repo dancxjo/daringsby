@@ -21,6 +21,7 @@ use crate::pending_turn::PendingTurn;
 /// Default size for internal broadcast channels.
 pub const DEFAULT_CHANNEL_CAPACITY: usize = 16;
 
+use crate::task_group::TaskGroup;
 use chrono::{DateTime, Utc};
 use futures::FutureExt;
 use quick_xml::{Reader, events::Event as XmlEvent};
@@ -601,49 +602,55 @@ impl Psyche {
             tokio::time::sleep(tick).await;
         }
     }
+  /// Start the conversation and background tasks.
+  ///
+  /// All spawned tasks are tracked and aborted on drop. This ensures
+  /// background loops do not outlive the [`Psyche`] if `run` is cancelled.
+  /// Returns the updated [`Psyche`] when finished.
+  pub async fn run(self) -> Self {
+      info!("psyche run started");
+      let buf = Arc::clone(&self.sensation_buffer);
+      let observers = self.observers.clone();
+      let bus = self.topic_bus.clone();
+      let ticks = Arc::clone(&self.last_ticks);
+      let memory = Arc::clone(&self.memory);
+      let ling = Arc::clone(&self.ling);
+      let pending = Arc::clone(&self.pending_turn);
+      let tick = self.experience_tick;
 
-    /// Start the conversation and background tasks. Returns the updated [`Psyche`] when finished.
-    pub async fn run(self) -> Self {
-        info!("psyche run started");
-        let buf = Arc::clone(&self.sensation_buffer);
-        let observers = self.observers.clone();
-        let bus = self.topic_bus.clone();
-        let ticks = Arc::clone(&self.last_ticks);
-        let memory = Arc::clone(&self.memory);
-        let ling = Arc::clone(&self.ling);
-        let pending = Arc::clone(&self.pending_turn);
-        let tick = self.experience_tick;
+      let mut tasks = TaskGroup::new();
 
-        let mut wit_handles = Vec::new();
-        for wit in &self.wits {
-            let wit = Arc::clone(wit);
-            let ticks = Arc::clone(&ticks);
-            let mem = Arc::clone(&memory);
-            let ling = Arc::clone(&ling);
-            let pending_turn = Arc::clone(&pending);
-            let name = wit.name().to_string();
-            let fut = AssertUnwindSafe(Self::wit_loop(wit, ticks, mem, ling, pending_turn, tick))
-                .catch_unwind()
-                .map(move |res| {
-                    if let Err(e) = res {
-                        error!(%name, ?e, "wit loop panicked");
-                    }
-                });
-            wit_handles.push(tokio::spawn(fut));
-        }
+      for wit in &self.wits {
+          let wit = Arc::clone(wit);
+          let ticks = Arc::clone(&ticks);
+          let mem = Arc::clone(&memory);
+          let ling = Arc::clone(&ling);
+          let pending_turn = Arc::clone(&pending);
+          let name = wit.name().to_string();
 
-        let experience_handle = tokio::spawn(Self::experience(buf, observers, bus, tick));
-        let converse_handle = tokio::spawn(self.converse());
-        let psyche = converse_handle.await.expect("converse task panicked");
-        experience_handle.abort();
-        let _ = experience_handle.await;
-        for h in &wit_handles {
-            h.abort();
-        }
-        for h in wit_handles {
-            let _ = h.await;
-        }
-        info!("psyche run finished");
-        psyche
-    }
+          let fut = AssertUnwindSafe(Self::wit_loop(wit, ticks, mem, ling, pending_turn, tick))
+              .catch_unwind()
+              .map(move |res| {
+                  if let Err(e) = res {
+                      error!(%name, ?e, "wit loop panicked");
+                  }
+              });
+          tasks.spawn(fut);
+      }
+
+      tasks.spawn(Self::experience(buf, observers, bus, tick));
+      let converse_handle = tokio::spawn(self.converse());
+
+      let psyche = match converse_handle.await {
+          Ok(p) => p,
+          Err(e) => {
+              tasks.shutdown().await;
+              panic!("converse task panicked: {e:?}");
+          }
+      };
+
+      tasks.shutdown().await;
+      info!("psyche run finished");
+      psyche
+  }
 }

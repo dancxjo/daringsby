@@ -37,6 +37,7 @@ This repository is a Rust workspace.
 * `Conversation::add_*` merges consecutive same-role messages, inserting a space and trimming.
 * Only the `Psyche` loop should append to `Conversation`; `Ear` implementations forward sensations without modifying the log.
 * Use the `Motor` trait for host actions. Implementations live in `pete`.
+* Track spawned task `JoinHandle`s in a `TaskGroup` so `drop` aborts them.
 
 ## Frontend
 

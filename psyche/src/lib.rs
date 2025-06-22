@@ -67,6 +67,7 @@ mod plain_mouth;
 mod prehension;
 mod prompt;
 mod sensor;
+mod task_group;
 pub mod sensors {
     #[cfg(feature = "face")]
     pub mod face;
