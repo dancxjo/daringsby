@@ -140,6 +140,15 @@ details pre {
   margin: 1em;
 }
 
+details.updated {
+  animation: flash 0.5s ease-in-out;
+}
+
+@keyframes flash {
+  from { background-color: #444; }
+  to { background-color: #222; }
+}
+
 .thought-bubble {
   display: flex;
   align-items: center;

@@ -15,6 +15,23 @@
   const witDebugContainer = document.getElementById("wit-debug");
   let playing = false;
 
+  async function fetchWits() {
+    try {
+      const resp = await fetch("/debug/psyche");
+      const info = await resp.json();
+      (info.active_wits || []).forEach((name) => {
+        const entry = getWitDetail(name);
+        if (info.last_ticks && info.last_ticks[name]) {
+          entry.time.textContent = new Date(info.last_ticks[name]).toLocaleTimeString();
+        }
+      });
+    } catch (e) {
+      console.error("wits", e);
+    }
+  }
+  fetchWits();
+  setInterval(fetchWits, 5000);
+
   function getWitDetail(name) {
     let entry = witDetails[name];
     if (!entry) {
@@ -24,15 +41,19 @@
       link.href = `/debug/wit/${name.toLowerCase()}`;
       link.target = "_blank";
       link.textContent = "link";
+      const time = document.createElement("span");
+      time.className = "wit-time";
       summary.textContent = name + " ";
+      summary.appendChild(time);
       summary.appendChild(link);
       const promptPre = document.createElement("pre");
       const outputPre = document.createElement("pre");
+      outputPre.textContent = "waiting...";
       details.appendChild(summary);
       details.appendChild(promptPre);
       details.appendChild(outputPre);
       witDebugContainer.appendChild(details);
-      entry = { promptPre, outputPre };
+      entry = { promptPre, outputPre, time, details };
       witDetails[name] = entry;
     }
     return entry;
@@ -93,13 +114,16 @@
         case "think": {
           if (typeof m.data === "object" && m.data !== null) {
             witOutputs[m.data.name] = m.data.output;
-            const { promptPre, outputPre } = getWitDetail(m.data.name);
+            const { promptPre, outputPre, time, details } = getWitDetail(m.data.name);
             if (m.data.prompt !== undefined) {
               promptPre.textContent = m.data.prompt;
             }
             if (m.data.output !== undefined) {
-              outputPre.textContent = m.data.output;
+              outputPre.textContent = JSON.stringify(m.data.output, null, 2);
             }
+            time.textContent = new Date().toLocaleTimeString();
+            details.classList.add("updated");
+            setTimeout(() => details.classList.remove("updated"), 300);
           } else {
             witOutputs["unknown"] = m.data;
           }
