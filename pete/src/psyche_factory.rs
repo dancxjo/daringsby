@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use psyche::Psyche;
 use psyche::ling::{Chatter, Doer, Instruction, Message, Vectorizer};
+use psyche::{ContextualPrompt, Psyche};
 use std::sync::Arc;
 use tracing::info;
 
@@ -50,6 +50,9 @@ pub fn dummy_psyche() -> Psyche {
     )));
     psyche.register_observing_wit(Arc::new(psyche::FaceMemoryWit::with_debug(wit_tx)));
     psyche.set_turn_limit(usize::MAX);
+    psyche
+        .voice()
+        .set_prompt(ContextualPrompt::new(psyche.topic_bus()));
     info!("created dummy psyche");
     psyche
 }
@@ -129,6 +132,9 @@ pub fn ollama_psyche(
         wit_tx.clone(),
     ))));
     psyche.set_turn_limit(usize::MAX);
+    psyche
+        .voice()
+        .set_prompt(ContextualPrompt::new(psyche.topic_bus()));
     info!(
         %chatter_host,
         %chatter_model,
