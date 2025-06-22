@@ -380,7 +380,7 @@ impl Psyche {
 
     /// Swap out the [`Mouth`] used for speech output.
     pub fn set_mouth(&mut self, mouth: Arc<dyn Mouth>) {
-        self.voice.set_mouth(mouth);
+        Arc::make_mut(&mut self.voice).set_mouth(mouth);
     }
 
     /// Swap out the [`Memory`] implementation.

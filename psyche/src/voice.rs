@@ -2,19 +2,24 @@ use crate::ling::{Chatter, Message};
 use crate::{Event, Mouth};
 use pragmatic_segmenter::Segmenter;
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use tokio::sync::broadcast;
+use tokio::time::Duration;
 use tokio_stream::StreamExt;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 pub struct Voice {
     chatter: Arc<dyn Chatter>,
-    mouth: Arc<Mutex<Arc<dyn Mouth + Send + Sync>>>,
+    mouth: Arc<dyn Mouth + Send + Sync>,
     events: broadcast::Sender<Event>,
-    ready: Arc<Mutex<bool>>,
+    ready: AtomicBool,
     extra_prompt: Arc<Mutex<Option<String>>>,
     will: Arc<Mutex<Option<Arc<crate::wits::Will>>>>,
     prompt: Arc<Mutex<Box<dyn crate::prompt::PromptBuilder + Send + Sync>>>,
+    segmenter: Arc<Segmenter>,
 }
 
 impl Clone for Voice {
@@ -23,10 +28,11 @@ impl Clone for Voice {
             chatter: self.chatter.clone(),
             mouth: self.mouth.clone(),
             events: self.events.clone(),
-            ready: self.ready.clone(),
+            ready: AtomicBool::new(self.ready.load(Ordering::SeqCst)),
             extra_prompt: self.extra_prompt.clone(),
             will: self.will.clone(),
             prompt: self.prompt.clone(),
+            segmenter: self.segmenter.clone(),
         }
     }
 }
@@ -39,18 +45,19 @@ impl Voice {
     ) -> Self {
         Self {
             chatter,
-            mouth: Arc::new(Mutex::new(mouth)),
+            mouth,
             events,
-            ready: Arc::new(Mutex::new(true)),
+            ready: AtomicBool::new(true),
             extra_prompt: Arc::new(Mutex::new(None)),
             will: Arc::new(Mutex::new(None)),
             prompt: Arc::new(Mutex::new(Box::new(crate::prompt::VoicePrompt)
                 as Box<dyn crate::prompt::PromptBuilder + Send + Sync>)),
+            segmenter: Arc::new(Segmenter::new().expect("segmenter init")),
         }
     }
 
-    pub fn set_mouth(&self, mouth: Arc<dyn Mouth + Send + Sync>) {
-        *self.mouth.lock().unwrap() = mouth;
+    pub fn set_mouth(&mut self, mouth: Arc<dyn Mouth + Send + Sync>) {
+        self.mouth = mouth;
     }
 
     pub fn set_will(&self, will: Arc<crate::wits::Will>) {
@@ -65,18 +72,15 @@ impl Voice {
     }
 
     pub fn permit(&self, prompt: Option<String>) {
-        let mut ready = self.ready.lock().unwrap();
-        if *ready {
+        if self.ready.swap(true, Ordering::SeqCst) {
             return;
         }
-        *ready = true;
-        drop(ready);
         *self.extra_prompt.lock().unwrap() = prompt;
     }
 
     /// Returns `true` if the voice is currently permitted to speak.
     pub fn ready(&self) -> bool {
-        *self.ready.lock().unwrap()
+        self.ready.load(Ordering::SeqCst)
     }
 
     pub async fn update_prompt_context(&self, ctx: &str) {
@@ -85,13 +89,9 @@ impl Voice {
 
     pub async fn take_turn(&self, system_prompt: &str, history: &[Message]) -> anyhow::Result<()> {
         info!("voice take_turn called");
-        {
-            let mut ready = self.ready.lock().unwrap();
-            if !*ready {
-                info!("voice not ready, returning early");
-                return Ok(());
-            }
-            *ready = false;
+        if !self.ready.swap(false, Ordering::SeqCst) {
+            info!("voice not ready, returning early");
+            return Ok(());
         }
         info!("voice permitted, generating speech");
         let extra = self.extra_prompt.lock().unwrap().take();
@@ -107,7 +107,7 @@ impl Voice {
             let mut full = String::new();
             let mut leftover = String::new();
             let mut pending: VecDeque<String> = VecDeque::new();
-            let segmenter = Segmenter::new().expect("segmenter init");
+            let segmenter = self.segmenter.clone();
             while let Some(chunk_res) = stream.next().await {
                 match chunk_res {
                     Ok(chunk) => {
@@ -133,7 +133,10 @@ impl Voice {
                             }
                         }
                     }
-                    Err(_) => break,
+                    Err(e) => {
+                        warn!(?e, "llm stream error");
+                        break;
+                    }
                 }
             }
             if !leftover.is_empty() {
@@ -146,6 +149,8 @@ impl Voice {
             let will = { self.will.lock().unwrap().clone() };
             if let Some(w) = will {
                 w.handle_llm_output(&full).await;
+            } else {
+                debug!("Will not set; skipping output handling");
             }
         }
         Ok(())
@@ -162,7 +167,8 @@ impl Voice {
             let _ = self.events.send(Event::EmotionChanged(e.clone()));
         }
         if !text.trim().is_empty() {
-            let mouth = { self.mouth.lock().unwrap().clone() };
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            let mouth = self.mouth.clone();
             mouth.speak(trimmed).await;
         }
     }
