@@ -180,7 +180,7 @@ button:hover {
 .sidebar {
   width: 50vw;
   max-width: 50vw;
-  background-color: #111;
+  background-color: transparent;
   color: white;
   overflow-y: auto;
   padding: 1rem;
@@ -198,9 +198,33 @@ button:hover {
 .sidebar details {
   background-color: #222;
   border: 1px solid #333;
-  border-radius: 0.5rem;
   padding: 0.5rem;
   color: white;
+}
+
+.sidebar details summary {
+  padding: 0.5rem;
+  background-color: #580F41; /* aubergine */
+  color: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  border-radius: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.sidebar details:first-of-type {
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+
+.sidebar details:not(:last-of-type) {
+  border-bottom: none;
+}
+
+.sidebar details:last-of-type {
+  border-bottom-left-radius: 0.5rem;
+  border-bottom-right-radius: 0.5rem;
 }
 
 .sidebar summary {
