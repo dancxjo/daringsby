@@ -14,3 +14,9 @@ pub struct GeoLoc {
     /// Latitude in decimal degrees.
     pub latitude: f64,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ObjectInfo {
+    pub label: Option<String>,
+    pub embedding: Vec<f32>,
+}
