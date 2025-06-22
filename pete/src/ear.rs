@@ -5,7 +5,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use tokio::sync::mpsc;
-use tracing::debug;
+use tracing::{debug, info};
 
 /// [`Ear`] implementation that forwards heard text through a channel.
 #[derive(Clone)]
@@ -34,6 +34,7 @@ impl ChannelEar {
 impl Ear for ChannelEar {
     async fn hear_self_say(&self, text: &str) {
         self.speaking.store(false, Ordering::SeqCst);
+        info!(%text, "ear heard self say");
         debug!("ear heard self say: {}", text);
         self.voice.permit(None);
         let _ = self
@@ -42,6 +43,7 @@ impl Ear for ChannelEar {
     }
 
     async fn hear_user_say(&self, text: &str) {
+        info!(%text, "ear heard user say");
         debug!("ear heard user say: {}", text);
         let _ = self
             .forward

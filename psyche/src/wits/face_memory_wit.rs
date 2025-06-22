@@ -8,6 +8,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 use tokio::sync::broadcast;
+use tracing::info;
 
 /// Wit that notes when familiar or new faces appear.
 pub struct FaceMemoryWit {
@@ -63,6 +64,7 @@ impl Wit<FaceInfo, FaceInfo> for FaceMemoryWit {
                 self.ticks_without_face.fetch_add(1, Ordering::SeqCst);
                 if self.ticks_without_face.load(Ordering::SeqCst) >= 5 {
                     self.ticks_without_face.store(0, Ordering::SeqCst);
+                    info!("no faces detected for a while");
                     return vec![Impression::new(
                         vec![],
                         "No faces detected for a while now.",
@@ -91,6 +93,7 @@ impl Wit<FaceInfo, FaceInfo> for FaceMemoryWit {
                 };
                 *last = Some(info.embedding.clone());
             }
+            info!(%summary, "face memory observation");
             if let Some(tx) = &self.tx {
                 if crate::debug::debug_enabled(Self::LABEL).await {
                     let _ = tx.send(crate::WitReport {
