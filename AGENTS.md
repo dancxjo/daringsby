@@ -135,6 +135,8 @@ The previous Deno-based client has been removed. Update the files in
   timeout-related tests to avoid slow sleeps.
 * Deduplicate buffering logic when handling voice sensations to prevent
   duplicate entries.
+* Extract repeated asynchronous loops into helper functions to reduce
+  duplication.
 
 This document reflects the current cognitive and runtime architecture of Pete Daringsby. Keep it consistent with the latest design discussions and behavior changes.
 

@@ -512,6 +512,41 @@ impl Psyche {
         }
     }
 
+    /// Continuous tick loop for a single [`Wit`].
+    async fn wit_loop(
+        wit: Arc<dyn wit::ErasedWit + Send + Sync>,
+        ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
+        mem: Arc<dyn Memory>,
+        ling: Arc<Mutex<crate::Ling>>,
+        pending_turn: Arc<Mutex<Option<String>>>,
+    ) {
+        loop {
+            let name = wit.name();
+            debug!(%name, "tick start");
+            let imps = wit.tick_erased().await;
+            debug!(%name, count = imps.len(), "tick finished");
+            let now = Utc::now();
+            {
+                let mut map = ticks.lock().await;
+                map.insert(name.to_string(), now);
+            }
+            for imp in &imps {
+                for stim in &imp.stimuli {
+                    if let serde_json::Value::String(s) = &stim.what {
+                        if let Some(p) = extract_tag(s, "take_turn") {
+                            *pending_turn.lock().await = Some(p);
+                        }
+                    }
+                }
+            }
+            if let Err(e) = mem.store_all(&imps).await {
+                error!(?e, "memory store failed");
+            }
+            ling.lock().await.add_impressions(&imps).await;
+            tokio::time::sleep(EXPERIENCE_TICK).await;
+        }
+    }
+
     /// Start the conversation and background tasks. Returns the updated [`Psyche`] when finished.
     pub async fn run(self) -> Self {
         info!("psyche run started");
@@ -529,33 +564,7 @@ impl Psyche {
             let mem = memory.clone();
             let ling = ling.clone();
             let pending_turn = pending.clone();
-            tokio::spawn(async move {
-                loop {
-                    let name = wit.name();
-                    debug!(%name, "tick start");
-                    let imps = wit.tick_erased().await;
-                    debug!(%name, count = imps.len(), "tick finished");
-                    let now = Utc::now();
-                    {
-                        let mut map = ticks.lock().await;
-                        map.insert(name.to_string(), now);
-                    }
-                    for imp in &imps {
-                        for stim in &imp.stimuli {
-                            if let serde_json::Value::String(s) = &stim.what {
-                                if let Some(p) = extract_tag(s, "take_turn") {
-                                    *pending_turn.lock().await = Some(p);
-                                }
-                            }
-                        }
-                    }
-                    if let Err(e) = mem.store_all(&imps).await {
-                        error!(?e, "memory store failed");
-                    }
-                    ling.lock().await.add_impressions(&imps).await;
-                    tokio::time::sleep(EXPERIENCE_TICK).await;
-                }
-            });
+            tokio::spawn(Self::wit_loop(wit, ticks, mem, ling, pending_turn));
         }
 
         let experience_handle = tokio::spawn(Self::experience(buf, observers, bus));
