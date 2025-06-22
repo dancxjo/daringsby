@@ -130,6 +130,8 @@ The previous Deno-based client has been removed. Update the files in
   `.env.example` and README examples accordingly.
 * Log unknown sensation types in `InstantWit::describe` to surface missing
   downcasts.
+* Use `#[tokio::test(start_paused = true)]` and `tokio::time::advance` for
+  timeout-related tests to avoid slow sleeps.
 
 This document reflects the current cognitive and runtime architecture of Pete Daringsby. Keep it consistent with the latest design discussions and behavior changes.
 
