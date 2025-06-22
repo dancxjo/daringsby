@@ -32,7 +32,7 @@ rand = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 
 [features]
-default = ["all-sensors"]
+default = ["tts", "all-sensors"]
 tts = []
 e2e = []
 eye = []
