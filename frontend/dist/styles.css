@@ -203,6 +203,9 @@ button:hover {
 }
 
 .sidebar details summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   padding: 0.5rem;
   background-color: #580F41; /* aubergine */
   color: #fff;
