@@ -139,7 +139,7 @@ async fn main() -> anyhow::Result<()> {
     let face_sensor = Arc::new(FaceSensor::new(
         Arc::new(psyche::DummyDetector::default()),
         psyche::QdrantClient::default(),
-        psyche.input_sender(),
+        psyche.topic_bus(),
     ));
     psyche.add_sense(eye.description());
     psyche.add_sense(face_sensor.description());

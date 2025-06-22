@@ -65,7 +65,7 @@ async fn feel_forwards_to_topic_bus() {
         ear,
     );
     let bus = psyche.topic_bus();
-    let mut sub = bus.subscribe(Topic::Instant);
+    let mut sub = bus.subscribe(Topic::Sensation);
     pin_mut!(sub);
     psyche.feel("hello".to_string());
     let payload = sub.next().await.unwrap();

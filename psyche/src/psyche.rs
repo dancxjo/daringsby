@@ -231,7 +231,7 @@ impl Psyche {
     /// Publish a raw sensory impression on the [`TopicBus`].
     pub fn feel(&self, payload: impl Any + Send + Sync + 'static) {
         self.topic_bus
-            .publish(crate::topics::Topic::Instant, payload);
+            .publish(crate::topics::Topic::Sensation, payload);
     }
 
     /// Obtain the sender used to broadcast conversation [`Event`]s.

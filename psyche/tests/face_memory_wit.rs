@@ -1,6 +1,6 @@
 use psyche::Wit;
+use psyche::sensors::face::FaceInfo;
 use psyche::wits::face_memory_wit::FaceMemoryWit;
-use psyche::wits::face_sensor::FaceInfo;
 use std::sync::Arc;
 
 fn dummy_info(val: f32) -> FaceInfo {

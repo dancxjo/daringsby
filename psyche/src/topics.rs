@@ -8,11 +8,13 @@ use tokio_stream::wrappers::BroadcastStream;
 /// Cognitive topics exchanged between Wits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Topic {
+    Sensation,
     Instant,
     Moment,
     Situation,
     Identity,
-    Instructions,
+    Instruction,
+    FaceInfo,
 }
 
 /// Envelope for topic messages carrying any payload.
