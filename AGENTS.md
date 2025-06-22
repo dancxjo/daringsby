@@ -131,7 +131,7 @@ The previous Deno-based client has been removed. Update the files in
 * Log all LLM prompts and final responses to stdout using `tracing` macros.
 * When introducing new CLI arguments or environment variables, update
   `.env.example` and README examples accordingly.
-* Log unknown sensation types in `InstantWit::describe` to surface missing
+* Log unknown sensation types in `Quick::describe` to surface missing
   downcasts.
 * Use `#[tokio::test(start_paused = true)]` and `tokio::time::advance` for
   timeout-related tests to avoid slow sleeps.
@@ -139,6 +139,13 @@ The previous Deno-based client has been removed. Update the files in
   duplicate entries.
 * Extract repeated asynchronous loops into helper functions to reduce
   duplication.
+
+### Quick
+
+🧠 The Quick is Pete’s first-level integrator of sensation. It listens to raw
+Sensations and bundles them into an Instant, which is a short-lived,
+fast-turnaround Impression. The Quick fires often and helps higher-level Wits
+(like Will or Memory) act and reflect on what Pete just experienced.
 
 This document reflects the current cognitive and runtime architecture of Pete Daringsby. Keep it consistent with the latest design discussions and behavior changes.
 

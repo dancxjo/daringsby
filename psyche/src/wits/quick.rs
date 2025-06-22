@@ -1,35 +1,40 @@
 use crate::ling::{Doer, Instruction};
 use crate::topics::{Topic, TopicBus};
-use crate::{Impression, Sensation, Stimulus};
+use crate::{Impression, Instant, Sensation, Stimulus};
 use async_trait::async_trait;
+use chrono::Utc;
 use futures::StreamExt;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 use tracing::debug;
 
-/// Wit that groups simultaneous sensations into a single [`Impression`].
+/// Fast interpreter of raw [`Sensation`]s.
 ///
-/// `InstantWit` listens on [`Topic::Sensation`] and buffers raw
-/// [`Sensation`]s. On [`tick`], it summarizes the collected items using
-/// the provided [`Doer`] and publishes the resulting impression on
-/// [`Topic::Instant`].
-pub struct InstantWit {
+/// `Quick` listens on [`Topic::Sensation`] and buffers sensations as they
+/// arrive. On [`tick`], it bundles whatever has been seen into a single
+/// [`Instant`] summarizing what Pete just perceived. The summary text is
+/// produced by the provided [`Doer`].
+///
+/// This Wit runs often—typically every few seconds—and delivers Pete's
+/// most immediate coherent understanding of recent sensory input.
+/// It emits exactly one [`Instant`] per tick via [`Topic::Instant`].
+pub struct Quick {
     buffer: Arc<Mutex<Vec<Arc<Sensation>>>>,
     bus: TopicBus,
     doer: Arc<dyn Doer>,
     tx: Option<broadcast::Sender<crate::WitReport>>, // optional debug
 }
 
-impl InstantWit {
+impl Quick {
     /// Debug label for this wit.
-    pub const LABEL: &'static str = "InstantWit";
+    pub const LABEL: &'static str = "Quick";
 
-    /// Create a new `InstantWit` subscribed to `bus` using `doer`.
+    /// Create a new `Quick` subscribed to `bus` using `doer`.
     pub fn new(bus: TopicBus, doer: Arc<dyn Doer>) -> Self {
         Self::with_debug(bus, doer, None)
     }
 
-    /// Create a new `InstantWit` emitting [`WitReport`]s using `tx`.
+    /// Create a new `Quick` emitting [`WitReport`]s using `tx`.
     pub fn with_debug(
         bus: TopicBus,
         doer: Arc<dyn Doer>,
@@ -78,10 +83,12 @@ impl InstantWit {
 }
 
 #[async_trait]
-impl crate::traits::wit::Wit<(), String> for InstantWit {
-    async fn observe(&self, _: ()) {}
+impl crate::traits::wit::Wit<Sensation, Instant> for Quick {
+    async fn observe(&self, input: Sensation) {
+        self.buffer.lock().unwrap().push(Arc::new(input));
+    }
 
-    async fn tick(&self) -> Vec<Impression<String>> {
+    async fn tick(&self) -> Vec<Impression<Instant>> {
         let items = {
             let mut buf = self.buffer.lock().unwrap();
             if buf.is_empty() {
@@ -90,7 +97,7 @@ impl crate::traits::wit::Wit<(), String> for InstantWit {
             let data = buf.drain(..).collect::<Vec<_>>();
             data
         };
-        debug!(count = items.len(), "instant wit summarizing sensations");
+        debug!(count = items.len(), "quick summarizing sensations");
         let bullets: Vec<String> = items.iter().map(|s| Self::describe(&*s)).collect();
         let prompt = format!(
             "Summarize these simultaneous sensations in one sentence:\n- {}",
@@ -107,13 +114,17 @@ impl crate::traits::wit::Wit<(), String> for InstantWit {
             Ok(s) => s.trim().to_string(),
             Err(_) => String::new(),
         };
-        let stim = Stimulus::new(out.clone());
+        let instant = Instant {
+            at: Utc::now(),
+            sensations: items.clone(),
+        };
+        let stim = Stimulus::new(instant);
         let imp = Impression::new(vec![stim], out.clone(), None::<String>);
         if let Some(tx) = &self.tx {
             if crate::debug::debug_enabled(Self::LABEL).await {
                 let _ = tx.send(crate::WitReport {
                     name: Self::LABEL.into(),
-                    prompt: "instant summary".into(),
+                    prompt: "quick summary".into(),
                     output: out.clone(),
                 });
             }
