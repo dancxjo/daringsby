@@ -10,6 +10,7 @@
 //! buf.set("hi".to_string());
 //! assert_eq!(buf.take(), Some("hi".to_string()));
 //! assert_eq!(buf.take(), None);
+//! assert!(buf.is_empty());
 //! ```
 //!
 //! The cell is lock-free on supported platforms and falls back to a
@@ -37,5 +38,15 @@ impl PendingTurn {
     /// Take the pending prompt if present.
     pub fn take(&self) -> Option<String> {
         self.inner.take()
+    }
+
+    /// Return `true` when no turn is pending.
+    pub fn is_empty(&self) -> bool {
+        let cur = self.inner.take();
+        let empty = cur.is_none();
+        if let Some(val) = cur {
+            self.inner.store(Some(val));
+        }
+        empty
     }
 }

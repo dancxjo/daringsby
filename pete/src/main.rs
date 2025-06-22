@@ -79,6 +79,9 @@ struct Cli {
     /// Allow the voice to speak every N seconds automatically
     #[arg(long)]
     auto_voice: Option<u64>,
+    /// Disable the fallback <take_turn> when no Wit suggests one
+    #[arg(long)]
+    no_fallback_turn: bool,
     /// URL of the Qdrant service
     #[arg(long, env = "QDRANT_URL", default_value = "http://localhost:6333")]
     qdrant_url: String,
@@ -117,6 +120,7 @@ async fn main() -> anyhow::Result<()> {
         &cli.neo4j_pass,
     )?;
     psyche.enable_all_debug().await;
+    psyche.set_fallback_turn_enabled(!cli.no_fallback_turn);
     let speaking = Arc::new(AtomicBool::new(false));
     let connections = Arc::new(AtomicUsize::new(0));
     #[cfg(feature = "tts")]
