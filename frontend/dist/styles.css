@@ -1,9 +1,11 @@
-:root{--bs-primary:#0d6efd;--bs-secondary:#6c757d;--bs-border-radius:.375rem;--bs-font-size-lg:1.25rem;--panel-bg:#f8f8f8;--panel-hover:#eee;}
+:root{--bs-primary:#0d6efd;--bs-secondary:#6c757d;--bs-border-radius:.375rem;--bs-font-size-lg:1.25rem;--panel-bg:#f8f8f8;--panel-hover:#eee;--details-bg:#581845;--details-text:#f8f8f8;}
 
 @media (prefers-color-scheme: dark){
     :root{
         --panel-bg:#333;
         --panel-hover:#555;
+        --details-bg:#581845;
+        --details-text:#f8f8f8;
     }
 }
 .mien,
@@ -231,7 +233,8 @@ pre {
 
 /* Styled panels for debug info */
 details {
-    background-color: var(--panel-bg);
+    background-color: var(--details-bg);
+    color: var(--details-text);
     border-radius: 0.5em;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     padding: 1em;
@@ -248,6 +251,10 @@ details > summary {
     margin: -1em -1em 1em;
     padding: 0.5em 1em;
     border-radius: 0.5em 0.5em 0 0;
+    position: sticky;
+    top: 0;
+    background-color: inherit;
+    z-index: 1;
 }
 
 details > summary::-webkit-details-marker {
