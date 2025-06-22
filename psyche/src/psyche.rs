@@ -501,13 +501,8 @@ impl Psyche {
 
     /// Background task processing non-conversational experience.
     async fn experience(
-        memory: Arc<dyn Memory>,
-        wits: Vec<Arc<dyn ErasedWit + Send + Sync>>,
-        ling: Arc<Mutex<crate::Ling>>,
         buffer: Arc<Mutex<VecDeque<Arc<Sensation>>>>,
-        ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
-        pending_turn: Arc<Mutex<Option<String>>>,
         bus: crate::topics::TopicBus,
     ) {
         loop {
@@ -518,46 +513,6 @@ impl Psyche {
                 }
                 bus.publish(crate::topics::Topic::Sensation, s.clone());
             }
-            let mut tasks = Vec::new();
-            for wit in &wits {
-                let wit = wit.clone();
-                let ticks = ticks.clone();
-                tasks.push(tokio::spawn(async move {
-                    let name = wit.name();
-                    let imps = wit.tick_erased().await;
-                    let now = Utc::now();
-                    {
-                        let mut map = ticks.lock().await;
-                        map.insert(name.to_string(), now);
-                    }
-                    info!(%name, "Ticked wit");
-                    for impression in &imps {
-                        info!(summary = ?impression.summary, "Wit emitted impression");
-                    }
-                    imps
-                }));
-            }
-            let mut imps = Vec::new();
-            for t in tasks {
-                if let Ok(items) = t.await {
-                    imps.extend(items);
-                }
-            }
-            if !imps.is_empty() {
-                for imp in &imps {
-                    for stim in &imp.stimuli {
-                        if let serde_json::Value::String(s) = &stim.what {
-                            if let Some(p) = extract_tag(s, "take_turn") {
-                                *pending_turn.lock().await = Some(p);
-                            }
-                        }
-                    }
-                }
-                if let Err(e) = memory.store_all(&imps).await {
-                    error!(?e, "memory store failed");
-                }
-                ling.lock().await.add_impressions(&imps).await;
-            }
             tokio::time::sleep(EXPERIENCE_TICK).await;
         }
     }
@@ -565,17 +520,48 @@ impl Psyche {
     /// Start the conversation and background tasks. Returns the updated [`Psyche`] when finished.
     pub async fn run(self) -> Self {
         info!("psyche run started");
-        let wits = self.wits.clone();
-        let mem = self.memory.clone();
         let buf = self.sensation_buffer.clone();
-        let ticks = self.last_ticks.clone();
         let observers = self.observers.clone();
-        let ling = self.ling.clone();
-        let turn = self.pending_turn.clone();
         let bus = self.topic_bus.clone();
-        let experience_handle = tokio::spawn(Self::experience(
-            mem, wits, ling, buf, ticks, observers, turn, bus,
-        ));
+        let ticks = self.last_ticks.clone();
+        let memory = self.memory.clone();
+        let ling = self.ling.clone();
+        let pending = self.pending_turn.clone();
+
+        for wit in &self.wits {
+            let wit = wit.clone();
+            let ticks = ticks.clone();
+            let mem = memory.clone();
+            let ling = ling.clone();
+            let pending_turn = pending.clone();
+            tokio::spawn(async move {
+                loop {
+                    let name = wit.name();
+                    let imps = wit.tick_erased().await;
+                    let now = Utc::now();
+                    {
+                        let mut map = ticks.lock().await;
+                        map.insert(name.to_string(), now);
+                    }
+                    for imp in &imps {
+                        for stim in &imp.stimuli {
+                            if let serde_json::Value::String(s) = &stim.what {
+                                if let Some(p) = extract_tag(s, "take_turn") {
+                                    *pending_turn.lock().await = Some(p);
+                                }
+                            }
+                        }
+                    }
+                    if let Err(e) = mem.store_all(&imps).await {
+                        error!(?e, "memory store failed");
+                    }
+                    ling.lock().await.add_impressions(&imps).await;
+                    tokio::time::sleep(EXPERIENCE_TICK).await;
+                }
+            });
+        }
+
+        let experience_handle = tokio::spawn(Self::experience(buf, observers, bus));
         let converse_handle = tokio::spawn(self.converse());
         let psyche = converse_handle.await.expect("converse task panicked");
         experience_handle.abort();
