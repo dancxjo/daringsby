@@ -9,6 +9,7 @@ use quick_xml::{Reader, events::Event};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::broadcast;
+use tracing::info;
 
 /// Decide Pete's next action or speech using a language model.
 ///
@@ -141,7 +142,9 @@ impl Summarizer<String, String> for Will {
             command: self.prompt.build(&input),
             images: Vec::new(),
         };
+        info!(prompt = %instruction.command, "will prompt");
         let resp = self.doer.follow(instruction.clone()).await?;
+        info!(response = %resp, "will response");
         let decision = resp.trim().to_string();
         if let Some(tx) = &self.tx {
             if crate::debug::debug_enabled(Self::LABEL).await {

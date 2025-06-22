@@ -480,6 +480,7 @@ impl Psyche {
                 let mut prompt = { self.ling.lock().await.build_prompt().await };
                 prompt.push('\n');
                 prompt.push_str(&extra);
+                info!(%prompt, "conversation prompt");
                 self.is_speaking = true;
                 if let Err(e) = self.voice.take_turn(&prompt, &history).await {
                     error!(?e, "voice chat failed");
