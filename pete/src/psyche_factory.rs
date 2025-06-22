@@ -76,8 +76,8 @@ pub fn ollama_psyche(
     use crate::LoggingMotor;
     use psyche::ling::OllamaProvider;
     use psyche::wits::{
-        BasicMemory, Combobulator, CombobulatorWit, FondDuCoeur, FondDuCoeurWit, HeartWit,
-        MemoryWit, Neo4jClient, QdrantClient, WillWit,
+        BasicMemory, Combobulator, CombobulatorWit, FondDuCoeur, HeartWit, IdentityWit, MemoryWit,
+        Neo4jClient, QdrantClient, WillWit,
     };
 
     let narrator = OllamaProvider::new(chatter_host, chatter_model)?;
@@ -129,7 +129,7 @@ pub fn ollama_psyche(
         Arc::new(LoggingMotor),
         wit_tx.clone(),
     )));
-    psyche.register_typed_wit(Arc::new(FondDuCoeurWit::new(FondDuCoeur::with_debug(
+    psyche.register_typed_wit(Arc::new(IdentityWit::new(FondDuCoeur::with_debug(
         Box::new(OllamaProvider::new(wits_host, wits_model)?),
         wit_tx.clone(),
     ))));
