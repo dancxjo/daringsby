@@ -115,9 +115,10 @@ pub fn ollama_psyche(
         Box::new(OllamaProvider::new(wits_host, wits_model)?),
         wit_tx.clone(),
     ))));
-    psyche.register_typed_wit(Arc::new(WillWit::new(
+    psyche.register_typed_wit(Arc::new(WillWit::with_debug(
         psyche.topic_bus(),
         Arc::new(OllamaProvider::new(wits_host, wits_model)?),
+        Some(wit_tx.clone()),
     )));
     psyche.register_typed_wit(Arc::new(MemoryWit::with_debug(
         memory.clone(),
