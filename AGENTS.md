@@ -134,5 +134,6 @@ This document reflects the current cognitive and runtime architecture of Pete Da
 ## Sensor Features
 
 * Build with cargo features to include sensors.
-* Features: `eye`, `face`, `geo`, `ear`.
+* Features: `eye`, `face`, `geo`, `ear`, `heartbeat`.
 * `all-sensors` enables them all and is used by default.
+* `HeartbeatSensor::test_interval` helps with short test delays.

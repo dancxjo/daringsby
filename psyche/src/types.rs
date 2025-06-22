@@ -20,3 +20,10 @@ pub struct ObjectInfo {
     pub label: Option<String>,
     pub embedding: Vec<f32>,
 }
+
+/// Timestamp emitted periodically by [`HeartbeatSensor`](crate::HeartbeatSensor).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Heartbeat {
+    /// Moment of the heartbeat.
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
