@@ -92,6 +92,7 @@ The previous Deno-based client has been removed. Update the files in
   available during tests.
 * Tests expecting a `WitReport` must enable the matching debug label with
   `psyche::debug::enable_debug(label).await`.
+* `Psyche` uses `active_experience_tick` when speaking to process sensations more frequently.
 
 ## Contributor Notes
 
