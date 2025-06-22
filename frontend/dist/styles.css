@@ -200,9 +200,24 @@ button:hover {
   border: 1px solid #333;
   padding: 0.5rem;
   color: white;
+  position: relative;
+  overflow: hidden;
+}
+
+.sidebar details::before {
+  content: "";
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2rem;
+  pointer-events: none;
+  background-image: linear-gradient(#580F41, rgba(88, 15, 65, 0));
+  z-index: 1;
 }
 
 .sidebar details summary {
+  display: block;
   padding: 0.5rem;
   background-color: #580F41; /* aubergine */
   color: #fff;
