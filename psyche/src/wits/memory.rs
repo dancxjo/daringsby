@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use serde::Serialize;
 use serde_json::Value;
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::info;
 
 /// Trait representing the memory subsystem.
@@ -162,10 +163,19 @@ pub struct BasicMemory {
 impl Memory for BasicMemory {
     async fn store(&self, impression: &Impression<Value>) -> Result<()> {
         info!(summary = %impression.summary, "memory store");
-        let vector = match self.vectorizer.vectorize(&impression.summary).await {
-            Ok(v) => Some(v),
-            Err(e) => {
+        let vector = match tokio::time::timeout(
+            Duration::from_secs(5),
+            self.vectorizer.vectorize(&impression.summary),
+        )
+        .await
+        {
+            Ok(Ok(v)) => Some(v),
+            Ok(Err(e)) => {
                 tracing::warn!(?e, "🤖 vectorize failed");
+                None
+            }
+            Err(_) => {
+                tracing::warn!("🤖 vectorize timed out");
                 None
             }
         };
@@ -176,6 +186,15 @@ impl Memory for BasicMemory {
         }
         if let Some(stim) = impression.stimuli.first() {
             self.neo4j.store_data(&stim.what).await?;
+        }
+        Ok(())
+    }
+
+    async fn store_all(&self, impressions: &[Impression<Value>]) -> Result<()> {
+        for imp in impressions {
+            if let Err(e) = self.store(imp).await {
+                tracing::warn!(?e, "memory store failed");
+            }
         }
         Ok(())
     }

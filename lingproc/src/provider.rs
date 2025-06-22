@@ -9,6 +9,7 @@ use ollama_rs::{
     generation::embeddings::request::{EmbeddingsInput, GenerateEmbeddingsRequest},
 };
 use std::time::Duration;
+use tokio::time::timeout;
 use tokio_stream::StreamExt;
 use tracing::{debug, info, warn};
 
@@ -101,15 +102,19 @@ impl Vectorizer for OllamaProvider {
             attempts += 1;
             let req =
                 GenerateEmbeddingsRequest::new(self.model.clone(), EmbeddingsInput::from(text));
-            match self.client.generate_embeddings(req).await {
-                Ok(res) => {
+            match timeout(Duration::from_secs(5), self.client.generate_embeddings(req)).await {
+                Err(_) => {
+                    warn!("ollama vectorize timed out");
+                    return Err(anyhow!("timeout"));
+                }
+                Ok(Ok(res)) => {
                     debug!(
                         embedding_len = res.embeddings.len(),
                         "ollama vectorize response"
                     );
                     return Ok(res.embeddings.into_iter().next().unwrap_or_default());
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     if let ollama_rs::error::OllamaError::ReqwestError(ref re) = e {
                         if re.is_connect() {
                             warn!("🤖 vectorize failed: {}", re);
