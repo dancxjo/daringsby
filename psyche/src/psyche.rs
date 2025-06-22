@@ -605,41 +605,34 @@ impl Psyche {
     /// Start the conversation and background tasks. Returns the updated [`Psyche`] when finished.
     pub async fn run(self) -> Self {
         info!("psyche run started");
-        let buf = self.sensation_buffer.clone();
+        let buf = Arc::clone(&self.sensation_buffer);
         let observers = self.observers.clone();
         let bus = self.topic_bus.clone();
-        let ticks = self.last_ticks.clone();
-        let memory = self.memory.clone();
-        let ling = self.ling.clone();
-        let pending = self.pending_turn.clone();
+        let ticks = Arc::clone(&self.last_ticks);
+        let memory = Arc::clone(&self.memory);
+        let ling = Arc::clone(&self.ling);
+        let pending = Arc::clone(&self.pending_turn);
+        let tick = self.experience_tick;
 
         let mut wit_handles = Vec::new();
         for wit in &self.wits {
-            let wit = wit.clone();
-            let ticks = ticks.clone();
-            let mem = memory.clone();
-            let ling = ling.clone();
-            let pending_turn = pending.clone();
+            let wit = Arc::clone(wit);
+            let ticks = Arc::clone(&ticks);
+            let mem = Arc::clone(&memory);
+            let ling = Arc::clone(&ling);
+            let pending_turn = Arc::clone(&pending);
             let name = wit.name().to_string();
-            let fut = AssertUnwindSafe(Self::wit_loop(
-                wit,
-                ticks,
-                mem,
-                ling,
-                pending_turn,
-                self.experience_tick,
-            ))
-            .catch_unwind()
-            .map(move |res| {
-                if let Err(e) = res {
-                    error!(%name, ?e, "wit loop panicked");
-                }
-            });
+            let fut = AssertUnwindSafe(Self::wit_loop(wit, ticks, mem, ling, pending_turn, tick))
+                .catch_unwind()
+                .map(move |res| {
+                    if let Err(e) = res {
+                        error!(%name, ?e, "wit loop panicked");
+                    }
+                });
             wit_handles.push(tokio::spawn(fut));
         }
 
-        let experience_handle =
-            tokio::spawn(Self::experience(buf, observers, bus, self.experience_tick));
+        let experience_handle = tokio::spawn(Self::experience(buf, observers, bus, tick));
         let converse_handle = tokio::spawn(self.converse());
         let psyche = converse_handle.await.expect("converse task panicked");
         experience_handle.abort();
