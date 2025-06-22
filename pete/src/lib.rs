@@ -29,6 +29,7 @@ pub use sensor::NoopSensor;
 pub use sensor::eye::EyeSensor;
 #[cfg(feature = "geo")]
 pub use sensor::geo::GeoSensor;
+pub use sensor::heartbeat::HeartbeatSensor;
 pub use simulator::Simulator;
 #[cfg(feature = "tts")]
 pub use tts_mouth::{CoquiTts, Tts, TtsMouth, TtsStream};
