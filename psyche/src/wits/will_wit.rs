@@ -15,6 +15,7 @@ pub struct WillWit {
     doer: Arc<dyn Doer>,
     prompt: WillPrompt,
     buffer: Arc<Mutex<Vec<String>>>,
+    history: Arc<Mutex<Vec<Instruction>>>,
     tx: Option<broadcast::Sender<WitReport>>,
 }
 
@@ -27,6 +28,11 @@ impl WillWit {
         Self::with_debug(bus, doer, None)
     }
 
+    /// Replace the prompt builder.
+    pub fn set_prompt(&mut self, prompt: WillPrompt) {
+        self.prompt = prompt;
+    }
+
     /// Create a new `WillWit` emitting [`WitReport`]s via `tx`.
     pub fn with_debug(
         bus: TopicBus,
@@ -34,6 +40,7 @@ impl WillWit {
         tx: Option<broadcast::Sender<WitReport>>,
     ) -> Self {
         let buffer = Arc::new(Mutex::new(Vec::new()));
+        let history = Arc::new(Mutex::new(Vec::new()));
         let buf_clone = buffer.clone();
         let bus_clone = bus.clone();
         tokio::spawn(async move {
@@ -61,6 +68,7 @@ impl WillWit {
             doer,
             prompt: WillPrompt,
             buffer,
+            history,
             tx,
         }
     }
@@ -96,9 +104,22 @@ impl crate::wit::Wit<(), Instruction> for WillWit {
             }
         };
         let instructions = parse_instructions(&resp);
-        for ins in &instructions {
-            self.bus.publish(Topic::Instruction, ins.clone());
-        }
+        let unique = {
+            let mut hist = self.history.lock().unwrap();
+            let mut unique = Vec::new();
+            for ins in instructions {
+                if hist.last().map_or(false, |h| h == &ins) {
+                    continue;
+                }
+                self.bus.publish(Topic::Instruction, ins.clone());
+                hist.push(ins.clone());
+                if hist.len() > 10 {
+                    hist.remove(0);
+                }
+                unique.push(ins);
+            }
+            unique
+        };
         if let Some(tx) = &self.tx {
             if crate::debug::debug_enabled(Self::LABEL).await {
                 let _ = tx.send(WitReport {
@@ -108,7 +129,7 @@ impl crate::wit::Wit<(), Instruction> for WillWit {
                 });
             }
         }
-        instructions
+        unique
             .into_iter()
             .map(|ins| {
                 Impression::new(
