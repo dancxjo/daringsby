@@ -162,10 +162,18 @@ pub struct BasicMemory {
 impl Memory for BasicMemory {
     async fn store(&self, impression: &Impression<Value>) -> Result<()> {
         info!(summary = %impression.summary, "memory store");
-        let vector = self.vectorizer.vectorize(&impression.summary).await?;
-        self.qdrant
-            .store_vector(&impression.summary, &vector)
-            .await?;
+        let vector = match self.vectorizer.vectorize(&impression.summary).await {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!(?e, "🤖 vectorize failed");
+                None
+            }
+        };
+        if let Some(v) = vector {
+            if let Err(e) = self.qdrant.store_vector(&impression.summary, &v).await {
+                tracing::error!(?e, "failed to store vector");
+            }
+        }
         if let Some(stim) = impression.stimuli.first() {
             self.neo4j.store_data(&stim.what).await?;
         }
