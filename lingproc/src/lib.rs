@@ -6,8 +6,10 @@
 
 pub mod provider;
 pub mod segment;
+pub mod segmenter;
 pub mod types;
 
 pub use crate::provider::*;
 pub use crate::segment::*;
+pub use crate::segmenter::*;
 pub use crate::types::*;
