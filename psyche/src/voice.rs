@@ -1,7 +1,5 @@
 use crate::{Event, Mouth};
-use lingproc::{Chatter, Message};
-use pragmatic_segmenter::Segmenter;
-use std::collections::VecDeque;
+use lingproc::{Chatter, Message, SentenceSegmenter};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -19,7 +17,6 @@ pub struct Voice {
     extra_prompt: Arc<Mutex<Option<String>>>,
     will: Arc<Mutex<Option<Arc<crate::wits::Will>>>>,
     prompt: Arc<Mutex<Box<dyn crate::prompt::PromptBuilder + Send + Sync>>>,
-    segmenter: Arc<Segmenter>,
 }
 
 impl Clone for Voice {
@@ -32,7 +29,6 @@ impl Clone for Voice {
             extra_prompt: self.extra_prompt.clone(),
             will: self.will.clone(),
             prompt: self.prompt.clone(),
-            segmenter: self.segmenter.clone(),
         }
     }
 }
@@ -52,7 +48,6 @@ impl Voice {
             will: Arc::new(Mutex::new(None)),
             prompt: Arc::new(Mutex::new(Box::new(crate::prompt::VoicePrompt)
                 as Box<dyn crate::prompt::PromptBuilder + Send + Sync>)),
-            segmenter: Arc::new(Segmenter::new().expect("segmenter init")),
         }
     }
 
@@ -103,11 +98,8 @@ impl Voice {
         };
         info!(%prompt, "voice prompt");
         if let Ok(mut stream) = self.chatter.chat(&prompt, history).await {
-            let mut buf = String::new();
             let mut full = String::new();
-            let mut leftover = String::new();
-            let mut pending: VecDeque<String> = VecDeque::new();
-            let segmenter = self.segmenter.clone();
+            let mut segmenter = SentenceSegmenter::new();
             while let Some(chunk_res) = stream.next().await {
                 match chunk_res {
                     Ok(chunk) => {
@@ -116,21 +108,8 @@ impl Voice {
                             let _ = self.events.send(Event::StreamChunk(chunk.clone()));
                         }
                         full.push_str(&chunk);
-                        buf.push_str(&leftover);
-                        buf.push_str(&chunk);
-                        let mut segs: Vec<String> =
-                            segmenter.segment(&buf).map(|s| s.to_string()).collect();
-                        if !segs.is_empty() {
-                            leftover = segs.pop().unwrap();
-                            for s in segs {
-                                pending.push_back(s);
-                            }
-                        }
-                        buf.clear();
-                        while pending.len() > 1 {
-                            if let Some(sentence) = pending.pop_front() {
-                                self.emit_sentence(&sentence).await;
-                            }
+                        for sentence in segmenter.push_str(&chunk) {
+                            self.emit_sentence(&sentence).await;
                         }
                     }
                     Err(e) => {
@@ -139,10 +118,7 @@ impl Voice {
                     }
                 }
             }
-            if !leftover.is_empty() {
-                pending.push_back(leftover);
-            }
-            while let Some(sentence) = pending.pop_front() {
+            for sentence in segmenter.finish() {
                 self.emit_sentence(&sentence).await;
             }
             info!(%full, "voice full response");
@@ -167,7 +143,7 @@ impl Voice {
             let _ = self.events.send(Event::EmotionChanged(e.clone()));
         }
         if !text.trim().is_empty() {
-            tokio::time::sleep(Duration::from_millis(20)).await;
+            tokio::time::sleep(Duration::from_millis(5)).await;
             let mouth = { self.mouth.lock().unwrap().clone() };
             mouth.speak(trimmed).await;
         }

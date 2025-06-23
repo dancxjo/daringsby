@@ -1,7 +1,7 @@
 #![cfg(feature = "tts")]
 use async_trait::async_trait;
 use futures::StreamExt;
-use pragmatic_segmenter::Segmenter;
+use lingproc::segment_text_into_sentences;
 use psyche::{
     Event,
     traits::{Mouth, Tts, TtsStream},
@@ -97,8 +97,7 @@ impl TtsMouth {
 impl Mouth for TtsMouth {
     async fn speak(&self, text: &str) {
         self.speaking.store(true, Ordering::SeqCst);
-        let seg = Segmenter::new().expect("segmenter init");
-        for sentence in seg.segment(text) {
+        for sentence in segment_text_into_sentences(text) {
             let sent = sentence.trim();
             if sent.is_empty() {
                 continue;

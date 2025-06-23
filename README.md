@@ -6,6 +6,18 @@ This repository contains a Rust workspace with three crates:
 - **lingproc** – helper LLM abstractions
 - **pete** – a binary crate depending on `psyche`
 
+`lingproc` also exposes sentence segmentation helpers:
+
+```rust
+use lingproc::segment_text_into_sentences;
+
+let parts = segment_text_into_sentences("Hello world. How are you?");
+assert_eq!(
+    parts,
+    vec!["Hello world.".to_string(), "How are you?".to_string()]
+);
+```
+
 The `psyche` crate defines a `Summarizer` trait used to build modular
 cognitive layers. Each `Summarizer` asynchronously digests a batch of lower
 level impressions and produces a higher-level `Impression<T>`. A lightweight
