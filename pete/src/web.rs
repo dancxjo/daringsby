@@ -21,9 +21,25 @@ use crate::EventBus;
 use lingproc::Role;
 use psyche::{Ear, Event, GeoLoc, ImageData, Sensor, WitReport};
 
-/// State shared across HTTP handlers and WebSocket tasks.
+/// PETE's interface to the world — his `Body`.
+///
+/// The `Body` struct wires together PETE's sensory inputs, expressive outputs,
+/// and shared state for the web interface. It is passed into HTTP and WebSocket
+/// routes to serve as PETE’s physical and social connection to the outside world.
+///
+/// ## Responsibilities
+/// - 🧠 Connects the web server to the running [`Psyche`] instance
+/// - 👁 Streams image input via [`Sensor<ImageData>`]
+/// - 📍 Receives geolocation input via [`Sensor<GeoLoc>`]
+/// - 👂 Lets Pete “hear” the user via the [`Ear`] trait
+/// - 🗣 Shares and modifies the current [`Conversation`] log
+/// - 🪞 Exposes introspection via [`DebugHandle`]
+/// - 🔌 Tracks the number of active WebSocket connections
+///
+/// This struct represents Pete’s *body* — his live connection to the world of
+/// sensation and interaction.
 #[derive(Clone)]
-pub struct AppState {
+pub struct Body {
     pub bus: Arc<EventBus>,
     pub ear: Arc<dyn Ear>,
     pub eye: Arc<dyn Sensor<ImageData>>,
@@ -65,28 +81,22 @@ pub async fn index() -> Html<&'static str> {
     Html(include_str!("../../frontend/dist/index.html"))
 }
 
-pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
+pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Body>) -> impl IntoResponse {
     info!("websocket upgrade initiated");
     ws.on_upgrade(move |socket| async move { handle_socket(socket, state).await })
 }
 
-pub async fn log_ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+pub async fn log_ws_handler(ws: WebSocketUpgrade, State(state): State<Body>) -> impl IntoResponse {
     info!("log websocket upgrade initiated");
     ws.on_upgrade(move |socket| async move { handle_log_socket(socket, state).await })
 }
 
-pub async fn wit_ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+pub async fn wit_ws_handler(ws: WebSocketUpgrade, State(state): State<Body>) -> impl IntoResponse {
     info!("wit websocket upgrade initiated");
     ws.on_upgrade(move |socket| async move { handle_wit_socket(socket, state).await })
 }
 
-async fn handle_socket(mut socket: WebSocket, state: AppState) {
+async fn handle_socket(mut socket: WebSocket, state: Body) {
     info!("websocket connected");
     state.connections.fetch_add(1, Ordering::SeqCst);
     let mut events = state.bus.subscribe_events();
@@ -160,7 +170,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
     info!("websocket disconnected");
 }
 
-async fn handle_log_socket(mut socket: WebSocket, state: AppState) {
+async fn handle_log_socket(mut socket: WebSocket, state: Body) {
     info!("log websocket connected");
     let mut logs = state.bus.subscribe_logs();
     while let Ok(line) = logs.recv().await {
@@ -171,7 +181,7 @@ async fn handle_log_socket(mut socket: WebSocket, state: AppState) {
     info!("log websocket disconnected");
 }
 
-async fn handle_wit_socket(mut socket: WebSocket, state: AppState) {
+async fn handle_wit_socket(mut socket: WebSocket, state: Body) {
     info!("wit websocket connected");
     for last in state.bus.latest_wits() {
         let msg = serde_json::to_string(&WsResponse::Think(last)).unwrap();
@@ -189,7 +199,7 @@ async fn handle_wit_socket(mut socket: WebSocket, state: AppState) {
     info!("wit websocket disconnected");
 }
 
-pub async fn conversation_log(State(state): State<AppState>) -> impl IntoResponse {
+pub async fn conversation_log(State(state): State<Body>) -> impl IntoResponse {
     let conv = state.conversation.lock().await;
     let prompt = state.system_prompt.lock().await.clone();
     #[derive(Serialize)]
@@ -211,7 +221,7 @@ pub async fn conversation_log(State(state): State<AppState>) -> impl IntoRespons
     axum::Json(entries)
 }
 
-pub async fn psyche_debug(State(state): State<AppState>) -> impl IntoResponse {
+pub async fn psyche_debug(State(state): State<Body>) -> impl IntoResponse {
     let info = state.psyche_debug.snapshot().await;
     axum::Json(info)
 }
@@ -257,7 +267,7 @@ pub async fn listen_user_input(
     }
 }
 
-pub fn app(state: AppState) -> Router {
+pub fn app(state: Body) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/ws", get(ws_handler))

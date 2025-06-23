@@ -11,7 +11,7 @@ use pete::FaceSensor;
 use pete::GeoSensor;
 use pete::HeartbeatSensor;
 use pete::{
-    AppState, ChannelMouth, LoggingMotor, NoopEar, NoopMouth, NoopSensor, app, init_logging,
+    Body, ChannelMouth, LoggingMotor, NoopEar, NoopMouth, NoopSensor, app, init_logging,
     listen_user_input,
 };
 #[cfg(feature = "tts")]
@@ -299,7 +299,7 @@ async fn main() -> anyhow::Result<()> {
         psyche.run().await;
     });
 
-    let state = AppState {
+    let state = Body {
         bus: bus.clone(),
         ear: ear.clone(),
         eye: eye.clone(),
