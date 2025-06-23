@@ -64,12 +64,12 @@ struct Cli {
         default_value = "http://localhost:5002/api/tts"
     )]
     tts_url: String,
-    /// Optional speaker ID for the TTS voice
-    #[arg(long, env = "SPEAKER")]
-    tts_speaker_id: Option<String>,
-    /// Optional language ID for the TTS voice
-    #[arg(long)]
-    tts_language_id: Option<String>,
+    /// Speaker ID for the TTS voice
+    #[arg(long, env = "SPEAKER", default_value = "p123")]
+    tts_speaker_id: String,
+    /// Language ID for the TTS voice
+    #[arg(long, default_value = "en")]
+    tts_language_id: String,
     /// Path to TLS certificate in PEM format
     #[arg(long)]
     tls_cert: Option<String>,
@@ -187,8 +187,8 @@ async fn main() -> anyhow::Result<()> {
             speaking.clone(),
             Arc::new(CoquiTts::new(
                 cli.tts_url,
-                cli.tts_speaker_id,
-                cli.tts_language_id,
+                Some(cli.tts_speaker_id.clone()),
+                Some(cli.tts_language_id.clone()),
             )),
         )) as Arc<dyn Mouth>;
         Arc::new(PlainMouth::new(tts)) as Arc<dyn Mouth>

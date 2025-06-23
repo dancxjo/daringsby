@@ -79,8 +79,8 @@ let tts = std::sync::Arc::new(psyche::PlainMouth::new(
         speaking.clone(),
         std::sync::Arc::new(pete::CoquiTts::new(
             "http://localhost:5002/api/tts",
-            Some("p376".into()),
-            None,
+            Some("p123".into()),
+            Some("en".into()),
         )),
     )) as std::sync::Arc<dyn Mouth>
 ));
@@ -144,7 +144,8 @@ cargo run -p pete --features tts -- \
   --neo4j-user neo4j \
   --neo4j-pass password \
   --tts-url http://localhost:5002/api/tts \
-  --tts-speaker-id p376
+  --tts-speaker-id p123 \
+  --tts-language-id en
 
 Use `--auto-voice N` to have Pete speak automatically every N seconds during development.
 The default fallback response of "I'm listening." can be disabled with `--no-fallback-turn`.
