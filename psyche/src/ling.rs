@@ -87,6 +87,9 @@ impl Ling {
     }
 
     /// Return the most recent `n` messages.
+    ///
+    /// [`Psyche`](crate::Psyche) fetches the tail when constructing prompts for
+    /// the [`Chatter`](crate::ling::Chatter) so only a short history is sent.
     pub async fn get_conversation_tail(&self, n: usize) -> Vec<Message> {
         self.conversation.lock().await.tail(n)
     }
