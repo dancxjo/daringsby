@@ -140,6 +140,7 @@ Provides LLM and embedding utilities.
   before starting sensors like the webcam or microphone.
 * Restart the webcam if its stream ends by listening for the track's `ended`
   event and reacquiring the camera.
+* Avoid reacquiring the webcam when an active stream is already running.
 
 
 ## 📝 Coding Guidelines

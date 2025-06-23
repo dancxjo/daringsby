@@ -261,6 +261,9 @@
   async function setupWebcam() {
     try {
       const video = document.getElementById("webcam");
+      if (webcamStream?.active) {
+        return; // already running
+      }
       if (webcamStream) {
         webcamStream.getTracks().forEach((t) => t.stop());
       }
