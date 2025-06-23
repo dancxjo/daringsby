@@ -1,13 +1,14 @@
 use axum::{
     Json, Router,
     extract::{
-        Path, State,
+        Path, Query, State,
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
     },
     http::StatusCode,
     response::{Html, IntoResponse},
     routing::{get, get_service},
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shared::WsPayload;
 use std::sync::{
@@ -178,25 +179,48 @@ async fn handle_wit_socket(mut socket: WebSocket, state: Body) {
     info!("wit websocket disconnected");
 }
 
-pub async fn conversation_log(State(state): State<Body>) -> impl IntoResponse {
+#[derive(Deserialize)]
+pub struct LogQuery {
+    pub debug: Option<bool>,
+}
+
+pub async fn conversation_log(
+    Query(LogQuery { debug }): Query<LogQuery>,
+    State(state): State<Body>,
+) -> impl IntoResponse {
     let conv = state.conversation.lock().await;
     let prompt = state.system_prompt.lock().await.clone();
     #[derive(Serialize)]
     struct Entry {
         role: String,
         content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        timestamp: Option<DateTime<Utc>>,
     }
     let mut entries = vec![Entry {
         role: "system".to_string(),
         content: prompt,
+        timestamp: None,
     }];
-    entries.extend(conv.all().iter().map(|m| Entry {
-        role: match m.role {
-            Role::User => "user".to_string(),
-            Role::Assistant => "assistant".to_string(),
-        },
-        content: m.content.clone(),
-    }));
+    if debug.unwrap_or(false) {
+        entries.extend(conv.all_with_timestamps().iter().map(|m| Entry {
+            role: match m.message.role {
+                Role::User => "user".to_string(),
+                Role::Assistant => "assistant".to_string(),
+            },
+            content: m.message.content.clone(),
+            timestamp: Some(m.at),
+        }));
+    } else {
+        entries.extend(conv.all().iter().map(|m| Entry {
+            role: match m.role {
+                Role::User => "user".to_string(),
+                Role::Assistant => "assistant".to_string(),
+            },
+            content: m.content.clone(),
+            timestamp: None,
+        }));
+    }
     axum::Json(entries)
 }
 

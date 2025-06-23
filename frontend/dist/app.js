@@ -15,6 +15,14 @@
   const witDetails = {};
   const witDebugContainer = document.getElementById("wit-debug");
   let playing = false;
+  let debugMode = false;
+
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey && e.key === "d") {
+      debugMode = !debugMode;
+      updateConversation();
+    }
+  });
 
   function animateDetails(details) {
     const summary = details.querySelector("summary");
@@ -279,7 +287,7 @@
 
   async function updateConversation() {
     try {
-      const resp = await fetch("/conversation");
+      const resp = await fetch(`/conversation${debugMode ? "?debug=1" : ""}`);
       const msgs = await resp.json();
       const system = document.getElementById("system-prompt");
       if (system && msgs.length) {
@@ -290,7 +298,11 @@
         conversationLog.scrollHeight - 5;
       conversationLog.textContent = msgs
         .slice(1)
-        .map((m) => `${m.role}: ${m.content}`)
+        .map((m) => {
+          const ts = debugMode && m.timestamp ?
+            new Date(m.timestamp).toLocaleTimeString() + " " : "";
+          return `${ts}${m.role}: ${m.content}`;
+        })
         .join("\n");
       if (atBottom) {
         conversationLog.scrollTop = conversationLog.scrollHeight;
