@@ -1,9 +1,6 @@
 use crate::prompt::PromptBuilder;
 use crate::traits::Doer;
-use crate::{
-    ImageData, Impression, Stimulus,
-    wit::{Episode, Wit},
-};
+use crate::{ImageData, Impression, Stimulus, wit::Wit};
 use async_trait::async_trait;
 use lingproc::Instruction;
 use std::sync::{Arc, Mutex};
@@ -21,7 +18,7 @@ pub struct Combobulator {
     doer: Arc<dyn Doer>,
     prompt: crate::prompt::CombobulatorPrompt,
     tx: Option<broadcast::Sender<crate::WitReport>>,
-    buffer: Mutex<Vec<Impression<Episode>>>,
+    buffer: Mutex<Vec<Impression<String>>>,
     last_caption_time: Mutex<Instant>,
     latest_image: Arc<Mutex<Option<ImageData>>>,
     llm_semaphore: Arc<Semaphore>,
@@ -70,7 +67,7 @@ impl crate::traits::observer::SensationObserver for Combobulator {
 
 #[async_trait]
 impl Wit for Combobulator {
-    type Input = Impression<Episode>;
+    type Input = Impression<String>;
     type Output = String;
 
     async fn observe(&self, input: Self::Input) {
@@ -97,9 +94,7 @@ impl Wit for Combobulator {
             drop(permit);
             if let Ok(caption) = result {
                 self.buffer.lock().unwrap().push(Impression::new(
-                    vec![Stimulus::new(Episode {
-                        summary: caption.clone(),
-                    })],
+                    vec![Stimulus::new(caption.clone())],
                     caption,
                     None::<String>,
                 ));
@@ -130,7 +125,7 @@ impl Combobulator {
     /// Summarize `inputs` into a short awareness statement.
     pub async fn digest(
         &self,
-        inputs: &[Impression<Episode>],
+        inputs: &[Impression<String>],
     ) -> anyhow::Result<Impression<String>> {
         let mut combined = String::new();
         for imp in inputs {
@@ -138,7 +133,7 @@ impl Combobulator {
                 if !combined.is_empty() {
                     combined.push(' ');
                 }
-                combined.push_str(&stim.what.summary);
+                combined.push_str(&stim.what);
             }
         }
         let instruction = Instruction {

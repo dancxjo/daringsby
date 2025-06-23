@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use lingproc::Instruction;
 use psyche::traits::Doer;
-use psyche::{Impression, Stimulus, wit::Episode, wits::Combobulator};
+use psyche::{Impression, Stimulus, wits::Combobulator};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -19,9 +19,7 @@ async fn returns_awareness_impression() {
     let combo = Combobulator::new(Arc::new(Dummy));
     let imp = combo
         .digest(&[Impression::new(
-            vec![Stimulus::new(Episode {
-                summary: "Pete looked around.".into(),
-            })],
+            vec![Stimulus::new("Pete looked around.".to_string())],
             "",
             None::<String>,
         )])

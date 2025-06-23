@@ -25,7 +25,7 @@ pub mod traits {
     pub use observer::SensationObserver;
     pub use sensor::Sensor;
     pub use tts::{Tts, TtsStream};
-    pub use wit::{ErasedWit, Summarizer, Wit, WitAdapter};
+    pub use wit::{ErasedWit, Wit, WitAdapter};
 }
 
 pub mod wit;
@@ -101,8 +101,8 @@ pub use sensation::{Event, Instant, Sensation, WitReport};
 #[cfg(feature = "face")]
 pub use sensors::{DummyDetector, FaceDetector, FaceInfo, FaceSensor};
 pub use traits::{
-    Doer, Ear, ErasedWit, Motor, Mouth, NoopMotor, SensationObserver, Sensor, Summarizer, Tts,
-    TtsStream, Wit, WitAdapter,
+    Doer, Ear, ErasedWit, Motor, Mouth, NoopMotor, SensationObserver, Sensor, Tts, TtsStream, Wit,
+    WitAdapter,
 };
 pub use voice::{Voice, extract_emojis};
 pub use wits::{
