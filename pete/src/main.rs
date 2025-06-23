@@ -11,7 +11,7 @@ use pete::FaceSensor;
 use pete::GeoSensor;
 use pete::HeartbeatSensor;
 use pete::{
-    Body, ChannelMouth, LoggingMotor, NoopEar, NoopMouth, NoopSensor, app, init_logging,
+    Body, LoggingMotor, NoopEar, NoopMouth, app, init_logging,
     listen_user_input,
 };
 // helper for building Ollama providers

@@ -10,7 +10,6 @@
 //! ```
 
 use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
 use clap::{Parser, Subcommand};
 use futures::SinkExt;
 use mime_guess::MimeGuess;

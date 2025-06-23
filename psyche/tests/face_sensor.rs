@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use futures::{StreamExt, pin_mut};
-use lingproc::{Chatter, Doer, LlmInstruction, Message, TextStream, Vectorizer};
+use lingproc::{Chatter, Doer, LlmInstruction, Message, Vectorizer};
 use psyche::{
     Ear, ImageData, Mouth, Psyche, Sensation, Sensor, Topic,
     sensors::face::{DummyDetector, FaceDetector, FaceInfo, FaceSensor},

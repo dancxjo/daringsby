@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use lingproc::LlmInstruction;
 use psyche::traits::Doer;
-use psyche::{ImageData, Impression, Stimulus, VisionWit, Wit};
+use psyche::{ImageData, VisionWit, Wit};
 use std::sync::Arc;
 
 #[derive(Clone)]
