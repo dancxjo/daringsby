@@ -7,8 +7,8 @@
 //!
 //! The [`word_stream`] function splits the input into Unicode word boundaries.
 
+use crate::segmenter::shared_segmenter;
 use futures::{Stream, StreamExt};
-use pragmatic_segmenter::Segmenter;
 use std::collections::VecDeque;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -42,25 +42,26 @@ where
 {
     use futures::stream::unfold;
     let buf = String::new();
-    let seg = Segmenter::new().expect("segmenter init");
     let leftover = String::new();
     let pending: VecDeque<String> = VecDeque::new();
 
     let stream = unfold(
-        (input, buf, seg, leftover, pending),
-        |(mut input, mut buf, seg, mut leftover, mut pending)| async move {
+        (input, buf, leftover, pending),
+        |(mut input, mut buf, mut leftover, mut pending)| async move {
             loop {
                 if pending.len() > 1 {
                     if let Some(next) = pending.pop_front() {
-                        return Some((Ok(next), (input, buf, seg, leftover, pending)));
+                        return Some((Ok(next), (input, buf, leftover, pending)));
                     }
                 }
                 match input.next().await {
                     Some(Ok(chunk)) => {
                         buf.push_str(&leftover);
                         buf.push_str(&chunk);
-                        let mut segments: Vec<String> =
-                            seg.segment(&buf).map(|s| s.to_string()).collect();
+                        let mut segments: Vec<String> = shared_segmenter()
+                            .segment(&buf)
+                            .map(|s| s.to_string())
+                            .collect();
                         if !segments.is_empty() {
                             leftover = segments.pop().unwrap();
                             for s in segments {
@@ -69,13 +70,13 @@ where
                         }
                         buf.clear();
                     }
-                    Some(Err(e)) => return Some((Err(e), (input, buf, seg, leftover, pending))),
+                    Some(Err(e)) => return Some((Err(e), (input, buf, leftover, pending))),
                     None => {
                         if !leftover.is_empty() {
                             pending.push_back(std::mem::take(&mut leftover));
                         }
                         if let Some(s) = pending.pop_front() {
-                            return Some((Ok(s), (input, buf, seg, leftover, pending)));
+                            return Some((Ok(s), (input, buf, leftover, pending)));
                         }
                         return None;
                     }
