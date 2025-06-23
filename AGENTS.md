@@ -118,5 +118,7 @@ Provides LLM and embedding utilities.
 * Visit [`http://localhost:3000/`](http://localhost:3000/) to connect frontend
 * Each Wit exposes `new()` and `with_debug()`; `new` should delegate to
   `with_debug` with `None` so devtools can uniformly enable debug output
+* Document intentionally empty trait methods with comments so their purpose is
+  clear.
 
 Use this document to orient new agents, tools, or contributors. If you’re confused — ask the Quick what it saw, or the Will what it wants.
