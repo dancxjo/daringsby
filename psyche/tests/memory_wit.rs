@@ -39,6 +39,6 @@ async fn summarizes_and_emits_report() {
     assert_eq!(report.name, "Memory");
     assert!(report.output.contains("h0"));
     assert_eq!(out.len(), 1);
-    assert!(out[0].stimuli[0].what.summary.contains("h1"));
+    assert!(out[0].stimuli[0].what.contains("h1"));
     psyche::disable_debug("Memory").await;
 }

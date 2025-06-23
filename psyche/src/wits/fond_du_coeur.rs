@@ -1,6 +1,5 @@
 use crate::traits::Doer;
-use crate::{Impression, Stimulus, Summarizer, wit::Moment};
-use async_trait::async_trait;
+use crate::{Impression, Stimulus};
 use lingproc::Instruction;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
@@ -40,16 +39,19 @@ impl FondDuCoeur {
     }
 }
 
-#[async_trait]
-impl Summarizer<Moment, String> for FondDuCoeur {
-    async fn digest(&self, inputs: &[Impression<Moment>]) -> anyhow::Result<Impression<String>> {
+impl FondDuCoeur {
+    /// Summarize recent moments into a single life story paragraph.
+    pub async fn digest(
+        &self,
+        inputs: &[Impression<String>],
+    ) -> anyhow::Result<Impression<String>> {
         let mut combined = self.story();
         for imp in inputs {
             if let Some(stim) = imp.stimuli.first() {
                 if !combined.is_empty() {
                     combined.push(' ');
                 }
-                combined.push_str(&stim.what.summary);
+                combined.push_str(&stim.what);
             }
         }
         let instruction = Instruction {

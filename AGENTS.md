@@ -24,7 +24,6 @@ This repository is a Rust workspace.
 ## Code Practices
 
 * Prefer traits for abstraction (`Mouth`, `Ear`, `Wit`).
-* Use `Summarizer` when batching impressions into higher-level summaries.
 * Document new traits with examples and unit tests.
 * Sensors expose `description()` for prompt inclusion.
 * Prefer `AndMouth` when composing multiple `Mouth` implementations.
@@ -128,7 +127,6 @@ The previous Deno-based client has been removed. Update the files in
 
 * Consider adding unit tests that simulate full conversation loops (with mocked `Mouth`, `Ear`, `Voice`).
 * Consider adding CLI test scaffolding for mocking TTS/Neo4j/Qdrant.
-* Ensure that `InstantWit` only emits when it has enough `Sensation` inputs — fail early otherwise.
 * Be mindful of the single-CPU assumption — prefer concurrency without heavy parallelism.
 * When skipping speech for empty responses, increment the turn counter so the conversation loop can exit.
 * Log Coqui TTS request URLs with `info!(%url, "requesting TTS")` to ease debugging misconfigured endpoints.

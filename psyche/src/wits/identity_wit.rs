@@ -1,15 +1,11 @@
-use crate::{
-    Impression, Summarizer,
-    wit::{Moment, Wit},
-    wits::FondDuCoeur,
-};
+use crate::{Impression, wit::Wit, wits::FondDuCoeur};
 use async_trait::async_trait;
 use std::sync::Mutex;
 
 /// Wit that produces a single-paragraph life story from recent moments.
 pub struct IdentityWit {
     summarizer: FondDuCoeur,
-    buffer: Mutex<Vec<Impression<Moment>>>,
+    buffer: Mutex<Vec<Impression<String>>>,
 }
 
 impl IdentityWit {
@@ -26,7 +22,7 @@ impl IdentityWit {
 
 #[async_trait]
 impl Wit for IdentityWit {
-    type Input = Impression<Moment>;
+    type Input = Impression<String>;
     type Output = String;
 
     async fn observe(&self, input: Self::Input) {

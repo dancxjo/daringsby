@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use lingproc::Instruction;
 use psyche::traits::Doer;
-use psyche::wit::{Moment, Wit};
+use psyche::wit::Wit;
 use psyche::wits::{FondDuCoeur, IdentityWit};
 use psyche::{Impression, Stimulus};
 use tokio::sync::broadcast;
@@ -23,9 +23,7 @@ async fn summarizes_moments_into_story() {
     let summarizer = FondDuCoeur::with_debug(Box::new(Dummy), tx);
     let wit = IdentityWit::new(summarizer.clone());
     wit.observe(Impression::new(
-        vec![Stimulus::new(Moment {
-            summary: "Pete woke".into(),
-        })],
+        vec![Stimulus::new("Pete woke".to_string())],
         "m1",
         None::<String>,
     ))
@@ -37,9 +35,7 @@ async fn summarizes_moments_into_story() {
     assert!(report.output.contains("story:"));
     // second tick should include previous story
     wit.observe(Impression::new(
-        vec![Stimulus::new(Moment {
-            summary: "Pete slept".into(),
-        })],
+        vec![Stimulus::new("Pete slept".to_string())],
         "m2",
         None::<String>,
     ))

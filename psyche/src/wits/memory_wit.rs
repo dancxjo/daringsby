@@ -1,4 +1,4 @@
-use crate::wit::{Moment, Wit};
+use crate::wit::Wit;
 use crate::{Impression, Stimulus, wits::Memory};
 use async_trait::async_trait;
 use std::sync::{
@@ -8,7 +8,7 @@ use std::sync::{
 use tokio::sync::broadcast;
 use tracing::{debug, error};
 
-/// Wit that aggregates text impressions into brief [`Moment`] summaries.
+/// Wit that aggregates text impressions into brief moment summaries.
 ///
 /// Collected impressions are periodically concatenated and stored in the
 /// provided [`Memory`] implementation. A [`WitReport`] is emitted whenever a
@@ -51,7 +51,7 @@ impl MemoryWit {
 #[async_trait]
 impl Wit for MemoryWit {
     type Input = Impression<String>;
-    type Output = Moment;
+    type Output = String;
 
     async fn observe(&self, input: Self::Input) {
         self.buffer.lock().unwrap().push(input);
@@ -91,11 +91,8 @@ impl Wit for MemoryWit {
             .map(|i| i.summary.clone())
             .collect::<Vec<_>>()
             .join(" ");
-        let moment = Moment {
-            summary: summary.clone(),
-        };
         let impression = Impression::new(
-            vec![Stimulus::new(moment.clone())],
+            vec![Stimulus::new(summary.clone())],
             summary.clone(),
             None::<String>,
         );

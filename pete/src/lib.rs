@@ -67,8 +67,6 @@ pub use simulator::Simulator;
 #[cfg(feature = "tts")]
 pub use tts_mouth::{CoquiTts, TtsMouth};
 pub use web::{
-    Body, app, conversation_log, index, listen_user_input, log_ws_handler, psyche_debug,
-    toggle_wit_debug, wit_debug_page, ws_handler,
-    WsRequest, 
-    parse_data_url, 
+    Body, WsRequest, app, conversation_log, index, listen_user_input, log_ws_handler,
+    parse_data_url, psyche_debug, toggle_wit_debug, wit_debug_page, ws_handler,
 };
