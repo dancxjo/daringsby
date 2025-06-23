@@ -65,16 +65,11 @@ impl Tts for CoquiTts {
             qp.append_pair("text", text);
             // Always include speaker_id, style_wav and language_id parameters
             // providing defaults when values are not configured
-            qp.append_pair("speaker_id", self.speaker_id.as_deref().unwrap_or("p376"));
+            qp.append_pair("speaker_id", self.speaker_id.as_deref().unwrap_or("p123"));
             qp.append_pair("style_wav", "");
             qp.append_pair("language_id", self.language_id.as_deref().unwrap_or(""));
         }
-        info!(
-            %url,
-            speaker = %self.speaker_id.as_deref().unwrap_or("p123"),
-            language = %self.language_id.as_deref().unwrap_or("en"),
-            "requesting TTS"
-        );
+        info!(%url, "requesting TTS");
         let resp = self.client.get(url).send().await?;
         let stream = resp
             .bytes_stream()
