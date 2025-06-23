@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use lingproc::{Chatter, Doer, Instruction, Message, Vectorizer};
+use lingproc::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
 use psyche::{Ear, Impression, Mouth, Psyche, Wit};
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,7 +25,7 @@ impl Ear for Dummy {
 
 #[async_trait]
 impl Chatter for Dummy {
-    async fn chat(&self, _s: &str, _h: &[Message]) -> anyhow::Result<lingproc::ChatStream> {
+    async fn chat(&self, _s: &str, _h: &[Message]) -> anyhow::Result<TextStream> {
         Ok(Box::pin(once(Ok("ok".into()))))
     }
     async fn update_prompt_context(&self, _c: &str) {}

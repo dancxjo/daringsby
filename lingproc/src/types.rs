@@ -1,7 +1,57 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::pin::Pin;
+use tokio::sync::Mutex;
 use tokio_stream::Stream;
+
+/// Global context appended to future prompts.
+static PROMPT_CONTEXT: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+/// Add `note` for inclusion in the next prompt.
+///
+/// Notes are buffered globally and appended to the system prompt the next
+/// time [`Chatter::chat`](crate::types::Chatter::chat) is called. They are
+/// removed once [`take_prompt_context`] is invoked.
+///
+/// # Example
+/// ```rust,ignore
+/// use lingproc::{push_prompt_context, take_prompt_context};
+///
+/// # tokio_test::block_on(async {
+/// push_prompt_context("remember the user's name").await;
+/// assert_eq!(
+///     take_prompt_context().await,
+///     vec!["remember the user's name".to_string()]
+/// );
+/// # });
+/// ```
+pub async fn push_prompt_context(note: &str) {
+    PROMPT_CONTEXT.lock().await.push(note.to_string());
+}
+
+/// Consume and return all pending context notes.
+///
+/// The returned vector contains every note previously added via
+/// [`push_prompt_context`] in insertion order. Calling this function clears the
+/// buffer so that subsequent calls yield an empty vector until more notes are
+/// pushed.
+///
+/// # Example
+/// ```rust,ignore
+/// use lingproc::{push_prompt_context, take_prompt_context};
+///
+/// # tokio_test::block_on(async {
+/// push_prompt_context("A").await;
+/// push_prompt_context("B").await;
+/// let notes = take_prompt_context().await;
+/// assert_eq!(notes, vec!["A".to_string(), "B".to_string()]);
+/// assert!(take_prompt_context().await.is_empty());
+/// # });
+/// ```
+pub async fn take_prompt_context() -> Vec<String> {
+    PROMPT_CONTEXT.lock().await.drain(..).collect()
+}
 
 /// Represents an image passed into the instruction context.
 ///
@@ -36,24 +86,31 @@ pub struct Instruction {
     pub images: Vec<ImageData>, // Optional supporting images
 }
 
-/// Trait for executing imperative instructions (e.g., take a photo, run a Cypher query).
+/// Trait for generating language model output from a structured prompt.
 ///
-/// Used by the `Will` to invoke external side effects or decisions via LLM-generated
-/// commands.
+/// A `Doer` represents a general-purpose interface for calling an LLM using
+/// structured input. It is used throughout Pete's cognitive system to turn a
+/// prompt (e.g., a summary of recent perception) into a response string, which
+/// may be a sayable utterance, internal decision tag, or reflection.
 ///
-/// ## Example
-/// ```rust,ignore
-/// let output = doer
-///     .follow(Instruction { command: "take a photo".into(), images: vec![] })
-///     .await?;
-/// println!("Output: {output}");
+/// This was originally called an `InstructionFollower`, reflecting its role as a
+/// functional LLM caller.
+///
+/// Implementations may stream or buffer LLM output, and may vary across
+/// cognitive components.
+///
+/// # Example
+/// ```rust
+/// let result = doer.follow(Instruction {
+///     command: "summarize what just happened".into(),
+///     images: vec![],
+/// }).await?;
+/// println!("LLM says: {result}");
 /// ```
 #[async_trait]
 pub trait Doer: Send + Sync {
     /// Follow an instruction, possibly with supporting images, and return the
     /// textual result.
-    ///
-    /// Implementors may call an external LLM or other service.
     async fn follow(&self, instruction: Instruction) -> Result<String>;
 }
 
@@ -94,11 +151,15 @@ impl Message {
     }
 }
 
-/// An asynchronous stream of `Result<String>` response chunks from the LLM.
+/// An asynchronous stream of textual chunks.
 ///
-/// Used by [`Chatter::chat`]. Typically emits partial sentences or word
-/// fragments. Terminates when the full response has been streamed.
-pub type ChatStream = Pin<Box<dyn Stream<Item = Result<String>> + Send>>;
+/// The error type defaults to [`anyhow::Error`], matching most provider
+/// implementations.  Use it whenever streaming strings.
+pub type TextStream<E = anyhow::Error> = Pin<Box<dyn Stream<Item = Result<String, E>> + Send>>;
+
+/// Backwards-compatibility alias.
+#[deprecated(note = "use `TextStream` instead")]
+pub type ChatStream = TextStream;
 
 /// Trait for conversational generation. Produces a stream of natural language chunks.
 ///
@@ -106,7 +167,7 @@ pub type ChatStream = Pin<Box<dyn Stream<Item = Result<String>> + Send>>;
 /// It receives a system prompt and conversation history, and returns a stream of
 /// partial strings.
 ///
-/// The returned [`ChatStream`] emits chunks progressively, enabling real-time
+/// The returned [`TextStream`] emits chunks progressively, enabling real-time
 /// speech synthesis.
 ///
 /// ## Example
@@ -138,12 +199,15 @@ pub trait Chatter: Send + Sync {
     /// Start a chat session using `system_prompt` and `history`.
     ///
     /// Returns a stream of response chunks from the language model.
-    async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<ChatStream>;
+    async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<TextStream>;
 
     /// Update additional context for future prompts.
     ///
-    /// Default implementation does nothing so callers may ignore this.
-    async fn update_prompt_context(&self, _context: &str) {}
+    /// The default implementation appends `context` to the prompt string used on
+    /// the next [`chat`] call.
+    async fn update_prompt_context(&self, context: &str) {
+        push_prompt_context(context).await;
+    }
 }
 
 /// Trait for generating semantic vector embeddings from text.

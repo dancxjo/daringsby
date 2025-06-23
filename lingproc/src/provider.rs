@@ -1,6 +1,6 @@
 //! Providers implementing the [`Doer`], [`Chatter`], and [`Vectorizer`] traits.
 
-use crate::types::{ChatStream, Chatter, Doer, Instruction, Message, Role, Vectorizer};
+use crate::types::{Chatter, Doer, Instruction, Message, Role, TextStream, Vectorizer};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use ollama_rs::{
@@ -57,9 +57,15 @@ impl Doer for OllamaProvider {
 
 #[async_trait]
 impl Chatter for OllamaProvider {
-    async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<ChatStream> {
+    async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<TextStream> {
+        let mut prompt = system_prompt.to_string();
+        for note in crate::types::take_prompt_context().await {
+            prompt.push('\n');
+            prompt.push_str(&note);
+        }
+
         let mut msgs = Vec::with_capacity(history.len() + 1);
-        msgs.push(ChatMessage::system(system_prompt.to_string()));
+        msgs.push(ChatMessage::system(prompt.clone()));
         for m in history {
             let m = match m.role {
                 Role::Assistant => ChatMessage::assistant(m.content.clone()),
@@ -68,7 +74,7 @@ impl Chatter for OllamaProvider {
             msgs.push(m);
         }
         info!(history_len = history.len(), "ollama chat");
-        debug!(%system_prompt, ?history, "ollama chat request");
+        debug!(%prompt, ?history, "ollama chat request");
         let req = ChatMessageRequest::new(self.model.clone(), msgs);
         let stream = self
             .client
@@ -87,8 +93,6 @@ impl Chatter for OllamaProvider {
             });
         Ok(Box::pin(stream))
     }
-
-    async fn update_prompt_context(&self, _context: &str) {}
 }
 
 #[async_trait]

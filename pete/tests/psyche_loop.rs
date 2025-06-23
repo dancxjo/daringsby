@@ -78,7 +78,7 @@
 
 // fn test_psyche(mouth: Arc<dyn Mouth>, ear: Arc<dyn Ear>) -> psyche::Psyche {
 //     use futures::stream;
-//     use lingproc::{ChatStream, Chatter, Doer, Instruction, Message, Vectorizer};
+//     use lingproc::{TextStream, Chatter, Doer, Instruction, Message, Vectorizer};
 //     use std::pin::Pin;
 
 //     struct DummyLLM;
@@ -96,7 +96,7 @@
 //             &self,
 //             _system_prompt: &str,
 //             _history: &[Message],
-//         ) -> anyhow::Result<ChatStream> {
+//         ) -> anyhow::Result<TextStream> {
 //             Ok(Box::pin(stream::iter(vec![Ok("Hi".into())])))
 //         }
 //     }

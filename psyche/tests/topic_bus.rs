@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use futures::{StreamExt, pin_mut};
-use lingproc::{Chatter, Doer, Instruction, Message, Vectorizer};
+use lingproc::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
 use psyche::{Ear, Mouth, Psyche, Topic};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -40,7 +40,7 @@ impl Doer for Dummy {
 
 #[async_trait]
 impl Chatter for Dummy {
-    async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<lingproc::ChatStream> {
+    async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<TextStream> {
         Ok(Box::pin(tokio_stream::once(Ok("hi".to_string()))))
     }
 }

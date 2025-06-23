@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use lingproc::{Chatter, Doer, Instruction, Message, Vectorizer};
+use lingproc::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
 use tokio_stream::StreamExt;
 
 struct Dummy;
@@ -13,7 +13,7 @@ impl Doer for Dummy {
 
 #[async_trait]
 impl Chatter for Dummy {
-    async fn chat(&self, _s: &str, h: &[Message]) -> anyhow::Result<lingproc::ChatStream> {
+    async fn chat(&self, _s: &str, h: &[Message]) -> anyhow::Result<TextStream> {
         let msg = format!("say:{}", h.len());
         Ok(Box::pin(tokio_stream::once(Ok(msg))))
     }

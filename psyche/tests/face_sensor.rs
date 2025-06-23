@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use futures::{StreamExt, pin_mut};
-use lingproc::{Chatter, Doer, Instruction, Message, Vectorizer};
+use lingproc::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
 use psyche::{
     Ear, ImageData, Mouth, Psyche, Sensation, Sensor, Topic,
     sensors::face::{DummyDetector, FaceDetector, FaceInfo, FaceSensor},
@@ -33,7 +33,7 @@ async fn emits_face_info() {
     }
     #[async_trait]
     impl Chatter for Dummy {
-        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<lingproc::ChatStream> {
+        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<lingproc::TextStream> {
             Ok(Box::pin(tokio_stream::once(Ok("hi".to_string()))))
         }
     }

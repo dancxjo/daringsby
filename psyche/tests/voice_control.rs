@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use lingproc::{ChatStream, Chatter, Doer, Instruction, Message, Vectorizer};
+use lingproc::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
 use psyche::{Ear, Impression, Mouth, Psyche, Sensation, Stimulus, wit::Wit};
 use std::sync::{
     Arc,
@@ -14,7 +14,7 @@ struct RecLLM(Arc<TokioMutex<Vec<String>>>);
 
 #[async_trait]
 impl Chatter for RecLLM {
-    async fn chat(&self, s: &str, _h: &[Message]) -> anyhow::Result<ChatStream> {
+    async fn chat(&self, s: &str, _h: &[Message]) -> anyhow::Result<TextStream> {
         self.0.lock().await.push(s.to_string());
         Ok(Box::pin(once(Ok("ok".into()))))
     }

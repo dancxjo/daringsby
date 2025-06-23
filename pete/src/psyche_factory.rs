@@ -21,7 +21,7 @@ pub fn dummy_psyche() -> Psyche {
 
     #[async_trait]
     impl Chatter for Dummy {
-        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<lingproc::ChatStream> {
+        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<lingproc::TextStream> {
             Ok(Box::pin(tokio_stream::once(Ok("hi".to_string()))))
         }
     }
