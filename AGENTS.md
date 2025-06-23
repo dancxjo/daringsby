@@ -114,6 +114,7 @@ The previous Deno-based client has been removed. Update the files in
   `ws://localhost:3000/ws`.
 * Give every new Wit a `LABEL` constant and a `with_debug` constructor for emitting `WitReport`s.
 * Re-export shared structs rather than defining duplicates across modules.
+* Put math utilities shared across crates in `lingproc::math`.
 
 ## LLM Integration
 

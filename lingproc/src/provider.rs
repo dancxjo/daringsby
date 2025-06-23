@@ -29,6 +29,17 @@ impl OllamaProvider {
         info!(%host_ref, %model, "creating Ollama provider");
         Ok(Self { client, model })
     }
+
+    /// Create a new provider using the given host and model, falling back to
+    /// sensible defaults when either is `None`.
+    ///
+    /// The default host is `http://localhost:11434` and the default model is
+    /// `mistral`.
+    pub fn new_with_defaults(host: Option<&str>, model: Option<&str>) -> Result<Self> {
+        let host = host.unwrap_or("http://localhost:11434");
+        let model = model.unwrap_or("mistral");
+        Self::new(host, model)
+    }
 }
 
 #[async_trait]

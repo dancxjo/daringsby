@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use lingproc::LlmInstruction;
-use psyche::motorcall::{InstructionExecutor, InstructionRegistry};
+use psyche::motor_call::{MotorCall, MotorCallRegistry};
 use psyche::traits::Doer;
 use psyche::wits::Will;
 use std::collections::HashMap;
@@ -20,7 +20,7 @@ impl Doer for Dummy {
 struct RecMotor(Arc<Mutex<Vec<String>>>);
 
 #[async_trait]
-impl InstructionExecutor for RecMotor {
+impl MotorCall for RecMotor {
     async fn execute(&self, _attrs: HashMap<String, String>, content: String) {
         self.0.lock().unwrap().push(content);
     }

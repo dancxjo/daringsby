@@ -1,10 +1,10 @@
 use crate::topics::TopicBus;
 use crate::traits::Sensor;
-use crate::util::math::cosine_similarity;
 use crate::wits::memory::QdrantClient;
 use crate::{ImageData, Sensation};
 use anyhow::Result;
 use async_trait::async_trait;
+use lingproc::math::cosine_similarity;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error};
 

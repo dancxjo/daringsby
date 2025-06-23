@@ -3,7 +3,7 @@
 /// # Examples
 ///
 /// ```rust,ignore
-/// use crate::util::math::cosine_similarity;
+/// use lingproc::math::cosine_similarity;
 /// let a = [1.0_f32, 0.0, 0.0];
 /// let b = [0.5_f32, 0.0, 0.0];
 /// assert!((cosine_similarity(&a, &b) - 1.0).abs() < 1e-6);

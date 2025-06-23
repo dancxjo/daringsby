@@ -52,3 +52,19 @@ async fn follow_includes_images() {
     mock.assert();
     assert_eq!(res, "ok");
 }
+
+#[tokio::test]
+async fn defaults_are_used_when_none_provided() {
+    let server = MockServer::start_async().await;
+    let _mock = server.mock(|when, then| {
+        when.method(POST).path("/api/embed");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body("{\"embeddings\": [[1.0]]}");
+    });
+
+    let provider =
+        OllamaProvider::new_with_defaults(Some(server.base_url().as_str()), None).unwrap();
+    let vec = provider.vectorize("a").await.unwrap();
+    assert_eq!(vec, vec![1.0]);
+}

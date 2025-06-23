@@ -1,11 +1,11 @@
 use crate::sensors::face::FaceInfo;
 use crate::traits::wit::Wit;
 use crate::types::ObjectInfo;
-use crate::util::math::cosine_similarity;
 use crate::wits::memory::Memory;
 use crate::wits::memory::QdrantClient;
 use crate::{Impression, Sensation, Stimulus};
 use async_trait::async_trait;
+use lingproc::math::cosine_similarity;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

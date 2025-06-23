@@ -1,6 +1,8 @@
 use crate::instruction::{HostInstruction, parse_instructions};
 use crate::motorcall::InstructionRegistry;
 use crate::prompt::PromptFragment;
+use crate::motor_call::MotorCallRegistry;
+use crate::prompt::PromptBuilder;
 use crate::topics::{Topic, TopicBus};
 use crate::traits::Doer;
 use crate::{Decision, Impression, Stimulus, WitReport};
@@ -22,7 +24,7 @@ pub struct Will {
     doer: Arc<dyn Doer>,
     prompt: crate::prompt::WillPrompt,
     tx: Option<broadcast::Sender<WitReport>>,
-    motor_registry: InstructionRegistry,
+    motor_registry: MotorCallRegistry,
     buffer: Mutex<Vec<Impression<String>>>,
     bus: TopicBus,
 }
@@ -46,7 +48,7 @@ impl Will {
             doer,
             prompt: crate::prompt::WillPrompt,
             tx,
-            motor_registry: InstructionRegistry::default(),
+            motor_registry: MotorCallRegistry::default(),
             buffer: Mutex::new(Vec::new()),
             bus,
         }
@@ -58,7 +60,7 @@ impl Will {
     }
 
     /// Get mutable access to the instruction registry.
-    pub fn motor_registry_mut(&mut self) -> &mut InstructionRegistry {
+    pub fn motor_registry_mut(&mut self) -> &mut MotorCallRegistry {
         &mut self.motor_registry
     }
 
