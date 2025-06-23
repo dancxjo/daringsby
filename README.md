@@ -134,6 +134,7 @@ cargo run -p pete --bin simulate -- image some.png
 * Lint: `cargo clippy`
 * Logging: `RUST_LOG=debug`
 * Features: `tts`, `geo`, `eye`, `face`, `heartbeat`, `all-sensors`
+* Frontend TypeScript built via `pete` build script.
 
 ---
 

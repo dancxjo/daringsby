@@ -123,6 +123,7 @@ Provides LLM and embedding utilities.
 * Run with `RUST_LOG=debug cargo run --features tts`
 * Visit [`http://localhost:3000/`](http://localhost:3000/) to connect frontend
 * Each Wit exposes `new()` and `with_debug()`; `new` should delegate to
+* The `pete` build script runs `npm ci && npm run build` in `frontend`.
   `with_debug` with `None` so devtools can uniformly enable debug output
 * Document intentionally empty trait methods with comments so their purpose is
   clear.

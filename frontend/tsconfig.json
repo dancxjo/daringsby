@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2020",
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": false,
+    "esModuleInterop": true,
+    "allowJs": true,
+    "sourceMap": false
+  },
+  "include": [
+    "src/app.ts"
+  ]
+}

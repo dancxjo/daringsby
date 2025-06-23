@@ -10,3 +10,5 @@ debug.log
 node_modules/
 package-lock.json
 project_outline.txt
+frontend/node_modules/
+frontend/package-lock.json
