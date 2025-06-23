@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+#[cfg(feature = "ts")]
+use ts_rs::TS;
 /// Event types emitted by the [`Psyche`] during conversation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
@@ -13,7 +15,8 @@ pub enum Event {
 }
 
 /// Debug information emitted by a [`Wit`].
-#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "ts", derive(TS))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WitReport {
     /// Name of the wit generating the prompt.
     pub name: String,

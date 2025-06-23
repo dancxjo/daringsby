@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "ts")]
+use ts_rs::TS;
 
+#[cfg_attr(feature = "ts", derive(TS))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ImageData {
     pub mime: String,
@@ -7,6 +10,7 @@ pub struct ImageData {
 }
 
 /// Latitude/longitude coordinates from a positioning sensor.
+#[cfg_attr(feature = "ts", derive(TS))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GeoLoc {
     /// Longitude in decimal degrees.

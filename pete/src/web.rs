@@ -9,6 +9,7 @@ use axum::{
     routing::{get, get_service, post},
 };
 use serde::{Deserialize, Serialize};
+use shared::{AudioData, WsPayload};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -50,31 +51,8 @@ pub struct Body {
     pub psyche_debug: psyche::DebugHandle,
 }
 
-#[derive(Deserialize)]
-#[serde(tag = "type", rename_all = "PascalCase")]
-pub enum WsRequest {
-    Text { data: String },
-    Echo { data: String },
-    See { data: String, at: Option<String> },
-    Hear { data: String, at: Option<String> },
-    Geolocate { data: GeoLoc, at: Option<String> },
-    Sense { data: serde_json::Value },
-}
-
-#[derive(Serialize)]
-#[serde(tag = "type", content = "data")]
-enum WsResponse {
-    #[serde(rename = "say")]
-    Say {
-        words: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        audio: Option<String>,
-    },
-    #[serde(rename = "emote")]
-    Emote(String),
-    #[serde(rename = "think")]
-    Think(WitReport),
-}
+pub type WsRequest = WsPayload;
+pub type WsResponse = WsPayload;
 
 pub async fn index() -> Html<&'static str> {
     info!("index requested");
@@ -128,11 +106,11 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                     Some(Ok(WsMessage::Text(text))) => {
                         if let Ok(req) = serde_json::from_str::<WsRequest>(&text) {
                             match req {
-                                WsRequest::Text { data: message } => {
+                                WsRequest::Text { text: message } => {
                                     debug!("user message: {}", message);
                                     let _ = state.bus.user_input_sender().send(message);
                                 }
-                                WsRequest::Echo { data: text } => {
+                                WsRequest::Echo { text } => {
                                     debug!("played ack: {}", text);
                                     state.ear.hear_self_say(&text).await;
                                 }
@@ -147,7 +125,7 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                                         }
                                     }
                                 }
-                                WsRequest::Hear { .. } => {
+                                WsRequest::Hear { data: _, .. } => {
                                     debug!("audio fragment received");
                                 }
                                 WsRequest::Geolocate { data, .. } => {
@@ -157,6 +135,7 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                                 WsRequest::Sense { .. } => {
                                     debug!("sense event received");
                                 }
+                                _ => {}
                             }
                         }
                     }
