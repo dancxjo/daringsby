@@ -1,27 +1,30 @@
+//! The Quick — Pete's reflexive sensorium.
+//!
+//! The Quick receives a sequence of [`Sensation`]s and emits an [`Instant`] —
+//! a one-sentence summary of what Pete just experienced. It is the first stage
+//! of cognition, forming a perceptual narrative from raw sensory data.
+//!
+//! Example: "I'm seeing a fly quickly approach me and then hesitate."
+//!
+//! `Quick` listens on [`Topic::Sensation`] and buffers sensations over a short
+//! window. On [`tick`], it condenses the recent sensations into a single
+//! [`Instant`] and publishes it on [`Topic::Instant`].
+
 use crate::ling::{Doer, Instruction};
 use crate::topics::{Topic, TopicBus};
 use crate::{Impression, Instant, Sensation, Stimulus};
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Duration, Utc};
 use futures::StreamExt;
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 use tracing::debug;
-
-/// Fast interpreter of raw [`Sensation`]s.
-///
-/// `Quick` listens on [`Topic::Sensation`] and buffers sensations as they
-/// arrive. On [`tick`], it bundles whatever has been seen into a single
-/// [`Instant`] summarizing what Pete just perceived. The summary text is
-/// produced by the provided [`Doer`].
-///
-/// This Wit runs often—typically every few seconds—and delivers Pete's
-/// most immediate coherent understanding of recent sensory input.
-/// It emits exactly one [`Instant`] per tick via [`Topic::Instant`].
 pub struct Quick {
-    buffer: Arc<Mutex<Vec<Arc<Sensation>>>>,
+    buffer: Arc<Mutex<VecDeque<(DateTime<Utc>, Arc<Sensation>)>>>,
     bus: TopicBus,
     doer: Arc<dyn Doer>,
+    window: Duration,
     tx: Option<broadcast::Sender<crate::WitReport>>, // optional debug
 }
 
@@ -40,7 +43,7 @@ impl Quick {
         doer: Arc<dyn Doer>,
         tx: Option<broadcast::Sender<crate::WitReport>>,
     ) -> Self {
-        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let buffer = Arc::new(Mutex::new(VecDeque::new()));
         let buf_clone = buffer.clone();
         let bus_clone = bus.clone();
         tokio::spawn(async move {
@@ -48,7 +51,8 @@ impl Quick {
             tokio::pin!(stream);
             while let Some(payload) = stream.next().await {
                 if let Ok(s) = Arc::downcast::<Sensation>(payload) {
-                    buf_clone.lock().unwrap().push(s);
+                    let mut buf = buf_clone.lock().unwrap();
+                    buf.push_back((Utc::now(), s));
                 }
             }
         });
@@ -56,6 +60,7 @@ impl Quick {
             buffer,
             bus,
             doer,
+            window: Duration::seconds(8),
             tx,
         }
     }
@@ -80,22 +85,36 @@ impl Quick {
             }
         }
     }
+
+    /// Remove sensations older than the window from `buf`.
+    fn trim_old(buf: &mut VecDeque<(DateTime<Utc>, Arc<Sensation>)>, window: Duration) {
+        let cutoff = Utc::now() - window;
+        while let Some((t, _)) = buf.front() {
+            if *t < cutoff {
+                buf.pop_front();
+            } else {
+                break;
+            }
+        }
+    }
 }
 
 #[async_trait]
 impl crate::traits::wit::Wit<Sensation, Instant> for Quick {
     async fn observe(&self, input: Sensation) {
-        self.buffer.lock().unwrap().push(Arc::new(input));
+        let mut buf = self.buffer.lock().unwrap();
+        buf.push_back((Utc::now(), Arc::new(input)));
+        Self::trim_old(&mut buf, self.window);
     }
 
     async fn tick(&self) -> Vec<Impression<Instant>> {
         let items = {
             let mut buf = self.buffer.lock().unwrap();
+            Self::trim_old(&mut buf, self.window);
             if buf.is_empty() {
                 return Vec::new();
             }
-            let data = buf.drain(..).collect::<Vec<_>>();
-            data
+            buf.drain(..).map(|(_, s)| s).collect::<Vec<_>>()
         };
         debug!(count = items.len(), "quick summarizing sensations");
         let bullets: Vec<String> = items.iter().map(|s| Self::describe(&*s)).collect();
@@ -119,6 +138,11 @@ impl crate::traits::wit::Wit<Sensation, Instant> for Quick {
             sensations: items.clone(),
         };
         let stim = Stimulus::new(instant);
+        debug!(
+            "quick: emitting instant from {} sensations: \"{}\"",
+            items.len(),
+            out
+        );
         let imp = Impression::new(vec![stim], out.clone(), None::<String>);
         if let Some(tx) = &self.tx {
             if crate::debug::debug_enabled(Self::LABEL).await {

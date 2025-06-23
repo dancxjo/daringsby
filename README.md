@@ -19,6 +19,8 @@ The unified cognitive model centers on two types:
 * `Impression<T>` – interprets stimuli into a summarized thought with an optional emoji.
 * `Experience<T>` – a stored impression paired with a vector embedding and unique id.
 
+The first layer, **Quick**, groups raw `Sensation`s from sensors into an `Instant`. Higher Wits such as `Will`, `Memory`, and `Heart` react to these Instants.
+
 `Psyche` starts with a prompt asking the LLM to respond in one or two sentences at most. You can override it with `set_system_prompt`.
 Pete's mouth streams audio one sentence at a time so long replies don't block.
 
