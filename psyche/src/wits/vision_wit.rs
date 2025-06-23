@@ -57,12 +57,15 @@ impl VisionWit {
 }
 
 #[async_trait]
-impl Wit<ImageData, ImageData> for VisionWit {
-    async fn observe(&self, input: ImageData) {
+impl Wit for VisionWit {
+    type Input = ImageData;
+    type Output = ImageData;
+
+    async fn observe(&self, input: Self::Input) {
         *self.latest_image.lock().unwrap() = Some(input);
     }
 
-    async fn tick(&self) -> Vec<Impression<ImageData>> {
+    async fn tick(&self) -> Vec<Impression<Self::Output>> {
         let now = Instant::now();
         {
             let last = self.last_caption_time.lock().unwrap();

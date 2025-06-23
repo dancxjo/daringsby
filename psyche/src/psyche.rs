@@ -446,10 +446,11 @@ impl Psyche {
     }
 
     /// Convenience to register a typed [`Wit`] without manual boxing.
-    pub fn register_typed_wit<I, O>(&mut self, wit: Arc<dyn Wit<I, O> + Send + Sync>)
+    pub fn register_typed_wit<W>(&mut self, wit: Arc<W>)
     where
-        I: 'static,
-        O: Serialize + Send + Sync + 'static,
+        W: Wit + Send + Sync + 'static,
+        W::Output: Serialize + Send + Sync + 'static,
+        W::Input: 'static,
     {
         self.wits
             .push(Arc::new(wit::WitAdapter::new(wit)) as Arc<dyn ErasedWit + Send + Sync>);
@@ -464,11 +465,11 @@ impl Psyche {
     }
 
     /// Register a [`Wit`] that also observes [`Sensation`]s.
-    pub fn register_observing_wit<I, O, T>(&mut self, wit: Arc<T>)
+    pub fn register_observing_wit<W>(&mut self, wit: Arc<W>)
     where
-        T: Wit<I, O> + crate::traits::observer::SensationObserver + Send + Sync + 'static,
-        I: 'static,
-        O: Serialize + Send + Sync + 'static,
+        W: Wit + crate::traits::observer::SensationObserver + Send + Sync + 'static,
+        W::Output: Serialize + Send + Sync + 'static,
+        W::Input: 'static,
     {
         self.register_observer(wit.clone());
         self.wits

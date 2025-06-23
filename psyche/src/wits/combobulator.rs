@@ -69,12 +69,15 @@ impl crate::traits::observer::SensationObserver for Combobulator {
 }
 
 #[async_trait]
-impl Wit<Impression<Episode>, String> for Combobulator {
-    async fn observe(&self, input: Impression<Episode>) {
+impl Wit for Combobulator {
+    type Input = Impression<Episode>;
+    type Output = String;
+
+    async fn observe(&self, input: Self::Input) {
         self.buffer.lock().unwrap().push(input);
     }
 
-    async fn tick(&self) -> Vec<Impression<String>> {
+    async fn tick(&self) -> Vec<Impression<Self::Output>> {
         let now = Instant::now();
         let image = {
             let mut last = self.last_caption_time.lock().unwrap();

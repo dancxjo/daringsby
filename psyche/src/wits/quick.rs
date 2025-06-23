@@ -101,14 +101,17 @@ impl Quick {
 }
 
 #[async_trait]
-impl crate::traits::wit::Wit<Sensation, Instant> for Quick {
-    async fn observe(&self, input: Sensation) {
+impl crate::traits::wit::Wit for Quick {
+    type Input = Sensation;
+    type Output = Instant;
+
+    async fn observe(&self, input: Self::Input) {
         let mut buf = self.buffer.lock().unwrap();
         buf.push_back((Utc::now(), Arc::new(input)));
         Self::trim_old(&mut buf, self.window);
     }
 
-    async fn tick(&self) -> Vec<Impression<Instant>> {
+    async fn tick(&self) -> Vec<Impression<Self::Output>> {
         let items = {
             let mut buf = self.buffer.lock().unwrap();
             Self::trim_old(&mut buf, self.window);

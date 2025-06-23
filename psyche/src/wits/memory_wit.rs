@@ -49,12 +49,15 @@ impl MemoryWit {
 }
 
 #[async_trait]
-impl Wit<Impression<String>, Moment> for MemoryWit {
-    async fn observe(&self, input: Impression<String>) {
+impl Wit for MemoryWit {
+    type Input = Impression<String>;
+    type Output = Moment;
+
+    async fn observe(&self, input: Self::Input) {
         self.buffer.lock().unwrap().push(input);
     }
 
-    async fn tick(&self) -> Vec<Impression<Moment>> {
+    async fn tick(&self) -> Vec<Impression<Self::Output>> {
         let new_items = {
             let mut buf = self.buffer.lock().unwrap();
             if buf.is_empty() {

@@ -51,9 +51,12 @@ impl Vectorizer for Dummy {
 struct CountingWit(AtomicUsize);
 
 #[async_trait]
-impl Wit<(), ()> for CountingWit {
-    async fn observe(&self, _: ()) {}
-    async fn tick(&self) -> Vec<Impression<()>> {
+impl Wit for CountingWit {
+    type Input = ();
+    type Output = ();
+
+    async fn observe(&self, _: Self::Input) {}
+    async fn tick(&self) -> Vec<Impression<Self::Output>> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Vec::new()
     }
