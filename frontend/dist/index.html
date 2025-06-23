@@ -35,8 +35,14 @@
   <aside class="sidebar">
       <details open data-wit-name="conversation">
         <summary>Conversation</summary>
-        <pre id="system-prompt"></pre>
-        <pre id="conversation-log"></pre>
+        <div class="scroll-well">
+          <div class="scroll-well-label">System Prompt</div>
+          <pre id="system-prompt"></pre>
+        </div>
+        <div class="scroll-well">
+          <div class="scroll-well-label">Conversation Log</div>
+          <pre id="conversation-log"></pre>
+        </div>
       </details>
       <div id="wit-debug"></div>
   </aside>
