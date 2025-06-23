@@ -125,5 +125,6 @@ Provides LLM and embedding utilities.
 * Reuse cargo and npm caches when running tests to avoid re-downloading
   dependencies.
 * Keep commit messages short yet descriptive.
+* In frontend scripts, stop `MediaRecorder` on `window.onbeforeunload` to release the microphone.
 
 Use this document to orient new agents, tools, or contributors. If you’re confused — ask the Quick what it saw, or the Will what it wants.
