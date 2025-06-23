@@ -1,5 +1,6 @@
 //! Core cognitive engine powering Pete.
 
+mod default_prompt;
 mod instruction;
 pub mod psyche;
 pub mod sensation;
@@ -83,12 +84,12 @@ mod types;
 
 pub use and_mouth::AndMouth;
 pub use debug::{DebugHandle, DebugInfo, debug_enabled, disable_debug, enable_debug};
+pub use default_prompt::DEFAULT_SYSTEM_PROMPT;
 pub use instruction::{Instruction, parse_instructions};
 pub use model::{Experience, Impression, Stimulus};
 pub use pending_turn::PendingTurn;
 pub use plain_mouth::PlainMouth;
 pub use prompt::{CombobulatorPrompt, ContextualPrompt, VoicePrompt, WillPrompt};
-pub use psyche::DEFAULT_SYSTEM_PROMPT;
 pub use topics::{Topic, TopicBus, TopicMessage};
 pub use trim_mouth::TrimMouth;
 pub use types::{Decision, GeoLoc, Heartbeat, ImageData, ObjectInfo};

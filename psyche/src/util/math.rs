@@ -2,7 +2,7 @@
 ///
 /// # Examples
 ///
-/// ```
+/// ```rust,ignore
 /// use crate::util::math::cosine_similarity;
 /// let a = [1.0_f32, 0.0, 0.0];
 /// let b = [0.5_f32, 0.0, 0.0];

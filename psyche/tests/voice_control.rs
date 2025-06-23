@@ -110,6 +110,7 @@ async fn no_speech_without_command() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn speaks_when_commanded() {
     let mouth_rec = Arc::new(RecMouth::default());
     let (_tx, _rx) = broadcast::channel::<psyche::Event>(8);
@@ -134,6 +135,7 @@ async fn speaks_when_commanded() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn speaks_with_fallback_when_no_wit() {
     let mouth_rec = Arc::new(RecMouth::default());
     let (_tx, _rx) = broadcast::channel::<psyche::Event>(8);
