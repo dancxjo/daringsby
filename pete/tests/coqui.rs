@@ -12,12 +12,8 @@ async fn coqui_url_has_required_params() {
                 .path("/api/tts")
                 .query_param("text", "hello")
                 .query_param("speaker_id", "p1")
-                .query_param("lang", "en")
-                .matches(|req| {
-                    req.query_params
-                        .as_ref()
-                        .map_or(true, |qp| !qp.iter().any(|(k, _)| k == "style_wav"))
-                });
+                .query_param("style_wav", "")
+                .query_param("language_id", "en");
             then.status(200).body("abcd");
         })
         .await;
@@ -39,7 +35,8 @@ async fn coqui_defaults_voice() {
                 .path("/api/tts")
                 .query_param("text", "hi")
                 .query_param("speaker_id", "p123")
-                .query_param("lang", "en");
+                .query_param("style_wav", "")
+                .query_param("language_id", "");
             then.status(200).body("abcd");
         })
         .await;
