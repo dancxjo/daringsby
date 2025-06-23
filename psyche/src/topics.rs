@@ -101,7 +101,41 @@ pub struct TopicMessage {
     pub payload: Arc<dyn Any + Send + Sync>,
 }
 
-/// Simple async pub/sub bus tagged by [`Topic`].
+/// Pete's internal publish/subscribe backbone.
+///
+/// The `TopicBus` is a type-safe message bus allowing Wits to
+/// broadcast and subscribe to semantically tagged [`Topic<T>`] channels.
+/// Each topic represents a cognitive stage or signal. For example,
+/// `Topic::Sensation` carries raw inputs from the world, while
+/// `Topic::Instruction` may contain a behavioral directive such as
+/// `&lt;say&gt;` or `&lt;leap&gt;`.
+///
+/// Key guarantees:
+/// - ✅ Type safety between stages (only the correct payload type travels on a
+///   given topic)
+/// - ✅ Broadcast delivery to all subscribers
+/// - ✅ Runtime decoupling between publishers and consumers
+///
+/// # Example
+/// ```no_run
+/// use std::sync::Arc;
+/// use futures::StreamExt;
+/// use psyche::{topics::{Topic, TopicBus}, Instant};
+///
+/// let bus = TopicBus::new(8);
+/// // A Quick emits an Instant
+/// let my_instant = Instant { at: chrono::Utc::now(), sensations: vec![] };
+/// bus.publish(Topic::Instant, Arc::new(my_instant));
+///
+/// // A Will subscribes to those Instants
+/// let mut rx = bus.subscribe(Topic::Instant);
+/// while let Some(instant) = rx.next().await {
+///     let _ = instant.downcast::<Instant>().unwrap();
+/// }
+/// ```
+///
+/// Think of it as Pete's spinal cord: every sensation, reaction and internal
+/// decision flows through here.
 #[derive(Clone)]
 pub struct TopicBus {
     tx: broadcast::Sender<TopicMessage>,
