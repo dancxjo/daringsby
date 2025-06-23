@@ -281,11 +281,24 @@
     });
   }
 
+  let webcamStream = null;
+
   async function setupWebcam() {
     try {
       const video = document.getElementById("webcam");
+      if (webcamStream) {
+        webcamStream.getTracks().forEach((t) => t.stop());
+      }
       console.log("requesting webcam access");
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      webcamStream = stream;
+      stream.getTracks().forEach((t) =>
+        t.addEventListener(
+          "ended",
+          () => waitForWebSocketReady().then(setupWebcam),
+          { once: true }
+        )
+      );
       console.log("webcam stream acquired");
       video.srcObject = stream;
       await video.play();
