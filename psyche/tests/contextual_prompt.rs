@@ -1,5 +1,6 @@
+use psyche::prompt::PromptBuilder;
 use psyche::topics::{Topic, TopicBus};
-use psyche::{ContextualPrompt, Impression, PromptBuilder, Stimulus};
+use psyche::{ContextualPrompt, Impression, Stimulus};
 use tokio::time::{Duration, sleep};
 
 #[tokio::test]

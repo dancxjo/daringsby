@@ -70,7 +70,7 @@ impl Conversation {
 
     /// Return the last `n` messages from the conversation.
     ///
-    /// [`Ling`](crate::Ling) calls this when assembling a prompt for the
+    /// [`PromptBuilder`](crate::PromptBuilder) calls this when assembling a prompt for the
     /// [`Chatter`](crate::ling::Chatter) so that only recent dialogue is
     /// forwarded. Trimming history keeps model prompts a manageable size.
     pub fn tail(&self, n: usize) -> Vec<Message> {
@@ -151,7 +151,7 @@ pub struct Psyche {
     connections: Option<Arc<AtomicUsize>>,
     wits: Vec<Arc<dyn wit::ErasedWit + Send + Sync>>,
     wit_tx: broadcast::Sender<WitReport>,
-    ling: Arc<Mutex<crate::Ling>>,
+    prompt_builder: Arc<Mutex<crate::PromptBuilder>>,
     observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
     sensation_buffer: Arc<Mutex<VecDeque<Arc<Sensation>>>>,
     last_ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
@@ -239,7 +239,7 @@ impl Psyche {
         let (input_tx, input_rx) = mpsc::channel(capacity);
         let voice = crate::voice::Voice::new(Arc::from(voice), mouth, events_tx.clone());
         let conversation = Arc::new(Mutex::new(Conversation::default()));
-        let ling = Arc::new(Mutex::new(crate::Ling::new(
+        let prompt_builder = Arc::new(Mutex::new(crate::PromptBuilder::new(
             DEFAULT_SYSTEM_PROMPT,
             conversation.clone(),
         )));
@@ -266,7 +266,7 @@ impl Psyche {
             speak_policy: SpeakPolicy::Always,
             connections: None,
             wits: Vec::new(),
-            ling,
+            prompt_builder,
             observers: Vec::new(),
             sensation_buffer: Arc::new(Mutex::new(VecDeque::<Arc<Sensation>>::new())),
             last_ticks: Arc::new(Mutex::new(HashMap::new())),
@@ -279,14 +279,14 @@ impl Psyche {
     /// Specify the base instructions provided to the language model.
     pub fn set_system_prompt(&mut self, prompt: impl Into<String>) {
         self.system_prompt = prompt.into();
-        if let Ok(mut ling) = self.ling.try_lock() {
-            ling.set_system_prompt(self.system_prompt.clone());
+        if let Ok(mut pb) = self.prompt_builder.try_lock() {
+            pb.set_system_prompt(self.system_prompt.clone());
         }
     }
 
     /// Retrieve the system prompt currently in use.
     pub fn system_prompt(&self) -> String {
-        self.ling
+        self.prompt_builder
             .try_lock()
             .map(|l| l.system_prompt().to_string())
             .unwrap_or_default()
@@ -294,7 +294,7 @@ impl Psyche {
 
     /// Build the system prompt with descriptions of Pete's body.
     pub fn described_system_prompt(&self) -> String {
-        self.ling
+        self.prompt_builder
             .try_lock()
             .map(|l| l.described_system_prompt())
             .unwrap_or_default()
@@ -358,13 +358,16 @@ impl Psyche {
 
     /// Update the additional context appended to the system prompt.
     pub async fn update_prompt_context(&self, context: impl Into<String>) {
-        self.ling.lock().await.add_context_note(&context.into());
+        self.prompt_builder
+            .lock()
+            .await
+            .add_context_note(&context.into());
     }
 
     /// Record a description of an attached sense.
     pub fn add_sense(&mut self, description: String) {
-        if let Ok(mut ling) = self.ling.try_lock() {
-            ling.add_sense(description);
+        if let Ok(mut pb) = self.prompt_builder.try_lock() {
+            pb.add_sense(description);
         }
     }
 
@@ -606,9 +609,9 @@ impl Psyche {
             if let Some(extra) = self.pending_turn.take() {
                 debug!(%extra, "pending_turn being processed");
                 let (history, mut prompt) = {
-                    let mut ling = self.ling.lock().await;
-                    let hist = ling.get_conversation_tail(self.max_history).await;
-                    let prompt = ling.build_prompt().await;
+                    let mut pb = self.prompt_builder.lock().await;
+                    let hist = pb.get_conversation_tail(self.max_history).await;
+                    let prompt = pb.build_prompt().await;
                     (hist, prompt)
                 };
                 prompt.push('\n');
@@ -619,7 +622,7 @@ impl Psyche {
                     error!(?e, "voice chat failed");
                     break;
                 }
-                self.ling.lock().await.flush();
+                self.prompt_builder.lock().await.flush();
                 debug!("prompt context flushed");
                 self.is_speaking.store(false, Ordering::SeqCst);
                 self.speak_policy.after_speech();
@@ -675,7 +678,7 @@ impl Psyche {
         wit: Arc<dyn wit::ErasedWit + Send + Sync>,
         ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         mem: Arc<dyn Memory>,
-        ling: Arc<Mutex<crate::Ling>>,
+        prompt_builder: Arc<Mutex<crate::PromptBuilder>>,
         pending_turn: Arc<PendingTurn>,
         tick: Duration,
     ) {
@@ -701,7 +704,7 @@ impl Psyche {
             if let Err(e) = mem.store_all(&imps).await {
                 error!(?e, "memory store failed");
             }
-            ling.lock().await.add_impressions(&imps).await;
+            prompt_builder.lock().await.add_impressions(&imps).await;
             let jitter = rand::thread_rng().gen_range(0..50);
             tokio::time::sleep(tick + Duration::from_millis(jitter)).await;
         }
@@ -718,7 +721,7 @@ impl Psyche {
         let bus = self.topic_bus.clone();
         let ticks = Arc::clone(&self.last_ticks);
         let memory = Arc::clone(&self.memory);
-        let ling = Arc::clone(&self.ling);
+        let prompt_builder = Arc::clone(&self.prompt_builder);
         let pending = Arc::clone(&self.pending_turn);
         let tick = self.experience_tick;
 
@@ -728,17 +731,24 @@ impl Psyche {
             let wit = Arc::clone(wit);
             let ticks = Arc::clone(&ticks);
             let mem = Arc::clone(&memory);
-            let ling = Arc::clone(&ling);
+            let prompt_builder = Arc::clone(&prompt_builder);
             let pending_turn = Arc::clone(&pending);
             let name = wit.name().to_string();
 
-            let fut = AssertUnwindSafe(Self::wit_loop(wit, ticks, mem, ling, pending_turn, tick))
-                .catch_unwind()
-                .map(move |res| {
-                    if let Err(e) = res {
-                        error!(%name, ?e, "wit loop panicked");
-                    }
-                });
+            let fut = AssertUnwindSafe(Self::wit_loop(
+                wit,
+                ticks,
+                mem,
+                prompt_builder,
+                pending_turn,
+                tick,
+            ))
+            .catch_unwind()
+            .map(move |res| {
+                if let Err(e) = res {
+                    error!(%name, ?e, "wit loop panicked");
+                }
+            });
             tasks.spawn(fut);
         }
 

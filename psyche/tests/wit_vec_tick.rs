@@ -1,5 +1,7 @@
 use async_trait::async_trait;
-use psyche::{Conversation, ErasedWit, Impression, Ling, Memory, Stimulus, Wit, WitAdapter};
+use psyche::{
+    Conversation, ErasedWit, Impression, Memory, PromptBuilder, Stimulus, Wit, WitAdapter,
+};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Mutex as AsyncMutex;
@@ -32,7 +34,7 @@ impl Wit<(), ()> for DummyWit {
 async fn run_once(
     memory: Arc<dyn Memory>,
     wits: Vec<Arc<dyn ErasedWit + Send + Sync>>,
-    ling: Arc<AsyncMutex<Ling>>,
+    prompt_builder: Arc<AsyncMutex<PromptBuilder>>,
 ) {
     let mut tasks = Vec::new();
     for wit in &wits {
@@ -50,7 +52,7 @@ async fn run_once(
     }
     if !all.is_empty() {
         let _ = memory.store_all(&all).await;
-        ling.lock().await.add_impressions(&all).await;
+        prompt_builder.lock().await.add_impressions(&all).await;
     }
 }
 
@@ -58,7 +60,7 @@ async fn run_once(
 async fn multiple_impressions_flow_to_memory_and_context() {
     let mem = Arc::new(RecMemory::default());
     let conversation = Arc::new(AsyncMutex::new(Conversation::default()));
-    let ling = Arc::new(AsyncMutex::new(Ling::new("sys", conversation)));
+    let prompt_builder = Arc::new(AsyncMutex::new(PromptBuilder::new("sys", conversation)));
 
     let wit = Arc::new(DummyWit {
         outputs: Mutex::new(vec![
@@ -82,12 +84,12 @@ async fn multiple_impressions_flow_to_memory_and_context() {
     let wits: Vec<Arc<dyn ErasedWit + Send + Sync>> = vec![Arc::new(WitAdapter::new(wit))];
 
     for _ in 0..4 {
-        run_once(mem.clone(), wits.clone(), ling.clone()).await;
+        run_once(mem.clone(), wits.clone(), prompt_builder.clone()).await;
     }
 
     let stored = mem.0.lock().await.clone();
     assert_eq!(stored, vec!["a", "b", "b2", "c"]);
-    let prompt = ling.lock().await.build_prompt().await;
+    let prompt = prompt_builder.lock().await.build_prompt().await;
     assert!(prompt.contains("a"));
     assert!(prompt.contains("b"));
     assert!(prompt.contains("b2"));

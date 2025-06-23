@@ -1,4 +1,7 @@
-//! Linguistic helpers and prompt assembly utilities.
+//! Prompt assembly utilities.
+//!
+//! The [`PromptBuilder`] struct combines conversation history, mood and
+//! temporary notes to produce the system prompt given to language models.
 
 use lingproc::Message;
 
@@ -13,7 +16,7 @@ pub struct Feeling {
 }
 
 /// Central prompt builder combining conversation, mood and notes.
-pub struct Ling {
+pub struct PromptBuilder {
     conversation: std::sync::Arc<Mutex<Conversation>>,
     system_prompt: String,
     senses: Vec<String>,
@@ -21,8 +24,8 @@ pub struct Ling {
     mood: Option<Feeling>,
 }
 
-impl Ling {
-    /// Create a new `Ling` using `system_prompt` and shared `conversation`.
+impl PromptBuilder {
+    /// Create a new `PromptBuilder` using `system_prompt` and shared `conversation`.
     pub fn new(
         system_prompt: impl Into<String>,
         conversation: std::sync::Arc<Mutex<Conversation>>,

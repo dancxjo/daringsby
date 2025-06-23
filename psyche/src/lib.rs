@@ -65,7 +65,7 @@ mod motor;
 pub mod motorcall;
 mod plain_mouth;
 mod prehension;
-mod prompt;
+pub mod prompt;
 mod sensor;
 mod task_group;
 pub mod sensors {
@@ -86,14 +86,14 @@ pub use motor::{Motor, NoopMotor};
 pub use pending_turn::PendingTurn;
 pub use plain_mouth::PlainMouth;
 pub use prehension::Prehension;
-pub use prompt::{CombobulatorPrompt, ContextualPrompt, PromptBuilder, VoicePrompt, WillPrompt};
+pub use prompt::{CombobulatorPrompt, ContextualPrompt, VoicePrompt, WillPrompt};
 pub use psyche::DEFAULT_SYSTEM_PROMPT;
 pub use sensor::Sensor;
 pub use topics::{Topic, TopicBus, TopicMessage};
 pub use trim_mouth::TrimMouth;
 pub use types::{GeoLoc, Heartbeat, ImageData, ObjectInfo};
 
-pub use ling::{Feeling, Ling};
+pub use ling::{Feeling, PromptBuilder};
 pub use psyche::extract_tag as test_extract_tag;
 pub use psyche::{Conversation, Psyche};
 pub use sensation::{Event, Instant, Sensation, WitReport};
