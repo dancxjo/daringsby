@@ -1,7 +1,5 @@
 use axum::{body, extract::State, response::IntoResponse};
-use pete::{
-    Body, ChannelEar, EventBus, EyeSensor, GeoSensor, LogQuery, conversation_log, dummy_psyche,
-};
+use pete::{Body, ChannelEar, EventBus, EyeSensor, GeoSensor, conversation_log, dummy_psyche};
 use psyche::traits::Sensor;
 use std::sync::{
     Arc,
@@ -35,9 +33,7 @@ async fn returns_log_json() {
         system_prompt: Arc::new(tokio::sync::Mutex::new(psyche.system_prompt())),
         psyche_debug: debug,
     };
-    let resp = conversation_log(axum::extract::Query(LogQuery { debug: None }), State(state))
-        .await
-        .into_response();
+    let resp = conversation_log(State(state)).await.into_response();
     let body = body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let msgs: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(msgs[0]["role"], "system");
@@ -76,12 +72,7 @@ async fn debug_mode_includes_timestamps() {
         system_prompt: Arc::new(tokio::sync::Mutex::new(psyche.system_prompt())),
         psyche_debug: debug,
     };
-    let resp = conversation_log(
-        axum::extract::Query(LogQuery { debug: Some(true) }),
-        State(state),
-    )
-    .await
-    .into_response();
+    let resp = conversation_log(State(state)).await.into_response();
     let body = body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let msgs: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(msgs[1]["timestamp"].is_string());

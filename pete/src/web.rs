@@ -10,7 +10,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use shared::WsPayload;
+use shared::{ConversationEntry as ConvEntry, WsPayload};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -79,18 +79,58 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
     info!("websocket connected");
     state.connections.fetch_add(1, Ordering::SeqCst);
     let mut events = state.bus.subscribe_events();
+    let mut wits = state.bus.subscribe_wits();
+    let prompt = state.system_prompt.lock().await.clone();
+    let _ = socket
+        .send(WsMessage::Text(
+            serde_json::to_string(&WsResponse::SystemPrompt(prompt))
+                .unwrap()
+                .into(),
+        ))
+        .await;
+    let conv = state.conversation.lock().await;
+    for entry in conv.all_with_timestamps() {
+        let item = ConvEntry {
+            role: match entry.message.role {
+                Role::User => "user".into(),
+                Role::Assistant => "assistant".into(),
+            },
+            content: entry.message.content.clone(),
+            timestamp: entry.at.to_rfc3339(),
+        };
+        let msg = serde_json::to_string(&WsResponse::ConversationEntry(item)).unwrap();
+        if socket.send(WsMessage::Text(msg.into())).await.is_err() {
+            state.connections.fetch_sub(1, Ordering::SeqCst);
+            info!("websocket disconnected early");
+            return;
+        }
+    }
     loop {
         tokio::select! {
             evt = events.recv() => {
                 match evt {
                     Ok(Event::Speech { text, audio }) => {
-                        let payload = serde_json::to_string(&WsResponse::Say { words: text, audio }).unwrap();
+                        let payload = serde_json::to_string(&WsResponse::Say { words: text.clone(), audio }).unwrap();
                         if socket.send(WsMessage::Text(payload.into())).await.is_err() {
                             error!("failed sending speech");
                             break;
                         }
+                        let entry = ConvEntry {
+                            role: "assistant".into(),
+                            content: text,
+                            timestamp: Utc::now().to_rfc3339(),
+                        };
+                        let msg = serde_json::to_string(&WsResponse::ConversationEntry(entry)).unwrap();
+                        if socket.send(WsMessage::Text(msg.into())).await.is_err() {
+                            break;
+                        }
                     }
-                    Ok(Event::StreamChunk(_)) => {},
+                    Ok(Event::StreamChunk(chunk)) => {
+                        let msg = serde_json::to_string(&WsResponse::Chunk(chunk)).unwrap();
+                        if socket.send(WsMessage::Text(msg.into())).await.is_err() {
+                            break;
+                        }
+                    }
                     Ok(Event::EmotionChanged(emo)) => {
                         let payload = serde_json::to_string(&WsResponse::Emote(emo)).unwrap();
                         if socket.send(WsMessage::Text(payload.into())).await.is_err() {
@@ -102,6 +142,14 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
                 }
             }
+            , wit = wits.recv() => {
+                if let Ok(report) = wit {
+                    let msg = serde_json::to_string(&WsResponse::Think(report)).unwrap();
+                    if socket.send(WsMessage::Text(msg.into())).await.is_err() {
+                        break;
+                    }
+                }
+            }
             msg = socket.recv() => {
                 match msg {
                     Some(Ok(WsMessage::Text(text))) => {
@@ -109,7 +157,14 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                             match req {
                                 WsRequest::Text { text: message } => {
                                     debug!("user message: {}", message);
-                                    let _ = state.bus.user_input_sender().send(message);
+                                    let _ = state.bus.user_input_sender().send(message.clone());
+                                    let entry = ConvEntry {
+                                        role: "user".into(),
+                                        content: message,
+                                        timestamp: Utc::now().to_rfc3339(),
+                                    };
+                                    let msg = serde_json::to_string(&WsResponse::ConversationEntry(entry)).unwrap();
+                                    let _ = socket.send(WsMessage::Text(msg.into())).await;
                                 }
                                 WsRequest::Echo { text } => {
                                     debug!("played ack: {}", text);
@@ -179,15 +234,7 @@ async fn handle_wit_socket(mut socket: WebSocket, state: Body) {
     info!("wit websocket disconnected");
 }
 
-#[derive(Deserialize)]
-pub struct LogQuery {
-    pub debug: Option<bool>,
-}
-
-pub async fn conversation_log(
-    Query(LogQuery { debug }): Query<LogQuery>,
-    State(state): State<Body>,
-) -> impl IntoResponse {
+pub async fn conversation_log(State(state): State<Body>) -> impl IntoResponse {
     let conv = state.conversation.lock().await;
     let prompt = state.system_prompt.lock().await.clone();
     #[derive(Serialize)]
@@ -202,25 +249,14 @@ pub async fn conversation_log(
         content: prompt,
         timestamp: None,
     }];
-    if debug.unwrap_or(false) {
-        entries.extend(conv.all_with_timestamps().iter().map(|m| Entry {
-            role: match m.message.role {
-                Role::User => "user".to_string(),
-                Role::Assistant => "assistant".to_string(),
-            },
-            content: m.message.content.clone(),
-            timestamp: Some(m.at),
-        }));
-    } else {
-        entries.extend(conv.all().iter().map(|m| Entry {
-            role: match m.role {
-                Role::User => "user".to_string(),
-                Role::Assistant => "assistant".to_string(),
-            },
-            content: m.content.clone(),
-            timestamp: None,
-        }));
-    }
+    entries.extend(conv.all_with_timestamps().iter().map(|m| Entry {
+        role: match m.message.role {
+            Role::User => "user".to_string(),
+            Role::Assistant => "assistant".to_string(),
+        },
+        content: m.message.content.clone(),
+        timestamp: Some(m.at),
+    }));
     axum::Json(entries)
 }
 

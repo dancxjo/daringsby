@@ -51,8 +51,13 @@ async fn websocket_forwards_audio() {
         text: "hi".into(),
         audio: Some("UklGRg==".into()),
     });
-    let msg = socket.next().await.unwrap().unwrap();
-    let value: serde_json::Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+    // skip initial system prompt
+    let mut msg = socket.next().await.unwrap().unwrap();
+    let mut value: serde_json::Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+    if value["type"] == "SystemPrompt" {
+        msg = socket.next().await.unwrap().unwrap();
+        value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+    }
     assert_eq!(value["type"], "Say");
     assert_eq!(value["data"]["audio"], "UklGRg==");
     assert_eq!(value["data"]["words"], "hi");

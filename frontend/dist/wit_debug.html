@@ -14,7 +14,7 @@
       const label = location.pathname.split('/').pop();
       document.getElementById('title').textContent = `Debug for ${label}`;
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${proto}//${location.host}/debug`);
+      const ws = new WebSocket(`${proto}//${location.host}/ws`);
       const promptEl = document.getElementById('prompt');
       const streamEl = document.getElementById('stream');
       ws.onmessage = (ev) => {

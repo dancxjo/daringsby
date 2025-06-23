@@ -96,14 +96,13 @@ cargo run -p pete --features tts -- \
 Visit [`http://localhost:3000/`](http://localhost:3000/) after launch.
 
 * WebSocket connection at `/ws`
-* Debug info streamed from Wits via `/debug`
+* Debug info now included on `/ws` as `Think` events
 * JSON endpoints:
 
   * `/conversation` – full log
   * `/debug/psyche` – tick stats
-  * `/debug/wit/{label}` – last prompt/response per Wit
 
-Events from Pete:
+Events from Pete include speech, emotion changes, wit reports and conversation updates:
 
 ```json
 { "type": "say", "data": { "words": "hi", "audio": "..." } }
