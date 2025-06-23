@@ -36,24 +36,31 @@ pub struct Instruction {
     pub images: Vec<ImageData>, // Optional supporting images
 }
 
-/// Trait for executing imperative instructions (e.g., take a photo, run a Cypher query).
+/// Trait for generating language model output from a structured prompt.
 ///
-/// Used by the `Will` to invoke external side effects or decisions via LLM-generated
-/// commands.
+/// A `Doer` represents a general-purpose interface for calling an LLM using
+/// structured input. It is used throughout Pete's cognitive system to turn a
+/// prompt (e.g., a summary of recent perception) into a response string, which
+/// may be a sayable utterance, internal decision tag, or reflection.
 ///
-/// ## Example
-/// ```rust,ignore
-/// let output = doer
-///     .follow(Instruction { command: "take a photo".into(), images: vec![] })
-///     .await?;
-/// println!("Output: {output}");
+/// This was originally called an `InstructionFollower`, reflecting its role as a
+/// functional LLM caller.
+///
+/// Implementations may stream or buffer LLM output, and may vary across
+/// cognitive components.
+///
+/// # Example
+/// ```rust
+/// let result = doer.follow(Instruction {
+///     command: "summarize what just happened".into(),
+///     images: vec![],
+/// }).await?;
+/// println!("LLM says: {result}");
 /// ```
 #[async_trait]
 pub trait Doer: Send + Sync {
     /// Follow an instruction, possibly with supporting images, and return the
     /// textual result.
-    ///
-    /// Implementors may call an external LLM or other service.
     async fn follow(&self, instruction: Instruction) -> Result<String>;
 }
 
