@@ -116,8 +116,11 @@ impl EntityWit {
 }
 
 #[async_trait]
-impl crate::traits::wit::Wit<Sensation, String> for EntityWit {
-    async fn observe(&self, sensation: Sensation) {
+impl crate::traits::wit::Wit for EntityWit {
+    type Input = Sensation;
+    type Output = String;
+
+    async fn observe(&self, sensation: Self::Input) {
         match sensation {
             Sensation::HeardUserVoice(text) => {
                 self.names.lock().unwrap().push(text);
@@ -133,7 +136,7 @@ impl crate::traits::wit::Wit<Sensation, String> for EntityWit {
         }
     }
 
-    async fn tick(&self) -> Vec<Impression<String>> {
+    async fn tick(&self) -> Vec<Impression<Self::Output>> {
         let faces = { self.faces.lock().unwrap().drain(..).collect::<Vec<_>>() };
         let mut names = { self.names.lock().unwrap().drain(..).collect::<Vec<_>>() };
         let objects = { self.objects.lock().unwrap().drain(..).collect::<Vec<_>>() };

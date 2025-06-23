@@ -48,9 +48,12 @@ impl Vectorizer for Dummy {
 struct PanickyWit;
 
 #[async_trait]
-impl Wit<(), ()> for PanickyWit {
-    async fn observe(&self, _: ()) {}
-    async fn tick(&self) -> Vec<Impression<()>> {
+impl Wit for PanickyWit {
+    type Input = ();
+    type Output = ();
+
+    async fn observe(&self, _: Self::Input) {}
+    async fn tick(&self) -> Vec<Impression<Self::Output>> {
         panic!("boom");
     }
 }

@@ -9,8 +9,9 @@ This repository contains a Rust workspace with three crates:
 The `psyche` crate defines a `Summarizer` trait used to build modular
 cognitive layers. Each `Summarizer` asynchronously digests a batch of lower
 level impressions and produces a higher-level `Impression<T>`. A lightweight
-`Wit<I, O>` trait lets you incrementally observe inputs and emit periodic
-impressions using the summarizer implementation.
+`Wit` trait lets you incrementally observe inputs and emit periodic
+impressions using the summarizer implementation. Each implementation specifies
+its input and output types via associated `Input` and `Output` types.
 
 The unified cognitive model centers on two types:
 

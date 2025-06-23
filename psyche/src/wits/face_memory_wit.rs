@@ -52,12 +52,15 @@ fn similarity(a: &[f32], b: &[f32]) -> f32 {
 }
 
 #[async_trait]
-impl Wit<FaceInfo, FaceInfo> for FaceMemoryWit {
-    async fn observe(&self, info: FaceInfo) {
+impl Wit for FaceMemoryWit {
+    type Input = FaceInfo;
+    type Output = FaceInfo;
+
+    async fn observe(&self, info: Self::Input) {
         self.buffer.lock().unwrap().push(info);
     }
 
-    async fn tick(&self) -> Vec<Impression<FaceInfo>> {
+    async fn tick(&self) -> Vec<Impression<Self::Output>> {
         let items = {
             let mut buf = self.buffer.lock().unwrap();
             if buf.is_empty() {

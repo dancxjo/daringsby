@@ -11,12 +11,17 @@ use std::sync::Arc;
 /// Each Wit listens for input impressions of a lower level and, on tick, emits
 /// a higher-level [`Impression`].
 #[async_trait]
-pub trait Wit<Input, Output>: Send + Sync {
+pub trait Wit: Send + Sync {
+    /// Type of input observed by this Wit.
+    type Input: Send;
+    /// Type of output produced by this Wit.
+    type Output: Send;
+
     /// Feed an incoming input (e.g. Sensation or lower-level Impression).
-    async fn observe(&self, input: Input);
+    async fn observe(&self, input: Self::Input);
 
     /// Periodically called to emit zero or more summarized [`Impression`]s.
-    async fn tick(&self) -> Vec<Impression<Output>>;
+    async fn tick(&self) -> Vec<Impression<Self::Output>>;
 
     /// Human readable name used for logging.
     fn name(&self) -> &'static str {
@@ -43,21 +48,22 @@ pub trait ErasedWit: Send + Sync {
 }
 
 /// Adapter allowing any [`Wit`] to be used as an [`ErasedWit`].
-pub struct WitAdapter<I, O> {
-    inner: Arc<dyn Wit<I, O> + Send + Sync>,
+pub struct WitAdapter<W: Wit> {
+    inner: Arc<W>,
 }
 
-impl<I, O> WitAdapter<I, O> {
+impl<W: Wit> WitAdapter<W> {
     /// Wrap `wit` so it can be stored as an [`ErasedWit`].
-    pub fn new(wit: Arc<dyn Wit<I, O> + Send + Sync>) -> Self {
+    pub fn new(wit: Arc<W>) -> Self {
         Self { inner: wit }
     }
 }
 
 #[async_trait]
-impl<I, O> ErasedWit for WitAdapter<I, O>
+impl<W> ErasedWit for WitAdapter<W>
 where
-    O: Serialize + Send + Sync + 'static,
+    W: Wit,
+    W::Output: Serialize + Send + Sync + 'static,
 {
     async fn tick_erased(&self) -> Vec<Impression<Value>> {
         self.inner
@@ -447,12 +453,15 @@ mod tests {
     }
 
     #[async_trait]
-    impl Wit<String, String> for DummyWit {
-        async fn observe(&self, input: String) {
+    impl Wit for DummyWit {
+        type Input = String;
+        type Output = String;
+
+        async fn observe(&self, input: Self::Input) {
             self.data.lock().unwrap().push(input);
         }
 
-        async fn tick(&self) -> Vec<Impression<String>> {
+        async fn tick(&self) -> Vec<Impression<Self::Output>> {
             let mut data = self.data.lock().unwrap();
             if data.is_empty() {
                 return Vec::new();

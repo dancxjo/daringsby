@@ -42,12 +42,15 @@ impl HeartWit {
 }
 
 #[async_trait]
-impl Wit<Impression<String>, String> for HeartWit {
-    async fn observe(&self, input: Impression<String>) {
+impl Wit for HeartWit {
+    type Input = Impression<String>;
+    type Output = String;
+
+    async fn observe(&self, input: Self::Input) {
         self.buffer.lock().unwrap().push(input);
     }
 
-    async fn tick(&self) -> Vec<Impression<String>> {
+    async fn tick(&self) -> Vec<Impression<Self::Output>> {
         let inputs = {
             let mut buf = self.buffer.lock().unwrap();
             if buf.is_empty() {

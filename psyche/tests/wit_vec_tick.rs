@@ -23,10 +23,13 @@ struct DummyWit {
 }
 
 #[async_trait]
-impl Wit<(), ()> for DummyWit {
-    async fn observe(&self, _: ()) {}
+impl Wit for DummyWit {
+    type Input = ();
+    type Output = ();
 
-    async fn tick(&self) -> Vec<Impression<()>> {
+    async fn observe(&self, _: Self::Input) {}
+
+    async fn tick(&self) -> Vec<Impression<Self::Output>> {
         self.outputs.lock().unwrap().pop().unwrap_or_default()
     }
 }

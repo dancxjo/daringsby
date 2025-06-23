@@ -118,12 +118,15 @@ impl Will {
 }
 
 #[async_trait]
-impl crate::wit::Wit<Impression<String>, Decision> for Will {
-    async fn observe(&self, input: Impression<String>) {
+impl crate::wit::Wit for Will {
+    type Input = Impression<String>;
+    type Output = Decision;
+
+    async fn observe(&self, input: Self::Input) {
         self.buffer.lock().unwrap().push(input);
     }
 
-    async fn tick(&self) -> Vec<Impression<Decision>> {
+    async fn tick(&self) -> Vec<Impression<Self::Output>> {
         let inputs = {
             let mut buf = self.buffer.lock().unwrap();
             if buf.is_empty() {

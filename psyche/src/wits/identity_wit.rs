@@ -25,12 +25,15 @@ impl IdentityWit {
 }
 
 #[async_trait]
-impl Wit<Impression<Moment>, String> for IdentityWit {
-    async fn observe(&self, input: Impression<Moment>) {
+impl Wit for IdentityWit {
+    type Input = Impression<Moment>;
+    type Output = String;
+
+    async fn observe(&self, input: Self::Input) {
         self.buffer.lock().unwrap().push(input);
     }
 
-    async fn tick(&self) -> Vec<Impression<String>> {
+    async fn tick(&self) -> Vec<Impression<Self::Output>> {
         let inputs = {
             let mut buf = self.buffer.lock().unwrap();
             if buf.is_empty() {

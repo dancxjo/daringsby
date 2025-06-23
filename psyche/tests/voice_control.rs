@@ -61,9 +61,12 @@ impl Ear for DummyEar {
 struct TakeTurnWit(AtomicBool);
 
 #[async_trait]
-impl Wit<(), String> for TakeTurnWit {
-    async fn observe(&self, _: ()) {}
-    async fn tick(&self) -> Vec<Impression<String>> {
+impl Wit for TakeTurnWit {
+    type Input = ();
+    type Output = String;
+
+    async fn observe(&self, _: Self::Input) {}
+    async fn tick(&self) -> Vec<Impression<Self::Output>> {
         if self.0.swap(true, Ordering::SeqCst) {
             Vec::new()
         } else {

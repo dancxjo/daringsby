@@ -128,7 +128,7 @@ The previous Deno-based client has been removed. Update the files in
 
 * Consider adding unit tests that simulate full conversation loops (with mocked `Mouth`, `Ear`, `Voice`).
 * Consider adding CLI test scaffolding for mocking TTS/Neo4j/Qdrant.
-* Ensure that `Wit<Instant>` is fed only when it has sufficient `Sensation` inputs — fail early otherwise.
+* Ensure that `InstantWit` only emits when it has enough `Sensation` inputs — fail early otherwise.
 * Be mindful of the single-CPU assumption — prefer concurrency without heavy parallelism.
 * When skipping speech for empty responses, increment the turn counter so the conversation loop can exit.
 * Log Coqui TTS request URLs with `info!(%url, "requesting TTS")` to ease debugging misconfigured endpoints.

@@ -53,10 +53,13 @@ impl MomentWit {
 }
 
 #[async_trait]
-impl crate::wit::Wit<(), String> for MomentWit {
-    async fn observe(&self, _: ()) {}
+impl crate::wit::Wit for MomentWit {
+    type Input = ();
+    type Output = String;
 
-    async fn tick(&self) -> Vec<Impression<String>> {
+    async fn observe(&self, _: Self::Input) {}
+
+    async fn tick(&self) -> Vec<Impression<Self::Output>> {
         const MIN_ITEMS: usize = 3;
         let items = {
             let mut buf = self.buffer.lock().unwrap();
