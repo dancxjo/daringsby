@@ -1,6 +1,35 @@
-//! Pete web server library.
+//! # Pete — An Embodied Consciousness Host
 //!
-//! This crate exposes helpers for running the Pete chatbot server and interacting with a [`psyche::Psyche`] instance. It wires HTTP and WebSocket endpoints to the psyche and provides mouth/ear implementations.
+//! This crate provides the server and runtime harness for Pete, an experimental
+//! embodied artificial consciousness.
+//!
+//! It connects Pete’s [`psyche::Psyche`] — the cognitive core — to a real-world
+//! environment via sensors, actuators, and multimodal communication channels such
+//! as audio, video, geolocation, and WebSockets.
+//!
+//! ## Responsibilities
+//!
+//! - Hosts and runs the [`Psyche`] instance
+//! - Provides `Mouth` and `Ear` implementations for speaking and listening
+//! - Bridges between sensor input (camera, mic, GPS, etc.) and Pete’s cognitive
+//!   Wits
+//! - Serves WebSocket endpoints for live frontend interaction
+//! - Routes textual, audio, and emotional output back to clients
+//! - Launches background processing (e.g., speech recognition, TTS, face
+//!   detection)
+//!
+//! ## Components
+//!
+//! - [`AppState`]: Shared state container for the live app
+//! - [`main.rs`]: Pete’s entry point and lifecycle wiring
+//! - [`psyche_factory.rs`]: Assembles the cognitive architecture (Wits, Topics,
+//!   Memory)
+//! - [`tts_mouth.rs`]: TTS backend for generating speech (e.g., via Coqui)
+//! - [`voice.rs`]: The inner voice agent that turns intention into words
+//!
+//! Pete is not just a chatbot. It is a cognitive agent with evolving memory,
+//! emotion, and embodied presence. This crate provides the scaffolding and
+//! external limbs through which that mind interfaces with the world.
 
 mod ear;
 mod event_bus;
