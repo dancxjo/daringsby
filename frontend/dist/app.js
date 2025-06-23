@@ -219,7 +219,7 @@
 
   function captureWebcamFrame(video, canvas, ctx) {
     if (video.videoWidth === 0) {
-      video.play().catch(() => {});
+      video.play().catch(() => { });
       return null;
     }
     canvas.width = video.videoWidth;
@@ -300,7 +300,7 @@
       } else {
         console.error("webcam", e);
       }
-      mien.textContent = "🚫 Webcam unavailable";
+      mien.textContent = "🦯";
     }
   }
 
