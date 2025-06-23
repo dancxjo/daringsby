@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use lingproc::{Doer, Instruction};
-use psyche::{Impression, Stimulus, Summarizer, wit::Episode, wits::CombobulatorSummarizer};
+use psyche::{Impression, Stimulus, wit::Episode, wits::Combobulator};
+use std::sync::Arc;
 
 #[derive(Clone)]
 struct Dummy;
@@ -14,7 +15,7 @@ impl Doer for Dummy {
 
 #[tokio::test]
 async fn returns_awareness_impression() {
-    let combo = CombobulatorSummarizer::new(Box::new(Dummy));
+    let combo = Combobulator::new(Arc::new(Dummy));
     let imp = combo
         .digest(&[Impression::new(
             vec![Stimulus::new(Episode {

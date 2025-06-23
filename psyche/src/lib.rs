@@ -21,7 +21,6 @@ pub mod traits {
 pub mod wit;
 pub mod wits {
     pub mod combobulator;
-    pub mod combobulator_summarizer;
     pub mod entity_wit;
     pub mod episode_wit;
     pub mod face_memory_wit;
@@ -37,7 +36,6 @@ pub mod wits {
     pub mod will;
 
     pub use combobulator::Combobulator;
-    pub use combobulator_summarizer::CombobulatorSummarizer;
     pub use entity_wit::EntityWit;
     pub use episode_wit::EpisodeWit;
     pub use face_memory_wit::FaceMemoryWit;
@@ -100,7 +98,7 @@ pub use sensors::{DummyDetector, FaceDetector, FaceInfo, FaceSensor};
 pub use traits::{Ear, ErasedWit, Mouth, SensationObserver, Summarizer, Wit, WitAdapter};
 pub use voice::{Voice, extract_emojis};
 pub use wits::{
-    BasicMemory, Combobulator, CombobulatorSummarizer, EntityWit, EpisodeWit, FaceMemoryWit,
-    FondDuCoeur, GraphStore, HeartWit, IdentityWit, Memory, MemoryWit, Neo4jClient, NoopMemory,
-    QdrantClient, VisionWit, Will,
+    BasicMemory, Combobulator, EntityWit, EpisodeWit, FaceMemoryWit, FondDuCoeur, GraphStore,
+    HeartWit, IdentityWit, Memory, MemoryWit, Neo4jClient, NoopMemory, QdrantClient, VisionWit,
+    Will,
 };
