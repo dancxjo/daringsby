@@ -86,7 +86,7 @@ impl PromptBuilder {
 
     /// Return the full conversation history.
     pub async fn get_conversation(&self) -> Vec<Message> {
-        self.conversation.lock().await.all().to_vec()
+        self.conversation.lock().await.all()
     }
 
     /// Return the most recent `n` messages.

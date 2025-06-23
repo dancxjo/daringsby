@@ -47,6 +47,7 @@ Provides LLM and embedding utilities.
 
 * **LLM Traits**: `Chatter`, `Doer`, `Vectorizer`
 * **OllamaProvider**: Backend for generation and embedding
+* Vectorizers should warn if no embeddings are returned to avoid silent similarity errors
 * **Helpers**: Sentence segmentation, prompt context, instruction parsing
 
 ---
@@ -97,6 +98,8 @@ Provides LLM and embedding utilities.
 * Avoid blocking: all Wits run asynchronously and should tick infrequently
 * Implement simple buffer-based Wits using `BufferedWit` to avoid duplicating
   `tick`/`observe` boilerplate
+* Assign stable `id` attributes to dynamic DOM nodes in `frontend/dist/app.js`
+  to simplify e2e tests
 
 ---
 
@@ -116,6 +119,7 @@ Provides LLM and embedding utilities.
 ## 🛠 Development Quickstart
 
 * `cargo fetch` then `cargo test`
+* `npm test` to run frontend unit tests
 * Run with `RUST_LOG=debug cargo run --features tts`
 * Visit [`http://localhost:3000/`](http://localhost:3000/) to connect frontend
 * Each Wit exposes `new()` and `with_debug()`; `new` should delegate to
@@ -125,5 +129,20 @@ Provides LLM and embedding utilities.
 * Consolidate common math helpers like `cosine_similarity` in the `common` crate
   and re-export them from other crates to avoid duplication.
 * Keep commit messages concise and use tests to drive development (TDD/BDD).
+* Reuse cargo and npm caches when running tests to avoid re-downloading
+  dependencies.
+* Keep commit messages short yet descriptive.
+* In frontend scripts, stop `MediaRecorder` on `window.onbeforeunload` to release the microphone.
+* Patch DOM incrementally or debounce updates instead of replacing innerHTML.
+
+### Hidden Debug Mode
+
+* Press `Ctrl+D` in the frontend to toggle timestamp display on conversation messages.
+
+## 📝 Coding Guidelines
+
+* When exposing items from a submodule, prefer `pub use` with a private `mod`.
+  Use `pub mod` alongside `pub use` only when external crates rely on paths like
+  `psyche::module::Item`, and add a comment explaining the duplication.
 
 Use this document to orient new agents, tools, or contributors. If you’re confused — ask the Quick what it saw, or the Will what it wants.

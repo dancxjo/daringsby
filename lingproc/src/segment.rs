@@ -7,10 +7,104 @@
 //!
 //! The [`word_stream`] function splits the input into Unicode word boundaries.
 
-use crate::segmenter::shared_segmenter;
 use futures::{Stream, StreamExt};
+use once_cell::sync::Lazy;
+use pragmatic_segmenter::Segmenter as PragmaticSegmenter;
 use std::collections::VecDeque;
 use unicode_segmentation::UnicodeSegmentation;
+
+static SEGMENTER: Lazy<PragmaticSegmenter> =
+    Lazy::new(|| PragmaticSegmenter::new().expect("segmenter init"));
+
+fn shared_segmenter() -> &'static PragmaticSegmenter {
+    &SEGMENTER
+}
+
+/// Stateful sentence segmenter usable for both streaming and buffered text.
+///
+/// Feed text chunks with [`push_str`] and retrieve completed sentences. Any
+/// trailing text can be flushed using [`finish`]. All segmentation goes through
+/// the same [`pragmatic_segmenter`] instance as [`sentence_stream`].
+pub struct SentenceSegmenter {
+    buf: String,
+    leftover: String,
+    pending: VecDeque<String>,
+}
+
+impl SentenceSegmenter {
+    /// Create a new `SentenceSegmenter`.
+    pub fn new() -> Self {
+        Self { buf: String::new(), leftover: String::new(), pending: VecDeque::new() }
+    }
+
+    /// Push a text chunk and return any fully segmented sentences.
+    pub fn push_str(&mut self, chunk: &str) -> Vec<String> {
+        self.buf.push_str(&self.leftover);
+        self.buf.push_str(chunk);
+        let mut segs: Vec<String> = shared_segmenter()
+            .segment(&self.buf)
+            .map(|s| s.to_string())
+            .collect();
+        if !segs.is_empty() {
+            self.leftover = segs.pop().unwrap();
+            for s in segs {
+                self.pending.push_back(s);
+            }
+        }
+        self.buf.clear();
+        let mut out = Vec::new();
+        while self.pending.len() > 1 {
+            if let Some(sentence) = self.pending.pop_front() {
+                out.push(sentence.trim().to_string());
+            }
+        }
+        out
+    }
+
+    /// Finish segmentation and return any remaining sentences.
+    pub fn finish(mut self) -> Vec<String> {
+        if !self.leftover.is_empty() {
+            self.pending.push_back(self.leftover);
+        }
+        self.pending
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .collect()
+    }
+}
+
+impl Default for SentenceSegmenter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Segment a block of `text` into sentences using the same logic as
+/// [`sentence_stream`].
+///
+/// # Examples
+/// ```
+/// use lingproc::segment_text_into_sentences;
+/// let s = "Hello world. How are you?";
+/// assert_eq!(
+///     segment_text_into_sentences(s),
+///     vec!["Hello world.".to_string(), "How are you?".to_string()]
+/// );
+/// ```
+pub fn segment_text_into_sentences(text: &str) -> Vec<String> {
+    let mut seg = SentenceSegmenter::new();
+    let mut out = seg.push_str(text);
+    out.extend(seg.finish());
+    out
+}
+
+/// Adapt [`sentence_stream`] for infallible input streams.
+pub fn stream_sentence_chunks<S>(input: S) -> impl Stream<Item = String>
+where
+    S: Stream<Item = String> + Unpin + Send + 'static,
+{
+    sentence_stream(input.map(Ok::<_, ()>)).filter_map(|r| async move { r.ok() })
+}
 
 /// Yield sentences from the `input` stream.
 ///
@@ -26,7 +120,7 @@ use unicode_segmentation::UnicodeSegmentation;
 /// futures::executor::block_on(async {
 ///     assert_eq!(
 ///         futures::StreamExt::next(&mut stream).await.unwrap().unwrap(),
-///         "David E. Sanger covers the Trump administration and a range of national security issues. "
+///         "David E. Sanger covers the Trump administration and a range of national security issues."
 ///     );
 ///     assert_eq!(
 ///         futures::StreamExt::next(&mut stream).await.unwrap().unwrap(),
@@ -41,42 +135,31 @@ where
     S: Stream<Item = Result<String, E>> + Unpin + Send + 'static,
 {
     use futures::stream::unfold;
-    let buf = String::new();
-    let leftover = String::new();
+    let segmenter = SentenceSegmenter::new();
     let pending: VecDeque<String> = VecDeque::new();
 
     let stream = unfold(
-        (input, buf, leftover, pending),
-        |(mut input, mut buf, mut leftover, mut pending)| async move {
+        (input, segmenter, pending),
+        |(mut input, mut segmenter, mut pending)| async move {
             loop {
-                if pending.len() > 1 {
-                    if let Some(next) = pending.pop_front() {
-                        return Some((Ok(next), (input, buf, leftover, pending)));
-                    }
+                if let Some(next) = pending.pop_front() {
+                    return Some((Ok(next), (input, segmenter, pending)));
                 }
                 match input.next().await {
                     Some(Ok(chunk)) => {
-                        buf.push_str(&leftover);
-                        buf.push_str(&chunk);
-                        let mut segments: Vec<String> = shared_segmenter()
-                            .segment(&buf)
-                            .map(|s| s.to_string())
-                            .collect();
-                        if !segments.is_empty() {
-                            leftover = segments.pop().unwrap();
-                            for s in segments {
-                                pending.push_back(s);
-                            }
+                        for s in segmenter.push_str(&chunk) {
+                            pending.push_back(s);
                         }
-                        buf.clear();
                     }
-                    Some(Err(e)) => return Some((Err(e), (input, buf, leftover, pending))),
+                    Some(Err(e)) => return Some((Err(e), (input, segmenter, pending))),
                     None => {
-                        if !leftover.is_empty() {
-                            pending.push_back(std::mem::take(&mut leftover));
+                        let remaining = segmenter.finish();
+                        for s in remaining {
+                            pending.push_back(s);
                         }
+                        segmenter = SentenceSegmenter::new();
                         if let Some(s) = pending.pop_front() {
-                            return Some((Ok(s), (input, buf, leftover, pending)));
+                            return Some((Ok(s), (input, segmenter, pending)));
                         }
                         return None;
                     }
