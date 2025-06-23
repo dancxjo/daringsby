@@ -20,7 +20,7 @@ use lingproc::LlmInstruction;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
-use tracing::debug;
+use tracing::{debug, info};
 pub struct Quick {
     buffer: Arc<Mutex<VecDeque<(DateTime<Utc>, Arc<Sensation>)>>>,
     bus: TopicBus,
@@ -151,6 +151,7 @@ impl crate::traits::wit::Wit for Quick {
             sensations: items.clone(),
         };
         let stim = Stimulus::new(instant);
+        info!(count = items.len(), out = %out, "quick emitting instant");
         debug!(
             "quick: emitting instant from {} sensations: \"{}\"",
             items.len(),
