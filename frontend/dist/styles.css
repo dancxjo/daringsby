@@ -231,8 +231,15 @@ button:hover {
   padding: 0.5rem;
   color: #aaa;
   position: relative;
+  display: block;
   overflow: hidden;
+  min-height: 1.5em;
+  max-height: var(--details-max-height, none);
   transition: max-height 0.2s ease;
+}
+
+.sidebar details[open] {
+  max-height: none;
 }
 
 .sidebar details::before {
