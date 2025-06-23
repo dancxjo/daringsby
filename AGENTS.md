@@ -123,4 +123,10 @@ Provides LLM and embedding utilities.
 * Document intentionally empty trait methods with comments so their purpose is
   clear.
 
+## 📝 Coding Guidelines
+
+* When exposing items from a submodule, prefer `pub use` with a private `mod`.
+  Use `pub mod` alongside `pub use` only when external crates rely on paths like
+  `psyche::module::Item`, and add a comment explaining the duplication.
+
 Use this document to orient new agents, tools, or contributors. If you’re confused — ask the Quick what it saw, or the Will what it wants.

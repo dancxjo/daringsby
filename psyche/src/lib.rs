@@ -8,6 +8,9 @@ pub mod topics;
 pub mod util;
 mod voice;
 
+/// Traits are organized in submodules and then re-exported for crate users.
+/// Keeping this module public enables paths like `psyche::traits::Ear` while
+/// also flattening common traits at the crate root below.
 pub mod traits {
     pub mod buffered_wit;
     pub mod doer;
@@ -68,9 +71,13 @@ mod and_mouth;
 mod debug;
 
 pub mod ling;
+/// Model types are public for introspection but also re-exported below so
+/// callers can simply `use psyche::{Experience, Impression}`.
 pub mod model;
 pub mod motor_call;
 mod plain_mouth;
+/// The `prompt` module is kept public so callers may use `psyche::prompt::*`.
+/// Key prompt types are also re-exported at the crate root for convenience.
 pub mod prompt;
 mod task_group;
 pub use task_group::TaskGroup;
