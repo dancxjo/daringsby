@@ -8,6 +8,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # ts_rs only used when compiling for wasm
 ts-rs = { version = "7", optional = true }
+psyche = { path = "../psyche" }
 
 [features]
 ts = ["ts-rs"]
+
+[build-dependencies]
+ts-rs = { version = "7", optional = true }

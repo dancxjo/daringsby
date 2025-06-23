@@ -112,7 +112,7 @@
       player.removeEventListener("ended", done);
       player.removeEventListener("error", done);
       if (next.text) {
-        ws.send(JSON.stringify({ type: "Echo", data: next.text }));
+        ws.send(JSON.stringify({ type: "Echo", text: next.text }));
       }
       playNext();
     };
@@ -135,17 +135,14 @@
       const m = JSON.parse(ev.data);
       switch (m.type) {
         case "Emote":
-        case "emote":
           mien.textContent = m.data;
           break;
         case "Say":
-        case "say":
           words.textContent += "\n" + m.data.words;
           words.scrollTop = words.scrollHeight;
           enqueueAudio({ audio: m.data.audio || null, text: m.data.words });
           break;
-        case "Think":
-        case "think": {
+        case "Think": {
           if (typeof m.data === "object" && m.data !== null) {
             witOutputs[m.data.name] = m.data.output;
             const { promptPre, outputPre, time, details } = getWitDetail(m.data.name);
@@ -171,10 +168,6 @@
           thought.style.display = Object.keys(witOutputs).length ? "flex" : "none";
           break;
         }
-        case "Heard":
-        case "heard":
-          // ignore for now
-          break;
       }
     } catch (e) {
       console.error(e);
@@ -189,7 +182,7 @@
     const input = document.getElementById("text-input");
     const text = input.value.trim();
     if (text) {
-      ws.send(JSON.stringify({ type: "Text", data: text }));
+      ws.send(JSON.stringify({ type: "Text", text }));
       input.value = "";
     }
   });
@@ -237,7 +230,7 @@
           thoughtImage.style.display = "block";
           imageThumbnail.src = data;
           imageThumbnail.style.display = "block";
-          ws.send(JSON.stringify({ type: "See", data: data }));
+          ws.send(JSON.stringify({ type: "See", data }));
         } else {
           ws.send(JSON.stringify({ type: "See", data: "" }));
         }

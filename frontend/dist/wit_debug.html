@@ -20,7 +20,7 @@
       ws.onmessage = (ev) => {
         try {
           const m = JSON.parse(ev.data);
-          if ((m.type === 'Think' || m.type === 'think') && m.data.name.toLowerCase() === label) {
+          if (m.type === 'Think' && m.data.name.toLowerCase() === label) {
             promptEl.textContent = m.data.prompt;
             streamEl.textContent = m.data.output;
           }
