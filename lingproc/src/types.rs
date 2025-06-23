@@ -9,11 +9,46 @@ use tokio_stream::Stream;
 static PROMPT_CONTEXT: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
 /// Add `note` for inclusion in the next prompt.
+///
+/// Notes are buffered globally and appended to the system prompt the next
+/// time [`Chatter::chat`](crate::types::Chatter::chat) is called. They are
+/// removed once [`take_prompt_context`] is invoked.
+///
+/// # Example
+/// ```rust,ignore
+/// use lingproc::{push_prompt_context, take_prompt_context};
+///
+/// # tokio_test::block_on(async {
+/// push_prompt_context("remember the user's name").await;
+/// assert_eq!(
+///     take_prompt_context().await,
+///     vec!["remember the user's name".to_string()]
+/// );
+/// # });
+/// ```
 pub async fn push_prompt_context(note: &str) {
     PROMPT_CONTEXT.lock().await.push(note.to_string());
 }
 
 /// Consume and return all pending context notes.
+///
+/// The returned vector contains every note previously added via
+/// [`push_prompt_context`] in insertion order. Calling this function clears the
+/// buffer so that subsequent calls yield an empty vector until more notes are
+/// pushed.
+///
+/// # Example
+/// ```rust,ignore
+/// use lingproc::{push_prompt_context, take_prompt_context};
+///
+/// # tokio_test::block_on(async {
+/// push_prompt_context("A").await;
+/// push_prompt_context("B").await;
+/// let notes = take_prompt_context().await;
+/// assert_eq!(notes, vec!["A".to_string(), "B".to_string()]);
+/// assert!(take_prompt_context().await.is_empty());
+/// # });
+/// ```
 pub async fn take_prompt_context() -> Vec<String> {
     PROMPT_CONTEXT.lock().await.drain(..).collect()
 }
