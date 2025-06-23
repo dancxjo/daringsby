@@ -1,5 +1,5 @@
 use crate::traits::BufferedWit;
-use crate::{Impression, WitReport, wit::Wit, wits::FondDuCoeur};
+use crate::{Impression, WitReport, wits::FondDuCoeur};
 use async_trait::async_trait;
 use std::sync::Mutex;
 use tokio::sync::broadcast;

@@ -4,7 +4,7 @@ use lingproc::segment_text_into_sentences;
 use psyche::{Event, PlainMouth, traits::Mouth};
 #[cfg(feature = "tts")]
 use psyche::traits::{Tts, TtsStream};
-use crate::{ChannelMouth, EventBus};
+use crate::EventBus;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
