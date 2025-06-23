@@ -1,11 +1,10 @@
-#![cfg(feature = "tts")]
 use async_trait::async_trait;
 use futures::StreamExt;
 use lingproc::segment_text_into_sentences;
-use psyche::{
-    Event,
-    traits::{Mouth, Tts, TtsStream},
-};
+use psyche::{Event, PlainMouth, traits::Mouth};
+#[cfg(feature = "tts")]
+use psyche::traits::{Tts, TtsStream};
+use crate::{ChannelMouth, EventBus};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -18,7 +17,8 @@ use base64::{Engine as _, engine::general_purpose};
 use reqwest::{Client, Url};
 
 /// Client for a Coqui TTS server.
-#[derive(Clone)]
+#[cfg_attr(feature = "tts", derive(Clone))]
+#[cfg(feature = "tts")]
 pub struct CoquiTts {
     url: String,
     client: Client,
@@ -27,6 +27,7 @@ pub struct CoquiTts {
     language_id: Option<String>,
 }
 
+#[cfg(feature = "tts")]
 impl CoquiTts {
     /// Create a new client targeting `url` (e.g. `http://localhost:5002/api/tts`).
     ///
@@ -48,6 +49,7 @@ impl CoquiTts {
 }
 
 #[async_trait]
+#[cfg(feature = "tts")]
 impl Tts for CoquiTts {
     async fn stream_wav(&self, text: &str) -> Result<TtsStream> {
         let mut url = Url::parse(&self.url)?;
@@ -72,12 +74,14 @@ impl Tts for CoquiTts {
 /// [`Mouth`] implementation that streams audio via [`Tts`] and forwards it as
 /// [`Event::Speech`] chunks.
 #[derive(Clone)]
+#[cfg(feature = "tts")]
 pub struct TtsMouth {
     events: broadcast::Sender<Event>,
     speaking: Arc<AtomicBool>,
     tts: Arc<dyn Tts>,
 }
 
+#[cfg(feature = "tts")]
 impl TtsMouth {
     pub fn new(
         events: broadcast::Sender<Event>,
@@ -93,6 +97,7 @@ impl TtsMouth {
 }
 
 #[async_trait]
+#[cfg(feature = "tts")]
 impl Mouth for TtsMouth {
     async fn speak(&self, text: &str) {
         self.speaking.store(true, Ordering::SeqCst);
@@ -148,5 +153,34 @@ impl Mouth for TtsMouth {
 
     fn speaking(&self) -> bool {
         self.speaking.load(Ordering::SeqCst)
+    }
+}
+
+/// Create the mouth implementation used by the application.
+///
+/// When the `tts` feature is enabled this wraps a [`TtsMouth`] with
+/// [`PlainMouth`] so Markdown formatting is stripped before speaking.
+/// Otherwise a [`ChannelMouth`] that emits text-only speech events is returned.
+pub fn default_mouth(
+    bus: Arc<EventBus>,
+    speaking: Arc<AtomicBool>,
+    tts_url: String,
+    speaker_id: Option<String>,
+    language_id: Option<String>,
+) -> Arc<dyn Mouth> {
+    #[cfg(feature = "tts")]
+    {
+        let tts = Arc::new(CoquiTts::new(tts_url, speaker_id, language_id)) as Arc<dyn Tts>;
+        let mouth = Arc::new(TtsMouth::new(
+            bus.event_sender(),
+            speaking.clone(),
+            tts,
+        )) as Arc<dyn Mouth>;
+        return Arc::new(PlainMouth::new(mouth)) as Arc<dyn Mouth>;
+    }
+    #[cfg(not(feature = "tts"))]
+    {
+        let _ = (tts_url, speaker_id, language_id);
+        Arc::new(ChannelMouth::new(bus, speaking)) as Arc<dyn Mouth>
     }
 }
