@@ -9,6 +9,7 @@
   const thoughtImage = document.getElementById("thought-image");
   const imageThumbnail = document.getElementById("image-thumbnail");
   const player = document.getElementById("audio-player");
+  const face = document.getElementById("face");
   const audioQueue = [];
   const conversationLog = document.getElementById("conversation-log");
   const witOutputs = {};
@@ -104,9 +105,11 @@
     const next = audioQueue.shift();
     if (!next) {
       playing = false;
+      face.classList.remove("playing");
       return;
     }
     playing = true;
+    face.classList.add("playing");
 
     const done = () => {
       player.removeEventListener("ended", done);
@@ -115,6 +118,9 @@
         ws.send(JSON.stringify({ type: "Echo", text: next.text }));
       }
       playNext();
+      if (!playing) {
+        face.classList.remove("playing");
+      }
     };
 
     if (next.audio) {
