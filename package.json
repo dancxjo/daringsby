@@ -1,0 +1,16 @@
+{
+  "name": "daringsby",
+  "version": "1.0.0",
+  "description": "This repository contains a Rust workspace with three crates:",
+  "main": "index.js",
+  "scripts": {
+    "test": "node frontend/test/conversation-scroll.test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

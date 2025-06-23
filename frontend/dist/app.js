@@ -10,6 +10,7 @@
   const imageThumbnail = document.getElementById("image-thumbnail");
   const player = document.getElementById("audio-player");
   const audioQueue = [];
+  const conversationLog = document.getElementById("conversation-log");
   const witOutputs = {};
   const witDetails = {};
   const witDebugContainer = document.getElementById("wit-debug");
@@ -258,10 +259,16 @@
       if (system && msgs.length) {
         system.textContent = msgs[0].content;
       }
-      document.getElementById("conversation-log").textContent = msgs
+      const atBottom =
+        conversationLog.scrollTop + conversationLog.clientHeight >=
+        conversationLog.scrollHeight - 5;
+      conversationLog.textContent = msgs
         .slice(1)
         .map((m) => `${m.role}: ${m.content}`)
         .join("\n");
+      if (atBottom) {
+        conversationLog.scrollTop = conversationLog.scrollHeight;
+      }
     } catch (e) {
       console.error("conversation", e);
     }
