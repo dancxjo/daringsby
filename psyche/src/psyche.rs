@@ -37,9 +37,24 @@ use tracing::{debug, error, info, warn};
 /// A minimal history of exchanged messages.
 ///
 /// `Conversation` collects messages in order so they can be fed back to the language model for context.
+#[derive(Clone, Debug)]
+pub struct TimedMessage {
+    pub at: DateTime<Utc>,
+    pub message: Message,
+}
+
+impl TimedMessage {
+    fn new(role: Role, content: String) -> Self {
+        Self {
+            at: Utc::now(),
+            message: Message { role, content },
+        }
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct Conversation {
-    log: Vec<Message>,
+    log: Vec<TimedMessage>,
 }
 
 impl Conversation {
@@ -55,16 +70,16 @@ impl Conversation {
 
     fn append_or_new(&mut self, role: Role, content: String) {
         if let Some(last) = self.log.last_mut() {
-            if last.role == role {
-                if !last.content.is_empty() && !content.is_empty() {
-                    last.content.push(' ');
+            if last.message.role == role {
+                if !last.message.content.is_empty() && !content.is_empty() {
+                    last.message.content.push(' ');
                 }
-                last.content.push_str(&content);
-                last.content = last.content.trim().to_string();
+                last.message.content.push_str(&content);
+                last.message.content = last.message.content.trim().to_string();
                 return;
             }
         }
-        self.log.push(Message { role, content });
+        self.log.push(TimedMessage::new(role, content));
     }
 
     /// Return the last `n` messages from the conversation.
@@ -74,12 +89,27 @@ impl Conversation {
     /// forwarded. Trimming history keeps model prompts a manageable size.
     pub fn tail(&self, n: usize) -> Vec<Message> {
         let len = self.log.len();
-        self.log[len.saturating_sub(n)..].to_vec()
+        self.log[len.saturating_sub(n)..]
+            .iter()
+            .cloned()
+            .map(|tm| tm.message)
+            .collect()
     }
 
     /// Return the entire conversation history.
-    pub fn all(&self) -> &[Message] {
+    pub fn all(&self) -> Vec<Message> {
+        self.log.iter().cloned().map(|tm| tm.message).collect()
+    }
+
+    /// Return the entire conversation with timestamps.
+    pub fn all_with_timestamps(&self) -> &[TimedMessage] {
         &self.log
+    }
+
+    /// Return the last `n` messages with timestamps.
+    pub fn tail_with_timestamps(&self, n: usize) -> Vec<TimedMessage> {
+        let len = self.log.len();
+        self.log[len.saturating_sub(n)..].to_vec()
     }
 }
 

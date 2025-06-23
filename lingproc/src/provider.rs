@@ -127,7 +127,11 @@ impl Vectorizer for OllamaProvider {
                         embedding_len = res.embeddings.len(),
                         "ollama vectorize response"
                     );
-                    return Ok(res.embeddings.into_iter().next().unwrap_or_default());
+                    let Some(embedding) = res.embeddings.into_iter().next() else {
+                        warn!("ollama returned no embeddings");
+                        return Err(anyhow!("empty embedding"));
+                    };
+                    return Ok(embedding);
                 }
                 Ok(Err(e)) => {
                     if let ollama_rs::error::OllamaError::ReqwestError(ref re) = e {

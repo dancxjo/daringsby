@@ -47,6 +47,7 @@ Provides LLM and embedding utilities.
 
 * **LLM Traits**: `Chatter`, `Doer`, `Vectorizer`
 * **OllamaProvider**: Backend for generation and embedding
+* Vectorizers should warn if no embeddings are returned to avoid silent similarity errors
 * **Helpers**: Sentence segmentation, prompt context, instruction parsing
 
 ---
@@ -118,11 +119,21 @@ Provides LLM and embedding utilities.
 ## 🛠 Development Quickstart
 
 * `cargo fetch` then `cargo test`
+* `npm test` to run frontend unit tests
 * Run with `RUST_LOG=debug cargo run --features tts`
 * Visit [`http://localhost:3000/`](http://localhost:3000/) to connect frontend
 * Each Wit exposes `new()` and `with_debug()`; `new` should delegate to
   `with_debug` with `None` so devtools can uniformly enable debug output
 * Document intentionally empty trait methods with comments so their purpose is
   clear.
+* Reuse cargo and npm caches when running tests to avoid re-downloading
+  dependencies.
+* Keep commit messages short yet descriptive.
+* In frontend scripts, stop `MediaRecorder` on `window.onbeforeunload` to release the microphone.
+* Patch DOM incrementally or debounce updates instead of replacing innerHTML.
+
+### Hidden Debug Mode
+
+* Press `Ctrl+D` in the frontend to toggle timestamp display on conversation messages.
 
 Use this document to orient new agents, tools, or contributors. If you’re confused — ask the Quick what it saw, or the Will what it wants.
