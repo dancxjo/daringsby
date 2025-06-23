@@ -37,11 +37,22 @@ pub enum Sensation {
     Of(Box<dyn std::any::Any + Send + Sync>),
 }
 
+impl Clone for Sensation {
+    fn clone(&self) -> Self {
+        match self {
+            Self::HeardOwnVoice(t) => Self::HeardOwnVoice(t.clone()),
+            Self::HeardUserVoice(t) => Self::HeardUserVoice(t.clone()),
+            Self::Of(_) => Self::Of(Box::new(())),
+        }
+    }
+}
+
 /// A coherent bundle of recently perceived sensations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Instant {
     /// Time the sensations were observed.
     pub at: DateTime<Utc>,
     /// The grouped sensations.
+    #[serde(skip)]
     pub sensations: Vec<Arc<Sensation>>,
 }

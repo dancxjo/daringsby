@@ -7,6 +7,7 @@ use tracing::info;
 use crate::ear::NoopEar;
 use crate::mouth::NoopMouth;
 use crate::ollama_provider_from_args;
+use psyche::wits::Quick;
 
 /// Create a psyche with dummy providers for demos/tests.
 pub fn dummy_psyche() -> Psyche {
@@ -50,6 +51,11 @@ pub fn dummy_psyche() -> Psyche {
         wit_tx.clone(),
     )));
     psyche.register_observing_wit(Arc::new(psyche::FaceMemoryWit::with_debug(wit_tx)));
+    psyche.register_observing_wit(Arc::new(Quick::with_debug(
+        psyche.topic_bus(),
+        Arc::new(Dummy),
+        None,
+    )));
     psyche.set_turn_limit(usize::MAX);
     psyche
         .voice()
@@ -77,7 +83,7 @@ pub fn ollama_psyche(
     use crate::LoggingMotor;
     use psyche::wits::{
         BasicMemory, Combobulator, FondDuCoeur, HeartWit, IdentityWit, MemoryWit, Neo4jClient,
-        QdrantClient, Will,
+        QdrantClient, Quick, Will,
     };
 
     let narrator = ollama_provider_from_args(chatter_host, chatter_model)?;
@@ -114,6 +120,11 @@ pub fn ollama_psyche(
         wit_tx.clone(),
     )));
     psyche.register_observing_wit(Arc::new(psyche::FaceMemoryWit::with_debug(wit_tx.clone())));
+    psyche.register_observing_wit(Arc::new(Quick::with_debug(
+        psyche.topic_bus(),
+        Arc::new(ollama_provider_from_args(wits_host, wits_model)?),
+        Some(wit_tx.clone()),
+    )));
     psyche.register_typed_wit(Arc::new(Combobulator::with_debug(
         Arc::new(ollama_provider_from_args(wits_host, wits_model)?),
         Some(wit_tx.clone()),

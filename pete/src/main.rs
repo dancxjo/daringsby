@@ -10,13 +10,10 @@ use pete::FaceSensor;
 #[cfg(feature = "geo")]
 use pete::GeoSensor;
 use pete::HeartbeatSensor;
-use pete::{
-    Body, LoggingMotor, NoopEar, NoopMouth, app, init_logging,
-    listen_user_input,
-};
+use pete::{Body, LoggingMotor, NoopEar, NoopMouth, app, init_logging, listen_user_input};
 // helper for building Ollama providers
-use pete::ollama_provider_from_args;
 use pete::default_mouth;
+use pete::ollama_provider_from_args;
 use psyche::{Ear, GeoLoc, ImageData, Mouth, Sensation, Sensor, TrimMouth};
 use std::{
     net::SocketAddr,
@@ -108,7 +105,7 @@ async fn main() -> anyhow::Result<()> {
 
     use psyche::wits::{
         BasicMemory, Combobulator, FaceMemoryWit, FondDuCoeur, HeartWit, IdentityWit, MemoryWit,
-        Neo4jClient, QdrantClient, VisionWit, Will,
+        Neo4jClient, QdrantClient, Quick, VisionWit, Will,
     };
 
     let narrator = ollama_provider_from_args(&cli.chatter_host, &cli.chatter_model)?;
@@ -149,6 +146,11 @@ async fn main() -> anyhow::Result<()> {
         wit_tx.clone(),
     )));
     psyche.register_observing_wit(Arc::new(FaceMemoryWit::with_debug(wit_tx.clone())));
+    psyche.register_observing_wit(Arc::new(Quick::with_debug(
+        psyche.topic_bus(),
+        Arc::new(ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?),
+        Some(wit_tx.clone()),
+    )));
     psyche.register_typed_wit(Arc::new(Combobulator::with_debug(
         Arc::new(ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?),
         Some(wit_tx.clone()),

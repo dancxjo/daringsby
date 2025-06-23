@@ -11,7 +11,7 @@
 //! [`Instant`] and publishes it on [`Topic::Instant`].
 
 use crate::topics::{Topic, TopicBus};
-use crate::traits::Doer;
+use crate::traits::{Doer, wit::Wit};
 use crate::{Impression, Instant, Sensation, Stimulus};
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
@@ -96,6 +96,15 @@ impl Quick {
             } else {
                 break;
             }
+        }
+    }
+}
+
+#[async_trait]
+impl crate::traits::observer::SensationObserver for Quick {
+    async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
+        if let Some(s) = payload.downcast_ref::<Sensation>() {
+            self.observe(s.clone()).await;
         }
     }
 }
