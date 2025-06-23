@@ -57,7 +57,10 @@ impl crate::wit::Wit for MomentWit {
     type Input = ();
     type Output = String;
 
-    async fn observe(&self, _: Self::Input) {}
+    async fn observe(&self, _: Self::Input) {
+        // MomentWit also pulls data from the [`TopicBus`].
+        // No direct observations are expected, so this is left empty.
+    }
 
     async fn tick(&self) -> Vec<Impression<Self::Output>> {
         const MIN_ITEMS: usize = 3;
