@@ -116,11 +116,15 @@ impl Message {
     }
 }
 
-/// An asynchronous stream of `Result<String>` response chunks from the LLM.
+/// An asynchronous stream of textual chunks.
 ///
-/// Used by [`Chatter::chat`]. Typically emits partial sentences or word
-/// fragments. Terminates when the full response has been streamed.
-pub type ChatStream = Pin<Box<dyn Stream<Item = Result<String>> + Send>>;
+/// The error type defaults to [`anyhow::Error`], matching most provider
+/// implementations.  Use it whenever streaming strings.
+pub type TextStream<E = anyhow::Error> = Pin<Box<dyn Stream<Item = Result<String, E>> + Send>>;
+
+/// Backwards-compatibility alias.
+#[deprecated(note = "use `TextStream` instead")]
+pub type ChatStream = TextStream;
 
 /// Trait for conversational generation. Produces a stream of natural language chunks.
 ///
@@ -128,7 +132,7 @@ pub type ChatStream = Pin<Box<dyn Stream<Item = Result<String>> + Send>>;
 /// It receives a system prompt and conversation history, and returns a stream of
 /// partial strings.
 ///
-/// The returned [`ChatStream`] emits chunks progressively, enabling real-time
+/// The returned [`TextStream`] emits chunks progressively, enabling real-time
 /// speech synthesis.
 ///
 /// ## Example
@@ -160,7 +164,7 @@ pub trait Chatter: Send + Sync {
     /// Start a chat session using `system_prompt` and `history`.
     ///
     /// Returns a stream of response chunks from the language model.
-    async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<ChatStream>;
+    async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<TextStream>;
 
     /// Update additional context for future prompts.
     ///

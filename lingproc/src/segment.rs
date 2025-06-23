@@ -34,9 +34,11 @@ use unicode_segmentation::UnicodeSegmentation;
 ///     );
 /// });
 /// ```
-pub fn sentence_stream<S, E>(input: S) -> impl Stream<Item = Result<String, E>>
+use crate::types::TextStream;
+
+pub fn sentence_stream<S, E>(input: S) -> TextStream<E>
 where
-    S: Stream<Item = Result<String, E>> + Unpin,
+    S: Stream<Item = Result<String, E>> + Unpin + Send + 'static,
 {
     use futures::stream::unfold;
     let buf = String::new();
@@ -44,7 +46,7 @@ where
     let leftover = String::new();
     let pending: VecDeque<String> = VecDeque::new();
 
-    unfold(
+    let stream = unfold(
         (input, buf, seg, leftover, pending),
         |(mut input, mut buf, seg, mut leftover, mut pending)| async move {
             loop {
@@ -80,7 +82,8 @@ where
                 }
             }
         },
-    )
+    );
+    Box::pin(stream)
 }
 
 /// Split the `input` stream into words.
@@ -98,15 +101,15 @@ where
 ///     assert!(futures::StreamExt::next(&mut words).await.is_none());
 /// });
 /// ```
-pub fn word_stream<S, E>(input: S) -> impl Stream<Item = Result<String, E>>
+pub fn word_stream<S, E>(input: S) -> TextStream<E>
 where
-    S: Stream<Item = Result<String, E>> + Unpin,
+    S: Stream<Item = Result<String, E>> + Unpin + Send + 'static,
 {
     use futures::stream::unfold;
     let buf = String::new();
     let pending: VecDeque<String> = VecDeque::new();
 
-    unfold(
+    let stream = unfold(
         (input, buf, pending),
         |(mut input, mut buf, mut pending)| async move {
             loop {
@@ -137,5 +140,6 @@ where
                 }
             }
         },
-    )
+    );
+    Box::pin(stream)
 }

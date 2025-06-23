@@ -1,6 +1,6 @@
 //! Providers implementing the [`Doer`], [`Chatter`], and [`Vectorizer`] traits.
 
-use crate::types::{ChatStream, Chatter, Doer, Instruction, Message, Role, Vectorizer};
+use crate::types::{Chatter, Doer, Instruction, Message, Role, TextStream, Vectorizer};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use ollama_rs::{
@@ -57,7 +57,7 @@ impl Doer for OllamaProvider {
 
 #[async_trait]
 impl Chatter for OllamaProvider {
-    async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<ChatStream> {
+    async fn chat(&self, system_prompt: &str, history: &[Message]) -> Result<TextStream> {
         let mut prompt = system_prompt.to_string();
         for note in crate::types::take_prompt_context().await {
             prompt.push('\n');

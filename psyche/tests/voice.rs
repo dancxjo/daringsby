@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::ling::{ChatStream, Chatter, Doer, Instruction, Message};
+use psyche::ling::{Chatter, Doer, Instruction, Message, TextStream};
 use psyche::{Event, Mouth};
 use psyche::{Voice, extract_emojis};
 use std::sync::Arc;
@@ -11,7 +11,7 @@ struct DummyLLM;
 
 #[async_trait]
 impl Chatter for DummyLLM {
-    async fn chat(&self, _s: &str, _h: &[Message]) -> anyhow::Result<ChatStream> {
+    async fn chat(&self, _s: &str, _h: &[Message]) -> anyhow::Result<TextStream> {
         Ok(Box::pin(once(Ok("Hi 😊".to_string()))))
     }
     async fn update_prompt_context(&self, _c: &str) {}
@@ -50,7 +50,7 @@ struct SpyLLM(Arc<tokio::sync::Mutex<Vec<String>>>);
 
 #[async_trait]
 impl Chatter for SpyLLM {
-    async fn chat(&self, s: &str, _h: &[Message]) -> anyhow::Result<ChatStream> {
+    async fn chat(&self, s: &str, _h: &[Message]) -> anyhow::Result<TextStream> {
         self.0.lock().await.push(s.to_string());
         Ok(Box::pin(once(Ok("ok".into()))))
     }

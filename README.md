@@ -54,7 +54,7 @@ impl Ear for DummyEar {
 struct DummyVoice;
 #[async_trait]
 impl psyche::ling::Chatter for DummyVoice {
-    async fn chat(&self, _s: &str, _h: &[psyche::ling::Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+    async fn chat(&self, _s: &str, _h: &[psyche::ling::Message]) -> anyhow::Result<psyche::ling::TextStream> {
         Ok(Box::pin(tokio_stream::once(Ok("😊".to_string()))))
     }
 }

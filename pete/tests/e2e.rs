@@ -3,7 +3,7 @@ use cucumber::{World as _, given, then, when};
 use pete::{ChannelEar, ChannelMouth, EventBus};
 use psyche::{
     self, Ear, Event, Mouth,
-    ling::{ChatStream, Chatter, Doer, Instruction, Message, Vectorizer},
+    ling::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer},
 };
 use std::sync::{Arc, atomic::AtomicBool};
 use tokio::sync::{Mutex, broadcast};
@@ -32,7 +32,7 @@ struct FixedLLM {
 
 #[async_trait]
 impl Chatter for FixedLLM {
-    async fn chat(&self, _s: &str, _h: &[Message]) -> anyhow::Result<ChatStream> {
+    async fn chat(&self, _s: &str, _h: &[Message]) -> anyhow::Result<TextStream> {
         Ok(Box::pin(once(Ok(self.reply.clone()))))
     }
     async fn update_prompt_context(&self, _c: &str) {}
