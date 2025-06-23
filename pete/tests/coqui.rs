@@ -12,7 +12,7 @@ async fn coqui_url_has_required_params() {
                 .path("/api/tts")
                 .query_param("text", "hello")
                 .query_param("speaker_id", "p1")
-                .query_param("language_id", "en")
+                .query_param("lang", "en")
                 .matches(|req| {
                     req.query_params
                         .as_ref()
@@ -39,7 +39,7 @@ async fn coqui_defaults_voice() {
                 .path("/api/tts")
                 .query_param("text", "hi")
                 .query_param("speaker_id", "p123")
-                .query_param("language_id", "en");
+                .query_param("lang", "en");
             then.status(200).body("abcd");
         })
         .await;
