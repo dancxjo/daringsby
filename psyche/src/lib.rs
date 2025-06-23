@@ -70,7 +70,6 @@ pub mod motorcall;
 mod plain_mouth;
 pub mod prompt;
 mod task_group;
-pub use task_group::TaskGroup;
 pub mod sensors {
     #[cfg(feature = "face")]
     pub mod face;
@@ -83,26 +82,21 @@ mod types;
 
 pub use and_mouth::AndMouth;
 pub use debug::{DebugHandle, DebugInfo, debug_enabled, disable_debug, enable_debug};
-pub use instruction::{Instruction, parse_instructions};
+pub use instruction::Instruction;
+pub(crate) use ling::PromptBuilder;
 pub use model::{Experience, Impression, Stimulus};
-pub use pending_turn::PendingTurn;
 pub use plain_mouth::PlainMouth;
-pub use prompt::{CombobulatorPrompt, ContextualPrompt, VoicePrompt, WillPrompt};
+pub use prompt::{ContextualPrompt, WillPrompt};
 pub use psyche::DEFAULT_SYSTEM_PROMPT;
-pub use topics::{Topic, TopicBus, TopicMessage};
-pub use trim_mouth::TrimMouth;
-pub use types::{Decision, GeoLoc, Heartbeat, ImageData, ObjectInfo};
-
-pub use ling::{Feeling, PromptBuilder};
-pub use psyche::extract_tag as test_extract_tag;
 pub use psyche::{Conversation, Psyche};
 pub use sensation::{Event, Instant, Sensation, WitReport};
 #[cfg(feature = "face")]
 pub use sensors::{DummyDetector, FaceDetector, FaceInfo, FaceSensor};
-pub use traits::{
-    Doer, Ear, ErasedWit, Motor, Mouth, NoopMotor, SensationObserver, Sensor, Summarizer, Tts,
-    TtsStream, Wit, WitAdapter,
-};
+pub use topics::{Topic, TopicBus, TopicMessage};
+pub use traits::Summarizer;
+pub use traits::{ErasedWit, Mouth, Sensor, Tts, TtsStream, Wit};
+pub use trim_mouth::TrimMouth;
+pub use types::{Decision, GeoLoc, Heartbeat, ImageData, ObjectInfo};
 pub use voice::{Voice, extract_emojis};
 pub use wits::{
     BasicMemory, Combobulator, EntityWit, EpisodeWit, FaceMemoryWit, FondDuCoeur, GraphStore,

@@ -1,10 +1,9 @@
 use async_trait::async_trait;
 use cucumber::{World as _, given, then, when};
 use pete::{ChannelEar, ChannelMouth, EventBus};
-use psyche::{
-    self, Ear, Event, Mouth,
-    ling::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer},
-};
+use psyche::ling::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
+use psyche::traits::{Ear, Mouth};
+use psyche::{self, Event};
 use std::sync::{Arc, atomic::AtomicBool};
 use tokio::sync::{Mutex, broadcast};
 use tokio_stream::once;

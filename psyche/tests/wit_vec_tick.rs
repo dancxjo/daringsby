@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use psyche::{
-    Conversation, ErasedWit, Impression, Memory, PromptBuilder, Stimulus, Wit, WitAdapter,
-};
+use psyche::ling::PromptBuilder;
+use psyche::traits::wit::WitAdapter;
+use psyche::{Conversation, ErasedWit, Impression, Memory, Stimulus, Wit};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Mutex as AsyncMutex;

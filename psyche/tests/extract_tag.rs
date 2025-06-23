@@ -1,4 +1,4 @@
-use psyche::test_extract_tag as extract_tag;
+use psyche::psyche::extract_tag;
 
 #[test]
 fn parses_well_formed_xml() {

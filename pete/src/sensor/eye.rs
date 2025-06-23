@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use psyche::{ImageData, Sensation, Sensor};
+use psyche::traits::Sensor;
+use psyche::{ImageData, Sensation};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use tracing::{debug, info};

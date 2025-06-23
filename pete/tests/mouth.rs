@@ -1,5 +1,6 @@
 use pete::{ChannelMouth, EventBus};
-use psyche::{Event, Mouth};
+use psyche::Event;
+use psyche::traits::Mouth;
 use std::sync::{Arc, atomic::AtomicBool};
 
 #[tokio::test]

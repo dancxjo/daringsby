@@ -1,10 +1,11 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use lingproc::Instruction as LlmInstruction;
+use psyche::Instruction;
 use psyche::topics::{Topic, TopicBus};
 use psyche::traits::Doer;
+use psyche::wits::Will;
 use psyche::{Impression, Stimulus, Wit};
-use psyche::{Instruction, wits::Will};
 use std::sync::Arc;
 use tokio::time::{self, Duration};
 

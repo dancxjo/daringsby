@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use lingproc::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
-use psyche::{Ear, Impression, Mouth, Psyche, wit::Wit};
+use psyche::traits::{Ear, Mouth};
+use psyche::{Impression, Psyche, wit::Wit};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},

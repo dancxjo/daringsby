@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use psyche::{Ear, ImageData, Sensor};
+use psyche::ImageData;
+use psyche::traits::{Ear, Sensor};
 use tracing::info;
 
 /// Utility for feeding fake sensations to a [`Psyche`].

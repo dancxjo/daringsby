@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use futures::{StreamExt, pin_mut};
 use lingproc::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
+use psyche::traits::{Ear, Mouth, Sensor};
 use psyche::{
-    Ear, ImageData, Mouth, Psyche, Sensation, Sensor, Topic,
+    ImageData, Psyche, Sensation, Topic,
     sensors::face::{DummyDetector, FaceDetector, FaceInfo, FaceSensor},
     wits::memory::QdrantClient,
 };

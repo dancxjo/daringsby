@@ -20,7 +20,8 @@ use pete::ollama_provider_from_args;
 use pete::{CoquiTts, TtsMouth};
 #[cfg(feature = "tts")]
 use psyche::PlainMouth;
-use psyche::{Ear, GeoLoc, ImageData, Mouth, Sensation, Sensor, TrimMouth};
+use psyche::traits::{Ear, Mouth, Sensor};
+use psyche::{GeoLoc, ImageData, Sensation, TrimMouth};
 use std::{
     net::SocketAddr,
     sync::{

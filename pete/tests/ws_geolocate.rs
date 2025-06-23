@@ -1,7 +1,8 @@
 use axum::{Router, routing::get, serve};
 use futures::{SinkExt, StreamExt};
 use pete::{Body, ChannelEar, EventBus, EyeSensor, GeoSensor, dummy_psyche, ws_handler};
-use psyche::{GeoLoc, Sensor};
+use psyche::GeoLoc;
+use psyche::traits::Sensor;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize},

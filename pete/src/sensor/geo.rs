@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use psyche::{GeoLoc, Sensation, Sensor};
+use psyche::traits::Sensor;
+use psyche::{GeoLoc, Sensation};
 use tokio::sync::mpsc;
 use tracing::{debug, info};
 

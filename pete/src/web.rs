@@ -19,7 +19,8 @@ use tracing::{debug, error, info};
 
 use crate::EventBus;
 use lingproc::Role;
-use psyche::{Ear, Event, GeoLoc, ImageData, Sensor, WitReport};
+use psyche::traits::{Ear, Sensor};
+use psyche::{Event, GeoLoc, ImageData, WitReport};
 
 /// PETE's interface to the world — his `Body`.
 ///

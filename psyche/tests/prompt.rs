@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use lingproc::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
-use psyche::{DEFAULT_SYSTEM_PROMPT, Ear, Mouth, Psyche};
+use psyche::traits::{Ear, Mouth};
+use psyche::{DEFAULT_SYSTEM_PROMPT, Psyche};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Clone, Default)]

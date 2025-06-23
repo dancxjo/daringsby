@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use lingproc::Instruction as LlmInstruction;
+use psyche::Instruction;
 use psyche::traits::Doer;
 use psyche::wits::Will;
-use psyche::{Impression, Instruction, Stimulus, TopicBus, Wit};
+use psyche::{Impression, Stimulus, TopicBus, Wit};
 use std::sync::Arc;
 
 #[derive(Clone)]
