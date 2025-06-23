@@ -138,6 +138,8 @@ Provides LLM and embedding utilities.
   `--details-max-height` CSS variable so collapsed summaries remain visible.
 * Guard WebSocket sends with `readyState` checks and wait for an open connection
   before starting sensors like the webcam or microphone.
+* Restart the webcam if its stream ends by listening for the track's `ended`
+  event and reacquiring the camera.
 
 ### Hidden Debug Mode
 
