@@ -294,6 +294,23 @@ button:hover {
   margin: 0.5rem 0 0 0;
 }
 
+.scroll-well {
+  background-color: #111;
+  border: 1px solid #333;
+  border-radius: var(--bs-border-radius);
+  padding: 0.5rem;
+  max-height: 20vh;
+  overflow-y: auto;
+  margin-top: 0.5rem;
+}
+
+.scroll-well-label {
+  font-weight: bold;
+  font-size: 0.75rem;
+  color: var(--bs-secondary);
+  margin-bottom: 0.25rem;
+}
+
 @keyframes flash {
   from { background-color: #444; }
   to { background-color: #222; }
