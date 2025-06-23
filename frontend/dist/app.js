@@ -69,18 +69,24 @@
     let entry = witDetails[name];
     if (!entry) {
       const details = document.createElement("details");
+      details.id = `wit-${name}-details`;
       const summary = document.createElement("summary");
+      summary.id = `wit-${name}-summary`;
       const link = document.createElement("a");
+      link.id = `wit-${name}-debug-link`;
       link.href = `/debug/wit/${name.toLowerCase()}`;
       link.target = "_blank";
       link.textContent = "link";
       const time = document.createElement("span");
+      time.id = `wit-${name}-time`;
       time.className = "wit-time";
       summary.textContent = name + " ";
       summary.appendChild(time);
       summary.appendChild(link);
       const promptPre = document.createElement("pre");
+      promptPre.id = `wit-${name}-prompt`;
       const outputPre = document.createElement("pre");
+      outputPre.id = `wit-${name}-output`;
       outputPre.textContent = "waiting...";
       details.appendChild(summary);
       details.appendChild(promptPre);
@@ -162,6 +168,7 @@
           Object.entries(witOutputs).forEach(([name, output]) => {
             const div = document.createElement("div");
             div.className = "wit-report";
+            div.id = `wit-report-${name}`;
             div.textContent = `${name}: ${output}`;
             thoughtTabs.appendChild(div);
           });
@@ -208,6 +215,7 @@
       video.srcObject = stream;
       await video.play();
       const canvas = document.createElement("canvas");
+      canvas.id = "webcam-canvas";
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       setInterval(() => {
         if (video.videoWidth === 0) {
