@@ -38,6 +38,9 @@ This repository is a Rust workspace.
 * Only the `Psyche` loop should append to `Conversation`; `Ear` implementations forward sensations without modifying the log.
 * Use the `Motor` trait for host actions. Implementations live in `pete`.
 * Track spawned task `JoinHandle`s in a `TaskGroup` so `drop` aborts them.
+* `lingproc::push_prompt_context` and `lingproc::take_prompt_context` manage
+  temporary prompt notes. `Chatter::update_prompt_context` uses them by
+  default to append text to future prompts.
 
 ## Frontend
 

@@ -1,7 +1,22 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::pin::Pin;
+use tokio::sync::Mutex;
 use tokio_stream::Stream;
+
+/// Global context appended to future prompts.
+static PROMPT_CONTEXT: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+/// Add `note` for inclusion in the next prompt.
+pub async fn push_prompt_context(note: &str) {
+    PROMPT_CONTEXT.lock().await.push(note.to_string());
+}
+
+/// Consume and return all pending context notes.
+pub async fn take_prompt_context() -> Vec<String> {
+    PROMPT_CONTEXT.lock().await.drain(..).collect()
+}
 
 /// Represents an image passed into the instruction context.
 ///
@@ -142,8 +157,11 @@ pub trait Chatter: Send + Sync {
 
     /// Update additional context for future prompts.
     ///
-    /// Default implementation does nothing so callers may ignore this.
-    async fn update_prompt_context(&self, _context: &str) {}
+    /// The default implementation appends `context` to the prompt string used on
+    /// the next [`chat`] call.
+    async fn update_prompt_context(&self, context: &str) {
+        push_prompt_context(context).await;
+    }
 }
 
 /// Trait for generating semantic vector embeddings from text.
