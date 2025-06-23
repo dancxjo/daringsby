@@ -1,9 +1,12 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use tokio::sync::Mutex;
 use tokio_stream::Stream;
+#[cfg(feature = "ts")]
+use ts_rs::TS;
 
 /// Global context appended to future prompts.
 static PROMPT_CONTEXT: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -58,7 +61,8 @@ pub async fn take_prompt_context() -> Vec<String> {
 /// `ImageData` is used to represent camera input, screen captures, or uploaded
 /// assets. The `Doer` may include them in prompts for multimodal models (e.g.,
 /// Gemini, GPT-4V).
-#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ts", derive(TS))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageData {
     pub mime: String,   // e.g., "image/png"
     pub base64: String, // base64-encoded content
@@ -112,6 +116,19 @@ pub trait Doer: Send + Sync {
     /// Follow an instruction, possibly with supporting images, and return the
     /// textual result.
     async fn follow(&self, instruction: Instruction) -> Result<String>;
+}
+
+/// LLM-synthesized decision extracted from model output.
+///
+/// The generic parameter `I` represents a parsed instruction type. In the
+/// broader PETE system this maps to `psyche::Instruction`.
+#[cfg_attr(feature = "ts", derive(TS))]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Decision<I> {
+    /// Raw text returned by the language model.
+    pub text: String,
+    /// Structured instructions extracted from `text`.
+    pub instructions: Vec<I>,
 }
 
 /// Indicates the speaker of a message in a conversation.

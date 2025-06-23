@@ -2,12 +2,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "ts")]
 use ts_rs::TS;
 
-#[cfg_attr(feature = "ts", derive(TS))]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ImageData {
-    pub mime: String,
-    pub base64: String,
-}
+pub use lingproc::ImageData;
+pub type Decision = lingproc::Decision<crate::Instruction>;
 
 /// Latitude/longitude coordinates from a positioning sensor.
 #[cfg_attr(feature = "ts", derive(TS))]
@@ -30,13 +26,4 @@ pub struct ObjectInfo {
 pub struct Heartbeat {
     /// Moment of the heartbeat.
     pub timestamp: chrono::DateTime<chrono::Utc>,
-}
-
-/// LLM-synthesized decision parsed by [`Will`](crate::wits::Will).
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct Decision {
-    /// Raw text returned by the language model.
-    pub text: String,
-    /// Structured instructions extracted from the text.
-    pub instructions: Vec<crate::Instruction>,
 }
