@@ -27,3 +27,12 @@ pub struct Heartbeat {
     /// Moment of the heartbeat.
     pub timestamp: chrono::DateTime<chrono::Utc>,
 }
+
+/// LLM-synthesized decision parsed by [`Will`](crate::wits::Will).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Decision {
+    /// Raw text returned by the language model.
+    pub text: String,
+    /// Structured instructions extracted from the text.
+    pub instructions: Vec<crate::Instruction>,
+}

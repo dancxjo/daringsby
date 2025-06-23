@@ -77,7 +77,7 @@ pub fn ollama_psyche(
     use lingproc::OllamaProvider;
     use psyche::wits::{
         BasicMemory, Combobulator, CombobulatorSummarizer, FondDuCoeur, HeartWit, IdentityWit,
-        MemoryWit, Neo4jClient, QdrantClient, Will, WillSummarizer,
+        MemoryWit, Neo4jClient, QdrantClient, Will,
     };
 
     let narrator = OllamaProvider::new(chatter_host, chatter_model)?;

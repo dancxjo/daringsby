@@ -100,7 +100,7 @@ pub struct Instruction {
 /// cognitive components.
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// let result = doer.follow(Instruction {
 ///     command: "summarize what just happened".into(),
 ///     images: vec![],
