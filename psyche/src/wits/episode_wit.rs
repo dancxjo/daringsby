@@ -79,7 +79,11 @@ impl crate::wit::Wit for EpisodeWit {
     type Input = ();
     type Output = String;
 
-    async fn observe(&self, _: Self::Input) {}
+    async fn observe(&self, _: Self::Input) {
+        // EpisodeWit gathers input via [`TopicBus`] subscriptions at
+        // construction time. This method is required by the [`Wit`] trait
+        // but intentionally does nothing.
+    }
 
     async fn tick(&self) -> Vec<Impression<Self::Output>> {
         const MIN_ITEMS: usize = 3;

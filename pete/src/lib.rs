@@ -40,8 +40,7 @@ mod ollama;
 mod psyche_factory;
 mod sensor;
 mod simulator;
-#[cfg(feature = "tts")]
-mod tts_mouth;
+mod tts;
 mod web;
 
 #[cfg(feature = "ear")]
@@ -65,7 +64,8 @@ pub use sensor::geo::GeoSensor;
 pub use sensor::heartbeat::HeartbeatSensor;
 pub use simulator::Simulator;
 #[cfg(feature = "tts")]
-pub use tts_mouth::{CoquiTts, TtsMouth};
+pub use tts::{CoquiTts, TtsMouth};
+pub use tts::default_mouth;
 pub use web::{
     Body, WsRequest, app, conversation_log, index, listen_user_input, log_ws_handler,
     parse_data_url, psyche_debug, toggle_wit_debug, wit_debug_page, ws_handler,
