@@ -2,6 +2,28 @@
   const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${wsProtocol}//${location.hostname}:3000/ws`);
   const debugWs = new WebSocket(`${wsProtocol}//${location.hostname}:3000/debug`);
+
+  function waitForWebSocketReady() {
+    if (ws.readyState === WebSocket.OPEN) return Promise.resolve();
+    return new Promise((resolve) => {
+      const handle = () => {
+        if (ws.readyState === WebSocket.OPEN) {
+          clearInterval(interval);
+          resolve();
+        }
+      };
+      const interval = setInterval(handle, 50);
+      ws.addEventListener("open", handle, { once: true });
+    });
+  }
+
+  function safeSend(data) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(data);
+    } else {
+      console.warn("WebSocket not ready; dropping message");
+    }
+  }
   const mien = document.getElementById("mien");
   const words = document.getElementById("words");
   const thought = document.getElementById("thought");
@@ -201,7 +223,7 @@
       player.removeEventListener("ended", done);
       player.removeEventListener("error", done);
       if (next.text) {
-        ws.send(JSON.stringify({ type: "Echo", text: next.text }));
+        safeSend(JSON.stringify({ type: "Echo", text: next.text }));
       }
       playNext();
     };
@@ -240,14 +262,14 @@
     const input = document.getElementById("text-input");
     const text = input.value.trim();
     if (text) {
-      ws.send(JSON.stringify({ type: "Text", text }));
+      safeSend(JSON.stringify({ type: "Text", text }));
       input.value = "";
     }
   });
 
   if (navigator.geolocation) {
     navigator.geolocation.watchPosition((pos) => {
-      ws.send(
+      safeSend(
         JSON.stringify({
           type: "Geolocate",
           data: {
@@ -262,7 +284,9 @@
   async function setupWebcam() {
     try {
       const video = document.getElementById("webcam");
+      console.log("requesting webcam access");
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      console.log("webcam stream acquired");
       video.srcObject = stream;
       await video.play();
       const canvas = document.createElement("canvas");
@@ -280,7 +304,7 @@
           thoughtImage.style.display = "none";
           imageThumbnail.style.display = "none";
         }
-        ws.send(JSON.stringify({ type: "See", data }));
+        safeSend(JSON.stringify({ type: "See", data }));
       }, 1000);
     } catch (e) {
       if (e?.name === "NotFoundError") {
@@ -288,11 +312,12 @@
       } else {
         console.error("webcam", e);
       }
+      mien.textContent = "🚫 Webcam unavailable";
     }
   }
 
   if (navigator.mediaDevices?.getUserMedia) {
-    setupWebcam();
+    waitForWebSocketReady().then(setupWebcam);
   }
 
   async function setupAudio() {
@@ -312,7 +337,7 @@
           const reader = new FileReader();
           reader.onloadend = () => {
             const base64 = reader.result.split(",")[1];
-            ws.send(
+            safeSend(
               JSON.stringify({
                 type: "Hear",
                 data: { base64: base64, mime: e.data.type },
