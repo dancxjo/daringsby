@@ -18,8 +18,20 @@ pub struct InMemoryEmbeddingDb {
 }
 
 #[async_trait]
+/// Abstraction over a vector similarity store.
+///
+/// Implementations persist embeddings and provide nearest-neighbour search
+/// capabilities. Vectors are identified by an implementation-defined index.
+///
+/// The trait is asynchronous so implementations may perform network I/O.
 pub trait EmbeddingDb: Send + Sync {
+    /// Search for the first embedding similar to `vector`.
+    ///
+    /// Returns the stored index when the best match exceeds `threshold` using
+    /// cosine similarity, otherwise `None`.
     async fn search(&self, vector: &[f32], threshold: f32) -> Option<usize>;
+
+    /// Insert `vector` into the database and return its unique index.
     async fn insert(&self, vector: Vec<f32>) -> usize;
 }
 
