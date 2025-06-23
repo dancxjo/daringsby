@@ -98,6 +98,8 @@ Provides LLM and embedding utilities.
 * Avoid blocking: all Wits run asynchronously and should tick infrequently
 * Implement simple buffer-based Wits using `BufferedWit` to avoid duplicating
   `tick`/`observe` boilerplate
+* Assign stable `id` attributes to dynamic DOM nodes in `frontend/dist/app.js`
+  to simplify e2e tests
 
 ---
 

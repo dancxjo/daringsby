@@ -43,19 +43,15 @@
         details.style.transition = "max-height 0.2s ease";
         details.style.maxHeight = open ? collapsed + "px" : details.scrollHeight + "px";
       });
-      details.addEventListener(
-        "transitionend",
-        () => {
-          details.style.removeProperty("transition");
-          if (open) {
-            details.removeAttribute("open");
-            details.style.maxHeight = collapsed + "px";
-          } else {
-            details.style.maxHeight = "none";
-          }
-        },
-        { once: true }
-      );
+      details.addEventListener("transitionend", () => {
+        details.style.removeProperty("transition");
+        if (open) {
+          details.removeAttribute("open");
+          details.style.maxHeight = collapsed + "px";
+        } else {
+          details.style.maxHeight = "none";
+        }
+      }, { once: true });
       if (!open) {
         details.setAttribute("open", "");
       }
@@ -76,6 +72,7 @@
       console.error("wits", e);
     }
   }
+
   fetchWits();
   setInterval(fetchWits, 5000);
 
@@ -83,29 +80,104 @@
     let entry = witDetails[name];
     if (!entry) {
       const details = document.createElement("details");
+      details.id = `wit-${name}-details`;
       details.setAttribute("data-wit-name", name);
+
       const summary = document.createElement("summary");
+      summary.id = `wit-${name}-summary`;
+
       const link = document.createElement("a");
+      link.id = `wit-${name}-debug-link`;
       link.href = `/debug/wit/${name.toLowerCase()}`;
       link.target = "_blank";
       link.textContent = "link";
+
       const time = document.createElement("span");
+      time.id = `wit-${name}-time`;
       time.className = "wit-time";
+
       summary.textContent = name + " ";
       summary.appendChild(time);
       summary.appendChild(link);
+
       const promptPre = document.createElement("pre");
+      promptPre.id = `wit-${name}-prompt`;
       const outputPre = document.createElement("pre");
+      outputPre.id = `wit-${name}-output`;
       outputPre.textContent = "waiting...";
+
       details.appendChild(summary);
       details.appendChild(promptPre);
       details.appendChild(outputPre);
+
       animateDetails(details);
       witDebugContainer.appendChild(details);
+
       entry = { promptPre, outputPre, time, details };
       witDetails[name] = entry;
     }
     return entry;
+  }
+
+  function handleThink(m) {
+    if (typeof m.data === "object" && m.data !== null) {
+      witOutputs[m.data.name] = m.data.output;
+      const { promptPre, outputPre, time, details } = getWitDetail(m.data.name);
+      if (m.data.prompt !== undefined) {
+        promptPre.textContent = m.data.prompt;
+      }
+      if (m.data.output !== undefined) {
+        outputPre.textContent = JSON.stringify(m.data.output, null, 2);
+      }
+      time.textContent = new Date().toLocaleTimeString();
+      details.classList.add("updated");
+      setTimeout(() => details.classList.remove("updated"), 300);
+    } else {
+      witOutputs["unknown"] = m.data;
+    }
+
+    thoughtTabs.innerHTML = "";
+    Object.entries(witOutputs).forEach(([name, output]) => {
+      const div = document.createElement("div");
+      div.className = "wit-report";
+      div.id = `wit-report-${name}`;
+      div.textContent = `${name}: ${output}`;
+      thoughtTabs.appendChild(div);
+    });
+
+    thought.style.display = Object.keys(witOutputs).length ? "flex" : "none";
+  }
+
+  function handleMainMessage(ev) {
+    try {
+      const m = JSON.parse(ev.data);
+      switch (m.type) {
+        case "Emote":
+          mien.textContent = m.data;
+          break;
+        case "Say":
+          words.textContent += "\n" + m.data.words;
+          words.scrollTop = words.scrollHeight;
+          enqueueAudio({ audio: m.data.audio || null, text: m.data.words });
+          break;
+        case "Think":
+          handleThink(m);
+          break;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function handleDebugMessage(ev) {
+    try {
+      const m = JSON.parse(ev.data);
+      if (m.type === "Think") {
+        handleThink(m);
+      }
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   function enqueueAudio(item) {
@@ -132,9 +204,6 @@
         ws.send(JSON.stringify({ type: "Echo", text: next.text }));
       }
       playNext();
-      if (!playing) {
-        face.classList.remove("playing");
-      }
     };
 
     if (next.audio) {
@@ -150,61 +219,6 @@
     }
   }
 
-  function handleMainMessage(ev) {
-    try {
-      const m = JSON.parse(ev.data);
-      switch (m.type) {
-        case "Emote":
-          mien.textContent = m.data;
-          break;
-        case "Say":
-          words.textContent += "\n" + m.data.words;
-          words.scrollTop = words.scrollHeight;
-          enqueueAudio({ audio: m.data.audio || null, text: m.data.words });
-          break;
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }function handleDebugMessage(ev) {
-  try {
-    const m = JSON.parse(ev.data);
-    if (m.type === "Think") {
-      if (typeof m.data === "object" && m.data !== null) {
-        witOutputs[m.data.name] = m.data.output;
-        const { promptPre, outputPre, time, details } = getWitDetail(m.data.name);
-
-        if (m.data.prompt !== undefined) {
-          promptPre.textContent = m.data.prompt;
-        }
-
-        if (m.data.output !== undefined) {
-          outputPre.textContent = JSON.stringify(m.data.output, null, 2);
-        }
-
-        time.textContent = new Date().toLocaleTimeString();
-        details.classList.add("updated");
-        setTimeout(() => details.classList.remove("updated"), 300);
-      } else {
-        witOutputs["unknown"] = m.data;
-      }
-
-      thoughtTabs.innerHTML = "";
-      Object.entries(witOutputs).forEach(([name, output]) => {
-        const div = document.createElement("div");
-        div.className = "wit-report";
-        div.textContent = `${name}: ${output}`;
-        thoughtTabs.appendChild(div);
-      });
-
-      thought.style.display = Object.keys(witOutputs).length ? "flex" : "none";
-    }
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-
   function captureWebcamFrame(video, canvas, ctx) {
     if (video.videoWidth === 0) {
       video.play().catch(() => {});
@@ -213,12 +227,7 @@
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     ctx.drawImage(video, 0, 0);
-    const pixel = ctx.getImageData(
-      Math.floor(canvas.width / 2),
-      Math.floor(canvas.height / 2),
-      1,
-      1,
-    ).data;
+    const pixel = ctx.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data;
     const blank = pixel[0] === 0 && pixel[1] === 0 && pixel[2] === 0;
     return blank ? "" : canvas.toDataURL("image/jpeg");
   }
@@ -245,7 +254,7 @@
             longitude: pos.coords.longitude,
             latitude: pos.coords.latitude,
           },
-        }),
+        })
       );
     });
   }
@@ -257,25 +266,24 @@
       video.srcObject = stream;
       await video.play();
       const canvas = document.createElement("canvas");
+      canvas.id = "webcam-canvas";
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
-        setInterval(() => {
-          const data = captureWebcamFrame(video, canvas, ctx);
-          if (data === null) {
-            return;
-          }
-          if (data) {
-            thoughtImage.src = data;
-            thoughtImage.style.display = "block";
-            imageThumbnail.src = data;
-            imageThumbnail.style.display = "block";
-          } else {
-            thoughtImage.style.display = "none";
-            imageThumbnail.style.display = "none";
-          }
-          ws.send(JSON.stringify({ type: "See", data }));
-        }, 1000);
+      setInterval(() => {
+        const data = captureWebcamFrame(video, canvas, ctx);
+        if (data === null) return;
+        if (data) {
+          thoughtImage.src = data;
+          thoughtImage.style.display = "block";
+          imageThumbnail.src = data;
+          imageThumbnail.style.display = "block";
+        } else {
+          thoughtImage.style.display = "none";
+          imageThumbnail.style.display = "none";
+        }
+        ws.send(JSON.stringify({ type: "See", data }));
+      }, 1000);
     } catch (e) {
-      if (e && e.name === "NotFoundError") {
+      if (e?.name === "NotFoundError") {
         console.warn("webcam not available");
       } else {
         console.error("webcam", e);
@@ -283,7 +291,7 @@
     }
   }
 
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+  if (navigator.mediaDevices?.getUserMedia) {
     setupWebcam();
   }
 
@@ -308,7 +316,7 @@
               JSON.stringify({
                 type: "Hear",
                 data: { base64: base64, mime: e.data.type },
-              }),
+              })
             );
           };
           reader.readAsDataURL(e.data);
@@ -320,7 +328,7 @@
     }
   }
 
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+  if (navigator.mediaDevices?.getUserMedia) {
     setupAudio();
   }
 
@@ -338,8 +346,10 @@
       conversationLog.textContent = msgs
         .slice(1)
         .map((m) => {
-          const ts = debugMode && m.timestamp ?
-            new Date(m.timestamp).toLocaleTimeString() + " " : "";
+          const ts =
+            debugMode && m.timestamp
+              ? new Date(m.timestamp).toLocaleTimeString() + " "
+              : "";
           return `${ts}${m.role}: ${m.content}`;
         })
         .join("\n");
