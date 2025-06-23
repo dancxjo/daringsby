@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use futures::{StreamExt, pin_mut};
-use lingproc::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
+use lingproc::{Chatter, Doer, LlmInstruction, Message, TextStream, Vectorizer};
 use psyche::{Ear, Mouth, Psyche, Topic};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,7 +33,7 @@ impl Ear for Dummy {
 
 #[async_trait]
 impl Doer for Dummy {
-    async fn follow(&self, _: Instruction) -> anyhow::Result<String> {
+    async fn follow(&self, _: LlmInstruction) -> anyhow::Result<String> {
         Ok("ok".into())
     }
 }

@@ -1,6 +1,6 @@
 //! Providers implementing the [`Doer`], [`Chatter`], and [`Vectorizer`] traits.
 
-use crate::types::{Chatter, Doer, Instruction, Message, Role, TextStream, Vectorizer};
+use crate::types::{Chatter, Doer, LlmInstruction, Message, Role, TextStream, Vectorizer};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use ollama_rs::{
@@ -34,9 +34,9 @@ impl OllamaProvider {
 #[async_trait]
 impl Doer for OllamaProvider {
     /// Follow an instruction via the Ollama API.
-    async fn follow(&self, instruction: Instruction) -> Result<String> {
+    async fn follow(&self, instruction: LlmInstruction) -> Result<String> {
         use ollama_rs::generation::images::Image;
-        let Instruction { command, images } = instruction;
+        let LlmInstruction { command, images } = instruction;
         info!(%command, image_count = images.len(), "ollama follow");
         debug!(%command, image_count = images.len(), "ollama follow request");
 

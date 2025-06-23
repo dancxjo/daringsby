@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use lingproc::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
+use lingproc::{Chatter, Doer, LlmInstruction, Message, TextStream, Vectorizer};
 use psyche::{Ear, Impression, Mouth, Psyche, Sensation, Stimulus, wit::Wit};
 use std::sync::{
     Arc,
@@ -23,7 +23,7 @@ impl Chatter for RecLLM {
 
 #[async_trait]
 impl Doer for RecLLM {
-    async fn follow(&self, _i: Instruction) -> anyhow::Result<String> {
+    async fn follow(&self, _i: LlmInstruction) -> anyhow::Result<String> {
         Ok("ok".into())
     }
 }

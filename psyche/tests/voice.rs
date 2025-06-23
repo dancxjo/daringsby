@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use lingproc::{Chatter, Doer, Instruction, Message, TextStream};
+use lingproc::{Chatter, Doer, LlmInstruction, Message, TextStream};
 use psyche::{Event, Mouth};
 use psyche::{Voice, extract_emojis};
 use std::sync::Arc;
@@ -19,7 +19,7 @@ impl Chatter for DummyLLM {
 
 #[async_trait]
 impl Doer for DummyLLM {
-    async fn follow(&self, _i: Instruction) -> anyhow::Result<String> {
+    async fn follow(&self, _i: LlmInstruction) -> anyhow::Result<String> {
         Ok("ok".into())
     }
 }
@@ -59,7 +59,7 @@ impl Chatter for SpyLLM {
 
 #[async_trait]
 impl Doer for SpyLLM {
-    async fn follow(&self, _i: Instruction) -> anyhow::Result<String> {
+    async fn follow(&self, _i: LlmInstruction) -> anyhow::Result<String> {
         Ok("ok".into())
     }
 }

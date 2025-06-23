@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use lingproc::{Chatter, Doer, Instruction, Message, Vectorizer};
+use lingproc::{Chatter, Doer, LlmInstruction, Message, Vectorizer};
 use psyche::{ContextualPrompt, Psyche};
 use std::sync::Arc;
 use tracing::info;
@@ -15,7 +15,7 @@ pub fn dummy_psyche() -> Psyche {
 
     #[async_trait]
     impl Doer for Dummy {
-        async fn follow(&self, _: Instruction) -> anyhow::Result<String> {
+        async fn follow(&self, _: LlmInstruction) -> anyhow::Result<String> {
             Ok("ok".into())
         }
     }

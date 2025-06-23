@@ -1,6 +1,6 @@
 use crate::traits::Doer;
 use crate::{Impression, Stimulus};
-use lingproc::Instruction;
+use lingproc::LlmInstruction;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 
@@ -54,7 +54,7 @@ impl FondDuCoeur {
                 combined.push_str(&stim.what);
             }
         }
-        let instruction = Instruction {
+        let instruction = LlmInstruction {
             command: format!("Summarize Pete's life story in one paragraph:\n{combined}"),
             images: Vec::new(),
         };

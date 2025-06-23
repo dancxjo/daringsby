@@ -1,7 +1,7 @@
 use crate::traits::{Doer, Motor};
 use crate::{Impression, Stimulus, wit::Wit};
 use async_trait::async_trait;
-use lingproc::Instruction;
+use lingproc::LlmInstruction;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 
@@ -65,7 +65,7 @@ impl Wit for HeartWit {
             .flat_map(|i| i.stimuli.iter().map(|s| s.what.clone()))
             .collect::<Vec<_>>()
             .join(" ");
-        let instruction = Instruction {
+        let instruction = LlmInstruction {
             command: format!("What emoji reflects Pete's mood? {summary}"),
             images: Vec::new(),
         };

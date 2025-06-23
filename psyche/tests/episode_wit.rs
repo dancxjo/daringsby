@@ -1,9 +1,9 @@
 use async_trait::async_trait;
-use lingproc::Instruction as LlmInstruction;
+use lingproc::LlmInstruction;
 use psyche::topics::{Topic, TopicBus};
 use psyche::traits::Doer;
 use psyche::wits::EpisodeWit;
-use psyche::{Impression, Instruction, Stimulus, Wit};
+use psyche::{HostInstruction, Impression, Stimulus, Wit};
 use std::sync::Arc;
 use tokio::time::{Duration, sleep};
 
@@ -37,7 +37,7 @@ async fn emits_summary_on_break() {
     sleep(Duration::from_millis(20)).await;
     publish_situations(&bus, 3);
     sleep(Duration::from_millis(20)).await;
-    bus.publish(Topic::Instruction, Instruction::BreakEpisode);
+    bus.publish(Topic::Instruction, HostInstruction::BreakEpisode);
     sleep(Duration::from_millis(20)).await;
     let out = wit.tick().await;
     assert_eq!(out.len(), 1);
