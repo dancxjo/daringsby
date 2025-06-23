@@ -69,6 +69,7 @@
     let entry = witDetails[name];
     if (!entry) {
       const details = document.createElement("details");
+      details.setAttribute("data-wit-name", name);
       const summary = document.createElement("summary");
       const link = document.createElement("a");
       link.href = `/debug/wit/${name.toLowerCase()}`;
