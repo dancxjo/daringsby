@@ -172,3 +172,4 @@ This document reflects the current cognitive and runtime architecture of Pete Da
 * Features: `eye`, `face`, `geo`, `ear`, `heartbeat`.
 * `all-sensors` enables them all and is used by default.
 * `HeartbeatSensor::test_interval` helps with short test delays.
+\n* In doctests, use `crate::` paths to reference items within the same crate.

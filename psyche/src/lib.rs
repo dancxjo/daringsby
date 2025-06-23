@@ -4,6 +4,7 @@ mod instruction;
 pub mod psyche;
 pub mod sensation;
 pub mod topics;
+pub mod util;
 mod voice;
 
 pub mod traits {
