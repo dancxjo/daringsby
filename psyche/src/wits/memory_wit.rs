@@ -1,4 +1,4 @@
-use crate::wit::Wit;
+use crate::traits::BufferedWit;
 use crate::{Impression, Stimulus, wits::Memory};
 use async_trait::async_trait;
 use std::sync::{
@@ -49,23 +49,15 @@ impl MemoryWit {
 }
 
 #[async_trait]
-impl Wit for MemoryWit {
+impl BufferedWit for MemoryWit {
     type Input = Impression<String>;
     type Output = String;
 
-    async fn observe(&self, input: Self::Input) {
-        self.buffer.lock().unwrap().push(input);
+    fn buffer(&self) -> &Mutex<Vec<Self::Input>> {
+        &self.buffer
     }
 
-    async fn tick(&self) -> Vec<Impression<Self::Output>> {
-        let new_items = {
-            let mut buf = self.buffer.lock().unwrap();
-            if buf.is_empty() {
-                Vec::new()
-            } else {
-                buf.drain(..).collect::<Vec<_>>()
-            }
-        };
+    async fn process_buffer(&self, new_items: Vec<Self::Input>) -> Vec<Impression<Self::Output>> {
         {
             let mut collected = self.collected.lock().unwrap();
             collected.extend(new_items);
@@ -112,7 +104,7 @@ impl Wit for MemoryWit {
         vec![impression]
     }
 
-    fn debug_label(&self) -> &'static str {
+    fn label(&self) -> &'static str {
         Self::LABEL
     }
 }

@@ -95,6 +95,8 @@ Provides LLM and embedding utilities.
 * Simulate full cognition loops with stubbed `Mouth`, `Ear`, and LLM
 * Enable `tts` feature for Coqui integration, or test without it
 * Avoid blocking: all Wits run asynchronously and should tick infrequently
+* Implement simple buffer-based Wits using `BufferedWit` to avoid duplicating
+  `tick`/`observe` boilerplate
 
 ---
 
