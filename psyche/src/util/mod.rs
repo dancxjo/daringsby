@@ -1,3 +1,5 @@
 //! Shared helper utilities used across the crate.
 
-pub use lingproc::math;
+pub mod math {
+    pub use common::cosine_similarity;
+}

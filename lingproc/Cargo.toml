@@ -16,6 +16,7 @@ tracing = "0.1"
 once_cell = "1"
 serde = { version = "1", features = ["derive"] }
 ts-rs = { version = "7", optional = true }
+common = { path = "../common" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

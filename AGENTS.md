@@ -126,6 +126,9 @@ Provides LLM and embedding utilities.
   `with_debug` with `None` so devtools can uniformly enable debug output
 * Document intentionally empty trait methods with comments so their purpose is
   clear.
+* Consolidate common math helpers like `cosine_similarity` in the `common` crate
+  and re-export them from other crates to avoid duplication.
+* Keep commit messages concise and use tests to drive development (TDD/BDD).
 * Reuse cargo and npm caches when running tests to avoid re-downloading
   dependencies.
 * Keep commit messages short yet descriptive.
