@@ -37,7 +37,7 @@ impl SituationWit {
         let buf_clone = buffer.clone();
         let bus_clone = bus.clone();
         tokio::spawn(async move {
-            let mut stream = bus_clone.subscribe(Topic::Moment);
+            let stream = bus_clone.subscribe(Topic::Moment);
             tokio::pin!(stream);
             while let Some(payload) = stream.next().await {
                 if let Ok(i) = Arc::downcast::<Impression<String>>(payload) {

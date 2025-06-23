@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use lingproc::{Chatter, Doer, LlmInstruction, Message, TextStream};
-use psyche::{Event, Mouth};
+use psyche::Mouth;
 use psyche::{Voice, extract_emojis};
 use std::sync::Arc;
 use tokio::sync::broadcast;

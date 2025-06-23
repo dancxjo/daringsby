@@ -68,7 +68,7 @@ impl ContextualPrompt {
             let b = bus.clone();
             let s = store.clone();
             tokio::spawn(async move {
-                let mut stream = b.subscribe(topic);
+                let stream = b.subscribe(topic);
                 tokio::pin!(stream);
                 while let Some(payload) = stream.next().await {
                     if let Ok(sval) = std::sync::Arc::downcast::<String>(payload.clone()) {

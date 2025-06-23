@@ -29,7 +29,7 @@ async fn publishes_parsed_instructions() {
         None::<String>,
     ))
     .await;
-    let mut sub = bus.subscribe(Topic::Instruction);
+    let sub = bus.subscribe(Topic::Instruction);
     tokio::pin!(sub);
     let out = wit.tick().await;
     assert!(matches!(
@@ -70,7 +70,7 @@ async fn mixed_instructions() {
         None::<String>,
     ))
     .await;
-    let mut sub = bus.subscribe(Topic::Instruction);
+    let sub = bus.subscribe(Topic::Instruction);
     tokio::pin!(sub);
     let out = wit.tick().await;
     assert_eq!(out[0].stimuli[0].what.instructions.len(), 2);
@@ -103,7 +103,7 @@ async fn empty_response_yields_nothing() {
     .await;
     let out = wit.tick().await;
     assert!(out.is_empty());
-    let mut sub = bus.subscribe(Topic::Instruction);
+    let sub = bus.subscribe(Topic::Instruction);
     tokio::pin!(sub);
     time::sleep(Duration::from_millis(20)).await;
     assert!(

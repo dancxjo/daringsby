@@ -75,7 +75,6 @@ pub fn ollama_psyche(
     neo4j_pass: &str,
 ) -> anyhow::Result<Psyche> {
     use crate::LoggingMotor;
-    use lingproc::OllamaProvider;
     use psyche::wits::{
         BasicMemory, Combobulator, FondDuCoeur, HeartWit, IdentityWit, MemoryWit, Neo4jClient,
         QdrantClient, Will,

@@ -6,10 +6,10 @@ use axum::{
     },
     http::StatusCode,
     response::{Html, IntoResponse},
-    routing::{get, get_service, post},
+    routing::{get, get_service},
 };
 use serde::{Deserialize, Serialize};
-use shared::{AudioData, WsPayload};
+use shared::WsPayload;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -20,7 +20,7 @@ use tracing::{debug, error, info};
 
 use crate::EventBus;
 use lingproc::Role;
-use psyche::{Ear, Event, GeoLoc, ImageData, Sensor, WitReport};
+use psyche::{Ear, Event, GeoLoc, ImageData, Sensor};
 
 /// PETE's interface to the world — his `Body`.
 ///

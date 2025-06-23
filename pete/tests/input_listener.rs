@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 
 #[tokio::test]
 async fn records_user_input() {
-    let mut psyche = dummy_psyche();
+    let psyche = dummy_psyche();
     let conv = psyche.conversation();
     let voice = psyche.voice();
     let speaking = std::sync::Arc::new(AtomicBool::new(false));
