@@ -252,6 +252,14 @@
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const rec = new MediaRecorder(stream);
+      window.onbeforeunload = () => {
+        try {
+          if (rec.state !== "inactive") rec.stop();
+          stream.getTracks().forEach((t) => t.stop());
+        } catch (err) {
+          console.warn("recorder cleanup", err);
+        }
+      };
       rec.ondataavailable = (e) => {
         if (e.data.size > 0) {
           const reader = new FileReader();
