@@ -67,7 +67,7 @@ mod debug;
 
 pub mod ling;
 pub mod model;
-pub mod motorcall;
+pub mod motor_call;
 mod plain_mouth;
 pub mod prompt;
 mod task_group;
