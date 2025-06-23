@@ -5,7 +5,7 @@ pub mod geo;
 pub mod heartbeat;
 
 use async_trait::async_trait;
-use psyche::Sensor;
+use psyche::traits::Sensor;
 
 /// Placeholder sensor used when a feature is disabled.
 #[derive(Clone)]

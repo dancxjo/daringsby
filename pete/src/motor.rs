@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::Motor;
+use psyche::traits::Motor;
 use tracing::info;
 
 /// Simple [`Motor`] implementation that logs each action.

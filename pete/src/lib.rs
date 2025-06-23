@@ -52,6 +52,8 @@ pub use motor::LoggingMotor;
 pub use mouth::{ChannelMouth, NoopMouth};
 #[cfg(feature = "face")]
 pub use psyche::FaceSensor;
+#[cfg(feature = "tts")]
+pub use psyche::traits::{Tts, TtsStream};
 pub use psyche_factory::{dummy_psyche, ollama_psyche};
 pub use sensor::NoopSensor;
 #[cfg(feature = "eye")]
@@ -61,7 +63,7 @@ pub use sensor::geo::GeoSensor;
 pub use sensor::heartbeat::HeartbeatSensor;
 pub use simulator::Simulator;
 #[cfg(feature = "tts")]
-pub use tts_mouth::{CoquiTts, Tts, TtsMouth, TtsStream};
+pub use tts_mouth::{CoquiTts, TtsMouth};
 pub use web::{
     Body, WsRequest, app, conversation_log, index, listen_user_input, log_ws_handler, psyche_debug,
     toggle_wit_debug, wit_debug_page, ws_handler,

@@ -1,9 +1,10 @@
 use crate::Instruction;
 use crate::topics::{Topic, TopicBus};
+use crate::traits::Doer;
 use crate::{Impression, Stimulus, WitReport};
 use async_trait::async_trait;
 use futures::StreamExt;
-use lingproc::{Doer, Instruction as LlmInstruction};
+use lingproc::Instruction as LlmInstruction;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},

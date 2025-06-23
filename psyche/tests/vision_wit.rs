@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use lingproc::{Doer, Instruction};
+use lingproc::Instruction;
+use psyche::traits::Doer;
 use psyche::{ImageData, Impression, Stimulus, VisionWit, Wit};
 use std::sync::Arc;
 

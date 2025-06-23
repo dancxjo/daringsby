@@ -1,6 +1,7 @@
 use async_trait::async_trait;
-use lingproc::{Doer, Instruction};
+use lingproc::Instruction;
 use psyche::motorcall::{Motor, MotorRegistry};
+use psyche::traits::Doer;
 use psyche::wits::Will;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

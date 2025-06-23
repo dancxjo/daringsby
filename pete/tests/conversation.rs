@@ -1,6 +1,6 @@
 use axum::{body, extract::State, response::IntoResponse};
 use pete::{Body, ChannelEar, EventBus, EyeSensor, GeoSensor, conversation_log, dummy_psyche};
-use psyche::Sensor;
+use psyche::traits::Sensor;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize},

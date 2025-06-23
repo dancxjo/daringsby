@@ -1,8 +1,9 @@
 use crate::topics::{Topic, TopicBus};
+use crate::traits::Doer;
 use crate::{Impression, Stimulus, WitReport};
 use async_trait::async_trait;
 use futures::StreamExt;
-use lingproc::{Doer, Instruction};
+use lingproc::Instruction;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 use tracing::debug;

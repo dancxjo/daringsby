@@ -2,7 +2,7 @@
 use futures::stream;
 use pete::{Tts, TtsMouth, TtsStream};
 use psyche::Event;
-use psyche::Mouth;
+use psyche::traits::Mouth;
 use std::sync::{Arc, atomic::AtomicBool};
 use tokio::sync::broadcast;
 

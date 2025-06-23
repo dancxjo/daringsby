@@ -1,10 +1,11 @@
 use crate::ImageData;
+use crate::traits::Doer;
 use crate::traits::observer::SensationObserver;
 use crate::traits::wit::Wit;
 use crate::{Impression, Stimulus};
 use async_trait::async_trait;
 use lingproc::ImageData as LImageData;
-use lingproc::{Doer, Instruction};
+use lingproc::Instruction;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::{Semaphore, broadcast};

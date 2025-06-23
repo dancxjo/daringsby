@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use psyche::{Mouth, TrimMouth};
+use psyche::TrimMouth;
+use psyche::traits::Mouth;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
