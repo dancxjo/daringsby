@@ -65,7 +65,7 @@ impl Tts for CoquiTts {
             qp.append_pair("text", text);
             // Always include speaker_id, style_wav and language_id parameters
             // providing defaults when values are not configured
-            qp.append_pair("speaker_id", self.speaker_id.as_deref().unwrap_or("p123"));
+            qp.append_pair("speaker_id", self.speaker_id.as_deref().unwrap_or("p376"));
             qp.append_pair("style_wav", "");
             qp.append_pair("language_id", self.language_id.as_deref().unwrap_or(""));
         }
