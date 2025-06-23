@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use lingproc::Instruction;
+use lingproc::LlmInstruction;
 use psyche::traits::Doer;
 use psyche::wit::{Moment, Wit};
 use psyche::wits::{FondDuCoeur, IdentityWit};
@@ -11,7 +11,7 @@ struct Dummy;
 
 #[async_trait]
 impl Doer for Dummy {
-    async fn follow(&self, i: Instruction) -> anyhow::Result<String> {
+    async fn follow(&self, i: LlmInstruction) -> anyhow::Result<String> {
         Ok(format!("story:{}", i.command))
     }
 }

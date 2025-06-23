@@ -1,6 +1,6 @@
 use crate::{Impression, Sensation, Stimulus};
 use async_trait::async_trait;
-use lingproc::Instruction;
+use lingproc::LlmInstruction;
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value};
 use std::sync::Arc;
@@ -159,7 +159,10 @@ impl Default for InstantWit {
 
         #[async_trait]
         impl lingproc::Doer for Dummy {
-            async fn follow(&self, instruction: lingproc::Instruction) -> anyhow::Result<String> {
+            async fn follow(
+                &self,
+                instruction: lingproc::LlmInstruction,
+            ) -> anyhow::Result<String> {
                 Ok(instruction.command)
             }
         }
@@ -194,7 +197,7 @@ impl Summarizer<Sensation, Instant> for InstantWit {
         );
         let resp = self
             .doer
-            .follow(Instruction {
+            .follow(LlmInstruction {
                 command: prompt,
                 images: Vec::new(),
             })
@@ -227,7 +230,10 @@ impl Default for MomentWit {
 
         #[async_trait]
         impl lingproc::Doer for Dummy {
-            async fn follow(&self, instruction: lingproc::Instruction) -> anyhow::Result<String> {
+            async fn follow(
+                &self,
+                instruction: lingproc::LlmInstruction,
+            ) -> anyhow::Result<String> {
                 Ok(instruction.command)
             }
         }
@@ -259,7 +265,7 @@ impl Summarizer<Instant, Moment> for MomentWit {
         // For now we simply echo the prompt as the model response.
         let resp = self
             .doer
-            .follow(lingproc::Instruction {
+            .follow(lingproc::LlmInstruction {
                 command: prompt,
                 images: Vec::new(),
             })
@@ -295,7 +301,10 @@ impl Default for SituationWit {
 
         #[async_trait]
         impl lingproc::Doer for Dummy {
-            async fn follow(&self, instruction: lingproc::Instruction) -> anyhow::Result<String> {
+            async fn follow(
+                &self,
+                instruction: lingproc::LlmInstruction,
+            ) -> anyhow::Result<String> {
                 Ok(instruction.command)
             }
         }
@@ -322,7 +331,7 @@ impl Summarizer<Moment, Situation> for SituationWit {
         );
         let resp = self
             .doer
-            .follow(Instruction {
+            .follow(LlmInstruction {
                 command: prompt,
                 images: Vec::new(),
             })
@@ -357,7 +366,10 @@ impl Default for EpisodeWit {
 
         #[async_trait]
         impl lingproc::Doer for Dummy {
-            async fn follow(&self, instruction: lingproc::Instruction) -> anyhow::Result<String> {
+            async fn follow(
+                &self,
+                instruction: lingproc::LlmInstruction,
+            ) -> anyhow::Result<String> {
                 Ok(instruction.command)
             }
         }
@@ -387,7 +399,7 @@ impl Summarizer<Situation, Episode> for EpisodeWit {
         );
         let resp = self
             .doer
-            .follow(Instruction {
+            .follow(LlmInstruction {
                 command: prompt,
                 images: Vec::new(),
             })

@@ -1,7 +1,7 @@
 use httpmock::Method::POST;
 use httpmock::MockServer;
 use httpmock::prelude::HttpMockRequest;
-use lingproc::{Doer, ImageData, Instruction, Vectorizer, provider::OllamaProvider};
+use lingproc::{Doer, ImageData, LlmInstruction, Vectorizer, provider::OllamaProvider};
 
 #[tokio::test]
 async fn vectorize_returns_floats() {
@@ -40,7 +40,7 @@ async fn follow_includes_images() {
 
     let provider = OllamaProvider::new(server.base_url(), "mistral").unwrap();
     let res = provider
-        .follow(Instruction {
+        .follow(LlmInstruction {
             command: "look".into(),
             images: vec![ImageData {
                 mime: "image/jpeg".into(),

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use lingproc::Instruction as LlmInstruction;
+use lingproc::LlmInstruction;
 use psyche::traits::Doer;
 use psyche::wits::Will;
 use psyche::{Impression, Stimulus, TopicBus, Wit};

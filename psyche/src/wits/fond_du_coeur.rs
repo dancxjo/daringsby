@@ -1,7 +1,7 @@
 use crate::traits::Doer;
 use crate::{Impression, Stimulus, Summarizer, wit::Moment};
 use async_trait::async_trait;
-use lingproc::Instruction;
+use lingproc::LlmInstruction;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 
@@ -52,7 +52,7 @@ impl Summarizer<Moment, String> for FondDuCoeur {
                 combined.push_str(&stim.what.summary);
             }
         }
-        let instruction = Instruction {
+        let instruction = LlmInstruction {
             command: format!("Summarize Pete's life story in one paragraph:\n{combined}"),
             images: Vec::new(),
         };

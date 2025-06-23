@@ -1,12 +1,12 @@
 use async_trait::async_trait;
-use lingproc::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
+use lingproc::{Chatter, Doer, LlmInstruction, Message, TextStream, Vectorizer};
 use tokio_stream::StreamExt;
 
 struct Dummy;
 
 #[async_trait]
 impl Doer for Dummy {
-    async fn follow(&self, i: Instruction) -> anyhow::Result<String> {
+    async fn follow(&self, i: LlmInstruction) -> anyhow::Result<String> {
         Ok(format!("do:{}", i.command))
     }
 }
@@ -30,7 +30,7 @@ impl Vectorizer for Dummy {
 async fn dummy_traits() {
     let d = Dummy;
     assert_eq!(
-        d.follow(Instruction {
+        d.follow(LlmInstruction {
             command: "a".into(),
             images: Vec::new()
         })

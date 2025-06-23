@@ -5,7 +5,7 @@ use crate::{
     wit::{Episode, Wit},
 };
 use async_trait::async_trait;
-use lingproc::Instruction;
+use lingproc::LlmInstruction;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::{Semaphore, broadcast};
@@ -141,7 +141,7 @@ impl Combobulator {
                 combined.push_str(&stim.what.summary);
             }
         }
-        let instruction = Instruction {
+        let instruction = LlmInstruction {
             command: self.prompt.build(&combined),
             images: Vec::new(),
         };
@@ -168,7 +168,7 @@ impl Combobulator {
         use lingproc::ImageData as LImageData;
         let caption = self
             .doer
-            .follow(Instruction {
+            .follow(LlmInstruction {
                 command: "Describe only what you see in this image in a single sentence, in the first person. Remember, this is what you are *seeing* in the first person, so unless you're looking into a mirror, you won't be seeing yourself.".into(),
                 images: vec![LImageData { mime: image.mime.clone(), base64: image.base64.clone() }],
             })

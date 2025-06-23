@@ -38,5 +38,5 @@ pub struct Decision {
     /// Raw text returned by the language model.
     pub text: String,
     /// Structured instructions extracted from the text.
-    pub instructions: Vec<crate::Instruction>,
+    pub instructions: Vec<crate::HostInstruction>,
 }
