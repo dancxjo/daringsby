@@ -138,7 +138,13 @@ impl Neo4jClient {
 }
 
 #[async_trait]
+/// Persistent storage for structured memory graphs.
+///
+/// `GraphStore` implementations write arbitrary JSON-like `Value` records to a
+/// backing graph database. Each call should succeed independently so the memory
+/// system can continue operating when one store is unavailable.
 pub trait GraphStore: Send + Sync {
+    /// Store `data` in the graph store.
     async fn store_data(&self, data: &Value) -> Result<()>;
 }
 
