@@ -142,10 +142,13 @@ The previous Deno-based client has been removed. Update the files in
 
 ### Quick
 
-🧠 The Quick is Pete’s first-level integrator of sensation. It listens to raw
-Sensations and bundles them into an Instant, which is a short-lived,
-fast-turnaround Impression. The Quick fires often and helps higher-level Wits
-(like Will or Memory) act and reflect on what Pete just experienced.
+The Quick is Pete’s first-stage integrator. It buffers raw `Sensation`s over a short window (a few seconds) and emits an `Instant` — a coherent, narrative `Impression` of what Pete just experienced.
+
+- Input: `Sensation` (from webcam, mic, face detector, etc.)
+- Output: `Instant` (e.g., “I hear Travis say, 'Hiya Pete.'”)
+- Consumed by: `Will`, `Memory`, `Heart`
+
+🧠 The Quick does **not** act — it observes and narrates.
 
 This document reflects the current cognitive and runtime architecture of Pete Daringsby. Keep it consistent with the latest design discussions and behavior changes.
 
