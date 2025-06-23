@@ -1,7 +1,6 @@
 (function () {
   const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${wsProtocol}//${location.hostname}:3000/ws`);
-  const debugWs = new WebSocket(`${wsProtocol}//${location.hostname}:3000/debug`);
 
   function waitForWebSocketReady() {
     if (ws.readyState === WebSocket.OPEN) return Promise.resolve();
@@ -34,19 +33,12 @@
   const face = document.getElementById("face");
   const audioQueue = [];
   const conversationLog = document.getElementById("conversation-log");
+  const conversationMsgs = [];
   const witOutputs = {};
   const thoughtElems = {};
   const witDetails = {};
   const witDebugContainer = document.getElementById("wit-debug");
   let playing = false;
-  let debugMode = false;
-
-  document.addEventListener("keydown", (e) => {
-    if (e.ctrlKey && e.key === "d") {
-      debugMode = !debugMode;
-      updateConversation();
-    }
-  });
 
   function animateDetails(details) {
     const summary = details.querySelector("summary");
@@ -80,23 +72,6 @@
     });
   }
 
-  async function fetchWits() {
-    try {
-      const resp = await fetch("/debug/psyche");
-      const info = await resp.json();
-      (info.active_wits || []).forEach((name) => {
-        const entry = getWitDetail(name);
-        if (info.last_ticks && info.last_ticks[name]) {
-          entry.time.textContent = new Date(info.last_ticks[name]).toLocaleTimeString();
-        }
-      });
-    } catch (e) {
-      console.error("wits", e);
-    }
-  }
-
-  fetchWits();
-  setInterval(fetchWits, 5000);
 
   function getWitDetail(name) {
     let entry = witDetails[name];
@@ -185,17 +160,18 @@
         case "Think":
           handleThink(m);
           break;
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  function handleDebugMessage(ev) {
-    try {
-      const m = JSON.parse(ev.data);
-      if (m.type === "Think") {
-        handleThink(m);
+        case "Chunk":
+          thought.textContent = m.data;
+          break;
+        case "SystemPrompt":
+          conversationMsgs.length = 0;
+          conversationMsgs.push({ role: "system", content: m.data, timestamp: "" });
+          updateConversation();
+          break;
+        case "ConversationEntry":
+          conversationMsgs.push(m.data);
+          updateConversation();
+          break;
       }
     } catch (e) {
       console.error(e);
@@ -255,7 +231,6 @@
   }
 
   ws.onmessage = handleMainMessage;
-  debugWs.onmessage = handleDebugMessage;
 
   document.getElementById("text-form").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -370,36 +345,25 @@
     setupAudio();
   }
 
-  async function updateConversation() {
-    try {
-      const resp = await fetch(`/conversation${debugMode ? "?debug=1" : ""}`);
-      const msgs = await resp.json();
-      const system = document.getElementById("system-prompt");
-      if (system && msgs.length) {
-        system.textContent = msgs[0].content;
-      }
-      const atBottom =
-        conversationLog.scrollTop + conversationLog.clientHeight >=
-        conversationLog.scrollHeight - 5;
-      conversationLog.textContent = msgs
-        .slice(1)
-        .map((m) => {
-          const ts =
-            debugMode && m.timestamp
-              ? new Date(m.timestamp).toLocaleTimeString() + " "
-              : "";
-          return `${ts}${m.role}: ${m.content}`;
-        })
-        .join("\n");
-      if (atBottom) {
-        conversationLog.scrollTop = conversationLog.scrollHeight;
-      }
-    } catch (e) {
-      console.error("conversation", e);
+  function updateConversation() {
+    const system = document.getElementById("system-prompt");
+    if (system && conversationMsgs.length) {
+      system.textContent = conversationMsgs[0].content;
+    }
+    const atBottom =
+      conversationLog.scrollTop + conversationLog.clientHeight >=
+      conversationLog.scrollHeight - 5;
+    conversationLog.textContent = conversationMsgs
+      .slice(1)
+      .map((m) => {
+        const ts = m.timestamp ? new Date(m.timestamp).toLocaleTimeString() + " " : "";
+        return `${ts}${m.role}: ${m.content}`;
+      })
+      .join("\n");
+    if (atBottom) {
+      conversationLog.scrollTop = conversationLog.scrollHeight;
     }
   }
 
-  setInterval(updateConversation, 2000);
-  updateConversation();
   document.querySelectorAll("details").forEach(animateDetails);
 })();

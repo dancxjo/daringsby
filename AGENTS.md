@@ -86,7 +86,7 @@ Provides LLM and embedding utilities.
 * **WebSocket** at `/ws`: Streams `Event` objects from Pete to the client
 * **Static Frontend**: Lives under `frontend/dist`; connects to `/ws`
 * **Events**: Include `Sensed`, `Spoke`, `EmotionChanged`, `Speech`, etc.
-* **Debug Panel**: Streams `WitReport`s via `/debug`
+* **Debug Panel**: `WitReport` events are delivered on `/ws` as `Think` messages
 
 ---
 
@@ -141,9 +141,6 @@ Provides LLM and embedding utilities.
 * Restart the webcam if its stream ends by listening for the track's `ended`
   event and reacquiring the camera.
 
-### Hidden Debug Mode
-
-* Press `Ctrl+D` in the frontend to toggle timestamp display on conversation messages.
 
 ## 📝 Coding Guidelines
 

@@ -61,6 +61,12 @@ pub enum WsPayload {
         /// Additional arguments.
         args: serde_json::Value,
     },
+    /// Raw streaming text from the language model.
+    Chunk(String),
+    /// Initial system prompt for the conversation.
+    SystemPrompt(String),
+    /// A single entry in the conversation log.
+    ConversationEntry(ConversationEntry),
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -68,4 +74,12 @@ pub enum WsPayload {
 pub struct AudioData {
     pub base64: String,
     pub mime: String,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ConversationEntry {
+    pub role: String,
+    pub content: String,
+    pub timestamp: String,
 }
