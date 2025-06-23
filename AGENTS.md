@@ -136,6 +136,8 @@ Provides LLM and embedding utilities.
 * Patch DOM incrementally or debounce updates instead of replacing innerHTML.
 * Give `<details>` elements a `min-height` and manage `max-height` via the
   `--details-max-height` CSS variable so collapsed summaries remain visible.
+* Guard WebSocket sends with `readyState` checks and wait for an open connection
+  before starting sensors like the webcam or microphone.
 
 ### Hidden Debug Mode
 
