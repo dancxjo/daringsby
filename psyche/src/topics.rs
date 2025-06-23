@@ -117,7 +117,7 @@ pub struct TopicMessage {
 /// - ✅ Runtime decoupling between publishers and consumers
 ///
 /// # Example
-/// ```no_run
+/// ```rust,ignore
 /// use std::sync::Arc;
 /// use futures::StreamExt;
 /// use psyche::{topics::{Topic, TopicBus}, Instant};

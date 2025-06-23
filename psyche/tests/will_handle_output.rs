@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use lingproc::{Doer, Instruction};
 use psyche::motorcall::{Motor, MotorRegistry};
-use psyche::wits::WillSummarizer;
+use psyche::wits::Will;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -27,7 +27,7 @@ impl Motor for RecMotor {
 
 #[tokio::test]
 async fn parses_motor_tags() {
-    let mut will = WillSummarizer::new(Box::new(Dummy));
+    let mut will = Will::new(psyche::TopicBus::new(8), Arc::new(Dummy));
     let motor = Arc::new(RecMotor::default());
     will.motor_registry_mut().register("move", motor.clone());
     will.handle_llm_output("hello <move speed=\"fast\">go</move>")

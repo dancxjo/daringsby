@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
     use lingproc::OllamaProvider;
     use psyche::wits::{
         BasicMemory, Combobulator, CombobulatorSummarizer, FaceMemoryWit, FondDuCoeur, HeartWit,
-        IdentityWit, MemoryWit, Neo4jClient, QdrantClient, VisionWit, Will, WillSummarizer,
+        IdentityWit, MemoryWit, Neo4jClient, QdrantClient, VisionWit, Will,
     };
 
     let narrator = OllamaProvider::new(&cli.chatter_host, &cli.chatter_model)?;

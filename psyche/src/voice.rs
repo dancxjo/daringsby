@@ -17,7 +17,7 @@ pub struct Voice {
     events: broadcast::Sender<Event>,
     ready: AtomicBool,
     extra_prompt: Arc<Mutex<Option<String>>>,
-    will: Arc<Mutex<Option<Arc<crate::wits::WillSummarizer>>>>,
+    will: Arc<Mutex<Option<Arc<crate::wits::Will>>>>,
     prompt: Arc<Mutex<Box<dyn crate::prompt::PromptBuilder + Send + Sync>>>,
     segmenter: Arc<Segmenter>,
 }
@@ -60,7 +60,7 @@ impl Voice {
         *self.mouth.lock().unwrap() = mouth;
     }
 
-    pub fn set_will(&self, will: Arc<crate::wits::WillSummarizer>) {
+    pub fn set_will(&self, will: Arc<crate::wits::Will>) {
         *self.will.lock().unwrap() = Some(will);
     }
 

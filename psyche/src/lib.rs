@@ -35,7 +35,6 @@ pub mod wits {
     pub mod situation_wit;
     pub mod vision_wit;
     pub mod will;
-    pub mod will_summarizer;
 
     pub use combobulator::Combobulator;
     pub use combobulator_summarizer::CombobulatorSummarizer;
@@ -52,7 +51,6 @@ pub mod wits {
     pub use situation_wit::SituationWit;
     pub use vision_wit::VisionWit;
     pub use will::Will;
-    pub use will_summarizer::WillSummarizer;
 }
 
 mod and_mouth;
@@ -91,7 +89,7 @@ pub use psyche::DEFAULT_SYSTEM_PROMPT;
 pub use sensor::Sensor;
 pub use topics::{Topic, TopicBus, TopicMessage};
 pub use trim_mouth::TrimMouth;
-pub use types::{GeoLoc, Heartbeat, ImageData, ObjectInfo};
+pub use types::{Decision, GeoLoc, Heartbeat, ImageData, ObjectInfo};
 
 pub use ling::{Feeling, PromptBuilder};
 pub use psyche::extract_tag as test_extract_tag;
@@ -104,5 +102,5 @@ pub use voice::{Voice, extract_emojis};
 pub use wits::{
     BasicMemory, Combobulator, CombobulatorSummarizer, EntityWit, EpisodeWit, FaceMemoryWit,
     FondDuCoeur, GraphStore, HeartWit, IdentityWit, Memory, MemoryWit, Neo4jClient, NoopMemory,
-    QdrantClient, VisionWit, Will, WillSummarizer,
+    QdrantClient, VisionWit, Will,
 };

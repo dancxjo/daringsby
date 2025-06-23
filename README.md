@@ -94,11 +94,17 @@ let mouth = std::sync::Arc::new(psyche::TrimMouth::new(mouth));
 psyche.set_mouth(mouth);
 psyche.set_emotion("😊"); // initial expression
 // Ask the Will what to do next
-let will = psyche::WillSummarizer::new(Box::new(DummyVoice));
-let decision = will
-    .digest(&[psyche::Impression { headline: "".into(), details: None, raw_data: "say hi".to_string() }])
-    .await?;
-assert_eq!(decision.headline, "Speak.");
+let bus = psyche::TopicBus::new(8);
+let will = psyche::wits::Will::new(bus.clone(), Arc::new(DummyVoice));
+will
+    .observe(psyche::Impression::new(
+        vec![psyche::Stimulus::new("say hi".to_string())],
+        "",
+        None::<String>,
+    ))
+    .await;
+let decision = will.tick().await.pop().unwrap();
+assert_eq!(decision.summary, "Speak.");
 will.command_voice_to_speak(None); // allow Pete to respond
 // Build a custom instruction with the prompt generator
 let custom = psyche::WillPrompt::default().build("say hi");
