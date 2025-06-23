@@ -231,7 +231,8 @@ button:hover {
   padding: 0.5rem;
   color: #aaa;
   position: relative;
-  overflow: auto;
+  overflow: hidden;
+  transition: height 0.2s ease;
 }
 
 .sidebar details::before {

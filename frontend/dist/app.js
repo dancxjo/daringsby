@@ -16,6 +16,38 @@
   const witDebugContainer = document.getElementById("wit-debug");
   let playing = false;
 
+  function animateDetails(details) {
+    const summary = details.querySelector("summary");
+    if (!summary) return;
+    summary.addEventListener("click", (e) => {
+      e.preventDefault();
+      const open = details.hasAttribute("open");
+      const startHeight = details.offsetHeight;
+      const summaryHeight = summary.offsetHeight;
+      details.style.height = startHeight + "px";
+      details.style.overflow = "hidden";
+      requestAnimationFrame(() => {
+        details.style.transition = "height 0.2s ease";
+        details.style.height = open ? summaryHeight + "px" : details.scrollHeight + "px";
+      });
+      details.addEventListener(
+        "transitionend",
+        () => {
+          details.style.removeProperty("height");
+          details.style.removeProperty("overflow");
+          details.style.removeProperty("transition");
+          if (open) {
+            details.removeAttribute("open");
+          }
+        },
+        { once: true }
+      );
+      if (!open) {
+        details.setAttribute("open", "");
+      }
+    });
+  }
+
   async function fetchWits() {
     try {
       const resp = await fetch("/debug/psyche");
@@ -53,6 +85,7 @@
       details.appendChild(summary);
       details.appendChild(promptPre);
       details.appendChild(outputPre);
+      animateDetails(details);
       witDebugContainer.appendChild(details);
       entry = { promptPre, outputPre, time, details };
       witDetails[name] = entry;
@@ -276,4 +309,5 @@
 
   setInterval(updateConversation, 2000);
   updateConversation();
+  document.querySelectorAll("details").forEach(animateDetails);
 })();
