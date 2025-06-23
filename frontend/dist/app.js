@@ -231,6 +231,15 @@
   }
 
   ws.onmessage = handleMainMessage;
+  ws.addEventListener("open", () => {
+    webcamReady = true;
+    if (navigator.mediaDevices?.getUserMedia) {
+      setupWebcam();
+    }
+  });
+  ws.addEventListener("close", () => {
+    webcamReady = false;
+  });
 
   document.getElementById("text-form").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -257,6 +266,7 @@
   }
 
   let webcamStream = null;
+  let webcamReady = false;
 
   async function setupWebcam() {
     try {
@@ -273,7 +283,9 @@
       stream.getTracks().forEach((t) =>
         t.addEventListener(
           "ended",
-          () => waitForWebSocketReady().then(setupWebcam),
+          () => {
+            if (webcamReady) setupWebcam();
+          },
           { once: true }
         )
       );
@@ -284,6 +296,7 @@
       canvas.id = "webcam-canvas";
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       setInterval(() => {
+        if (!webcamReady) return;
         const data = captureWebcamFrame(video, canvas, ctx);
         if (data === null) return;
         if (data) {
@@ -308,7 +321,7 @@
   }
 
   if (navigator.mediaDevices?.getUserMedia) {
-    waitForWebSocketReady().then(setupWebcam);
+    if (webcamReady) setupWebcam();
   }
 
   async function setupAudio() {
