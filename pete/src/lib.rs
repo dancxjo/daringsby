@@ -20,7 +20,7 @@
 //!
 //! ## Components
 //!
-//! - [`AppState`]: Shared state container for the live app
+//! - [`Body`]: Shared state container for the live app
 //! - [`main.rs`]: Pete’s entry point and lifecycle wiring
 //! - [`psyche_factory.rs`]: Assembles the cognitive architecture (Wits, Topics,
 //!   Memory)
@@ -63,6 +63,6 @@ pub use simulator::Simulator;
 #[cfg(feature = "tts")]
 pub use tts_mouth::{CoquiTts, Tts, TtsMouth, TtsStream};
 pub use web::{
-    AppState, WsRequest, app, conversation_log, index, listen_user_input, log_ws_handler,
-    psyche_debug, toggle_wit_debug, wit_debug_page, ws_handler,
+    Body, WsRequest, app, conversation_log, index, listen_user_input, log_ws_handler, psyche_debug,
+    toggle_wit_debug, wit_debug_page, ws_handler,
 };

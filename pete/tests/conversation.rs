@@ -1,5 +1,5 @@
 use axum::{body, extract::State, response::IntoResponse};
-use pete::{AppState, ChannelEar, EventBus, EyeSensor, GeoSensor, conversation_log, dummy_psyche};
+use pete::{Body, ChannelEar, EventBus, EyeSensor, GeoSensor, conversation_log, dummy_psyche};
 use psyche::Sensor;
 use std::sync::{
     Arc,
@@ -23,7 +23,7 @@ async fn returns_log_json() {
     psyche.add_sense(eye.description());
     psyche.add_sense(geo.description());
     let debug = psyche.debug_handle();
-    let state = AppState {
+    let state = Body {
         bus: bus.clone(),
         ear,
         eye,

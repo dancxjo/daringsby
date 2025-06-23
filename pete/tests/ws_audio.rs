@@ -1,6 +1,6 @@
 use axum::{Router, routing::get, serve};
 use futures::StreamExt;
-use pete::{AppState, ChannelEar, EventBus, EyeSensor, GeoSensor, dummy_psyche, ws_handler};
+use pete::{Body, ChannelEar, EventBus, EyeSensor, GeoSensor, dummy_psyche, ws_handler};
 use psyche::Event;
 use psyche::Sensor;
 use std::sync::{
@@ -25,7 +25,7 @@ async fn websocket_forwards_audio() {
     let (bus, _user_rx) = EventBus::new();
     let bus = Arc::new(bus);
     let debug = psyche.debug_handle();
-    let state = AppState {
+    let state = Body {
         bus: bus.clone(),
         ear,
         eye,
