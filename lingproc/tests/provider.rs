@@ -68,3 +68,18 @@ async fn defaults_are_used_when_none_provided() {
     let vec = provider.vectorize("a").await.unwrap();
     assert_eq!(vec, vec![1.0]);
 }
+
+#[tokio::test]
+async fn vectorize_errors_on_empty_embeddings() {
+    let server = MockServer::start_async().await;
+    let _mock = server.mock(|when, then| {
+        when.method(POST).path("/api/embed");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body("{\"embeddings\": []}");
+    });
+
+    let provider = OllamaProvider::new(server.base_url(), "mistral").unwrap();
+    let result = provider.vectorize("hi").await;
+    assert!(result.is_err());
+}

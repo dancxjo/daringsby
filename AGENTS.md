@@ -47,6 +47,7 @@ Provides LLM and embedding utilities.
 
 * **LLM Traits**: `Chatter`, `Doer`, `Vectorizer`
 * **OllamaProvider**: Backend for generation and embedding
+* Vectorizers should warn if no embeddings are returned to avoid silent similarity errors
 * **Helpers**: Sentence segmentation, prompt context, instruction parsing
 
 ---
