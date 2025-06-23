@@ -52,12 +52,23 @@ impl WillWit {
                 tokio::select! {
                     Some(p) = inst.next() => {
                         if let Ok(i) = Arc::downcast::<Impression<String>>(p) {
-                            buf_clone.lock().unwrap().push(i.summary.clone());
+                            let summary = i.summary.clone();
+                            for ins in parse_instructions(&summary) {
+                                bus_clone.publish(Topic::Instruction, ins);
+                            }
+                            if summary.contains("fly") && summary.contains("approach") {
+                                bus_clone.publish(Topic::Instruction, Instruction::Move { to: "fly".into() });
+                            }
+                            buf_clone.lock().unwrap().push(summary);
                         }
                     }
                     Some(p) = mom.next() => {
                         if let Ok(i) = Arc::downcast::<Impression<String>>(p) {
-                            buf_clone.lock().unwrap().push(i.summary.clone());
+                            let summary = i.summary.clone();
+                            for ins in parse_instructions(&summary) {
+                                bus_clone.publish(Topic::Instruction, ins);
+                            }
+                            buf_clone.lock().unwrap().push(summary);
                         }
                     }
                 }
