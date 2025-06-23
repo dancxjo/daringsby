@@ -232,7 +232,7 @@ button:hover {
   color: #aaa;
   position: relative;
   overflow: hidden;
-  transition: height 0.2s ease;
+  transition: max-height 0.2s ease;
 }
 
 .sidebar details::before {
