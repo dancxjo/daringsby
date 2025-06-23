@@ -45,11 +45,12 @@ pub struct Conversation {
 
 impl Conversation {
     /// Append a user message to the log, merging with the previous user entry when possible.
-    pub fn add_user(&mut self, content: String) {
+    pub fn add_message_from_user(&mut self, content: String) {
         self.append_or_new(Role::User, content);
     }
 
-    fn add_assistant(&mut self, content: String) {
+    /// Append an AI generated message to the log, merging consecutive assistant entries.
+    pub fn add_message_from_ai(&mut self, content: String) {
         self.append_or_new(Role::Assistant, content);
     }
 
@@ -548,12 +549,12 @@ impl Psyche {
                 match &*arc {
                     Sensation::HeardOwnVoice(msg) => {
                         let mut conv = self.conversation.lock().await;
-                        conv.add_assistant(msg.clone());
+                        conv.add_message_from_ai(msg.clone());
                         self.buffer_self_speech(msg).await;
                     }
                     Sensation::HeardUserVoice(msg) => {
                         let mut conv = self.conversation.lock().await;
-                        conv.add_user(msg.clone());
+                        conv.add_message_from_user(msg.clone());
                         self.buffer_user_speech(msg).await;
                         if self.pending_turn.is_empty() && self.fallback_turn {
                             self.pending_turn.set("I'm listening.".to_string());
