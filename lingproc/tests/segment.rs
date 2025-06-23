@@ -37,19 +37,17 @@ async fn sentence_stream_handles_full_paragraph() {
     let text = "David E. Sanger covers the Trump administration and a range of national security issues. He has been a Times journalist for more than four decades and has written four books on foreign policy and national security challenges.";
     let chunks: Vec<Result<String, ()>> = vec![Ok(text.into())];
     let mut stream = Box::pin(sentence_stream(tokio_stream::iter(chunks)));
+    let collected: Vec<String> = futures::StreamExt::collect::<Vec<_>>(&mut stream)
+        .await
+        .into_iter()
+        .map(|s| s.unwrap().trim().to_string())
+        .collect();
     assert_eq!(
-        futures::StreamExt::next(&mut stream)
-            .await
-            .unwrap()
-            .unwrap(),
-        "David E. Sanger covers the Trump administration and a range of national security issues. "
-    );
-    assert_eq!(
-        futures::StreamExt::next(&mut stream)
-            .await
-            .unwrap()
-            .unwrap(),
-        "He has been a Times journalist for more than four decades and has written four books on foreign policy and national security challenges."
+        collected,
+        vec![
+            "David E. Sanger covers the Trump administration and a range of national security issues.".to_string(),
+            "He has been a Times journalist for more than four decades and has written four books on foreign policy and national security challenges.".to_string(),
+        ]
     );
 }
 

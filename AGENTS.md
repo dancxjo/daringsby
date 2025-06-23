@@ -126,5 +126,6 @@ Provides LLM and embedding utilities.
   dependencies.
 * Keep commit messages short yet descriptive.
 * In frontend scripts, stop `MediaRecorder` on `window.onbeforeunload` to release the microphone.
+* Use `lingproc::sentence_stream` for any sentence parsing to keep behavior consistent across async and sync code.
 
 Use this document to orient new agents, tools, or contributors. If you’re confused — ask the Quick what it saw, or the Will what it wants.

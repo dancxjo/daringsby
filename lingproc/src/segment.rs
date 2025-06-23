@@ -7,10 +7,25 @@
 //!
 //! The [`word_stream`] function splits the input into Unicode word boundaries.
 
-use crate::segmenter::shared_segmenter;
 use futures::{Stream, StreamExt};
+use once_cell::sync::Lazy;
+use pragmatic_segmenter::Segmenter as PragmaticSegmenter;
 use std::collections::VecDeque;
 use unicode_segmentation::UnicodeSegmentation;
+
+static SEGMENTER: Lazy<PragmaticSegmenter> =
+    Lazy::new(|| PragmaticSegmenter::new().expect("segmenter init"));
+
+fn process_segment(buf: &mut String, leftover: &mut String, pending: &mut VecDeque<String>) {
+    let mut segments: Vec<String> = SEGMENTER.segment(buf).map(|s| s.to_string()).collect();
+    if !segments.is_empty() {
+        *leftover = segments.pop().unwrap();
+        for s in segments {
+            pending.push_back(s);
+        }
+    }
+    buf.clear();
+}
 
 /// Yield sentences from the `input` stream.
 ///
@@ -58,22 +73,17 @@ where
                     Some(Ok(chunk)) => {
                         buf.push_str(&leftover);
                         buf.push_str(&chunk);
-                        let mut segments: Vec<String> = shared_segmenter()
-                            .segment(&buf)
-                            .map(|s| s.to_string())
-                            .collect();
-                        if !segments.is_empty() {
-                            leftover = segments.pop().unwrap();
-                            for s in segments {
-                                pending.push_back(s);
-                            }
-                        }
-                        buf.clear();
+                        process_segment(&mut buf, &mut leftover, &mut pending);
                     }
                     Some(Err(e)) => return Some((Err(e), (input, buf, leftover, pending))),
                     None => {
                         if !leftover.is_empty() {
-                            pending.push_back(std::mem::take(&mut leftover));
+                            buf.push_str(&leftover);
+                            leftover.clear();
+                            process_segment(&mut buf, &mut leftover, &mut pending);
+                            if !leftover.is_empty() {
+                                pending.push_back(std::mem::take(&mut leftover));
+                            }
                         }
                         if let Some(s) = pending.pop_front() {
                             return Some((Ok(s), (input, buf, leftover, pending)));
@@ -143,4 +153,79 @@ where
         },
     );
     Box::pin(stream)
+}
+
+/// Stateful sentence segmenter.
+///
+/// This struct mirrors the logic used by [`sentence_stream`], allowing
+/// synchronous segmentation without duplicating algorithms.
+pub struct SentenceSegmenter {
+    buf: String,
+    leftover: String,
+    pending: VecDeque<String>,
+}
+
+impl SentenceSegmenter {
+    /// Create a new `SentenceSegmenter`.
+    pub fn new() -> Self {
+        Self {
+            buf: String::new(),
+            leftover: String::new(),
+            pending: VecDeque::new(),
+        }
+    }
+
+    /// Push a text chunk and return any completed sentences.
+    pub fn push_str(&mut self, chunk: &str) -> Vec<String> {
+        self.buf.push_str(&self.leftover);
+        self.buf.push_str(chunk);
+        process_segment(&mut self.buf, &mut self.leftover, &mut self.pending);
+        let mut out = Vec::new();
+        while self.pending.len() > 1 {
+            if let Some(sentence) = self.pending.pop_front() {
+                out.push(sentence.trim().to_string());
+            }
+        }
+        out
+    }
+
+    /// Drain any remaining sentences after all chunks are processed.
+    pub fn finish(mut self) -> Vec<String> {
+        if !self.leftover.is_empty() {
+            self.buf.push_str(&self.leftover);
+            self.leftover.clear();
+            process_segment(&mut self.buf, &mut self.leftover, &mut self.pending);
+            if !self.leftover.is_empty() {
+                self.pending.push_back(std::mem::take(&mut self.leftover));
+            }
+        }
+        self.pending
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .collect()
+    }
+}
+
+impl Default for SentenceSegmenter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Segment a block of `text` into sentences.
+///
+/// This uses the same logic as [`sentence_stream`].
+///
+/// # Examples
+/// ```
+/// use lingproc::segment_text_into_sentences;
+///
+/// let sentences = segment_text_into_sentences("Hello world. How are you?");
+/// assert_eq!(sentences, vec!["Hello world.".to_string(), "How are you?".to_string()]);
+/// ```
+pub fn segment_text_into_sentences(text: &str) -> Vec<String> {
+    let mut seg = SentenceSegmenter::new();
+    let mut out = seg.push_str(text);
+    out.extend(seg.finish());
+    out
 }
