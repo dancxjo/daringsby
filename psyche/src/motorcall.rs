@@ -1,12 +1,12 @@
-//! Host-side motor execution.
+//! Execute dynamically parsed instructions.
 //!
-//! The [`Motor`] trait represents an actuator that Pete can invoke via a
-//! `<motor>` tag emitted by the [`Will`](crate::wits::Will) cognitive
+//! The [`InstructionExecutor`] trait represents a generic actuator that Pete can
+//! invoke via a `<motor>` tag emitted by the [`Will`](crate::wits::Will)
 //! component. Each implementation performs a real-world action using the given
 //! attributes and body content.
 //!
 //! ```
-//! use psyche::motorcall::{Motor, MotorRegistry};
+//! use psyche::motorcall::{InstructionExecutor, InstructionRegistry};
 //! use async_trait::async_trait;
 //! use std::sync::Arc;
 //! use std::collections::HashMap;
@@ -16,14 +16,14 @@
 //! struct RecMotor(std::sync::Mutex<Vec<(HashMap<String, String>, String)>>);
 //!
 //! #[async_trait]
-//! impl Motor for RecMotor {
+//! impl InstructionExecutor for RecMotor {
 //!     async fn execute(&self, attrs: HashMap<String, String>, content: String) {
 //!         self.0.lock().unwrap().push((attrs, content));
 //!     }
 //! }
 //!
 //! # async fn doc() {
-//! let mut registry = MotorRegistry::default();
+//! let mut registry = InstructionRegistry::default();
 //! let motor = Arc::new(RecMotor::default());
 //! registry.register("say", motor.clone());
 //! registry
@@ -39,14 +39,14 @@
 /// A simple logging motor implementation.
 ///
 /// ```
-/// use psyche::motorcall::Motor;
+/// use psyche::motorcall::InstructionExecutor;
 /// use async_trait::async_trait;
 /// use std::collections::HashMap;
 ///
 /// pub struct LoggingMotor;
 ///
 /// #[async_trait]
-/// impl Motor for LoggingMotor {
+/// impl InstructionExecutor for LoggingMotor {
 ///     async fn execute(&self, attrs: HashMap<String, String>, content: String) {
 ///         tracing::info!(?attrs, %content, "MOTOR fired");
 ///     }
@@ -56,7 +56,7 @@
 /// A text-to-speech motor might look like:
 ///
 /// ```
-/// use psyche::motorcall::Motor;
+/// use psyche::motorcall::InstructionExecutor;
 /// use async_trait::async_trait;
 /// use std::collections::HashMap;
 /// use std::sync::Arc;
@@ -71,7 +71,7 @@
 /// }
 ///
 /// #[async_trait]
-/// impl Motor for TtsMotor {
+/// impl InstructionExecutor for TtsMotor {
 ///     async fn execute(&self, attrs: HashMap<String, String>, content: String) {
 ///         let voice = attrs.get("voice").cloned();
 ///         if let Err(e) = self.tts.speak(voice, content).await {
@@ -86,17 +86,17 @@ use std::sync::Arc;
 use tracing::info;
 
 #[async_trait]
-pub trait Motor: Send + Sync {
+pub trait InstructionExecutor: Send + Sync {
     async fn execute(&self, attrs: HashMap<String, String>, content: String);
 }
 
 #[derive(Clone, Default)]
-pub struct MotorRegistry {
-    motors: HashMap<String, Arc<dyn Motor>>,
+pub struct InstructionRegistry {
+    motors: HashMap<String, Arc<dyn InstructionExecutor>>,
 }
 
-impl MotorRegistry {
-    pub fn register(&mut self, name: &str, motor: Arc<dyn Motor>) {
+impl InstructionRegistry {
+    pub fn register(&mut self, name: &str, motor: Arc<dyn InstructionExecutor>) {
         self.motors.insert(name.to_string(), motor);
     }
 

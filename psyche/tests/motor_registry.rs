@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::motorcall::{Motor, MotorRegistry};
+use psyche::motorcall::{InstructionExecutor, InstructionRegistry};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 struct RecMotor(Arc<Mutex<Vec<(HashMap<String, String>, String)>>>);
 
 #[async_trait]
-impl Motor for RecMotor {
+impl InstructionExecutor for RecMotor {
     async fn execute(&self, attrs: HashMap<String, String>, content: String) {
         self.0.lock().unwrap().push((attrs, content));
     }
@@ -16,7 +16,7 @@ impl Motor for RecMotor {
 #[tokio::test]
 async fn registry_invokes() {
     let motor = Arc::new(RecMotor::default());
-    let mut reg = MotorRegistry::default();
+    let mut reg = InstructionRegistry::default();
     reg.register("test", motor.clone());
     let mut attrs = HashMap::new();
     attrs.insert("a".into(), "b".into());

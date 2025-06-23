@@ -2,7 +2,9 @@ use async_trait::async_trait;
 
 /// Host-side actions Pete can take.
 ///
-/// Only the `Will` should invoke these.
+/// Only the `Will` should invoke these. These typed behaviors are distinct from
+/// [`crate::motorcall::InstructionExecutor`], which handles generic instruction
+/// tags parsed from language model output.
 #[async_trait]
 pub trait Motor: Send + Sync {
     /// Speak `text` using the configured mouth.
