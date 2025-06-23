@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use lingproc::{Doer, Instruction as LlmInstruction};
+use lingproc::Instruction as LlmInstruction;
+use psyche::traits::Doer;
 use psyche::wits::Will;
 use psyche::{Impression, Stimulus, TopicBus, Wit};
 use std::sync::Arc;

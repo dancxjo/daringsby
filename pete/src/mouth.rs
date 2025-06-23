@@ -1,6 +1,6 @@
 use crate::EventBus;
 use async_trait::async_trait;
-use psyche::{Event, Mouth};
+use psyche::{Event, traits::Mouth};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},

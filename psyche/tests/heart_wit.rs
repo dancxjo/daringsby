@@ -1,7 +1,8 @@
 use async_trait::async_trait;
-use lingproc::{Doer, Instruction};
+use lingproc::Instruction;
+use psyche::traits::{Doer, Motor};
 use psyche::wits::HeartWit;
-use psyche::{Impression, Motor, Stimulus, Wit};
+use psyche::{Impression, Stimulus, Wit};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]

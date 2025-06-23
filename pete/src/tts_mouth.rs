@@ -1,9 +1,11 @@
 #![cfg(feature = "tts")]
 use async_trait::async_trait;
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 use pragmatic_segmenter::Segmenter;
-use psyche::{Event, Mouth};
-use std::pin::Pin;
+use psyche::{
+    Event,
+    traits::{Mouth, Tts, TtsStream},
+};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -15,16 +17,6 @@ use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
 use reqwest::{Client, Url};
 use urlencoding::encode;
-
-/// Stream of raw WAV data chunks.
-pub type TtsStream = Pin<Box<dyn Stream<Item = Result<Vec<u8>>> + Send>>;
-
-/// Text-to-speech engine interface.
-#[async_trait]
-pub trait Tts: Send + Sync {
-    /// Return a stream of WAV bytes for `text`.
-    async fn stream_wav(&self, text: &str) -> Result<TtsStream>;
-}
 
 /// Client for a Coqui TTS server.
 #[derive(Clone)]

@@ -7,14 +7,22 @@ pub mod topics;
 mod voice;
 
 pub mod traits {
+    pub mod doer;
     pub mod ear;
+    pub mod motor;
     pub mod mouth;
     pub mod observer;
+    pub mod sensor;
+    pub mod tts;
     pub mod wit;
 
+    pub use doer::Doer;
     pub use ear::Ear;
+    pub use motor::{Motor, NoopMotor};
     pub use mouth::Mouth;
     pub use observer::SensationObserver;
+    pub use sensor::Sensor;
+    pub use tts::{Tts, TtsStream};
     pub use wit::{ErasedWit, Summarizer, Wit, WitAdapter};
 }
 
@@ -57,12 +65,10 @@ mod debug;
 
 pub mod ling;
 pub mod model;
-mod motor;
 pub mod motorcall;
 mod plain_mouth;
 mod prehension;
 pub mod prompt;
-mod sensor;
 mod task_group;
 pub mod sensors {
     #[cfg(feature = "face")]
@@ -78,13 +84,11 @@ pub use and_mouth::AndMouth;
 pub use debug::{DebugHandle, DebugInfo, debug_enabled, disable_debug, enable_debug};
 pub use instruction::{Instruction, parse_instructions};
 pub use model::{Experience, Impression, Stimulus};
-pub use motor::{Motor, NoopMotor};
 pub use pending_turn::PendingTurn;
 pub use plain_mouth::PlainMouth;
 pub use prehension::Prehension;
 pub use prompt::{CombobulatorPrompt, ContextualPrompt, VoicePrompt, WillPrompt};
 pub use psyche::DEFAULT_SYSTEM_PROMPT;
-pub use sensor::Sensor;
 pub use topics::{Topic, TopicBus, TopicMessage};
 pub use trim_mouth::TrimMouth;
 pub use types::{Decision, GeoLoc, Heartbeat, ImageData, ObjectInfo};
@@ -95,7 +99,10 @@ pub use psyche::{Conversation, Psyche};
 pub use sensation::{Event, Instant, Sensation, WitReport};
 #[cfg(feature = "face")]
 pub use sensors::{DummyDetector, FaceDetector, FaceInfo, FaceSensor};
-pub use traits::{Ear, ErasedWit, Mouth, SensationObserver, Summarizer, Wit, WitAdapter};
+pub use traits::{
+    Doer, Ear, ErasedWit, Motor, Mouth, NoopMotor, SensationObserver, Sensor, Summarizer, Tts,
+    TtsStream, Wit, WitAdapter,
+};
 pub use voice::{Voice, extract_emojis};
 pub use wits::{
     BasicMemory, Combobulator, EntityWit, EpisodeWit, FaceMemoryWit, FondDuCoeur, GraphStore,

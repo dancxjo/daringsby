@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::Ear;
+use psyche::traits::Ear;
 #[cfg(feature = "ear")]
 use psyche::{Sensation, Voice};
 #[cfg(feature = "ear")]

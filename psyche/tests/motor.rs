@@ -1,4 +1,4 @@
-use psyche::{Motor, NoopMotor};
+use psyche::traits::{Motor, NoopMotor};
 
 #[tokio::test]
 async fn noop_motor_executes() {

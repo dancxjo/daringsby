@@ -1,10 +1,11 @@
+use crate::prompt::PromptBuilder;
+use crate::traits::Doer;
 use crate::{
     ImageData, Impression, Stimulus,
     wit::{Episode, Wit},
 };
-use crate::prompt::PromptBuilder;
 use async_trait::async_trait;
-use lingproc::{Doer, Instruction};
+use lingproc::Instruction;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::{Semaphore, broadcast};

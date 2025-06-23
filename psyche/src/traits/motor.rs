@@ -30,7 +30,7 @@ impl Motor for NoopMotor {
 #[cfg(doctest)]
 mod docs {
     /// ```no_run
-    /// use psyche::{Motor, NoopMotor};
+    /// use psyche::traits::{Motor, NoopMotor};
     /// # async fn run() {
     /// let motor = NoopMotor;
     /// motor.say("Hello").await;

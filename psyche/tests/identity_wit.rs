@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use lingproc::{Doer, Instruction};
+use lingproc::Instruction;
+use psyche::traits::Doer;
 use psyche::wit::{Moment, Wit};
 use psyche::wits::{FondDuCoeur, IdentityWit};
 use psyche::{Impression, Stimulus};

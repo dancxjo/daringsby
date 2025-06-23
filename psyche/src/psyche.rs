@@ -1,9 +1,10 @@
 use crate::sensation::{Event, Sensation, WitReport};
+use crate::traits::Doer;
 use crate::traits::wit;
 use crate::traits::wit::{ErasedWit, Wit};
 use crate::traits::{Ear, Mouth};
 use crate::wits::memory::Memory;
-use lingproc::{Chatter, Doer, Message, Role, Vectorizer};
+use lingproc::{Chatter, Message, Role, Vectorizer};
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;

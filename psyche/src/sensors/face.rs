@@ -1,5 +1,5 @@
-use crate::Sensor;
 use crate::topics::TopicBus;
+use crate::traits::Sensor;
 use crate::wits::memory::QdrantClient;
 use crate::{ImageData, Sensation};
 use anyhow::Result;

@@ -11,11 +11,12 @@
 //! [`Instant`] and publishes it on [`Topic::Instant`].
 
 use crate::topics::{Topic, TopicBus};
+use crate::traits::Doer;
 use crate::{Impression, Instant, Sensation, Stimulus};
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use futures::StreamExt;
-use lingproc::{Doer, Instruction};
+use lingproc::Instruction;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
