@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 use tokio::sync::broadcast;
-use tracing_subscriber::fmt;
+use tracing_subscriber::{EnvFilter, fmt};
 
 /// Initialize logging to stdout and broadcast log lines over the provided channel.
 ///
@@ -12,7 +12,9 @@ use tracing_subscriber::fmt;
 /// init_logging(tx);
 /// ```
 pub fn init_logging(tx: broadcast::Sender<String>) {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"));
     fmt()
+        .with_env_filter(filter)
         .with_writer(move || TeeWriter {
             stdout: std::io::stdout(),
             tx: tx.clone(),
