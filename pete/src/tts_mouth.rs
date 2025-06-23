@@ -32,14 +32,16 @@ pub struct CoquiTts {
     url: String,
     client: Client,
     speaker_id: Option<String>,
+    /// Optional language code passed as the `language_id` query parameter
     language_id: Option<String>,
 }
 
 impl CoquiTts {
     /// Create a new client targeting `url` (e.g. `http://localhost:5002/api/tts`).
     ///
-    /// Optional `speaker_id` and `language_id` parameters allow selecting a
-    /// specific voice and language on the TTS server.
+    /// Optional `speaker_id` selects the voice. `language_id` is passed as the
+    /// corresponding query parameter so audio is produced in the desired
+    /// language.
     pub fn new(
         url: impl Into<String>,
         speaker_id: Option<String>,
@@ -61,12 +63,11 @@ impl Tts for CoquiTts {
         {
             let mut qp = url.query_pairs_mut();
             qp.append_pair("text", text);
-            // Always include speaker_id and language_id, using defaults if not provided
-            qp.append_pair("speaker_id", self.speaker_id.as_deref().unwrap_or("p123"));
-            qp.append_pair("language_id", self.language_id.as_deref().unwrap_or("en"));
-            if let Some(ref l) = self.language_id {
-                qp.append_pair("language_id", l);
-            }
+            // Always include speaker_id, style_wav and language_id parameters
+            // providing defaults when values are not configured
+            qp.append_pair("speaker_id", self.speaker_id.as_deref().unwrap_or("p376"));
+            qp.append_pair("style_wav", "");
+            qp.append_pair("language_id", self.language_id.as_deref().unwrap_or(""));
         }
         info!(
             %url,

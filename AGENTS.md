@@ -76,7 +76,8 @@ The previous Deno-based client has been removed. Update the files in
 * Configure with `--tts-url` CLI flag.
 * Build the `pete` binary with `--features tts` to enable audio.
 * Stub TTS in tests to avoid delays.
-* Do not include the `style_wav` parameter when calling Coqui TTS.
+* Include the `style_wav` parameter when calling Coqui TTS. Use an empty value
+  if no style WAV is configured.
 * Speech is emitted via `Event::Speech { text, audio }`.
 
 ## Specialized Notes
