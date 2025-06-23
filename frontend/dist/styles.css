@@ -291,3 +291,11 @@ button:hover {
   from { background-color: #444; }
   to { background-color: #222; }
 }
+@keyframes pulse-glow {
+  0%, 100% { text-shadow: 0 0 0.25rem var(--bs-primary); }
+  50% { text-shadow: 0 0 1rem var(--bs-primary); }
+}
+
+#face.playing .mien {
+  animation: pulse-glow 1s infinite;
+}
