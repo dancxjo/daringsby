@@ -7,3 +7,5 @@ Cargo.lock
 /ollama
 .env
 debug.log
+node_modules/
+package-lock.json
