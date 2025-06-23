@@ -122,5 +122,8 @@ Provides LLM and embedding utilities.
   `with_debug` with `None` so devtools can uniformly enable debug output
 * Document intentionally empty trait methods with comments so their purpose is
   clear.
+* Reuse cargo and npm caches when running tests to avoid re-downloading
+  dependencies.
+* Keep commit messages short yet descriptive.
 
 Use this document to orient new agents, tools, or contributors. If you’re confused — ask the Quick what it saw, or the Will what it wants.

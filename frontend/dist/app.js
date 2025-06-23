@@ -19,25 +19,29 @@
   function animateDetails(details) {
     const summary = details.querySelector("summary");
     if (!summary) return;
+    const collapsed = summary.offsetHeight;
+    if (!details.hasAttribute("open")) {
+      details.style.maxHeight = collapsed + "px";
+    }
     summary.addEventListener("click", (e) => {
       e.preventDefault();
       const open = details.hasAttribute("open");
-      const startHeight = details.offsetHeight;
-      const summaryHeight = summary.offsetHeight;
-      details.style.height = startHeight + "px";
+      const start = details.scrollHeight;
+      details.style.maxHeight = start + "px";
       details.style.overflow = "hidden";
       requestAnimationFrame(() => {
-        details.style.transition = "height 0.2s ease";
-        details.style.height = open ? summaryHeight + "px" : details.scrollHeight + "px";
+        details.style.transition = "max-height 0.2s ease";
+        details.style.maxHeight = open ? collapsed + "px" : details.scrollHeight + "px";
       });
       details.addEventListener(
         "transitionend",
         () => {
-          details.style.removeProperty("height");
-          details.style.removeProperty("overflow");
           details.style.removeProperty("transition");
           if (open) {
             details.removeAttribute("open");
+            details.style.maxHeight = collapsed + "px";
+          } else {
+            details.style.maxHeight = "none";
           }
         },
         { once: true }
