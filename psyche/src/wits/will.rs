@@ -13,10 +13,14 @@ use tracing::info;
 
 /// Decide Pete's next action or speech using a language model.
 ///
-/// `Will` sends the given situation summary to a [`Doer`] with a
-/// brief prompt asking for a single sentence describing what Pete
-/// should do or say next. The decision is returned as an
-/// [`Impression`].
+/// The Will listens for [`Instant`] impressions from the Quick and
+/// interprets them to produce behavioral tags. It does not emit new
+/// impressions itself. Instead, it forwards tags like `<say>` to the
+/// appropriate motors so Pete can respond immediately.
+///
+/// `Will` sends the given situation summary to a [`Doer`] with a brief
+/// prompt asking for a single sentence describing what Pete should do
+/// or say next. The decision is returned as an [`Impression`].
 ///
 /// # Example
 /// ```no_run

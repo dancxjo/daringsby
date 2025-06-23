@@ -89,3 +89,24 @@ async fn empty_response_yields_nothing() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn instant_summary_triggers_instruction() {
+    let bus = TopicBus::new(8);
+    let wit = WillWit::new(bus.clone(), Arc::new(DummyDoer("")));
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    bus.publish(
+        Topic::Instant,
+        Impression::new(
+            vec![Stimulus::new("<say>hi</say>".to_string())],
+            "<say>hi</say>",
+            None::<String>,
+        ),
+    );
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let mut sub = bus.subscribe(Topic::Instruction);
+    tokio::pin!(sub);
+    let payload = sub.next().await.unwrap();
+    let ins = payload.downcast::<Instruction>().unwrap();
+    assert!(matches!(ins.as_ref(), Instruction::Say { text, .. } if text == "hi"));
+}

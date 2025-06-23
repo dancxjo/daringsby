@@ -150,6 +150,14 @@ The Quick is Pete’s first-stage integrator. It buffers raw `Sensation`s over a
 
 🧠 The Quick does **not** act — it observes and narrates.
 
+### Will
+
+The Will interprets `Instant` impressions from the Quick and decides how Pete
+should respond. It does not generate new impressions itself. Instead, it emits
+behavioral tags like `<say>` or custom motor commands. If the Quick reports
+"I'm seeing a fly quickly approach me and then hesitate", the Will might choose
+to send `<pounce target="fly">Now or never!</pounce>`.
+
 This document reflects the current cognitive and runtime architecture of Pete Daringsby. Keep it consistent with the latest design discussions and behavior changes.
 
 ## Sensor Features
