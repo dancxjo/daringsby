@@ -1,176 +1,120 @@
-# Agent Instructions
+# Pete Daringsby Agent Overview
 
-This repository is a Rust workspace.
+This document is for contributors, agents, and automated tools working on the Pete Daringsby project. It provides a high-level orientation to the structure, roles, and behaviors of the system.
 
-## Setup
+## 🧠 Core Concept
 
-* Install the stable Rust toolchain.
-* Ensure the `rustfmt` and `clippy` components are installed.
-* Run `cargo fetch` to warm the cache before testing.
+Pete is a narratively coherent artificial agent built in Rust. He perceives the world through sensors, forms internal impressions, reflects on meaning, chooses actions, and expresses himself. His architecture is modular and layered to support different cognitive roles.
 
-## Running & Testing
+---
 
-* Run tests with `cargo test` from the repository root.
-* Some tests check debug logs; set `RUST_LOG=debug` when running them.
-* Format with `cargo fmt`.
-* Use `tracing` macros for all logging.
-* Initialize logging in binaries with `tracing_subscriber::fmt::init()`.
+## 🧩 System Architecture
 
-## Project Layout
+### `psyche` (Core Cognition)
 
-* Crate `pete` depends on local crate `psyche`.
-* Crates should be logically modular; split files beyond \~200 lines.
+Responsible for Pete's internal thinking and memory.
 
-## Code Practices
+* **Wits**: Modular units of cognition.
 
-* Prefer traits for abstraction (`Mouth`, `Ear`, `Wit`).
-* Document new traits with examples and unit tests.
-* Sensors expose `description()` for prompt inclusion.
-* Prefer `AndMouth` when composing multiple `Mouth` implementations.
-* Use `TrimMouth` to skip speaking empty/whitespace-only text.
-* Inline emoji in responses convey emotional tone.
-* Do **not** emit `Event::IntentionToSay` for empty or whitespace-only text.
-* Skip sending `Event::StreamChunk` when the chunk is empty or whitespace.
-* Build prompts using dedicated structs like `WillPrompt`.
-* Implement `PromptFragment` for prompt builders and call `build_prompt(&self, input)`.
-* `ChannelMouth` emits `Event::Speech` per parsed sentence without audio.
-* `Conversation::add_*` merges consecutive same-role messages, inserting a space and trimming.
-* Only the `Psyche` loop should append to `Conversation`; `Ear` implementations forward sensations without modifying the log.
-* Use the `Motor` trait for host actions. Implementations live in `pete`.
-* Track spawned task `JoinHandle`s in a `TaskGroup` so `drop` aborts them.
-* `lingproc::push_prompt_context` and `lingproc::take_prompt_context` manage
-  temporary prompt notes. `Chatter::update_prompt_context` uses them by
-  default to append text to future prompts.
+  * `Quick`: Integrates raw `Sensation`s into a coherent `Instant`.
+  * `Combobulator`: Summarizes the present `Instant` into an `Impression`.
+  * `Memory`: Stores `Experience<Impression>` in Neo4j and Qdrant.
+  * `Heart`: Detects emotional tone (emoji) from recent experience.
+  * `Will`: Chooses actions based on situation, emits tagged commands (e.g. `<pounce>`).
+  * `Voice`: Generates natural language dialogue (when permitted).
 
-## Frontend
+* **Other Components**:
 
-Static assets live under `frontend/dist` and are served by the `pete` binary.
-Navigate to `http://localhost:3000/` to load the web face which connects to
-`ws://localhost:3000/ws`.
+  * `FondDuCoeur`: Core identity narrative (evolving paragraph).
+  * `Conversation`: Stores the back-and-forth chat.
+  * `EventBus`: Publishes `Event` and `WitReport` to observers.
+  * `PromptBuilder`: Helper trait for constructing LLM prompts.
 
-### Frontend Notes
+### `pete` (Host Implementation)
 
-The previous Deno-based client has been removed. Update the files in
-`frontend/dist` directly to change the interface.
-* Queue audio playback on the client so clips never overlap.
-* Define CSS variables in `styles.css` to control colors and fonts.
-* Import web fonts in `index.html` and assign them via the `--font-family` CSS variable.
-* Reuse a single `<audio>` element for speech playback so controls remain visible.
-* After playing speech audio, send an `Echo` message with the spoken text so the conversation log records assistant dialogue.
-* Define CSS variables in `styles.css` to control colors and fonts.
-* Keep the thought bubble hidden until there is text to display.
-* Style the thought bubble with cloud-like lobes and center-bottom connectors.
-* When updating the conversation log, preserve scroll position unless the user
-  was already at the bottom.
-* Serve over HTTPS by passing `--tls-cert` and `--tls-key` to the `pete` binary.
-* Canvas elements that repeatedly call `getImageData` must obtain their context
-  with `{ willReadFrequently: true }`.
+Wires sensors and actuators to the cognitive engine.
 
-## Communication
+* **Sensors**: `EyeSensor`, `GeoSensor`, `HeartbeatSensor`, etc.
+* **Mouths**: `ChannelMouth`, `TtsMouth`, `NoopMouth`
+* **Ears**: `ChannelEar`, `NoopEar`
+* **Motors**: Logging, simulated, or real-world actions
+* **Web Interface**: Serves static frontend and `/ws` WebSocket
+* **`Body` struct**: Holds live connection between frontend and `Psyche`
 
-* Expose WebSocket chat at `/ws`, forwarding all `Psyche` events.
-* Debug information from Wits streams via `/debug`.
-* The `EventBus` retains the most recent `WitReport` for each Wit so new
-  `/debug` subscribers see existing output immediately.
-* SSE endpoints like `/chat` are deprecated; use WebSocket only.
-* Text messages no longer trigger `Heard` responses.
+### `lingproc` (Language Providers)
 
-## Audio / TTS
+Provides LLM and embedding utilities.
 
-* The `tts` feature streams audio from Coqui TTS.
-* Configure with `--tts-url` CLI flag.
-* Build the `pete` binary with `--features tts` to enable audio.
-* Stub TTS in tests to avoid delays.
-* Include the `style_wav` parameter when calling Coqui TTS. Use an empty value
-  if no style WAV is configured.
-* Speech is emitted via `Event::Speech { text, audio }`.
+* **LLM Traits**: `Chatter`, `Doer`, `Vectorizer`
+* **OllamaProvider**: Backend for generation and embedding
+* **Helpers**: Sentence segmentation, prompt context, instruction parsing
 
-## Specialized Notes
+---
 
-* `Wit` runs asynchronously and infrequently — do not block main loop. Implement
-  tick-based summarization when possible.
-* Voice should **only** generate dialogue; all decisions routed through `Will`.
-* Memory graph (Neo4j) and embedding DB (Qdrant) must stay in sync.
-* Long-lived memories are stored as `Experience<T>` combining an `Impression<T>` with an embedding and id.
-* Summarizing Wits should handle their own buffering; the `Prehension` wrapper has been removed.
-* When adding new Wits that emit `WitReport`s, prefer constructors like
-  `with_debug` and register them with `psyche.wit_sender()` so debug output is
-  available during tests.
-* Tests expecting a `WitReport` must enable the matching debug label with
-  `psyche::debug::enable_debug(label).await`.
-* `Psyche` uses `active_experience_tick` when speaking to process sensations more frequently.
+## 🔄 Cognitive Flow
 
-## Contributor Notes
+1. **Perception**
 
-* Use meaningful commit messages.
-* Keep README examples up to date with public APIs.
-* Document all new CLI arguments and environment flags.
-* Avoid `echo $?`; rely on return values/output checks.
-* Favor TDD/BDD when adding features; write failing tests first.
-* Provide stub implementations for external ML components so tests run offline.
-* `FaceSensor` uses `DummyDetector` for tests; real detectors may require OpenCV.
-* `FaceSensor` caches the last embedding to avoid redundant vectors.
-* There is no bundled frontend. Connect your own WebSocket client to
-  `ws://localhost:3000/ws`.
-* Give every new Wit a `LABEL` constant and a `with_debug` constructor for emitting `WitReport`s.
-* Re-export shared structs rather than defining duplicates across modules.
-* Put math utilities shared across crates in `lingproc::math`.
+   * Sensors emit `Sensation`s to the `Psyche`.
+   * `Quick` converts them into an `Instant`.
 
-## LLM Integration
+2. **Integration**
 
-* Fast LLMs (e.g. Ollama) for `Will`, `Voice`, `Combobulator`.
-* Slow/idle LLMs for `Memory`, `Narrator`.
-* Only `Will` may invoke `Voice::take_turn`.
-* `Voice::take_turn` extracts emoji and emits `Event::EmotionChanged`.
-* `Voice` will not speak until `Will::command_voice_to_speak` grants permission.
-* `Voice::permit` is idempotent and returns early when already ready.
-* `Will::tick` may call `voice.permit(Some(prompt))` to trigger speech when rules allow.
+   * `Combobulator` describes the current situation in a single sentence.
+   * `Memory` links this impression to past context, updating long-term memory.
 
-## Additional Suggestions
+3. **Emotion**
 
-* Consider adding unit tests that simulate full conversation loops (with mocked `Mouth`, `Ear`, `Voice`).
-* Consider adding CLI test scaffolding for mocking TTS/Neo4j/Qdrant.
-* Be mindful of the single-CPU assumption — prefer concurrency without heavy parallelism.
-* When skipping speech for empty responses, increment the turn counter so the conversation loop can exit.
-* Log Coqui TTS request URLs with `info!(%url, "requesting TTS")` to ease debugging misconfigured endpoints.
-* Log each Wit tick with its name and keep loops alive even when idle.
-* Log Ollama prompts and streamed chunks with `debug!` for troubleshooting.
-* Log all LLM prompts and final responses to stdout using `tracing` macros.
-* When introducing new CLI arguments or environment variables, update
-  `.env.example` and README examples accordingly.
-* Log unknown sensation types in `Quick::describe` to surface missing
-  downcasts.
-* Use `#[tokio::test(start_paused = true)]` and `tokio::time::advance` for
-  timeout-related tests to avoid slow sleeps.
-* Deduplicate buffering logic when handling voice sensations to prevent
-  duplicate entries.
-* Extract repeated asynchronous loops into helper functions to reduce
-  duplication.
+   * `Heart` derives an emoji-represented emotional state.
+   * This is passed to the frontend for display.
 
-### Quick
+4. **Will & Action**
 
-The Quick is Pete’s first-stage integrator. It buffers raw `Sensation`s over a short window (a few seconds) and emits an `Instant` — a coherent, narrative `Impression` of what Pete just experienced.
+   * `Will` considers the current situation and emotional tone.
+   * May emit behavioral instructions (e.g., `<say>`, `<pounce>`, `<move>`).
 
-- Input: `Sensation` (from webcam, mic, face detector, etc.)
-- Output: `Instant` (e.g., “I hear Travis say, 'Hiya Pete.'”)
-- Consumed by: `Will`, `Memory`, `Heart`
+5. **Speech**
 
-🧠 The Quick does **not** act — it observes and narrates.
+   * `Will` invokes `Voice::take_turn()` with a prompt, permitting it to speak.
+   * `Voice` emits structured speech and updates the conversation log.
 
-### Will
+---
 
-The Will interprets `Instant` impressions from the Quick and decides how Pete
-should respond. It does not generate new impressions itself. Instead, it emits
-behavioral tags like `<say>` or custom motor commands. If the Quick reports
-"I'm seeing a fly quickly approach me and then hesitate", the Will might choose
-to send `<pounce target="fly">Now or never!</pounce>`.
+## 💬 Communication Channels
 
-This document reflects the current cognitive and runtime architecture of Pete Daringsby. Keep it consistent with the latest design discussions and behavior changes.
+* **WebSocket** at `/ws`: Streams `Event` objects from Pete to the client
+* **Static Frontend**: Lives under `frontend/dist`; connects to `/ws`
+* **Events**: Include `Sensed`, `Spoke`, `EmotionChanged`, `Speech`, etc.
+* **Debug Panel**: Streams `WitReport`s via `/debug`
 
-## Sensor Features
+---
 
-* Build with cargo features to include sensors.
-* Features: `eye`, `face`, `geo`, `ear`, `heartbeat`.
-* `all-sensors` enables them all and is used by default.
-* `HeartbeatSensor::test_interval` helps with short test delays.
-\n* In doctests, use `crate::` paths to reference items within the same crate.
+## 🧪 Testing Practices
+
+* Use `#[tokio::test(start_paused = true)]` for time-sensitive async tests
+* Simulate full cognition loops with stubbed `Mouth`, `Ear`, and LLM
+* Enable `tts` feature for Coqui integration, or test without it
+* Avoid blocking: all Wits run asynchronously and should tick infrequently
+
+---
+
+## 🧠 Agent Roles Summary
+
+| Agent          | Role                                       |
+| -------------- | ------------------------------------------ |
+| `Quick`        | Turns `Sensation[]` into an `Instant`      |
+| `Combobulator` | Describes the moment in a single sentence  |
+| `Memory`       | Stores, links, and recalls impressions     |
+| `Heart`        | Assesses how Pete feels                    |
+| `Will`         | Chooses and emits actions                  |
+| `Voice`        | Generates expressive language (with emoji) |
+
+---
+
+## 🛠 Development Quickstart
+
+* `cargo fetch` then `cargo test`
+* Run with `RUST_LOG=debug cargo run --features tts`
+* Visit [`http://localhost:3000/`](http://localhost:3000/) to connect frontend
+
+Use this document to orient new agents, tools, or contributors. If you’re confused — ask the Quick what it saw, or the Will what it wants.
