@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use psyche::ling::{Doer, Instruction};
-use psyche::{Impression, Stimulus, Summarizer, wit::Episode, wits::Combobulator};
+use psyche::{Impression, Stimulus, Summarizer, wit::Episode, wits::CombobulatorSummarizer};
 
 #[derive(Clone)]
 struct Dummy;
@@ -14,7 +14,7 @@ impl Doer for Dummy {
 
 #[tokio::test]
 async fn returns_awareness_impression() {
-    let combo = Combobulator::new(Box::new(Dummy));
+    let combo = CombobulatorSummarizer::new(Box::new(Dummy));
     let imp = combo
         .digest(&[Impression::new(
             vec![Stimulus::new(Episode {

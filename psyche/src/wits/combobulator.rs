@@ -1,122 +1,115 @@
-use crate::prompt::PromptBuilder;
 use crate::{
-    Impression, Stimulus, Summarizer,
-    ling::{Doer, Instruction},
-    wit::Episode,
+    ImageData, Impression, Stimulus, Summarizer,
+    wit::{Episode, Wit},
+    wits::CombobulatorSummarizer,
 };
 use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::broadcast;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use tokio::sync::Semaphore;
+use tracing::info;
 
-/// Summarizes recent [`Episode`]s into a short awareness statement.
-///
-/// The resulting sentence feeds into [`Will`] to inform the next action.
-///
-/// # Example
-/// ```no_run
-/// # use psyche::{wits::Combobulator, ling::{Doer, Instruction}, Impression, Stimulus, Summarizer, wit::Episode};
-/// # use async_trait::async_trait;
-/// # struct Dummy;
-/// # #[async_trait]
-/// # impl Doer for Dummy {
-/// #   async fn follow(&self, _i: Instruction) -> anyhow::Result<String> {
-/// #       Ok("All clear.".to_string())
-/// #   }
-/// # }
-/// # #[tokio::main]
-/// # async fn main() -> anyhow::Result<()> {
-/// let combo = Combobulator::new(Box::new(Dummy));
-/// let imp = combo
-///     .digest(&[Impression::new(
-///         vec![Stimulus::new(Episode { summary: "Pete looked around".into() })],
-///         "",
-///         None::<String>,
-///     )])
-///     .await?;
-/// assert_eq!(imp.summary, "All clear.");
-/// # Ok(())
-/// # }
-/// ```
-#[derive(Clone)]
+#[cfg(not(test))]
+const CAPTION_COOLDOWN: Duration = Duration::from_secs(30);
+#[cfg(test)]
+const CAPTION_COOLDOWN: Duration = Duration::from_secs(1);
+
+/// Wit summarizing recent episodes into a short awareness statement.
 pub struct Combobulator {
-    doer: Arc<dyn Doer>,
-    prompt: crate::prompt::CombobulatorPrompt,
-    tx: Option<broadcast::Sender<crate::WitReport>>,
+    combobulator: CombobulatorSummarizer,
+    buffer: Mutex<Vec<Impression<Episode>>>,
+    last_caption_time: Mutex<Instant>,
+    latest_image: Arc<Mutex<Option<ImageData>>>,
+    llm_semaphore: Arc<Semaphore>,
+    instants: Mutex<Vec<Arc<crate::Instant>>>,
 }
 
 impl Combobulator {
     /// Debug label for this Wit.
     pub const LABEL: &'static str = "Combobulator";
-    /// Create a new `Combobulator` using the provided [`Doer`].
-    pub fn new(doer: Box<dyn Doer>) -> Self {
+    /// Create a new `Combobulator` using the given summarizer.
+    pub fn new(combobulator: CombobulatorSummarizer) -> Self {
         Self {
-            doer: doer.into(),
-            prompt: crate::prompt::CombobulatorPrompt,
-            tx: None,
+            combobulator,
+            buffer: Mutex::new(Vec::new()),
+            last_caption_time: Mutex::new(Instant::now() - Duration::from_secs(30)),
+            latest_image: Arc::new(Mutex::new(None)),
+            llm_semaphore: Arc::new(Semaphore::new(2)),
+            instants: Mutex::new(Vec::new()),
         }
-    }
-
-    /// Create a `Combobulator` that emits [`WitReport`]s using `tx`.
-    pub fn with_debug(doer: Box<dyn Doer>, tx: broadcast::Sender<crate::WitReport>) -> Self {
-        Self {
-            doer: doer.into(),
-            prompt: crate::prompt::CombobulatorPrompt,
-            tx: Some(tx),
-        }
-    }
-
-    /// Replace the prompt builder.
-    pub fn set_prompt(&mut self, prompt: crate::prompt::CombobulatorPrompt) {
-        self.prompt = prompt;
     }
 }
 
 #[async_trait]
-impl Summarizer<Episode, String> for Combobulator {
-    async fn digest(&self, inputs: &[Impression<Episode>]) -> anyhow::Result<Impression<String>> {
-        let mut combined = String::new();
-        for imp in inputs {
-            if let Some(stim) = imp.stimuli.first() {
-                if !combined.is_empty() {
-                    combined.push(' ');
-                }
-                combined.push_str(&stim.what.summary);
-            }
+impl crate::traits::observer::SensationObserver for Combobulator {
+    async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
+        if let Some(instant) = payload.downcast_ref::<Arc<crate::Instant>>() {
+            self.instants.lock().unwrap().push(instant.clone());
         }
-        let instruction = Instruction {
-            command: self.prompt.build(&combined),
-            images: Vec::new(),
+    }
+}
+
+#[async_trait]
+impl Wit<Impression<Episode>, String> for Combobulator {
+    async fn observe(&self, input: Impression<Episode>) {
+        self.buffer.lock().unwrap().push(input);
+    }
+
+    async fn tick(&self) -> Vec<Impression<String>> {
+        let now = Instant::now();
+        let image = {
+            let mut last = self.last_caption_time.lock().unwrap();
+            if now.duration_since(*last) < CAPTION_COOLDOWN {
+                None
+            } else {
+                *last = now;
+                self.latest_image.lock().unwrap().take()
+            }
         };
-        let resp = self.doer.follow(instruction.clone()).await?;
-        let summary = resp.trim().to_string();
-        if let Some(tx) = &self.tx {
-            if crate::debug::debug_enabled(Self::LABEL).await {
-                let _ = tx.send(crate::WitReport {
-                    name: Self::LABEL.into(),
-                    prompt: instruction.command.clone(),
-                    output: summary.clone(),
-                });
+
+        if let Some(image) = image {
+            let permit = self.llm_semaphore.clone().acquire_owned().await.unwrap();
+            let start = Instant::now();
+            let result = self.combobulator.describe_image(&image).await;
+            info!("🖼️ image captioning took {:?}", start.elapsed());
+            drop(permit);
+            if let Ok(caption) = result {
+                self.buffer.lock().unwrap().push(Impression::new(
+                    vec![Stimulus::new(Episode {
+                        summary: caption.clone(),
+                    })],
+                    caption,
+                    None::<String>,
+                ));
             }
         }
-        Ok(Impression::new(
-            vec![Stimulus::new(summary.clone())],
-            summary,
-            None::<String>,
-        ))
+
+        let inputs = {
+            let mut buf = self.buffer.lock().unwrap();
+            if buf.is_empty() {
+                return Vec::new();
+            }
+            let data = buf.clone();
+            buf.clear();
+            data
+        };
+        match self.combobulator.digest(&inputs).await {
+            Ok(i) => vec![i],
+            Err(_) => Vec::new(),
+        }
+    }
+
+    fn debug_label(&self) -> &'static str {
+        Self::LABEL
     }
 }
 
 impl Combobulator {
-    /// Describe an image using the underlying [`Doer`].
-    pub async fn describe_image(&self, image: &crate::ImageData) -> anyhow::Result<String> {
-        use crate::ling::ImageData as LImageData;
-        let caption = self
-            .doer
-            .follow(Instruction {
-                command: "Describe only what you see in this image in a single sentence, in the first person. Remember, this is what you are *seeing* in the first person, so unless you're looking into a mirror, you won't be seeing yourself.".into(),
-                images: vec![LImageData { mime: image.mime.clone(), base64: image.base64.clone() }],
-            })
-            .await?;
-        Ok(caption.trim().to_string())
+    /// Continuously tick the wit at a fixed interval.
+    pub async fn run(self: Arc<Self>) {
+        loop {
+            self.tick().await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
     }
 }

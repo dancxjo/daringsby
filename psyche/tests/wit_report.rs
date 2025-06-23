@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use psyche::ling::{Doer, Instruction};
-use psyche::{Impression, Stimulus, Summarizer, Will, WitReport};
+use psyche::{Impression, Stimulus, Summarizer, WillSummarizer, WitReport};
 use tokio::sync::broadcast;
 
 #[derive(Clone)]
@@ -16,7 +16,7 @@ impl Doer for Dummy {
 #[tokio::test]
 async fn will_sends_report() {
     let (tx, mut rx) = broadcast::channel(8);
-    let will = Will::with_debug(Box::new(Dummy), tx.clone());
+    let will = WillSummarizer::with_debug(Box::new(Dummy), tx.clone());
     // no report when disabled
     let _ = will
         .digest(&[Impression::new(

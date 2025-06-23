@@ -109,8 +109,8 @@ async fn main() -> anyhow::Result<()> {
 
     use psyche::ling::OllamaProvider;
     use psyche::wits::{
-        BasicMemory, Combobulator, CombobulatorWit, FaceMemoryWit, FondDuCoeur, HeartWit,
-        IdentityWit, MemoryWit, Neo4jClient, QdrantClient, VisionWit, WillWit,
+        BasicMemory, Combobulator, CombobulatorSummarizer, FaceMemoryWit, FondDuCoeur, HeartWit,
+        IdentityWit, MemoryWit, Neo4jClient, QdrantClient, VisionWit, Will, WillSummarizer,
     };
 
     let narrator = OllamaProvider::new(&cli.chatter_host, &cli.chatter_model)?;
@@ -151,11 +151,13 @@ async fn main() -> anyhow::Result<()> {
         wit_tx.clone(),
     )));
     psyche.register_observing_wit(Arc::new(FaceMemoryWit::with_debug(wit_tx.clone())));
-    psyche.register_typed_wit(Arc::new(CombobulatorWit::new(Combobulator::with_debug(
-        Box::new(OllamaProvider::new(&cli.wits_host, &cli.wits_model)?),
-        wit_tx.clone(),
-    ))));
-    psyche.register_typed_wit(Arc::new(WillWit::with_debug(
+    psyche.register_typed_wit(Arc::new(Combobulator::new(
+        CombobulatorSummarizer::with_debug(
+            Box::new(OllamaProvider::new(&cli.wits_host, &cli.wits_model)?),
+            wit_tx.clone(),
+        ),
+    )));
+    psyche.register_typed_wit(Arc::new(Will::with_debug(
         psyche.topic_bus(),
         Arc::new(OllamaProvider::new(&cli.wits_host, &cli.wits_model)?),
         Some(wit_tx.clone()),

@@ -94,7 +94,7 @@ let mouth = std::sync::Arc::new(psyche::TrimMouth::new(mouth));
 psyche.set_mouth(mouth);
 psyche.set_emotion("😊"); // initial expression
 // Ask the Will what to do next
-let will = psyche::Will::new(Box::new(DummyVoice));
+let will = psyche::WillSummarizer::new(Box::new(DummyVoice));
 let decision = will
     .digest(&[psyche::Impression { headline: "".into(), details: None, raw_data: "say hi".to_string() }])
     .await?;
