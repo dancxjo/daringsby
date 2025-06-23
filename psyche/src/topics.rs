@@ -71,7 +71,28 @@ pub enum Topic {
     FaceInfo,
 }
 
-/// Envelope for topic messages carrying any payload.
+/// Envelope for messages exchanged on the [`TopicBus`].
+///
+/// A `TopicMessage` is usually created by [`TopicBus::publish`] and then
+/// received via [`TopicBus::subscribe_raw`].  The [`payload`] field contains the
+/// published value boxed as `Arc<dyn Any + Send + Sync>` so callers must
+/// downcast it to the expected type.
+///
+/// # Example
+/// ```
+/// use psyche::topics::{TopicBus, Topic};
+///
+/// # #[tokio::main]
+/// # async fn main() {
+/// let bus = TopicBus::new(8);
+/// bus.publish(Topic::Sensation, "hi".to_string());
+/// let mut rx = bus.subscribe_raw();
+/// let msg = rx.recv().await.unwrap();
+/// assert_eq!(msg.topic, Topic::Sensation);
+/// let text = msg.payload.downcast_ref::<String>().unwrap();
+/// assert_eq!(text, "hi");
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct TopicMessage {
     /// Topic this message belongs to.
