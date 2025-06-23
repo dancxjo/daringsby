@@ -16,10 +16,7 @@ use pete::{
 };
 // helper for building Ollama providers
 use pete::ollama_provider_from_args;
-#[cfg(feature = "tts")]
-use pete::{CoquiTts, TtsMouth};
-#[cfg(feature = "tts")]
-use psyche::PlainMouth;
+use pete::default_mouth;
 use psyche::{Ear, GeoLoc, ImageData, Mouth, Sensation, Sensor, TrimMouth};
 use std::{
     net::SocketAddr,
@@ -181,22 +178,13 @@ async fn main() -> anyhow::Result<()> {
     psyche.set_fallback_turn_enabled(!cli.no_fallback_turn);
     let speaking = Arc::new(AtomicBool::new(false));
     let connections = Arc::new(AtomicUsize::new(0));
-    #[cfg(feature = "tts")]
-    let base_mouth: Arc<dyn Mouth> = {
-        let tts = Arc::new(TtsMouth::new(
-            bus.event_sender(),
-            speaking.clone(),
-            Arc::new(CoquiTts::new(
-                cli.tts_url,
-                Some(cli.tts_speaker_id.clone()),
-                Some(cli.tts_language_id.clone()),
-            )),
-        )) as Arc<dyn Mouth>;
-        Arc::new(PlainMouth::new(tts)) as Arc<dyn Mouth>
-    };
-    #[cfg(not(feature = "tts"))]
-    let base_mouth: Arc<dyn Mouth> =
-        Arc::new(ChannelMouth::new(bus.clone(), speaking.clone())) as Arc<dyn Mouth>;
+    let base_mouth: Arc<dyn Mouth> = default_mouth(
+        bus.clone(),
+        speaking.clone(),
+        cli.tts_url,
+        Some(cli.tts_speaker_id.clone()),
+        Some(cli.tts_language_id.clone()),
+    );
     let mouth = Arc::new(TrimMouth::new(base_mouth)) as Arc<dyn Mouth>;
     psyche.set_mouth(mouth.clone());
     psyche.set_emotion("😐");
