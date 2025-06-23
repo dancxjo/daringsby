@@ -116,6 +116,8 @@ Provides LLM and embedding utilities.
 ## 🛠 Development Quickstart
 
 * `cargo fetch` then `cargo test`
+* `npm test` for frontend checks
+* Keep `dark.css` and `light.css` in sync when tweaking styles
 * Run with `RUST_LOG=debug cargo run --features tts`
 * Visit [`http://localhost:3000/`](http://localhost:3000/) to connect frontend
 * Each Wit exposes `new()` and `with_debug()`; `new` should delegate to
