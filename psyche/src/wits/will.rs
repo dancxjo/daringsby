@@ -4,7 +4,7 @@ use crate::motorcall::InstructionRegistry;
 use crate::prompt::PromptBuilder;
 use crate::topics::{Topic, TopicBus};
 use crate::traits::Doer;
-use crate::{Impression, Stimulus, WitReport};
+use crate::{Decision, Impression, Stimulus, WitReport};
 use async_trait::async_trait;
 use lingproc::Instruction as LlmInstruction;
 use quick_xml::{Reader, events::Event};
