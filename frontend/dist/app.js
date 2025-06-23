@@ -136,7 +136,7 @@
     }
   }
 
-  function handleMessage(ev) {
+  function handleMainMessage(ev) {
     try {
       const m = JSON.parse(ev.data);
       switch (m.type) {
@@ -148,40 +148,65 @@
           words.scrollTop = words.scrollHeight;
           enqueueAudio({ audio: m.data.audio || null, text: m.data.words });
           break;
-        case "Think": {
-          if (typeof m.data === "object" && m.data !== null) {
-            witOutputs[m.data.name] = m.data.output;
-            const { promptPre, outputPre, time, details } = getWitDetail(m.data.name);
-            if (m.data.prompt !== undefined) {
-              promptPre.textContent = m.data.prompt;
-            }
-            if (m.data.output !== undefined) {
-              outputPre.textContent = JSON.stringify(m.data.output, null, 2);
-            }
-            time.textContent = new Date().toLocaleTimeString();
-            details.classList.add("updated");
-            setTimeout(() => details.classList.remove("updated"), 300);
-          } else {
-            witOutputs["unknown"] = m.data;
-          }
-          thoughtTabs.innerHTML = "";
-          Object.entries(witOutputs).forEach(([name, output]) => {
-            const div = document.createElement("div");
-            div.className = "wit-report";
-            div.textContent = `${name}: ${output}`;
-            thoughtTabs.appendChild(div);
-          });
-          thought.style.display = Object.keys(witOutputs).length ? "flex" : "none";
-          break;
-        }
       }
     } catch (e) {
       console.error(e);
     }
   }
 
-  ws.onmessage = handleMessage;
-  debugWs.onmessage = handleMessage;
+  function handleDebugMessage(ev) {
+    try {
+      const m = JSON.parse(ev.data);
+      if (m.type === "Think") {
+        if (typeof m.data === "object" && m.data !== null) {
+          witOutputs[m.data.name] = m.data.output;
+          const { promptPre, outputPre, time, details } = getWitDetail(m.data.name);
+          if (m.data.prompt !== undefined) {
+            promptPre.textContent = m.data.prompt;
+          }
+          if (m.data.output !== undefined) {
+            outputPre.textContent = JSON.stringify(m.data.output, null, 2);
+          }
+          time.textContent = new Date().toLocaleTimeString();
+          details.classList.add("updated");
+          setTimeout(() => details.classList.remove("updated"), 300);
+        } else {
+          witOutputs["unknown"] = m.data;
+        }
+        thoughtTabs.innerHTML = "";
+        Object.entries(witOutputs).forEach(([name, output]) => {
+          const div = document.createElement("div");
+          div.className = "wit-report";
+          div.textContent = `${name}: ${output}`;
+          thoughtTabs.appendChild(div);
+        });
+        thought.style.display = Object.keys(witOutputs).length ? "flex" : "none";
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function captureWebcamFrame(video, canvas, ctx) {
+    if (video.videoWidth === 0) {
+      video.play().catch(() => {});
+      return null;
+    }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+    const pixel = ctx.getImageData(
+      Math.floor(canvas.width / 2),
+      Math.floor(canvas.height / 2),
+      1,
+      1,
+    ).data;
+    const blank = pixel[0] === 0 && pixel[1] === 0 && pixel[2] === 0;
+    return blank ? "" : canvas.toDataURL("image/jpeg");
+  }
+
+  ws.onmessage = handleMainMessage;
+  debugWs.onmessage = handleDebugMessage;
 
   document.getElementById("text-form").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -215,32 +240,22 @@
       await video.play();
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      setInterval(() => {
-        if (video.videoWidth === 0) {
-          video.play().catch(() => {});
-          return;
-        }
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
-        const pixel = ctx.getImageData(
-          Math.floor(canvas.width / 2),
-          Math.floor(canvas.height / 2),
-          1,
-          1,
-        ).data;
-        const blank = pixel[0] === 0 && pixel[1] === 0 && pixel[2] === 0;
-        if (!blank) {
-          const data = canvas.toDataURL("image/jpeg");
-          thoughtImage.src = data;
-          thoughtImage.style.display = "block";
-          imageThumbnail.src = data;
-          imageThumbnail.style.display = "block";
+        setInterval(() => {
+          const data = captureWebcamFrame(video, canvas, ctx);
+          if (data === null) {
+            return;
+          }
+          if (data) {
+            thoughtImage.src = data;
+            thoughtImage.style.display = "block";
+            imageThumbnail.src = data;
+            imageThumbnail.style.display = "block";
+          } else {
+            thoughtImage.style.display = "none";
+            imageThumbnail.style.display = "none";
+          }
           ws.send(JSON.stringify({ type: "See", data }));
-        } else {
-          ws.send(JSON.stringify({ type: "See", data: "" }));
-        }
-      }, 1000);
+        }, 1000);
     } catch (e) {
       if (e && e.name === "NotFoundError") {
         console.warn("webcam not available");
