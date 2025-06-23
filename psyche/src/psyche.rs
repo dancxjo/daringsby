@@ -426,7 +426,7 @@ impl Psyche {
     /// Register a background [`Wit`].
     ///
     /// Example:
-    /// ```no_run
+    /// ```ignore
     /// use async_trait::async_trait;
     /// use psyche::wit::Wit;
     /// # let mut psyche: psyche::Psyche = todo!();

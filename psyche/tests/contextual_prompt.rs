@@ -1,4 +1,4 @@
-use psyche::prompt::PromptBuilder;
+use psyche::prompt::PromptFragment;
 use psyche::topics::{Topic, TopicBus};
 use psyche::{ContextualPrompt, Impression, Stimulus};
 use tokio::time::{Duration, sleep};
@@ -37,7 +37,7 @@ async fn includes_all_context() {
         ),
     );
     sleep(Duration::from_millis(50)).await;
-    let out = prompt.build("hi");
+    let out = prompt.build_prompt("hi");
     println!("{}", out);
     assert!(out.contains("Identity: I am Pete"));
     assert!(out.contains("Situation: on porch"));
@@ -52,7 +52,7 @@ async fn missing_context_is_empty() {
     sleep(Duration::from_millis(20)).await;
     bus.publish(Topic::Identity, "Pete".to_string());
     sleep(Duration::from_millis(20)).await;
-    let out = prompt.build("hi");
+    let out = prompt.build_prompt("hi");
     println!("{}", out);
     assert!(out.contains("Identity: Pete"));
     assert!(out.contains("Situation: "));

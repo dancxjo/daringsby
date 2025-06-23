@@ -117,7 +117,7 @@ let decision = will.tick().await.pop().unwrap();
 assert_eq!(decision.summary, "Speak.");
 will.command_voice_to_speak(None); // allow Pete to respond
 // Build a custom instruction with the prompt generator
-let custom = psyche::WillPrompt::default().build("say hi");
+let custom = psyche::WillPrompt::default().build_prompt("say hi");
 assert!(custom.contains("Pete"));
 // Customize or replace the default prompt if desired
 psyche.set_system_prompt("Respond with two sentences.");
