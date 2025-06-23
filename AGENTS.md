@@ -134,6 +134,8 @@ Provides LLM and embedding utilities.
 * Keep commit messages short yet descriptive.
 * In frontend scripts, stop `MediaRecorder` on `window.onbeforeunload` to release the microphone.
 * Patch DOM incrementally or debounce updates instead of replacing innerHTML.
+* Give `<details>` elements a `min-height` and manage `max-height` via the
+  `--details-max-height` CSS variable so collapsed summaries remain visible.
 
 ### Hidden Debug Mode
 
