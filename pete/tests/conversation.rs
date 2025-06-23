@@ -10,7 +10,7 @@ use std::sync::{
 async fn returns_log_json() {
     let mut psyche = dummy_psyche();
     let conversation = psyche.conversation();
-    conversation.lock().await.add_user("hi".into());
+    conversation.lock().await.add_message_from_user("hi".into());
     let ear = Arc::new(ChannelEar::new(
         psyche.input_sender(),
         Arc::new(AtomicBool::new(false)),
