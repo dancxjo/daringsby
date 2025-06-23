@@ -70,6 +70,7 @@ pub mod motorcall;
 mod plain_mouth;
 pub mod prompt;
 mod task_group;
+pub use task_group::TaskGroup;
 pub mod sensors {
     #[cfg(feature = "face")]
     pub mod face;
