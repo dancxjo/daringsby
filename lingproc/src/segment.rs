@@ -13,6 +13,27 @@ use std::collections::VecDeque;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Yield sentences from the `input` stream.
+///
+/// # Examples
+/// ```
+/// use lingproc::sentence_stream;
+/// use tokio_stream::iter;
+/// use futures::StreamExt;
+///
+/// let text = "David E. Sanger covers the Trump administration and a range of national security issues. He has been a Times journalist for more than four decades and has written four books on foreign policy and national security challenges.";
+/// let mut stream = Box::pin(sentence_stream(iter(vec![Ok::<String, ()>(text.to_string())])));
+///
+/// futures::executor::block_on(async {
+///     assert_eq!(
+///         futures::StreamExt::next(&mut stream).await.unwrap().unwrap(),
+///         "David E. Sanger covers the Trump administration and a range of national security issues. "
+///     );
+///     assert_eq!(
+///         futures::StreamExt::next(&mut stream).await.unwrap().unwrap(),
+///         "He has been a Times journalist for more than four decades and has written four books on foreign policy and national security challenges."
+///     );
+/// });
+/// ```
 pub fn sentence_stream<S, E>(input: S) -> impl Stream<Item = Result<String, E>>
 where
     S: Stream<Item = Result<String, E>> + Unpin,
@@ -63,6 +84,20 @@ where
 }
 
 /// Split the `input` stream into words.
+///
+/// # Examples
+/// ```
+/// use lingproc::word_stream;
+/// use tokio_stream::iter;
+/// use futures::StreamExt;
+///
+/// let mut words = Box::pin(word_stream(iter(vec![Ok::<String, ()>("Hello 😊 world".to_string())])));
+/// futures::executor::block_on(async {
+///     assert_eq!(futures::StreamExt::next(&mut words).await.unwrap().unwrap(), "Hello");
+///     assert_eq!(futures::StreamExt::next(&mut words).await.unwrap().unwrap(), "world");
+///     assert!(futures::StreamExt::next(&mut words).await.is_none());
+/// });
+/// ```
 pub fn word_stream<S, E>(input: S) -> impl Stream<Item = Result<String, E>>
 where
     S: Stream<Item = Result<String, E>> + Unpin,
