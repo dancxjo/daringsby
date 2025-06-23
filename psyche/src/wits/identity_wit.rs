@@ -1,3 +1,4 @@
+use crate::traits::BufferedWit;
 use crate::{Impression, WitReport, wit::Wit, wits::FondDuCoeur};
 use async_trait::async_trait;
 use std::sync::Mutex;
@@ -29,24 +30,15 @@ impl IdentityWit {
 }
 
 #[async_trait]
-impl Wit for IdentityWit {
+impl BufferedWit for IdentityWit {
     type Input = Impression<String>;
     type Output = String;
 
-    async fn observe(&self, input: Self::Input) {
-        self.buffer.lock().unwrap().push(input);
+    fn buffer(&self) -> &Mutex<Vec<Self::Input>> {
+        &self.buffer
     }
 
-    async fn tick(&self) -> Vec<Impression<Self::Output>> {
-        let inputs = {
-            let mut buf = self.buffer.lock().unwrap();
-            if buf.is_empty() {
-                return Vec::new();
-            }
-            let data = buf.clone();
-            buf.clear();
-            data
-        };
+    async fn process_buffer(&self, inputs: Vec<Self::Input>) -> Vec<Impression<Self::Output>> {
         match self.summarizer.digest(&inputs).await {
             Ok(i) => {
                 if let Some(tx) = &self.tx {
@@ -64,7 +56,7 @@ impl Wit for IdentityWit {
         }
     }
 
-    fn debug_label(&self) -> &'static str {
+    fn label(&self) -> &'static str {
         Self::LABEL
     }
 }

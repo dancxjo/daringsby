@@ -9,6 +9,7 @@ pub mod util;
 mod voice;
 
 pub mod traits {
+    pub mod buffered_wit;
     pub mod doer;
     pub mod ear;
     pub mod motor;
@@ -18,6 +19,7 @@ pub mod traits {
     pub mod tts;
     pub mod wit;
 
+    pub use buffered_wit::BufferedWit;
     pub use doer::Doer;
     pub use ear::Ear;
     pub use motor::{Motor, NoopMotor};
@@ -101,8 +103,8 @@ pub use sensation::{Event, Instant, Sensation, WitReport};
 #[cfg(feature = "face")]
 pub use sensors::{DummyDetector, FaceDetector, FaceInfo, FaceSensor};
 pub use traits::{
-    Doer, Ear, ErasedWit, Motor, Mouth, NoopMotor, SensationObserver, Sensor, Tts, TtsStream, Wit,
-    WitAdapter,
+    BufferedWit, Doer, Ear, ErasedWit, Motor, Mouth, NoopMotor, SensationObserver, Sensor, Tts,
+    TtsStream, Wit, WitAdapter,
 };
 pub use voice::{Voice, extract_emojis};
 pub use wits::{

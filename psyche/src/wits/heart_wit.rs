@@ -1,5 +1,5 @@
-use crate::traits::{Doer, Motor};
-use crate::{Impression, Stimulus, wit::Wit};
+use crate::traits::{BufferedWit, Doer, Motor};
+use crate::{Impression, Stimulus};
 use async_trait::async_trait;
 use lingproc::LlmInstruction;
 use std::sync::{Arc, Mutex};
@@ -42,24 +42,16 @@ impl HeartWit {
 }
 
 #[async_trait]
-impl Wit for HeartWit {
+impl BufferedWit for HeartWit {
     type Input = Impression<String>;
     type Output = String;
 
-    async fn observe(&self, input: Self::Input) {
-        self.buffer.lock().unwrap().push(input);
+    fn buffer(&self) -> &Mutex<Vec<Self::Input>> {
+        &self.buffer
     }
 
-    async fn tick(&self) -> Vec<Impression<Self::Output>> {
-        let inputs = {
-            let mut buf = self.buffer.lock().unwrap();
-            if buf.is_empty() {
-                return Vec::new();
-            }
-            let data = buf.clone();
-            buf.clear();
-            data
-        };
+    async fn process_buffer(&self, inputs: Vec<Self::Input>) -> Vec<Impression<Self::Output>> {
+        let inputs = { inputs };
         let summary = inputs
             .iter()
             .flat_map(|i| i.stimuli.iter().map(|s| s.what.clone()))
@@ -92,7 +84,7 @@ impl Wit for HeartWit {
         )]
     }
 
-    fn debug_label(&self) -> &'static str {
+    fn label(&self) -> &'static str {
         Self::LABEL
     }
 }
