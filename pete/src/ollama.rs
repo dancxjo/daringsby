@@ -19,5 +19,5 @@ use lingproc::OllamaProvider;
 /// Propagates any error returned by [`OllamaProvider::new`], such as an invalid
 /// URL or missing model.
 pub fn ollama_provider_from_args(host: &str, model: &str) -> anyhow::Result<OllamaProvider> {
-    Ok(OllamaProvider::new(host, model)?)
+    Ok(OllamaProvider::new_with_defaults(Some(host), Some(model))?)
 }
