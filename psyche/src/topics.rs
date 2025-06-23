@@ -108,7 +108,7 @@ pub struct TopicMessage {
 /// Each topic represents a cognitive stage or signal. For example,
 /// `Topic::Sensation` carries raw inputs from the world, while
 /// `Topic::Instruction` may contain a behavioral directive such as
-/// `&lt;say&gt;` or `&lt;leap&gt;`.
+/// `<say>` or `<leap>`.
 ///
 /// Key guarantees:
 /// - ✅ Type safety between stages (only the correct payload type travels on a
