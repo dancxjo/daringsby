@@ -60,7 +60,10 @@ impl crate::wit::Wit for SituationWit {
     type Input = ();
     type Output = String;
 
-    async fn observe(&self, _: Self::Input) {}
+    async fn observe(&self, _: Self::Input) {
+        // SituationWit receives moments via a [`TopicBus`] subscription.
+        // Nothing is expected through `observe`, so this is a no-op.
+    }
 
     async fn tick(&self) -> Vec<Impression<Self::Output>> {
         const MIN_ITEMS: usize = 3;
