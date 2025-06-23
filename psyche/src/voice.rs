@@ -1,5 +1,5 @@
-use crate::ling::{Chatter, Message};
 use crate::{Event, Mouth};
+use lingproc::{Chatter, Message};
 use pragmatic_segmenter::Segmenter;
 use std::collections::VecDeque;
 use std::sync::{

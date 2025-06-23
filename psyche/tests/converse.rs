@@ -1,7 +1,7 @@
 // TODO: Fix hung tests
 
 // use async_trait::async_trait;
-// use psyche::ling::{Chatter, Doer, Instruction, Message, Vectorizer};
+// use lingproc::{Chatter, Doer, Instruction, Message, Vectorizer};
 // use psyche::{Ear, Event, Mouth, Psyche, Sensation};
 // use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -29,7 +29,7 @@
 
 //     #[async_trait]
 //     impl Chatter for BlankFirstLLM {
-//         async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+//         async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<lingproc::ChatStream> {
 //             let stream = tokio_stream::iter(vec![Ok("  ".to_string()), Ok("hello".to_string())]);
 //             Ok(Box::pin(stream))
 //         }
@@ -140,7 +140,7 @@
 
 // #[async_trait]
 // impl Chatter for Dummy {
-//     async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+//     async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<lingproc::ChatStream> {
 //         Ok(Box::pin(tokio_stream::once(Ok("hello world".to_string()))))
 //     }
 // }
@@ -163,7 +163,7 @@
 
 //     #[async_trait]
 //     impl Chatter for CountingChatter {
-//         async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+//         async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<lingproc::ChatStream> {
 //             self.calls.fetch_add(1, Ordering::SeqCst);
 //             Ok(Box::pin(tokio_stream::once(Ok("hi".to_string()))))
 //         }
@@ -311,7 +311,7 @@
 
 //     #[async_trait]
 //     impl Chatter for SilentLLM {
-//         async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+//         async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<lingproc::ChatStream> {
 //             Ok(Box::pin(tokio_stream::once(Ok(String::new()))))
 //         }
 //     }
@@ -389,7 +389,7 @@
 
 //     #[async_trait]
 //     impl Chatter for SilentLLM {
-//         async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+//         async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<lingproc::ChatStream> {
 //             Ok(Box::pin(tokio_stream::once(Ok(String::new()))))
 //         }
 //     }
@@ -467,7 +467,7 @@
 //             &self,
 //             system_prompt: &str,
 //             _: &[Message],
-//         ) -> anyhow::Result<psyche::ling::ChatStream> {
+//         ) -> anyhow::Result<lingproc::ChatStream> {
 //             assert!(system_prompt.contains("You are PETE"));
 //             Ok(Box::pin(tokio_stream::once(Ok("hi 🙂".to_string()))))
 //         }

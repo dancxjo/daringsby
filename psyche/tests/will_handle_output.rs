@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::ling::{Doer, Instruction};
+use lingproc::{Doer, Instruction};
 use psyche::motorcall::{Motor, MotorRegistry};
 use psyche::wits::WillSummarizer;
 use std::collections::HashMap;

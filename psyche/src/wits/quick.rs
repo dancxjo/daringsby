@@ -10,12 +10,12 @@
 //! window. On [`tick`], it condenses the recent sensations into a single
 //! [`Instant`] and publishes it on [`Topic::Instant`].
 
-use crate::ling::{Doer, Instruction};
 use crate::topics::{Topic, TopicBus};
 use crate::{Impression, Instant, Sensation, Stimulus};
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use futures::StreamExt;
+use lingproc::{Doer, Instruction};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;

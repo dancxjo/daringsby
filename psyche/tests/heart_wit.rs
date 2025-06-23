@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::ling::{Doer, Instruction};
+use lingproc::{Doer, Instruction};
 use psyche::wits::HeartWit;
 use psyche::{Impression, Motor, Stimulus, Wit};
 use std::sync::{Arc, Mutex};

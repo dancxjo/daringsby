@@ -78,7 +78,7 @@
 
 // fn test_psyche(mouth: Arc<dyn Mouth>, ear: Arc<dyn Ear>) -> psyche::Psyche {
 //     use futures::stream;
-//     use psyche::ling::{ChatStream, Chatter, Doer, Instruction, Message, Vectorizer};
+//     use lingproc::{ChatStream, Chatter, Doer, Instruction, Message, Vectorizer};
 //     use std::pin::Pin;
 
 //     struct DummyLLM;

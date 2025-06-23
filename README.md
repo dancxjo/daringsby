@@ -3,7 +3,7 @@
 This repository contains a Rust workspace with three crates:
 
 - **psyche** – a library crate providing the `Psyche` type
-- **lingproc** – helper LLM abstractions re-exported by `psyche`
+- **lingproc** – helper LLM abstractions
 - **pete** – a binary crate depending on `psyche`
 
 The `psyche` crate also defines a `Summarizer` trait used to build modular
@@ -27,7 +27,7 @@ Pete's mouth streams audio one sentence at a time so long replies don't block.
 Example with the `OllamaProvider`:
 
 ```rust,no_run
-use psyche::ling::OllamaProvider;
+use lingproc::OllamaProvider;
 use psyche::Psyche;
 
 let narrator = OllamaProvider::new("http://localhost:11434", "mistral").unwrap();
@@ -53,8 +53,8 @@ impl Ear for DummyEar {
 
 struct DummyVoice;
 #[async_trait]
-impl psyche::ling::Chatter for DummyVoice {
-    async fn chat(&self, _s: &str, _h: &[psyche::ling::Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+impl lingproc::Chatter for DummyVoice {
+    async fn chat(&self, _s: &str, _h: &[lingproc::Message]) -> anyhow::Result<lingproc::ChatStream> {
         Ok(Box::pin(tokio_stream::once(Ok("😊".to_string()))))
     }
 }

@@ -1,6 +1,6 @@
 //! Linguistic helpers and prompt assembly utilities.
 
-pub use lingproc::*;
+use lingproc::Message;
 
 use crate::{Conversation, Impression};
 use tokio::sync::Mutex;

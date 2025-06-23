@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::ling::{ChatStream, Chatter, Doer, Instruction, Message, Vectorizer};
+use lingproc::{ChatStream, Chatter, Doer, Instruction, Message, Vectorizer};
 use psyche::{Ear, Impression, Mouth, Psyche, Sensation, Stimulus, wit::Wit};
 use std::sync::{
     Arc,
