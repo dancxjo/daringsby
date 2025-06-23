@@ -8,17 +8,9 @@
 //! The [`word_stream`] function splits the input into Unicode word boundaries.
 
 use futures::{Stream, StreamExt};
-use once_cell::sync::Lazy;
 use pragmatic_segmenter::Segmenter as PragmaticSegmenter;
 use std::collections::VecDeque;
 use unicode_segmentation::UnicodeSegmentation;
-
-static SEGMENTER: Lazy<PragmaticSegmenter> =
-    Lazy::new(|| PragmaticSegmenter::new().expect("segmenter init"));
-
-fn shared_segmenter() -> &'static PragmaticSegmenter {
-    &SEGMENTER
-}
 
 /// Stateful sentence segmenter usable for both streaming and buffered text.
 ///
@@ -26,6 +18,7 @@ fn shared_segmenter() -> &'static PragmaticSegmenter {
 /// trailing text can be flushed using [`finish`]. All segmentation goes through
 /// the same [`pragmatic_segmenter`] instance as [`sentence_stream`].
 pub struct SentenceSegmenter {
+    segmenter: PragmaticSegmenter,
     buf: String,
     leftover: String,
     pending: VecDeque<String>,
@@ -34,14 +27,20 @@ pub struct SentenceSegmenter {
 impl SentenceSegmenter {
     /// Create a new `SentenceSegmenter`.
     pub fn new() -> Self {
-        Self { buf: String::new(), leftover: String::new(), pending: VecDeque::new() }
+        Self {
+            segmenter: PragmaticSegmenter::new().expect("segmenter init"),
+            buf: String::new(),
+            leftover: String::new(),
+            pending: VecDeque::new(),
+        }
     }
 
     /// Push a text chunk and return any fully segmented sentences.
     pub fn push_str(&mut self, chunk: &str) -> Vec<String> {
         self.buf.push_str(&self.leftover);
         self.buf.push_str(chunk);
-        let mut segs: Vec<String> = shared_segmenter()
+        let mut segs: Vec<String> = self
+            .segmenter
             .segment(&self.buf)
             .map(|s| s.to_string())
             .collect();
