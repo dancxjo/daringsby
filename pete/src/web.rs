@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
     extract::{
-        Path, Query, State,
+        Path, State,
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
     },
     http::StatusCode,
