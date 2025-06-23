@@ -1,6 +1,6 @@
 use crate::instruction::{HostInstruction, parse_instructions};
 use crate::motorcall::InstructionRegistry;
-use crate::prompt::PromptBuilder;
+use crate::prompt::PromptFragment;
 use crate::topics::{Topic, TopicBus};
 use crate::traits::Doer;
 use crate::{Decision, Impression, Stimulus, WitReport};
@@ -133,7 +133,7 @@ impl crate::wit::Wit for Will {
             .map(|s| s.what.clone())
             .unwrap_or_default();
         let llm_instruction = LlmInstruction {
-            command: self.prompt.build(&input),
+            command: self.prompt.build_prompt(&input),
             images: Vec::new(),
         };
         info!(prompt = %llm_instruction.command, "will prompt");

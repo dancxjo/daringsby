@@ -1,4 +1,4 @@
-use crate::prompt::PromptBuilder;
+use crate::prompt::PromptFragment;
 use crate::traits::Doer;
 use crate::{ImageData, Impression, Stimulus, wit::Wit};
 use async_trait::async_trait;
@@ -137,7 +137,7 @@ impl Combobulator {
             }
         }
         let instruction = LlmInstruction {
-            command: self.prompt.build(&combined),
+            command: self.prompt.build_prompt(&combined),
             images: Vec::new(),
         };
         let resp = self.doer.follow(instruction.clone()).await?;

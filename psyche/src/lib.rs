@@ -89,7 +89,7 @@ pub use instruction::{HostInstruction, parse_instructions};
 pub use model::{Experience, Impression, Stimulus};
 pub use pending_turn::PendingTurn;
 pub use plain_mouth::PlainMouth;
-pub use prompt::{CombobulatorPrompt, ContextualPrompt, VoicePrompt, WillPrompt};
+pub use prompt::{CombobulatorPrompt, ContextualPrompt, PromptFragment, VoicePrompt, WillPrompt};
 pub use topics::{Topic, TopicBus, TopicMessage};
 pub use trim_mouth::TrimMouth;
 pub use types::{Decision, GeoLoc, Heartbeat, ImageData, ObjectInfo};

@@ -16,7 +16,7 @@ pub struct Voice {
     ready: AtomicBool,
     extra_prompt: Arc<Mutex<Option<String>>>,
     will: Arc<Mutex<Option<Arc<crate::wits::Will>>>>,
-    prompt: Arc<Mutex<Box<dyn crate::prompt::PromptBuilder + Send + Sync>>>,
+    prompt: Arc<Mutex<Box<dyn crate::prompt::PromptFragment + Send + Sync>>>,
 }
 
 impl Clone for Voice {
@@ -47,7 +47,7 @@ impl Voice {
             extra_prompt: Arc::new(Mutex::new(None)),
             will: Arc::new(Mutex::new(None)),
             prompt: Arc::new(Mutex::new(Box::new(crate::prompt::VoicePrompt)
-                as Box<dyn crate::prompt::PromptBuilder + Send + Sync>)),
+                as Box<dyn crate::prompt::PromptFragment + Send + Sync>)),
         }
     }
 
@@ -61,7 +61,7 @@ impl Voice {
 
     pub fn set_prompt<P>(&self, prompt: P)
     where
-        P: crate::prompt::PromptBuilder + Send + Sync + 'static,
+        P: crate::prompt::PromptFragment + Send + Sync + 'static,
     {
         *self.prompt.lock().unwrap() = Box::new(prompt);
     }
@@ -90,7 +90,7 @@ impl Voice {
         }
         info!("voice permitted, generating speech");
         let extra = self.extra_prompt.lock().unwrap().take();
-        let base = { self.prompt.lock().unwrap().build(system_prompt) };
+        let base = { self.prompt.lock().unwrap().build_prompt(system_prompt) };
         let prompt = if let Some(extra) = extra {
             format!("{}\n{}", base, extra)
         } else {

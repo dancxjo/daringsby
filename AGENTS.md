@@ -32,6 +32,7 @@ This repository is a Rust workspace.
 * Do **not** emit `Event::IntentionToSay` for empty or whitespace-only text.
 * Skip sending `Event::StreamChunk` when the chunk is empty or whitespace.
 * Build prompts using dedicated structs like `WillPrompt`.
+* Implement `PromptFragment` for prompt builders and call `build_prompt(&self, input)`.
 * `ChannelMouth` emits `Event::Speech` per parsed sentence without audio.
 * `Conversation::add_*` merges consecutive same-role messages, inserting a space and trimming.
 * Only the `Psyche` loop should append to `Conversation`; `Ear` implementations forward sensations without modifying the log.
