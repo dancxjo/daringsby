@@ -68,6 +68,11 @@ impl Conversation {
         self.log.push(Message { role, content });
     }
 
+    /// Return the last `n` messages from the conversation.
+    ///
+    /// [`Ling`](crate::Ling) calls this when assembling a prompt for the
+    /// [`Chatter`](crate::ling::Chatter) so that only recent dialogue is
+    /// forwarded. Trimming history keeps model prompts a manageable size.
     pub fn tail(&self, n: usize) -> Vec<Message> {
         let len = self.log.len();
         self.log[len.saturating_sub(n)..].to_vec()
