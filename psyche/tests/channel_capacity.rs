@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::ling::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
+use lingproc::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
 use psyche::wits::memory::Memory;
 use psyche::{Ear, Mouth, Psyche};
 use serde_json::Value;
@@ -26,7 +26,7 @@ impl Ear for Dummy {
 
 #[async_trait]
 impl Chatter for Dummy {
-    async fn chat(&self, _s: &str, _h: &[Message]) -> anyhow::Result<TextStream> {
+    async fn chat(&self, _s: &str, _h: &[Message]) -> anyhow::Result<lingproc::TextStream> {
         Ok(Box::pin(once(Ok("ok".into()))))
     }
     async fn update_prompt_context(&self, _c: &str) {}

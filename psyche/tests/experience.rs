@@ -1,7 +1,7 @@
 // // TODO Fix hung test
 
 // use async_trait::async_trait;
-// use psyche::ling::{Chatter, Doer, Instruction, Message, Vectorizer};
+// use lingproc::{Chatter, Doer, Instruction, Message, Vectorizer};
 // use psyche::wit::Wit;
 // use psyche::{Ear, Event, Impression, Mouth, Psyche, Sensation};
 // use std::sync::{Arc, Mutex};
@@ -45,7 +45,7 @@
 
 // #[async_trait]
 // impl Chatter for Dummy {
-//     async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<psyche::ling::ChatStream> {
+//     async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<lingproc::ChatStream> {
 //         Ok(Box::pin(tokio_stream::once(Ok("hello".to_string()))))
 //     }
 // }

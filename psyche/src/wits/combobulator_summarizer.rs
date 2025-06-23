@@ -1,10 +1,7 @@
 use crate::prompt::PromptBuilder;
-use crate::{
-    Impression, Stimulus, Summarizer,
-    ling::{Doer, Instruction},
-    wit::Episode,
-};
+use crate::{Impression, Stimulus, Summarizer, wit::Episode};
 use async_trait::async_trait;
+use lingproc::{Doer, Instruction};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
@@ -14,7 +11,8 @@ use tokio::sync::broadcast;
 ///
 /// # Example
 /// ```no_run
-/// # use psyche::{wits::CombobulatorSummarizer, ling::{Doer, Instruction}, Impression, Stimulus, Summarizer, wit::Episode};
+/// # use psyche::{wits::CombobulatorSummarizer, Impression, Stimulus, Summarizer, wit::Episode};
+/// # use lingproc::{Doer, Instruction};
 /// # use async_trait::async_trait;
 /// # struct Dummy;
 /// # #[async_trait]
@@ -109,7 +107,7 @@ impl Summarizer<Episode, String> for CombobulatorSummarizer {
 impl CombobulatorSummarizer {
     /// Describe an image using the underlying [`Doer`].
     pub async fn describe_image(&self, image: &crate::ImageData) -> anyhow::Result<String> {
-        use crate::ling::ImageData as LImageData;
+        use lingproc::ImageData as LImageData;
         let caption = self
             .doer
             .follow(Instruction {

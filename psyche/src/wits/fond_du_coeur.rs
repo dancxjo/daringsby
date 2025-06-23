@@ -1,9 +1,6 @@
-use crate::{
-    Impression, Stimulus, Summarizer,
-    ling::{Doer, Instruction},
-    wit::Moment,
-};
+use crate::{Impression, Stimulus, Summarizer, wit::Moment};
 use async_trait::async_trait;
+use lingproc::{Doer, Instruction};
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::ling::{Doer, Instruction};
+use lingproc::{Doer, Instruction};
 use psyche::{Impression, Stimulus, Summarizer, wit::Episode, wits::CombobulatorSummarizer};
 
 #[derive(Clone)]

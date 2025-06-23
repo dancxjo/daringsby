@@ -18,7 +18,8 @@ use tower_http::services::ServeDir;
 use tracing::{debug, error, info};
 
 use crate::EventBus;
-use psyche::{Ear, Event, GeoLoc, ImageData, Sensor, WitReport, ling::Role};
+use lingproc::Role;
+use psyche::{Ear, Event, GeoLoc, ImageData, Sensor, WitReport};
 
 /// State shared across HTTP handlers and WebSocket tasks.
 #[derive(Clone)]

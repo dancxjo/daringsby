@@ -1,10 +1,8 @@
 use crate::motorcall::MotorRegistry;
 use crate::prompt::PromptBuilder;
-use crate::{
-    Impression, Stimulus, Summarizer,
-    ling::{Doer, Instruction},
-};
+use crate::{Impression, Stimulus, Summarizer};
 use async_trait::async_trait;
+use lingproc::{Doer, Instruction};
 use quick_xml::{Reader, events::Event};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -24,7 +22,8 @@ use tracing::info;
 ///
 /// # Example
 /// ```no_run
-/// # use psyche::{Will, ling::{Doer, Instruction}, Impression, Stimulus, Summarizer};
+/// # use psyche::{Will, Impression, Stimulus, Summarizer};
+/// # use lingproc::{Doer, Instruction};
 /// # use async_trait::async_trait;
 /// # struct Dummy;
 /// # #[async_trait]

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::ling::Vectorizer;
+use lingproc::Vectorizer;
 use psyche::{BasicMemory, GraphStore, Impression, Memory, QdrantClient, Stimulus};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};

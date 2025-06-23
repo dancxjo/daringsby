@@ -1,5 +1,6 @@
-use crate::{Impression, Sensation, Stimulus, ling::Instruction};
+use crate::{Impression, Sensation, Stimulus};
 use async_trait::async_trait;
+use lingproc::Instruction;
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value};
 use std::sync::Arc;
@@ -135,12 +136,12 @@ pub struct Episode {
 
 /// A Wit turning [`Sensation`]s into [`Instant`]s.
 pub struct InstantWit {
-    doer: Arc<dyn crate::ling::Doer>,
+    doer: Arc<dyn lingproc::Doer>,
 }
 
 impl InstantWit {
     /// Create a new `InstantWit` using the provided [`Doer`].
-    pub fn new(doer: Box<dyn crate::ling::Doer>) -> Self {
+    pub fn new(doer: Box<dyn lingproc::Doer>) -> Self {
         Self { doer: doer.into() }
     }
 }
@@ -151,11 +152,8 @@ impl Default for InstantWit {
         struct Dummy;
 
         #[async_trait]
-        impl crate::ling::Doer for Dummy {
-            async fn follow(
-                &self,
-                instruction: crate::ling::Instruction,
-            ) -> anyhow::Result<String> {
+        impl lingproc::Doer for Dummy {
+            async fn follow(&self, instruction: lingproc::Instruction) -> anyhow::Result<String> {
                 Ok(instruction.command)
             }
         }
@@ -206,12 +204,12 @@ impl Summarizer<Sensation, Instant> for InstantWit {
 /// A Wit summarizing [`Instant`]s into a [`Moment`].
 #[derive(Clone)]
 pub struct MomentWit {
-    doer: Arc<dyn crate::ling::Doer>,
+    doer: Arc<dyn lingproc::Doer>,
 }
 
 impl MomentWit {
     /// Create a new `MomentWit` using the provided [`Doer`].
-    pub fn new(doer: Box<dyn crate::ling::Doer>) -> Self {
+    pub fn new(doer: Box<dyn lingproc::Doer>) -> Self {
         Self { doer: doer.into() }
     }
 }
@@ -222,11 +220,8 @@ impl Default for MomentWit {
         struct Dummy;
 
         #[async_trait]
-        impl crate::ling::Doer for Dummy {
-            async fn follow(
-                &self,
-                instruction: crate::ling::Instruction,
-            ) -> anyhow::Result<String> {
+        impl lingproc::Doer for Dummy {
+            async fn follow(&self, instruction: lingproc::Instruction) -> anyhow::Result<String> {
                 Ok(instruction.command)
             }
         }
@@ -258,7 +253,7 @@ impl Summarizer<Instant, Moment> for MomentWit {
         // For now we simply echo the prompt as the model response.
         let resp = self
             .doer
-            .follow(crate::ling::Instruction {
+            .follow(lingproc::Instruction {
                 command: prompt,
                 images: Vec::new(),
             })
@@ -277,12 +272,12 @@ impl Summarizer<Instant, Moment> for MomentWit {
 
 /// A Wit distilling [`Moment`]s into a [`Situation`].
 pub struct SituationWit {
-    doer: Arc<dyn crate::ling::Doer>,
+    doer: Arc<dyn lingproc::Doer>,
 }
 
 impl SituationWit {
     /// Create a new `SituationWit` using the provided [`Doer`].
-    pub fn new(doer: Box<dyn crate::ling::Doer>) -> Self {
+    pub fn new(doer: Box<dyn lingproc::Doer>) -> Self {
         Self { doer: doer.into() }
     }
 }
@@ -293,11 +288,8 @@ impl Default for SituationWit {
         struct Dummy;
 
         #[async_trait]
-        impl crate::ling::Doer for Dummy {
-            async fn follow(
-                &self,
-                instruction: crate::ling::Instruction,
-            ) -> anyhow::Result<String> {
+        impl lingproc::Doer for Dummy {
+            async fn follow(&self, instruction: lingproc::Instruction) -> anyhow::Result<String> {
                 Ok(instruction.command)
             }
         }
@@ -342,12 +334,12 @@ impl Summarizer<Moment, Situation> for SituationWit {
 
 /// A Wit summarizing [`Situation`]s into an [`Episode`].
 pub struct EpisodeWit {
-    doer: Arc<dyn crate::ling::Doer>,
+    doer: Arc<dyn lingproc::Doer>,
 }
 
 impl EpisodeWit {
     /// Create a new `EpisodeWit` using the provided [`Doer`].
-    pub fn new(doer: Box<dyn crate::ling::Doer>) -> Self {
+    pub fn new(doer: Box<dyn lingproc::Doer>) -> Self {
         Self { doer: doer.into() }
     }
 }
@@ -358,11 +350,8 @@ impl Default for EpisodeWit {
         struct Dummy;
 
         #[async_trait]
-        impl crate::ling::Doer for Dummy {
-            async fn follow(
-                &self,
-                instruction: crate::ling::Instruction,
-            ) -> anyhow::Result<String> {
+        impl lingproc::Doer for Dummy {
+            async fn follow(&self, instruction: lingproc::Instruction) -> anyhow::Result<String> {
                 Ok(instruction.command)
             }
         }

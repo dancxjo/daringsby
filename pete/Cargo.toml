@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 psyche = { path = "../psyche" }
+lingproc = { path = "../lingproc" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 anyhow = "1"
 async-trait = "0.1"

@@ -1,10 +1,10 @@
 use crate::instruction::{Instruction, parse_instructions};
-use crate::ling::{Doer, Instruction as LlmInstruction};
 use crate::prompt::{PromptBuilder, WillPrompt};
 use crate::topics::{Topic, TopicBus};
 use crate::{Impression, Stimulus, WitReport};
 use async_trait::async_trait;
 use futures::StreamExt;
+use lingproc::{Doer, Instruction as LlmInstruction};
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 use tracing::{debug, info};

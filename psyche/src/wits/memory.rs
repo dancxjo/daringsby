@@ -1,7 +1,7 @@
-use crate::ling::Vectorizer;
 use crate::{Impression, Stimulus};
 use anyhow::Result;
 use async_trait::async_trait;
+use lingproc::Vectorizer;
 use serde::Serialize;
 use serde_json::Value;
 use std::sync::Arc;

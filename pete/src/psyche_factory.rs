@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use psyche::ling::{Chatter, Doer, Instruction, Message, Vectorizer};
+use lingproc::{Chatter, Doer, Instruction, Message, Vectorizer};
 use psyche::{ContextualPrompt, Psyche};
 use std::sync::Arc;
 use tracing::info;
@@ -21,7 +21,7 @@ pub fn dummy_psyche() -> Psyche {
 
     #[async_trait]
     impl Chatter for Dummy {
-        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<psyche::ling::TextStream> {
+        async fn chat(&self, _: &str, _: &[Message]) -> anyhow::Result<lingproc::TextStream> {
             Ok(Box::pin(tokio_stream::once(Ok("hi".to_string()))))
         }
     }
@@ -59,7 +59,7 @@ pub fn dummy_psyche() -> Psyche {
 
 /// Create a psyche backed by an Ollama server.
 ///
-/// This uses [`OllamaProvider`](psyche::ling::OllamaProvider) for all language
+/// This uses [`OllamaProvider`](lingproc::OllamaProvider) for all language
 /// capabilities and the no-op ear and mouth implementations.
 pub fn ollama_psyche(
     chatter_host: &str,
@@ -74,7 +74,7 @@ pub fn ollama_psyche(
     neo4j_pass: &str,
 ) -> anyhow::Result<Psyche> {
     use crate::LoggingMotor;
-    use psyche::ling::OllamaProvider;
+    use lingproc::OllamaProvider;
     use psyche::wits::{
         BasicMemory, Combobulator, CombobulatorSummarizer, FondDuCoeur, HeartWit, IdentityWit,
         MemoryWit, Neo4jClient, QdrantClient, Will, WillSummarizer,

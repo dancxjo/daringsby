@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use futures::{StreamExt, pin_mut};
-use psyche::ling::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
+use lingproc::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer};
 use psyche::{Ear, Mouth, Psyche, Topic};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

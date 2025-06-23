@@ -107,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
 
     info!(%cli.addr, "starting server");
 
-    use psyche::ling::OllamaProvider;
+    use lingproc::OllamaProvider;
     use psyche::wits::{
         BasicMemory, Combobulator, CombobulatorSummarizer, FaceMemoryWit, FondDuCoeur, HeartWit,
         IdentityWit, MemoryWit, Neo4jClient, QdrantClient, VisionWit, Will, WillSummarizer,
