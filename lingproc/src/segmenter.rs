@@ -5,8 +5,16 @@
 //! using the same buffering logic as `lingproc::sentence_stream`.
 
 use futures::{Stream, StreamExt};
+use once_cell::sync::Lazy;
 use pragmatic_segmenter::Segmenter as PragmaticSegmenter;
 use std::collections::VecDeque;
+
+static GLOBAL_SEGMENTER: Lazy<PragmaticSegmenter> =
+    Lazy::new(|| PragmaticSegmenter::new().expect("segmenter init"));
+
+pub(crate) fn shared_segmenter() -> &'static PragmaticSegmenter {
+    &GLOBAL_SEGMENTER
+}
 
 /// Segment a block of `text` into sentences.
 ///
@@ -31,7 +39,7 @@ pub fn stream_sentence_chunks<S>(input: S) -> impl Stream<Item = String>
 where
     S: Stream<Item = String> + Unpin + Send + 'static,
 {
-    crate::sentence_stream(input.map(|s| Ok::<_, ()>(s))).filter_map(|r| async move { r.ok() })
+    crate::sentence_stream(input.map(Ok::<_, ()>)).filter_map(|r| async move { r.ok() })
 }
 
 /// A stateful sentence segmenter.
@@ -42,7 +50,6 @@ pub struct SentenceSegmenter {
     buf: String,
     leftover: String,
     pending: VecDeque<String>,
-    inner: PragmaticSegmenter,
 }
 
 impl SentenceSegmenter {
@@ -52,7 +59,6 @@ impl SentenceSegmenter {
             buf: String::new(),
             leftover: String::new(),
             pending: VecDeque::new(),
-            inner: PragmaticSegmenter::new().expect("segmenter init"),
         }
     }
 
@@ -60,8 +66,7 @@ impl SentenceSegmenter {
     pub fn push_str(&mut self, chunk: &str) -> Vec<String> {
         self.buf.push_str(&self.leftover);
         self.buf.push_str(chunk);
-        let mut segs: Vec<String> = self
-            .inner
+        let mut segs: Vec<String> = shared_segmenter()
             .segment(&self.buf)
             .map(|s| s.to_string())
             .collect();
@@ -90,5 +95,11 @@ impl SentenceSegmenter {
             .into_iter()
             .map(|s| s.trim().to_string())
             .collect()
+    }
+}
+
+impl Default for SentenceSegmenter {
+    fn default() -> Self {
+        Self::new()
     }
 }
