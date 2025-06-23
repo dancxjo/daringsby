@@ -67,7 +67,6 @@ pub mod ling;
 pub mod model;
 pub mod motorcall;
 mod plain_mouth;
-mod prehension;
 pub mod prompt;
 mod task_group;
 pub mod sensors {
@@ -86,7 +85,6 @@ pub use instruction::{Instruction, parse_instructions};
 pub use model::{Experience, Impression, Stimulus};
 pub use pending_turn::PendingTurn;
 pub use plain_mouth::PlainMouth;
-pub use prehension::Prehension;
 pub use prompt::{CombobulatorPrompt, ContextualPrompt, VoicePrompt, WillPrompt};
 pub use psyche::DEFAULT_SYSTEM_PROMPT;
 pub use topics::{Topic, TopicBus, TopicMessage};
