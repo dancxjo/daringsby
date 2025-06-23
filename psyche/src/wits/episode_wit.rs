@@ -41,7 +41,7 @@ impl EpisodeWit {
         let buf_clone = buffer.clone();
         let bus_clone = bus.clone();
         tokio::spawn(async move {
-            let mut stream = bus_clone.subscribe(Topic::Situation);
+            let stream = bus_clone.subscribe(Topic::Situation);
             tokio::pin!(stream);
             while let Some(payload) = stream.next().await {
                 if let Ok(i) = Arc::downcast::<Impression<String>>(payload) {
@@ -53,7 +53,7 @@ impl EpisodeWit {
         let break_clone = break_flag.clone();
         let bus_clone = bus.clone();
         tokio::spawn(async move {
-            let mut stream = bus_clone.subscribe(Topic::Instruction);
+            let stream = bus_clone.subscribe(Topic::Instruction);
             tokio::pin!(stream);
             while let Some(payload) = stream.next().await {
                 if let Ok(i) = Arc::downcast::<HostInstruction>(payload) {

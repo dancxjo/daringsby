@@ -16,7 +16,6 @@ use tracing::{error, info};
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
 use reqwest::{Client, Url};
-use urlencoding::encode;
 
 /// Client for a Coqui TTS server.
 #[derive(Clone)]

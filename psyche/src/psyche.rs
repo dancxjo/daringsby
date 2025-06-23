@@ -609,7 +609,7 @@ impl Psyche {
             if let Some(extra) = self.pending_turn.take() {
                 debug!(%extra, "pending_turn being processed");
                 let (history, mut prompt) = {
-                    let mut pb = self.prompt_builder.lock().await;
+                    let pb = self.prompt_builder.lock().await;
                     let hist = pb.get_conversation_tail(self.max_history).await;
                     let prompt = pb.build_prompt().await;
                     (hist, prompt)

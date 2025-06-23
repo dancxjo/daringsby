@@ -48,7 +48,7 @@ impl Quick {
         let buf_clone = buffer.clone();
         let bus_clone = bus.clone();
         tokio::spawn(async move {
-            let mut stream = bus_clone.subscribe(Topic::Sensation);
+            let stream = bus_clone.subscribe(Topic::Sensation);
             tokio::pin!(stream);
             while let Some(payload) = stream.next().await {
                 if let Ok(s) = Arc::downcast::<Sensation>(payload) {

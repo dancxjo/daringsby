@@ -1,8 +1,6 @@
-use crate::instruction::{HostInstruction, parse_instructions};
-use crate::motorcall::InstructionRegistry;
-use crate::prompt::PromptFragment;
+use crate::instruction::parse_instructions;
 use crate::motor_call::MotorCallRegistry;
-use crate::prompt::PromptBuilder;
+use crate::prompt::PromptFragment;
 use crate::topics::{Topic, TopicBus};
 use crate::traits::Doer;
 use crate::{Decision, Impression, Stimulus, WitReport};

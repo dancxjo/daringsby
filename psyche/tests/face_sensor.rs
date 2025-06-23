@@ -59,7 +59,7 @@ async fn emits_face_info() {
         QdrantClient::default(),
         bus.clone(),
     );
-    let mut sub = bus.subscribe(Topic::Sensation);
+    let sub = bus.subscribe(Topic::Sensation);
     pin_mut!(sub);
     sensor
         .sense(ImageData {
@@ -99,7 +99,7 @@ async fn skips_identical_face() {
         embeddings: std::sync::Mutex::new(vec![vec![0.1, 0.0], vec![0.1, 0.0]]),
     });
     let sensor = FaceSensor::new(detector, QdrantClient::default(), bus.clone());
-    let mut sub = bus.subscribe(Topic::Sensation);
+    let sub = bus.subscribe(Topic::Sensation);
     pin_mut!(sub);
     let img = ImageData {
         mime: "image/png".into(),
@@ -119,7 +119,7 @@ async fn stores_distinct_faces() {
         embeddings: std::sync::Mutex::new(vec![vec![0.1, 0.0], vec![0.0, 0.1]]),
     });
     let sensor = FaceSensor::new(detector, QdrantClient::default(), bus.clone());
-    let mut sub = bus.subscribe(Topic::Sensation);
+    let sub = bus.subscribe(Topic::Sensation);
     pin_mut!(sub);
     let img = ImageData {
         mime: "image/png".into(),
