@@ -5,7 +5,7 @@ use tracing::debug;
 
 /// Discrete actions the host can execute.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Instruction {
+pub enum HostInstruction {
     /// Speak `text` optionally using a named `voice`.
     Say { voice: Option<String>, text: String },
     /// Change the expressed emotion.
@@ -16,19 +16,19 @@ pub enum Instruction {
     BreakEpisode,
 }
 
-/// Parse a list of [`Instruction`]s from a short XML snippet.
+/// Parse a list of [`HostInstruction`]s from a short XML snippet.
 ///
 /// Unknown tags are ignored with a debug log.
 ///
 /// # Examples
 /// ```
-/// use psyche::{parse_instructions, Instruction};
+/// use psyche::{parse_instructions, HostInstruction};
 /// let out = "<say voice=\"kind\">Hi</say><emote>😊</emote>";
 /// let items = parse_instructions(out);
-/// assert_eq!(items[0], Instruction::Say { voice: Some("kind".into()), text: "Hi".into() });
-/// assert_eq!(items[1], Instruction::Emote("😊".into()));
+/// assert_eq!(items[0], HostInstruction::Say { voice: Some("kind".into()), text: "Hi".into() });
+/// assert_eq!(items[1], HostInstruction::Emote("😊".into()));
 /// ```
-pub fn parse_instructions(text: &str) -> Vec<Instruction> {
+pub fn parse_instructions(text: &str) -> Vec<HostInstruction> {
     let mut reader = Reader::from_str(text);
     reader.trim_text(true);
     let mut buf = Vec::new();
@@ -55,15 +55,15 @@ pub fn parse_instructions(text: &str) -> Vec<Instruction> {
             Ok(Event::End(_)) => {
                 if let Some((name, attrs)) = current.take() {
                     match name.as_str() {
-                        "say" => out.push(Instruction::Say {
+                        "say" => out.push(HostInstruction::Say {
                             voice: attrs.get("voice").cloned(),
                             text: content.clone(),
                         }),
-                        "emote" => out.push(Instruction::Emote(content.clone())),
-                        "move" => out.push(Instruction::Move {
+                        "emote" => out.push(HostInstruction::Emote(content.clone())),
+                        "move" => out.push(HostInstruction::Move {
                             to: attrs.get("to").cloned().unwrap_or_default(),
                         }),
-                        "break-episode" => out.push(Instruction::BreakEpisode),
+                        "break-episode" => out.push(HostInstruction::BreakEpisode),
                         other => debug!(%other, "unknown instruction tag"),
                     }
                     content.clear();
@@ -78,10 +78,10 @@ pub fn parse_instructions(text: &str) -> Vec<Instruction> {
                     attrs.insert(key, val);
                 }
                 match name.as_str() {
-                    "move" => out.push(Instruction::Move {
+                    "move" => out.push(HostInstruction::Move {
                         to: attrs.get("to").cloned().unwrap_or_default(),
                     }),
-                    "break-episode" => out.push(Instruction::BreakEpisode),
+                    "break-episode" => out.push(HostInstruction::BreakEpisode),
                     other => debug!(%other, "unknown empty instruction"),
                 }
             }

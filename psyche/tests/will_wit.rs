@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use futures::StreamExt;
-use lingproc::Instruction as LlmInstruction;
+use lingproc::LlmInstruction;
 use psyche::topics::{Topic, TopicBus};
 use psyche::traits::Doer;
+use psyche::{HostInstruction, wits::Will};
 use psyche::{Impression, Stimulus, Wit};
-use psyche::{Instruction, wits::Will};
 use std::sync::Arc;
 use tokio::time::{self, Duration};
 
@@ -34,11 +34,11 @@ async fn publishes_parsed_instructions() {
     let out = wit.tick().await;
     assert!(matches!(
         out[0].stimuli[0].what.instructions[0],
-        Instruction::Say { .. }
+        HostInstruction::Say { .. }
     ));
     let payload = sub.next().await.unwrap();
-    let ins = payload.downcast::<Instruction>().unwrap();
-    assert!(matches!(&*ins, Instruction::Say { text, .. } if text == "Hello"));
+    let ins = payload.downcast::<HostInstruction>().unwrap();
+    assert!(matches!(&*ins, HostInstruction::Say { text, .. } if text == "Hello"));
 }
 
 #[tokio::test]
@@ -74,10 +74,20 @@ async fn mixed_instructions() {
     tokio::pin!(sub);
     let out = wit.tick().await;
     assert_eq!(out[0].stimuli[0].what.instructions.len(), 2);
-    let first = sub.next().await.unwrap().downcast::<Instruction>().unwrap();
-    assert!(matches!(*first, Instruction::Say { .. }));
-    let second = sub.next().await.unwrap().downcast::<Instruction>().unwrap();
-    assert!(matches!(*second, Instruction::Move { .. }));
+    let first = sub
+        .next()
+        .await
+        .unwrap()
+        .downcast::<HostInstruction>()
+        .unwrap();
+    assert!(matches!(*first, HostInstruction::Say { .. }));
+    let second = sub
+        .next()
+        .await
+        .unwrap()
+        .downcast::<HostInstruction>()
+        .unwrap();
+    assert!(matches!(*second, HostInstruction::Move { .. }));
 }
 
 #[tokio::test]

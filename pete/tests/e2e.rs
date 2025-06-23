@@ -3,7 +3,7 @@ use cucumber::{World as _, given, then, when};
 use pete::{ChannelEar, ChannelMouth, EventBus};
 use psyche::{
     self, Ear, Event, Mouth,
-    ling::{Chatter, Doer, Instruction, Message, TextStream, Vectorizer},
+    ling::{Chatter, Doer, LlmInstruction, Message, TextStream, Vectorizer},
 };
 use std::sync::{Arc, atomic::AtomicBool};
 use tokio::sync::{Mutex, broadcast};
@@ -40,7 +40,7 @@ impl Chatter for FixedLLM {
 
 #[async_trait]
 impl Doer for FixedLLM {
-    async fn follow(&self, _i: Instruction) -> anyhow::Result<String> {
+    async fn follow(&self, _i: LlmInstruction) -> anyhow::Result<String> {
         Ok("ok".into())
     }
 }

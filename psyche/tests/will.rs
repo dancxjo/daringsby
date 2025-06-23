@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use lingproc::Instruction as LlmInstruction;
+use lingproc::LlmInstruction;
 use psyche::traits::Doer;
 use psyche::wits::Will;
-use psyche::{Impression, Instruction, Stimulus, TopicBus, Wit};
+use psyche::{HostInstruction, Impression, Stimulus, TopicBus, Wit};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -28,7 +28,7 @@ async fn returns_decision_impression() {
     let imp = will.tick().await.pop().unwrap();
     assert_eq!(
         imp.stimuli[0].what.instructions[0],
-        Instruction::Say {
+        HostInstruction::Say {
             voice: None,
             text: "Do it".into()
         }

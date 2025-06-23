@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use lingproc::Instruction;
+use lingproc::LlmInstruction;
 use psyche::traits::Doer;
 use psyche::{Impression, Stimulus, wits::Combobulator};
 use std::sync::Arc;
@@ -9,7 +9,7 @@ struct Dummy;
 
 #[async_trait]
 impl Doer for Dummy {
-    async fn follow(&self, _: Instruction) -> anyhow::Result<String> {
+    async fn follow(&self, _: LlmInstruction) -> anyhow::Result<String> {
         Ok("All clear.".to_string())
     }
 }

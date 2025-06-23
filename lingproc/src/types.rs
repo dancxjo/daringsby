@@ -68,12 +68,12 @@ pub struct ImageData {
     pub base64: String, // base64-encoded content
 }
 
-/// Use `Instruction` to pass natural language plus multimedia context to the
+/// Use `LlmInstruction` to pass natural language plus multimedia context to the
 /// `Doer`.
 ///
 /// Example usage:
 /// ```rust,ignore
-/// let instruction = Instruction {
+/// let instruction = LlmInstruction {
 ///     command: "Describe what you see.".to_string(),
 ///     images: vec![ImageData {
 ///         mime: "image/png".to_string(),
@@ -85,7 +85,7 @@ pub struct ImageData {
 ///
 /// In the future this struct may include audio or file attachments.
 #[derive(Debug, Clone)]
-pub struct Instruction {
+pub struct LlmInstruction {
     pub command: String,        // Natural language instruction
     pub images: Vec<ImageData>, // Optional supporting images
 }
@@ -105,7 +105,7 @@ pub struct Instruction {
 ///
 /// # Example
 /// ```rust,ignore
-/// let result = doer.follow(Instruction {
+/// let result = doer.follow(LlmInstruction {
 ///     command: "summarize what just happened".into(),
 ///     images: vec![],
 /// }).await?;
@@ -115,7 +115,7 @@ pub struct Instruction {
 pub trait Doer: Send + Sync {
     /// Follow an instruction, possibly with supporting images, and return the
     /// textual result.
-    async fn follow(&self, instruction: Instruction) -> Result<String>;
+    async fn follow(&self, instruction: LlmInstruction) -> Result<String>;
 }
 
 /// LLM-synthesized decision extracted from model output.

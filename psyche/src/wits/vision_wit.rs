@@ -5,7 +5,7 @@ use crate::traits::wit::Wit;
 use crate::{Impression, Stimulus};
 use async_trait::async_trait;
 use lingproc::ImageData as LImageData;
-use lingproc::Instruction;
+use lingproc::LlmInstruction;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::{Semaphore, broadcast};
@@ -92,7 +92,7 @@ impl Wit for VisionWit {
         } else {
             match self
                 .doer
-                .follow(Instruction {
+                .follow(LlmInstruction {
                     command: "Describe only what you see in this image in a single sentence, in the first person. Remember, this is what you are *seeing* in the first person, so unless you're looking into a mirror, you won't be seeing yourself.".into(),
                     images: vec![LImageData { mime: img.mime.clone(), base64: img.base64.clone() }],
                 })

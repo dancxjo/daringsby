@@ -1,10 +1,10 @@
-use crate::Instruction;
+use crate::HostInstruction;
 use crate::topics::{Topic, TopicBus};
 use crate::traits::Doer;
 use crate::{Impression, Stimulus, WitReport};
 use async_trait::async_trait;
 use futures::StreamExt;
-use lingproc::Instruction as LlmInstruction;
+use lingproc::LlmInstruction;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -56,8 +56,8 @@ impl EpisodeWit {
             let mut stream = bus_clone.subscribe(Topic::Instruction);
             tokio::pin!(stream);
             while let Some(payload) = stream.next().await {
-                if let Ok(i) = Arc::downcast::<Instruction>(payload) {
-                    if matches!(*i, Instruction::BreakEpisode) {
+                if let Ok(i) = Arc::downcast::<HostInstruction>(payload) {
+                    if matches!(*i, HostInstruction::BreakEpisode) {
                         break_clone.store(true, Ordering::SeqCst);
                     }
                 }

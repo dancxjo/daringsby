@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use lingproc::Instruction;
+use lingproc::LlmInstruction;
 use psyche::motorcall::{InstructionExecutor, InstructionRegistry};
 use psyche::traits::Doer;
 use psyche::wits::Will;
@@ -11,7 +11,7 @@ struct Dummy;
 
 #[async_trait]
 impl Doer for Dummy {
-    async fn follow(&self, _: Instruction) -> anyhow::Result<String> {
+    async fn follow(&self, _: LlmInstruction) -> anyhow::Result<String> {
         Ok("ok".into())
     }
 }

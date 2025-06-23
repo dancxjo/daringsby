@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 pub use lingproc::ImageData;
-pub type Decision = lingproc::Decision<crate::Instruction>;
+pub type Decision = lingproc::Decision<crate::HostInstruction>;
 
 /// Latitude/longitude coordinates from a positioning sensor.
 #[cfg_attr(feature = "ts", derive(TS))]

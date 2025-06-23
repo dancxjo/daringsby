@@ -16,7 +16,7 @@ use crate::{Impression, Instant, Sensation, Stimulus};
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use futures::StreamExt;
-use lingproc::Instruction;
+use lingproc::LlmInstruction;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
@@ -128,7 +128,7 @@ impl crate::traits::wit::Wit for Quick {
         );
         let out = match self
             .doer
-            .follow(Instruction {
+            .follow(LlmInstruction {
                 command: prompt,
                 images: Vec::new(),
             })

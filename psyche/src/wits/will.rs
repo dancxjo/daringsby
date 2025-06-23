@@ -1,12 +1,11 @@
-use crate::Decision;
-use crate::instruction::{Instruction, parse_instructions};
+use crate::instruction::{HostInstruction, parse_instructions};
 use crate::motorcall::InstructionRegistry;
 use crate::prompt::PromptBuilder;
 use crate::topics::{Topic, TopicBus};
 use crate::traits::Doer;
 use crate::{Decision, Impression, Stimulus, WitReport};
 use async_trait::async_trait;
-use lingproc::Instruction as LlmInstruction;
+use lingproc::LlmInstruction;
 use quick_xml::{Reader, events::Event};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
