@@ -44,3 +44,23 @@ async fn summarizes_moments_into_story() {
     assert!(summarizer.story().contains("story:"));
     psyche::disable_debug("Story").await;
 }
+
+#[tokio::test]
+async fn with_debug_emits_report() {
+    let (tx, mut rx) = broadcast::channel(8);
+    psyche::enable_debug("IdentityWit").await;
+    let summarizer = FondDuCoeur::new(Box::new(Dummy));
+    let wit = IdentityWit::with_debug(summarizer, Some(tx));
+    wit.observe(Impression::new(
+        vec![Stimulus::new("hello".to_string())],
+        "s1",
+        None::<String>,
+    ))
+    .await;
+    let out = wit.tick().await;
+    assert_eq!(out.len(), 1);
+    let report = rx.recv().await.unwrap();
+    assert_eq!(report.name, "IdentityWit");
+    assert!(report.output.contains("story:"));
+    psyche::disable_debug("IdentityWit").await;
+}
