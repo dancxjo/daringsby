@@ -12,6 +12,7 @@
   const audioQueue = [];
   const conversationLog = document.getElementById("conversation-log");
   const witOutputs = {};
+  const thoughtElems = {};
   const witDetails = {};
   const witDebugContainer = document.getElementById("wit-debug");
   let playing = false;
@@ -158,13 +159,7 @@
           } else {
             witOutputs["unknown"] = m.data;
           }
-          thoughtTabs.innerHTML = "";
-          Object.entries(witOutputs).forEach(([name, output]) => {
-            const div = document.createElement("div");
-            div.className = "wit-report";
-            div.textContent = `${name}: ${output}`;
-            thoughtTabs.appendChild(div);
-          });
+          updateThoughtTabs(thoughtTabs, witOutputs, thoughtElems);
           thought.style.display = Object.keys(witOutputs).length ? "flex" : "none";
           break;
         }

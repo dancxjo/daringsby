@@ -123,4 +123,5 @@ Provides LLM and embedding utilities.
 * Document intentionally empty trait methods with comments so their purpose is
   clear.
 
+* Patch DOM incrementally or debounce updates instead of replacing innerHTML.
 Use this document to orient new agents, tools, or contributors. If you’re confused — ask the Quick what it saw, or the Will what it wants.
