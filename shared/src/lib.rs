@@ -10,12 +10,25 @@ use ts_rs::TS;
 )]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "PascalCase", content = "data")]
+/// Message envelope exchanged between the web client and server.
+///
+/// Each variant represents a distinct event that can occur during
+/// conversation. Serialization uses an external `type` tag.
+///
+/// ```
+/// use shared::MessageType;
+/// let msg = MessageType::Text("hi".into());
+/// let json = serde_json::to_string(&msg).unwrap();
+/// assert!(json.contains("\"Text\""));
+/// ```
 pub enum WsPayload {
     Say {
+        /// Spoken words.
         words: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         audio: Option<String>,
     },
+    /// Change in emotional expression as an emoji.
     Emote(String),
     Think(WitReport),
     Text {
@@ -39,6 +52,14 @@ pub enum WsPayload {
     Sense {
         #[cfg_attr(feature = "ts", ts(type = "Record<string, any>"))]
         data: serde_json::Value,
+    },
+    MotorCommand {
+        /// Target device or subsystem.
+        target: String,
+        /// Command verb.
+        command: String,
+        /// Additional arguments.
+        args: serde_json::Value,
     },
 }
 

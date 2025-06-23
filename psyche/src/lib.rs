@@ -4,6 +4,7 @@ mod instruction;
 pub mod psyche;
 pub mod sensation;
 pub mod topics;
+pub mod util;
 mod voice;
 
 pub mod traits {
@@ -69,6 +70,7 @@ pub mod motorcall;
 mod plain_mouth;
 pub mod prompt;
 mod task_group;
+pub use task_group::TaskGroup;
 pub mod sensors {
     #[cfg(feature = "face")]
     pub mod face;

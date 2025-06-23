@@ -14,6 +14,8 @@ use pete::{
     Body, ChannelMouth, LoggingMotor, NoopEar, NoopMouth, NoopSensor, app, init_logging,
     listen_user_input,
 };
+// helper for building Ollama providers
+use pete::ollama_provider_from_args;
 #[cfg(feature = "tts")]
 use pete::{CoquiTts, TtsMouth};
 #[cfg(feature = "tts")]
@@ -107,18 +109,17 @@ async fn main() -> anyhow::Result<()> {
 
     info!(%cli.addr, "starting server");
 
-    use lingproc::OllamaProvider;
     use psyche::wits::{
         BasicMemory, Combobulator, FaceMemoryWit, FondDuCoeur, HeartWit, IdentityWit, MemoryWit,
         Neo4jClient, QdrantClient, VisionWit, Will,
     };
 
-    let narrator = OllamaProvider::new(&cli.chatter_host, &cli.chatter_model)?;
-    let voice_provider = OllamaProvider::new(&cli.chatter_host, &cli.chatter_model)?;
-    let vectorizer = OllamaProvider::new(&cli.embeddings_host, &cli.embeddings_model)?;
+    let narrator = ollama_provider_from_args(&cli.chatter_host, &cli.chatter_model)?;
+    let voice_provider = ollama_provider_from_args(&cli.chatter_host, &cli.chatter_model)?;
+    let vectorizer = ollama_provider_from_args(&cli.embeddings_host, &cli.embeddings_model)?;
 
     let memory = Arc::new(BasicMemory {
-        vectorizer: Arc::new(OllamaProvider::new(
+        vectorizer: Arc::new(ollama_provider_from_args(
             &cli.embeddings_host,
             &cli.embeddings_model,
         )?),
@@ -147,17 +148,17 @@ async fn main() -> anyhow::Result<()> {
 
     let wit_tx = psyche.wit_sender();
     psyche.register_observing_wit(Arc::new(VisionWit::with_debug(
-        Arc::new(OllamaProvider::new(&cli.wits_host, &cli.wits_model)?),
+        Arc::new(ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?),
         wit_tx.clone(),
     )));
     psyche.register_observing_wit(Arc::new(FaceMemoryWit::with_debug(wit_tx.clone())));
     psyche.register_typed_wit(Arc::new(Combobulator::with_debug(
-        Arc::new(OllamaProvider::new(&cli.wits_host, &cli.wits_model)?),
+        Arc::new(ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?),
         Some(wit_tx.clone()),
     )));
     psyche.register_typed_wit(Arc::new(Will::with_debug(
         psyche.topic_bus(),
-        Arc::new(OllamaProvider::new(&cli.wits_host, &cli.wits_model)?),
+        Arc::new(ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?),
         Some(wit_tx.clone()),
     )));
     psyche.register_typed_wit(Arc::new(MemoryWit::with_debug(
@@ -165,12 +166,12 @@ async fn main() -> anyhow::Result<()> {
         wit_tx.clone(),
     )));
     psyche.register_typed_wit(Arc::new(HeartWit::with_debug(
-        Box::new(OllamaProvider::new(&cli.wits_host, &cli.wits_model)?),
+        Box::new(ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?),
         Arc::new(LoggingMotor),
         wit_tx.clone(),
     )));
     psyche.register_typed_wit(Arc::new(IdentityWit::new(FondDuCoeur::with_debug(
-        Box::new(OllamaProvider::new(&cli.wits_host, &cli.wits_model)?),
+        Box::new(ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?),
         wit_tx.clone(),
     ))));
     for w in psyche.debug_handle().snapshot().await.active_wits {

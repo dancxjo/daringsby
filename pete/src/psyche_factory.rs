@@ -6,6 +6,7 @@ use tracing::info;
 
 use crate::ear::NoopEar;
 use crate::mouth::NoopMouth;
+use crate::ollama_provider_from_args;
 
 /// Create a psyche with dummy providers for demos/tests.
 pub fn dummy_psyche() -> Psyche {
@@ -80,15 +81,18 @@ pub fn ollama_psyche(
         QdrantClient, Will,
     };
 
-    let narrator = OllamaProvider::new(chatter_host, chatter_model)?;
-    let voice = OllamaProvider::new(chatter_host, chatter_model)?;
-    let vectorizer = OllamaProvider::new(embeddings_host, embeddings_model)?;
+    let narrator = ollama_provider_from_args(chatter_host, chatter_model)?;
+    let voice = ollama_provider_from_args(chatter_host, chatter_model)?;
+    let vectorizer = ollama_provider_from_args(embeddings_host, embeddings_model)?;
 
     let mouth = Arc::new(NoopMouth::default());
     let ear = Arc::new(NoopEar);
 
     let memory = Arc::new(BasicMemory {
-        vectorizer: Arc::new(OllamaProvider::new(embeddings_host, embeddings_model)?),
+        vectorizer: Arc::new(ollama_provider_from_args(
+            embeddings_host,
+            embeddings_model,
+        )?),
         qdrant: QdrantClient::new(qdrant_url.into()),
         neo4j: Arc::new(Neo4jClient::new(
             neo4j_uri.into(),
@@ -107,17 +111,17 @@ pub fn ollama_psyche(
     );
     let wit_tx = psyche.wit_sender();
     psyche.register_observing_wit(Arc::new(psyche::VisionWit::with_debug(
-        Arc::new(OllamaProvider::new(wits_host, wits_model)?),
+        Arc::new(ollama_provider_from_args(wits_host, wits_model)?),
         wit_tx.clone(),
     )));
     psyche.register_observing_wit(Arc::new(psyche::FaceMemoryWit::with_debug(wit_tx.clone())));
     psyche.register_typed_wit(Arc::new(Combobulator::with_debug(
-        Arc::new(OllamaProvider::new(wits_host, wits_model)?),
+        Arc::new(ollama_provider_from_args(wits_host, wits_model)?),
         Some(wit_tx.clone()),
     )));
     psyche.register_typed_wit(Arc::new(Will::with_debug(
         psyche.topic_bus(),
-        Arc::new(OllamaProvider::new(wits_host, wits_model)?),
+        Arc::new(ollama_provider_from_args(wits_host, wits_model)?),
         Some(wit_tx.clone()),
     )));
     psyche.register_typed_wit(Arc::new(MemoryWit::with_debug(
@@ -125,12 +129,12 @@ pub fn ollama_psyche(
         wit_tx.clone(),
     )));
     psyche.register_typed_wit(Arc::new(HeartWit::with_debug(
-        Box::new(OllamaProvider::new(wits_host, wits_model)?),
+        Box::new(ollama_provider_from_args(wits_host, wits_model)?),
         Arc::new(LoggingMotor),
         wit_tx.clone(),
     )));
     psyche.register_typed_wit(Arc::new(IdentityWit::new(FondDuCoeur::with_debug(
-        Box::new(OllamaProvider::new(wits_host, wits_model)?),
+        Box::new(ollama_provider_from_args(wits_host, wits_model)?),
         wit_tx.clone(),
     ))));
     psyche.set_turn_limit(usize::MAX);

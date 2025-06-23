@@ -1,6 +1,7 @@
 use crate::sensors::face::FaceInfo;
 use crate::traits::wit::Wit;
 use crate::types::ObjectInfo;
+use crate::util::math::cosine_similarity;
 use crate::wits::memory::Memory;
 use crate::wits::memory::QdrantClient;
 use crate::{Impression, Sensation, Stimulus};
@@ -14,13 +15,6 @@ use tokio::sync::broadcast;
 #[derive(Default)]
 pub struct InMemoryEmbeddingDb {
     vectors: Mutex<Vec<Vec<f32>>>,
-}
-
-fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    let dot: f32 = a.iter().zip(b).map(|(x, y)| x * y).sum();
-    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-    dot / (norm_a * norm_b + 1e-5)
 }
 
 #[async_trait]

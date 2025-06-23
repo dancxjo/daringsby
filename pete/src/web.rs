@@ -226,7 +226,19 @@ pub async fn wit_debug_page(Path(_label): Path<String>) -> Html<&'static str> {
     Html(include_str!("../../frontend/dist/wit_debug.html"))
 }
 
-fn parse_data_url(url: &str) -> Option<(String, String)> {
+/// Split a `data:` URL into its MIME type and base64 payload.
+///
+/// Returns `None` when the input is not a valid `data:` URL.
+///
+/// # Examples
+/// ```
+/// use pete::parse_data_url;
+/// let url = "data:image/png;base64,Zm9v";
+/// let (mime, data) = parse_data_url(url).unwrap();
+/// assert_eq!(mime, "image/png");
+/// assert_eq!(data, "Zm9v");
+/// ```
+pub fn parse_data_url(url: &str) -> Option<(String, String)> {
     let (prefix, data) = url.split_once(',')?;
     let mime = prefix
         .trim_start_matches("data:")
@@ -234,6 +246,29 @@ fn parse_data_url(url: &str) -> Option<(String, String)> {
     Some((mime.to_string(), data.to_string()))
 }
 
+/// Forward user text messages to the [`Ear`] and wake the [`Voice`].
+///
+/// Consumes messages from an [`mpsc::UnboundedReceiver`] and notifies the
+/// ear of each line. After forwarding input the voice is permitted to speak.
+///
+/// ```
+/// use pete::{listen_user_input, ChannelEar, dummy_psyche};
+/// use std::sync::atomic::AtomicBool;
+/// use tokio::sync::mpsc;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let mut psyche = dummy_psyche();
+///     let ear = std::sync::Arc::new(ChannelEar::new(
+///         psyche.input_sender(),
+///         std::sync::Arc::new(AtomicBool::new(false)),
+///         psyche.voice(),
+///     ));
+///     let (tx, rx) = mpsc::unbounded_channel();
+///     tokio::spawn(listen_user_input(rx, ear, psyche.voice()));
+///     tx.send("hello".into()).unwrap();
+/// }
+/// ```
 pub async fn listen_user_input(
     mut rx: mpsc::UnboundedReceiver<String>,
     ear: Arc<dyn Ear>,

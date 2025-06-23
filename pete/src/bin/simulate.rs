@@ -1,3 +1,14 @@
+//! Utility for sending manual input to a running PETE instance.
+//!
+//! This binary connects to the WebSocket endpoint exposed by the
+//! `pete` server and sends either a text message or an image.
+//! It is useful for driving the server during integration tests
+//! or quick manual experiments.
+//!
+//! ```bash
+//! cargo run -p pete --bin simulate -- text "hello"
+//! ```
+
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use clap::{Parser, Subcommand};
@@ -7,6 +18,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::info;
 
 #[derive(Parser)]
+/// Command line arguments for the simulator.
 struct Cli {
     /// WebSocket endpoint
     #[arg(long, default_value = "ws://127.0.0.1:3000/ws")]
@@ -16,6 +28,7 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+/// Action to perform.
 enum Cmd {
     /// Send a text message
     Text { msg: String },
@@ -24,6 +37,7 @@ enum Cmd {
 }
 
 #[tokio::main]
+/// Connects to the websocket and sends the selected input.
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     let cli = Cli::parse();

@@ -1,5 +1,6 @@
 use crate::EventBus;
 use async_trait::async_trait;
+use lingproc::segment_text_into_sentences;
 use psyche::{Event, traits::Mouth};
 use std::sync::{
     Arc,
@@ -31,8 +32,7 @@ impl Mouth for ChannelMouth {
         self.speaking.store(true, Ordering::SeqCst);
         info!(%text, "mouth speaking");
         debug!("mouth speaking: {}", text);
-        let seg = pragmatic_segmenter::Segmenter::new().expect("segmenter init");
-        for sentence in seg.segment(text) {
+        for sentence in segment_text_into_sentences(text) {
             let sent = sentence.trim();
             if !sent.is_empty() {
                 self.bus.publish_event(Event::Speech {
