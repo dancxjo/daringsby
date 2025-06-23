@@ -4,7 +4,7 @@
   "description": "This repository contains a Rust workspace with three crates:",
   "main": "index.js",
   "scripts": {
-    "test": "node frontend/test/conversation-scroll.test.js && node frontend/test/details-data-attr.test.js && node frontend/test/thought-tabs.test.js && node frontend/test/wit-detail-id.test.js && node frontend/test/ws-ready-guard.test.js && node frontend/test/webcam-error.test.js && node frontend/test/webcam-restart.test.js && node frontend/test/webcam-guard.test.js"
+    "test": "node frontend/test/conversation-scroll.test.js && node frontend/test/details-data-attr.test.js && node frontend/test/thought-tabs.test.js && node frontend/test/wit-detail-id.test.js && node frontend/test/ws-ready-guard.test.js && node frontend/test/webcam-error.test.js && node frontend/test/webcam-restart.test.js && node frontend/test/webcam-guard.test.js && node frontend/test/webcam-after-open.test.js"
   },
   "keywords": [],
   "author": "",
