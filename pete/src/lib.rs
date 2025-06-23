@@ -36,6 +36,7 @@ mod event_bus;
 mod logging;
 mod motor;
 mod mouth;
+mod ollama;
 mod psyche_factory;
 mod sensor;
 mod simulator;
@@ -50,6 +51,7 @@ pub use event_bus::EventBus;
 pub use logging::init_logging;
 pub use motor::LoggingMotor;
 pub use mouth::{ChannelMouth, NoopMouth};
+pub use ollama::ollama_provider_from_args;
 #[cfg(feature = "face")]
 pub use psyche::FaceSensor;
 #[cfg(feature = "tts")]
