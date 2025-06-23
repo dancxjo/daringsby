@@ -42,7 +42,7 @@ async fn sentence_stream_handles_full_paragraph() {
             .await
             .unwrap()
             .unwrap(),
-        "David E. Sanger covers the Trump administration and a range of national security issues. "
+        "David E. Sanger covers the Trump administration and a range of national security issues."
     );
     assert_eq!(
         futures::StreamExt::next(&mut stream)
