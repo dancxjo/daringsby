@@ -127,4 +127,5 @@ Provides LLM and embedding utilities.
 * Keep commit messages short yet descriptive.
 * In frontend scripts, stop `MediaRecorder` on `window.onbeforeunload` to release the microphone.
 
+* Patch DOM incrementally or debounce updates instead of replacing innerHTML.
 Use this document to orient new agents, tools, or contributors. If you’re confused — ask the Quick what it saw, or the Will what it wants.

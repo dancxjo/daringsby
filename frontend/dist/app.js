@@ -13,6 +13,7 @@
   const audioQueue = [];
   const conversationLog = document.getElementById("conversation-log");
   const witOutputs = {};
+  const thoughtElems = {};
   const witDetails = {};
   const witDebugContainer = document.getElementById("wit-debug");
   let playing = false;
@@ -156,40 +157,44 @@
     } catch (e) {
       console.error(e);
     }
-  }
+  }function handleDebugMessage(ev) {
+  try {
+    const m = JSON.parse(ev.data);
+    if (m.type === "Think") {
+      if (typeof m.data === "object" && m.data !== null) {
+        witOutputs[m.data.name] = m.data.output;
+        const { promptPre, outputPre, time, details } = getWitDetail(m.data.name);
 
-  function handleDebugMessage(ev) {
-    try {
-      const m = JSON.parse(ev.data);
-      if (m.type === "Think") {
-        if (typeof m.data === "object" && m.data !== null) {
-          witOutputs[m.data.name] = m.data.output;
-          const { promptPre, outputPre, time, details } = getWitDetail(m.data.name);
-          if (m.data.prompt !== undefined) {
-            promptPre.textContent = m.data.prompt;
-          }
-          if (m.data.output !== undefined) {
-            outputPre.textContent = JSON.stringify(m.data.output, null, 2);
-          }
-          time.textContent = new Date().toLocaleTimeString();
-          details.classList.add("updated");
-          setTimeout(() => details.classList.remove("updated"), 300);
-        } else {
-          witOutputs["unknown"] = m.data;
+        if (m.data.prompt !== undefined) {
+          promptPre.textContent = m.data.prompt;
         }
-        thoughtTabs.innerHTML = "";
-        Object.entries(witOutputs).forEach(([name, output]) => {
-          const div = document.createElement("div");
-          div.className = "wit-report";
-          div.textContent = `${name}: ${output}`;
-          thoughtTabs.appendChild(div);
-        });
-        thought.style.display = Object.keys(witOutputs).length ? "flex" : "none";
+
+        if (m.data.output !== undefined) {
+          outputPre.textContent = JSON.stringify(m.data.output, null, 2);
+        }
+
+        time.textContent = new Date().toLocaleTimeString();
+        details.classList.add("updated");
+        setTimeout(() => details.classList.remove("updated"), 300);
+      } else {
+        witOutputs["unknown"] = m.data;
       }
-    } catch (e) {
-      console.error(e);
+
+      thoughtTabs.innerHTML = "";
+      Object.entries(witOutputs).forEach(([name, output]) => {
+        const div = document.createElement("div");
+        div.className = "wit-report";
+        div.textContent = `${name}: ${output}`;
+        thoughtTabs.appendChild(div);
+      });
+
+      thought.style.display = Object.keys(witOutputs).length ? "flex" : "none";
     }
+  } catch (e) {
+    console.error(e);
   }
+}
+
 
   function captureWebcamFrame(video, canvas, ctx) {
     if (video.videoWidth === 0) {
