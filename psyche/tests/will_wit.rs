@@ -3,7 +3,7 @@ use futures::StreamExt;
 use psyche::ling::{Doer, Instruction as LlmInstruction};
 use psyche::topics::{Topic, TopicBus};
 use psyche::{Impression, Stimulus, Wit};
-use psyche::{Instruction, wits::WillWit};
+use psyche::{Instruction, wits::Will};
 use std::sync::Arc;
 use tokio::time::{self, Duration};
 
@@ -27,7 +27,7 @@ fn publish_sample(bus: &TopicBus) {
 #[tokio::test]
 async fn publishes_parsed_instructions() {
     let bus = TopicBus::new(8);
-    let wit = WillWit::new(bus.clone(), Arc::new(DummyDoer("<say>Hello</say>")));
+    let wit = Will::new(bus.clone(), Arc::new(DummyDoer("<say>Hello</say>")));
     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     publish_sample(&bus);
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -43,7 +43,7 @@ async fn publishes_parsed_instructions() {
 #[tokio::test]
 async fn handles_invalid_xml_gracefully() {
     let bus = TopicBus::new(8);
-    let wit = WillWit::new(bus.clone(), Arc::new(DummyDoer("<<bad")));
+    let wit = Will::new(bus.clone(), Arc::new(DummyDoer("<<bad")));
     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     publish_sample(&bus);
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -54,7 +54,7 @@ async fn handles_invalid_xml_gracefully() {
 #[tokio::test]
 async fn mixed_instructions() {
     let bus = TopicBus::new(8);
-    let wit = WillWit::new(
+    let wit = Will::new(
         bus.clone(),
         Arc::new(DummyDoer("<say>hi</say><move to=\"dock\" />")),
     );
@@ -74,7 +74,7 @@ async fn mixed_instructions() {
 #[tokio::test]
 async fn empty_response_yields_nothing() {
     let bus = TopicBus::new(8);
-    let wit = WillWit::new(bus.clone(), Arc::new(DummyDoer("")));
+    let wit = Will::new(bus.clone(), Arc::new(DummyDoer("")));
     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     publish_sample(&bus);
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -93,7 +93,7 @@ async fn empty_response_yields_nothing() {
 #[tokio::test]
 async fn instant_summary_triggers_instruction() {
     let bus = TopicBus::new(8);
-    let wit = WillWit::new(bus.clone(), Arc::new(DummyDoer("")));
+    let wit = Will::new(bus.clone(), Arc::new(DummyDoer("")));
     tokio::time::sleep(Duration::from_millis(20)).await;
     bus.publish(
         Topic::Instant,

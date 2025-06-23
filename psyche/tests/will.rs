@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use psyche::ling::{Doer, Instruction};
-use psyche::{Impression, Stimulus, Summarizer, Will};
+use psyche::{Impression, Stimulus, Summarizer, WillSummarizer};
 
 #[derive(Clone)]
 struct Dummy;
@@ -14,7 +14,7 @@ impl Doer for Dummy {
 
 #[tokio::test]
 async fn returns_decision_impression() {
-    let will = Will::new(Box::new(Dummy));
+    let will = WillSummarizer::new(Box::new(Dummy));
     let imp = will
         .digest(&[Impression::new(
             vec![Stimulus::new("now".to_string())],
