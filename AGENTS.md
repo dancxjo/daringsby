@@ -132,6 +132,7 @@ Provides LLM and embedding utilities.
 * Reuse cargo and npm caches when running tests to avoid re-downloading
   dependencies.
 * Keep commit messages short yet descriptive.
+* Provide a `test_interval()` constructor for new sensors so tests can run without long waits.
 * In frontend scripts, stop `MediaRecorder` on `window.onbeforeunload` to release the microphone.
 * Patch DOM incrementally or debounce updates instead of replacing innerHTML.
 * Give `<details>` elements a `min-height` and manage `max-height` via the

@@ -10,6 +10,7 @@ use pete::FaceSensor;
 #[cfg(feature = "geo")]
 use pete::GeoSensor;
 use pete::HeartbeatSensor;
+use pete::SelfDiscoverySensor;
 use pete::{Body, LoggingMotor, NoopEar, NoopMouth, app, init_logging, listen_user_input};
 // helper for building Ollama providers
 use pete::default_mouth;
@@ -253,6 +254,10 @@ async fn main() -> anyhow::Result<()> {
     let _heartbeat = HeartbeatSensor::new(psyche.input_sender());
     psyche.add_sense(
         "Heartbeat. This triggers a pulse every minute, like a ticking internal clock.".into(),
+    );
+    let _self_disc = SelfDiscoverySensor::new(psyche.input_sender());
+    psyche.add_sense(
+        "Self discovery. Pete periodically reflects on his own purpose.".into(),
     );
     tokio::spawn(listen_user_input(user_rx, ear.clone(), voice.clone()));
 

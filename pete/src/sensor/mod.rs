@@ -3,6 +3,7 @@ pub mod eye;
 #[cfg(feature = "geo")]
 pub mod geo;
 pub mod heartbeat;
+pub mod self_discovery;
 
 use async_trait::async_trait;
 use psyche::traits::Sensor;
