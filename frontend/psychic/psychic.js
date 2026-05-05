@@ -17,6 +17,7 @@
   const inspectorIcon = document.getElementById("inspector-icon");
   const inspectorTitle = document.getElementById("inspector-title");
   const inspectorKind = document.getElementById("inspector-kind");
+  const inspectorMedia = document.getElementById("inspector-media");
   const inspectorProperties = document.getElementById("inspector-properties");
 
   const palette = {
@@ -43,6 +44,8 @@
   let socket = null;
   let lastSnapshotSignature = "";
   let lastTopologySignature = "";
+  let detailRequestId = 0;
+  let mediaObjectUrl = "";
 
   const zoom = d3
     .zoom()
@@ -240,6 +243,8 @@
     selected = item;
     inspectorEmpty.hidden = true;
     inspectorContent.hidden = false;
+    inspectorMedia.hidden = true;
+    clearMediaPreview();
     if (item.kind === "node") {
       const node = item.value;
       inspectorIcon.textContent = styleForNode(node).icon;
@@ -247,6 +252,7 @@
       inspectorTitle.textContent = nodeLabel(node);
       inspectorKind.textContent = `${nodeKind(node)} node`;
       renderProperties({ id: node.id, labels: node.labels, ...(node.properties || {}) });
+      loadNodeDetails(node);
     } else {
       const rel = item.value;
       inspectorIcon.textContent = "→";
@@ -258,10 +264,91 @@
     render();
   }
 
+  async function loadNodeDetails(node) {
+    const requestId = ++detailRequestId;
+    try {
+      const response = await fetch(`/graph/node/${encodeURIComponent(node.id)}`);
+      if (!response.ok) throw new Error(`detail request failed: ${response.status}`);
+      const details = await response.json();
+      if (requestId !== detailRequestId || selected?.kind !== "node" || selected.value.id !== node.id) {
+        return;
+      }
+      selected.value = {
+        ...node,
+        labels: details.labels || node.labels,
+        properties: details.properties || node.properties || {},
+        relationships: details.relationships || [],
+      };
+      renderMediaPreview(selected.value);
+      renderProperties(propertiesForNodeDetails(selected.value));
+    } catch (err) {
+      if (requestId === detailRequestId && selected?.kind === "node" && selected.value.id === node.id) {
+        renderProperties({ id: node.id, labels: node.labels, detail_error: err.message, ...(node.properties || {}) });
+      }
+    }
+  }
+
+  function renderMediaPreview(node) {
+    clearMediaPreview();
+    const props = node.properties || {};
+    const mime = String(props.mime || "").toLowerCase();
+    const base64 = typeof props.base64 === "string" ? props.base64.trim() : "";
+    const text = typeof props.text === "string" ? props.text : "";
+    const transcript = typeof props.transcript === "string" ? props.transcript : "";
+
+    let preview = null;
+    if (base64 && mime.startsWith("image/")) {
+      preview = document.createElement("img");
+      preview.alt = nodeLabel(node);
+      preview.src = dataUrl(mime, base64);
+    } else if (base64 && mime.startsWith("audio/")) {
+      preview = document.createElement("audio");
+      preview.controls = true;
+      preview.preload = "metadata";
+      preview.src = audioSource(props, mime, base64);
+    } else if (base64 && mime.startsWith("video/")) {
+      preview = document.createElement("video");
+      preview.controls = true;
+      preview.preload = "metadata";
+      preview.src = dataUrl(mime, base64);
+    } else if (text || transcript) {
+      preview = document.createElement("pre");
+      preview.textContent = text || transcript;
+    }
+
+    if (!preview) {
+      inspectorMedia.hidden = true;
+      return;
+    }
+    inspectorMedia.hidden = false;
+    inspectorMedia.append(preview);
+  }
+
+  function clearMediaPreview() {
+    if (mediaObjectUrl) {
+      URL.revokeObjectURL(mediaObjectUrl);
+      mediaObjectUrl = "";
+    }
+    inspectorMedia.replaceChildren();
+  }
+
+  function propertiesForNodeDetails(node) {
+    const props = { id: node.id, labels: node.labels, ...(node.properties || {}) };
+    if (node.relationships?.length) {
+      props.relationships = node.relationships.map((rel) => {
+        const source = relationshipEndpoint(rel.source);
+        const target = relationshipEndpoint(rel.target);
+        return `${source === node.id ? "out" : "in"} ${rel.type} ${source === node.id ? target : source}`;
+      });
+    }
+    return props;
+  }
+
   function renderProperties(properties) {
     inspectorProperties.replaceChildren();
     Object.entries(properties)
       .filter(([, value]) => value !== null && value !== undefined && value !== "")
+      .filter(([key]) => key !== "base64")
       .slice(0, 36)
       .forEach(([key, value]) => {
         const dt = document.createElement("dt");
@@ -316,6 +403,59 @@
     if (Array.isArray(value)) return value.join(", ");
     if (typeof value === "object") return JSON.stringify(value, null, 2);
     return String(value);
+  }
+
+  function dataUrl(mime, base64) {
+    return `data:${mime};base64,${base64}`;
+  }
+
+  function audioSource(props, mime, base64) {
+    if (mime.includes("format=s16") || mime.startsWith("audio/pcm") || mime.startsWith("audio/l16")) {
+      const sampleRate = Number(props.sample_rate || 16000);
+      const channels = Number(props.channels || 1);
+      const wav = pcmS16ToWav(base64ToBytes(base64), sampleRate, channels);
+      mediaObjectUrl = URL.createObjectURL(new Blob([wav], { type: "audio/wav" }));
+      return mediaObjectUrl;
+    }
+    return dataUrl(mime, base64);
+  }
+
+  function base64ToBytes(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  function pcmS16ToWav(pcmBytes, sampleRate, channels) {
+    const header = new ArrayBuffer(44);
+    const view = new DataView(header);
+    writeAscii(view, 0, "RIFF");
+    view.setUint32(4, 36 + pcmBytes.byteLength, true);
+    writeAscii(view, 8, "WAVE");
+    writeAscii(view, 12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, channels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * channels * 2, true);
+    view.setUint16(32, channels * 2, true);
+    view.setUint16(34, 16, true);
+    writeAscii(view, 36, "data");
+    view.setUint32(40, pcmBytes.byteLength, true);
+
+    const wav = new Uint8Array(44 + pcmBytes.byteLength);
+    wav.set(new Uint8Array(header), 0);
+    wav.set(pcmBytes, 44);
+    return wav;
+  }
+
+  function writeAscii(view, offset, text) {
+    for (let i = 0; i < text.length; i += 1) {
+      view.setUint8(offset + i, text.charCodeAt(i));
+    }
   }
 
   function signatureForSnapshot(snapshot) {

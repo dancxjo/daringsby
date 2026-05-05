@@ -509,6 +509,19 @@ pub struct GraphRelationshipSnapshot {
     pub properties: Value,
 }
 
+/// Full graph node details returned for an inspector view.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct GraphNodeDetails {
+    /// Stable graph node id.
+    pub id: String,
+    /// Neo4j labels attached to the node.
+    pub labels: Vec<String>,
+    /// Inspector properties. Media payloads are retained; large embeddings are omitted.
+    pub properties: Value,
+    /// Relationships touching this node.
+    pub relationships: Vec<GraphRelationshipSnapshot>,
+}
+
 /// Latest graph state for a real-time graph browser.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct GraphSnapshot {
@@ -608,6 +621,43 @@ impl Neo4jClient {
             .map(graph_snapshot_from_row)
             .transpose()
             .map(|snapshot| snapshot.unwrap_or_default())
+    }
+
+    /// Return full details for a single graph node.
+    pub async fn graph_node_details(&self, id: &str) -> Result<Option<GraphNodeDetails>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (n:GraphNode {id: $id})
+                    OPTIONAL MATCH (n)-[r]-(m:GraphNode)
+                    RETURN
+                        {
+                            id: n.id,
+                            labels: labels(n),
+                            properties: properties(n)
+                        },
+                        [rel IN collect(DISTINCT r) WHERE rel IS NOT NULL | {
+                            id: elementId(rel),
+                            source: startNode(rel).id,
+                            target: endNode(rel).id,
+                            type: type(rel),
+                            properties: properties(rel)
+                        }]
+                "#
+                .into(),
+                parameters: json!({
+                    "id": id,
+                }),
+            },
+            "loading graph node details",
+        )
+        .await?;
+        rows.first().map(graph_node_details_from_row).transpose()
     }
 
     /// Attach a Whisper transcript to an existing `AudioClip` graph node.
@@ -836,6 +886,63 @@ fn graph_relationship_snapshot_from_value(value: Value) -> Result<GraphRelations
     })
 }
 
+fn graph_node_details_from_row(row: &Value) -> Result<GraphNodeDetails> {
+    let values = row
+        .as_array()
+        .context("Neo4j graph node details row was not an array")?;
+    let node_value = values
+        .first()
+        .cloned()
+        .context("Neo4j graph node details row is missing node")?;
+    let node = graph_node_details_from_value(node_value)?;
+    let relationships = values
+        .get(1)
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(graph_relationship_snapshot_from_value)
+        .collect::<Result<Vec<_>>>()?;
+    Ok(GraphNodeDetails {
+        relationships,
+        ..node
+    })
+}
+
+fn graph_node_details_from_value(value: Value) -> Result<GraphNodeDetails> {
+    let object = value
+        .as_object()
+        .context("Neo4j graph node details was not an object")?;
+    let id = object
+        .get("id")
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .context("Neo4j graph node details is missing id")?;
+    let labels = object
+        .get("labels")
+        .and_then(Value::as_array)
+        .map(|labels| {
+            labels
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let properties = sanitize_graph_detail_properties(
+        object
+            .get("properties")
+            .cloned()
+            .unwrap_or_else(|| json!({})),
+    );
+    Ok(GraphNodeDetails {
+        id,
+        labels,
+        properties,
+        relationships: Vec::new(),
+    })
+}
+
 fn snapshot_string(object: &Map<String, Value>, key: &str) -> Result<String> {
     object
         .get(key)
@@ -860,6 +967,24 @@ fn sanitize_graph_properties(value: Value) -> Value {
 
 fn should_omit_graph_snapshot_property(key: &str) -> bool {
     matches!(key, "base64" | "embedding" | "raw_json")
+}
+
+fn sanitize_graph_detail_properties(value: Value) -> Value {
+    let Value::Object(object) = value else {
+        return value;
+    };
+    let mut sanitized = Map::new();
+    for (key, value) in object {
+        if should_omit_graph_detail_property(&key) {
+            continue;
+        }
+        sanitized.insert(key, value);
+    }
+    Value::Object(sanitized)
+}
+
+fn should_omit_graph_detail_property(key: &str) -> bool {
+    matches!(key, "embedding" | "raw_json")
 }
 
 fn graph_audio_clip_from_row(row: &Value) -> Result<GraphAudioClip> {

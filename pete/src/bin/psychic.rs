@@ -3,7 +3,7 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 use axum::{
     Json, Router,
     extract::{
-        State,
+        Path, State,
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
     },
     http::StatusCode,
@@ -89,6 +89,7 @@ fn app(state: PsychicState) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/graph", get(graph_snapshot))
+        .route("/graph/node/{id}", get(graph_node_details))
         .route("/ws", get(ws_handler))
         .fallback_service(
             get_service(ServeDir::new("frontend/psychic"))
@@ -106,6 +107,32 @@ async fn graph_snapshot(State(state): State<PsychicState>) -> impl IntoResponse 
         Ok(snapshot) => Json(snapshot).into_response(),
         Err(err) => {
             error!(%err, "failed to load graph snapshot");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(PsychicMessage::Error {
+                    message: err.to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn graph_node_details(
+    Path(id): Path<String>,
+    State(state): State<PsychicState>,
+) -> impl IntoResponse {
+    match state.graph.graph_node_details(&id).await {
+        Ok(Some(details)) => Json(details).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(PsychicMessage::Error {
+                message: format!("graph node not found: {id}"),
+            }),
+        )
+            .into_response(),
+        Err(err) => {
+            error!(%err, id = %id, "failed to load graph node details");
             (
                 StatusCode::BAD_GATEWAY,
                 Json(PsychicMessage::Error {

@@ -17,6 +17,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   height: 100%;
@@ -236,6 +240,42 @@ button:hover {
 
 .inspector dl {
   margin: 1rem 0 0 0;
+}
+
+.inspector-media {
+  margin-top: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.inspector-media img,
+.inspector-media video {
+  display: block;
+  width: 100%;
+  max-height: 38vh;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #07090c;
+}
+
+.inspector-media audio {
+  display: block;
+  width: 100%;
+}
+
+.inspector-media pre {
+  max-height: 30vh;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #07090c;
+  color: var(--text);
+  font: 0.82rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .inspector dt {

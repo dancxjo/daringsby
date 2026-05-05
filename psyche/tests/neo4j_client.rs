@@ -297,6 +297,61 @@ async fn neo4j_client_loads_graph_snapshot() {
 }
 
 #[tokio::test]
+async fn neo4j_client_loads_graph_node_details_with_media_payload() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (n:GraphNode {id: $id})")
+                .body_contains("\"id\":\"image:1\"");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["node", "relationships"],
+                    "data": [{
+                        "row": [
+                            {
+                                "id": "image:1",
+                                "labels": ["GraphNode", "Image"],
+                                "properties": {
+                                    "id": "image:1",
+                                    "mime": "image/png",
+                                    "base64": "iVBORw0KGgo=",
+                                    "embedding": [0.1, 0.2]
+                                }
+                            },
+                            [{
+                                "id": "5:abc:9",
+                                "source": "sensation:1",
+                                "target": "image:1",
+                                "type": "OBSERVED",
+                                "properties": {}
+                            }]
+                        ]
+                    }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let details = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .graph_node_details("image:1")
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(details.id, "image:1");
+    assert_eq!(details.labels, vec!["GraphNode", "Image"]);
+    assert_eq!(details.properties["mime"], "image/png");
+    assert_eq!(details.properties["base64"], "iVBORw0KGgo=");
+    assert!(details.properties.get("embedding").is_none());
+    assert_eq!(details.relationships.len(), 1);
+    assert_eq!(details.relationships[0].relationship_type, "OBSERVED");
+    query.assert_async().await;
+}
+
+#[tokio::test]
 async fn neo4j_client_attaches_audio_transcription() {
     let server = MockServer::start_async().await;
     let constraint = server
