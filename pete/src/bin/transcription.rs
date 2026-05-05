@@ -4,7 +4,7 @@ use anyhow::Context;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use dotenvy::dotenv;
-use pete::{AsrService, EventBus, SegmentMessage, init_logging};
+use pete::{AsrService, EventBus, SegmentMessage, WordTiming, init_logging};
 use psyche::{GraphAudioClip, GraphSpeechSegment, Neo4jClient, parse_observed_at};
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{debug, error, info};
@@ -105,24 +105,134 @@ fn graph_speech_segments(
     segments: &[SegmentMessage],
     source_started_at: Option<DateTime<Utc>>,
 ) -> Vec<GraphSpeechSegment> {
-    segments
+    let smallest_segments = segments
         .iter()
-        .enumerate()
-        .map(|(index, segment)| {
-            let occurred_at = source_started_at
-                .map(|at| at + chrono::Duration::milliseconds(i64::from(segment.start_ms)))
-                .map(|at| at.to_rfc3339());
-            let ended_at = source_started_at
-                .map(|at| at + chrono::Duration::milliseconds(i64::from(segment.end_ms)))
-                .map(|at| at.to_rfc3339());
-            GraphSpeechSegment {
-                index,
-                text: segment.text.clone(),
-                start_ms: segment.start_ms,
-                end_ms: segment.end_ms,
-                occurred_at,
-                ended_at,
+        .flat_map(|segment| {
+            if segment.words.is_empty() {
+                vec![SegmentMessage {
+                    text: segment.text.clone(),
+                    start_ms: segment.start_ms,
+                    end_ms: segment.end_ms,
+                    words: Vec::new(),
+                }]
+            } else {
+                segment
+                    .words
+                    .iter()
+                    .map(word_to_segment_message)
+                    .collect::<Vec<_>>()
             }
         })
+        .collect::<Vec<_>>();
+
+    smallest_segments
+        .iter()
+        .enumerate()
+        .map(|(index, segment)| graph_speech_segment(index, segment, source_started_at))
         .collect()
+}
+
+fn word_to_segment_message(word: &WordTiming) -> SegmentMessage {
+    SegmentMessage {
+        text: word.text.clone(),
+        start_ms: word.start_ms,
+        end_ms: word.end_ms,
+        words: vec![word.clone()],
+    }
+}
+
+fn graph_speech_segment(
+    index: usize,
+    segment: &SegmentMessage,
+    source_started_at: Option<DateTime<Utc>>,
+) -> GraphSpeechSegment {
+    let occurred_at = source_started_at
+        .map(|at| at + chrono::Duration::milliseconds(i64::from(segment.start_ms)))
+        .map(|at| at.to_rfc3339());
+    let ended_at = source_started_at
+        .map(|at| at + chrono::Duration::milliseconds(i64::from(segment.end_ms)))
+        .map(|at| at.to_rfc3339());
+    GraphSpeechSegment {
+        index,
+        text: segment.text.clone(),
+        start_ms: segment.start_ms,
+        end_ms: segment.end_ms,
+        occurred_at,
+        ended_at,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn timestamp() -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-05-05T12:34:56Z")
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn graph_speech_segments_prefer_word_timings() {
+        let segments = graph_speech_segments(
+            &[SegmentMessage {
+                text: "hello there".into(),
+                start_ms: 0,
+                end_ms: 800,
+                words: vec![
+                    WordTiming {
+                        text: "hello".into(),
+                        start_ms: 0,
+                        end_ms: 300,
+                    },
+                    WordTiming {
+                        text: "there".into(),
+                        start_ms: 350,
+                        end_ms: 800,
+                    },
+                ],
+            }],
+            Some(timestamp()),
+        );
+
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].index, 0);
+        assert_eq!(segments[0].text, "hello");
+        assert_eq!(segments[0].start_ms, 0);
+        assert_eq!(segments[0].end_ms, 300);
+        assert_eq!(
+            segments[0].occurred_at.as_deref(),
+            Some("2026-05-05T12:34:56+00:00")
+        );
+        assert_eq!(segments[1].index, 1);
+        assert_eq!(segments[1].text, "there");
+        assert_eq!(segments[1].start_ms, 350);
+        assert_eq!(segments[1].end_ms, 800);
+        assert_eq!(
+            segments[1].occurred_at.as_deref(),
+            Some("2026-05-05T12:34:56.350+00:00")
+        );
+    }
+
+    #[test]
+    fn graph_speech_segments_fall_back_to_whisper_segments() {
+        let segments = graph_speech_segments(
+            &[SegmentMessage {
+                text: "hello there".into(),
+                start_ms: 250,
+                end_ms: 1250,
+                words: Vec::new(),
+            }],
+            Some(timestamp()),
+        );
+
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].text, "hello there");
+        assert_eq!(segments[0].start_ms, 250);
+        assert_eq!(segments[0].end_ms, 1250);
+        assert_eq!(
+            segments[0].occurred_at.as_deref(),
+            Some("2026-05-05T12:34:56.250+00:00")
+        );
+    }
 }

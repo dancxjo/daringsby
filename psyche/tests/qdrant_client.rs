@@ -211,6 +211,54 @@ async fn store_image_description_vector_uses_own_collection() {
 }
 
 #[tokio::test]
+async fn store_scene_vector_uses_own_collection_and_links_source_image() {
+    let server = MockServer::start_async().await;
+    let get_collection = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/collections/scene_vectors");
+            then.status(404).body("{}");
+        })
+        .await;
+    let create_collection = server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path("/collections/scene_vectors")
+                .body_contains("\"size\":2");
+            then.status(200).body(r#"{"result":true,"status":"ok"}"#);
+        })
+        .await;
+    let upsert_point = server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path("/collections/scene_vectors/points")
+                .query_param("wait", "true")
+                .body_contains("\"kind\":\"scene\"")
+                .body_contains("\"image_id\":\"image:1\"")
+                .body_contains("\"neo4j_node_id\":\"image:1\"")
+                .body_contains("\"source_image_id\":\"image:1\"")
+                .body_contains("\"sensation_id\":\"sensation:image:1\"")
+                .body_contains("\"model\":\"clip-test\"");
+            then.status(200)
+                .body(r#"{"result":{"operation_id":1},"status":"ok"}"#);
+        })
+        .await;
+
+    QdrantClient::new(server.base_url())
+        .store_scene_vector_for_sensation(
+            "image:1",
+            Some("sensation:image:1"),
+            "clip-test",
+            &[1.0, 2.0],
+        )
+        .await
+        .unwrap();
+
+    get_collection.assert_async().await;
+    create_collection.assert_async().await;
+    upsert_point.assert_async().await;
+}
+
+#[tokio::test]
 async fn store_vector_uses_existing_memory_collection() {
     let server = MockServer::start_async().await;
     let get_collection = server
@@ -285,6 +333,45 @@ async fn store_voice_vector_creates_collection_and_upserts_point() {
 
     get_collection.assert_async().await;
     create_collection.assert_async().await;
+    upsert_point.assert_async().await;
+}
+
+#[tokio::test]
+async fn store_voice_vector_can_reference_source_sensation_and_user() {
+    let server = MockServer::start_async().await;
+    let get_collection = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/collections/voices");
+            then.status(200).body(
+                r#"{"result":{"config":{"params":{"vectors":{"size":2,"distance":"Cosine"}}}},"status":"ok"}"#,
+            );
+        })
+        .await;
+    let upsert_point = server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path("/collections/voices/points")
+                .query_param("wait", "true")
+                .body_contains("\"kind\":\"voice\"")
+                .body_contains("\"clip_id\":\"audio:1\"")
+                .body_contains("\"sensation_id\":\"sensation:audio:1\"")
+                .body_contains("\"user_id\":\"speaker:1\"");
+            then.status(200)
+                .body(r#"{"result":{"operation_id":1},"status":"ok"}"#);
+        })
+        .await;
+
+    QdrantClient::new(server.base_url())
+        .store_voice_vector_for_sensation(
+            Some("audio:1"),
+            Some("sensation:audio:1"),
+            Some("speaker:1"),
+            &[1.0, 2.0],
+        )
+        .await
+        .unwrap();
+
+    get_collection.assert_async().await;
     upsert_point.assert_async().await;
 }
 

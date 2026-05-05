@@ -20,7 +20,7 @@ use psyche::{Ear, GeoLoc, ImageData, Mouth, Sensor, TrimMouth};
 use std::{
     net::SocketAddr,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize},
     },
 };
@@ -105,7 +105,7 @@ async fn main() -> anyhow::Result<()> {
 
     use psyche::wits::{
         BasicMemory, Combobulator, FaceMemoryWit, FondDuCoeur, HeartWit, IdentityWit, MemoryWit,
-        Neo4jClient, QdrantClient, Quick, SensationGraphObserver, VisionWit, VoiceMemoryWit, Will,
+        Neo4jClient, QdrantClient, Quick, SensationGraphObserver, VoiceMemoryWit, Will,
     };
 
     let narrator = ollama_provider_from_args(&cli.chatter_host, &cli.chatter_model)?;
@@ -142,12 +142,7 @@ async fn main() -> anyhow::Result<()> {
         .set_prompt(psyche::ContextualPrompt::new(psyche.topic_bus()));
 
     let wit_tx = psyche.wit_sender();
-    let vision = Arc::new(VisionWit::with_debug(
-        Arc::new(ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?),
-        wit_tx.clone(),
-    ));
-    let latest_image = vision.latest_image_handle();
-    psyche.register_observing_wit(vision);
+    let latest_image = Arc::new(Mutex::new(None));
     let graph_observer = Arc::new(SensationGraphObserver::new(graph_store));
     psyche.register_observer(graph_observer.clone());
     graph_observer.spawn_topic_listener(psyche.topic_bus());

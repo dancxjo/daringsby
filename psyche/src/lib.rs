@@ -60,9 +60,11 @@ pub mod wits {
     pub use heart_wit::HeartWit;
     pub use identity_wit::IdentityWit;
     pub use memory::{
-        BasicMemory, GraphAudioClip, GraphFaceDetection, GraphImageFrame, GraphNodeDetails,
-        GraphNodeSnapshot, GraphRelationshipSnapshot, GraphSnapshot, GraphSpeechSegment,
-        GraphStore, Memory, Neo4jClient, NoopMemory, QdrantClient,
+        BasicMemory, GraphAudioClip, GraphAudioClipWindow, GraphAudioSourceSpan,
+        GraphFaceDetection, GraphGeolocation, GraphImageDescription, GraphImageFrame,
+        GraphNodeDetails, GraphNodeSnapshot, GraphRelationshipSnapshot, GraphSceneVectorization,
+        GraphSnapshot, GraphSpeechSegment, GraphStore, GraphVoiceClip, GraphVoiceRecognition,
+        GraphVoiceSample, GraphVoiceSignature, Memory, Neo4jClient, NoopMemory, QdrantClient,
     };
     pub use memory_wit::MemoryWit;
     pub use moment_wit::MomentWit;
@@ -110,7 +112,10 @@ pub use instruction::{HostInstruction, parse_instructions};
 pub use model::{Experience, Impression, Stimulus};
 pub use pending_turn::PendingTurn;
 pub use plain_mouth::PlainMouth;
-pub use prompt::{CombobulatorPrompt, ContextualPrompt, PromptFragment, VoicePrompt, WillPrompt};
+pub use prompt::{
+    CombobulatorPrompt, ContextualPrompt, IMAGE_CAPTION_PROMPT, PromptFragment, VoicePrompt,
+    WillPrompt,
+};
 pub use topics::{Topic, TopicBus, TopicMessage};
 pub use trim_mouth::TrimMouth;
 pub use types::{
@@ -134,8 +139,10 @@ pub use traits::{
 pub use voice::{Voice, extract_emojis};
 pub use wits::{
     BasicMemory, Combobulator, EntityWit, EpisodeWit, FaceMemoryWit, FondDuCoeur, GraphAudioClip,
-    GraphFaceDetection, GraphImageFrame, GraphNodeDetails, GraphNodeSnapshot,
-    GraphRelationshipSnapshot, GraphSnapshot, GraphSpeechSegment, GraphStore, HeartWit,
-    IdentityWit, Memory, MemoryWit, Neo4jClient, NoopMemory, QdrantClient, SensationGraphObserver,
-    VisionWit, VoiceMemoryWit, Will,
+    GraphAudioClipWindow, GraphAudioSourceSpan, GraphFaceDetection, GraphGeolocation,
+    GraphImageDescription, GraphImageFrame, GraphNodeDetails, GraphNodeSnapshot,
+    GraphRelationshipSnapshot, GraphSceneVectorization, GraphSnapshot, GraphSpeechSegment,
+    GraphStore, GraphVoiceClip, GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature,
+    HeartWit, IdentityWit, Memory, MemoryWit, Neo4jClient, NoopMemory, QdrantClient,
+    SensationGraphObserver, VisionWit, VoiceMemoryWit, Will,
 };

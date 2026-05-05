@@ -1,5 +1,10 @@
+use chrono::Utc;
 use httpmock::{Method::POST, MockServer};
-use psyche::{GraphFaceDetection, GraphImageFrame, GraphSpeechSegment, ImageData, Neo4jClient};
+use psyche::{
+    GeoLoc, GraphAudioSourceSpan, GraphFaceDetection, GraphGeolocation, GraphImageDescription,
+    GraphImageFrame, GraphSceneVectorization, GraphSpeechSegment, GraphVoiceClip,
+    GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature, ImageData, Neo4jClient,
+};
 use serde_json::json;
 
 #[tokio::test]
@@ -229,6 +234,131 @@ async fn neo4j_client_loads_latest_untranscribed_audio_clip() {
 }
 
 #[tokio::test]
+async fn neo4j_client_loads_latest_audio_clip_window_for_big_transcription() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (anchor:GraphNode:AudioClip)")
+                .body_contains("HAS_BIG_TRANSCRIPTION")
+                .body_contains("RETURN anchor.id")
+                .body_contains("\"limit\":2");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": [
+                        "anchor.id",
+                        "clip.id",
+                        "clip.mime",
+                        "clip.base64",
+                        "clip.sample_rate",
+                        "clip.channels",
+                        "clip.captured_at",
+                        "clip.occurred_at"
+                    ],
+                    "data": [
+                        {
+                            "row": [
+                                "audio:2",
+                                "audio:1",
+                                "audio/pcm;format=s16le;rate=16000",
+                                "AAA=",
+                                16000,
+                                1,
+                                "2026-05-05T12:34:56Z",
+                                "2026-05-05T12:34:57Z"
+                            ]
+                        },
+                        {
+                            "row": [
+                                "audio:2",
+                                "audio:2",
+                                "audio/pcm;format=s16le;rate=16000",
+                                "AQE=",
+                                16000,
+                                1,
+                                "2026-05-05T12:34:58Z",
+                                "2026-05-05T12:34:59Z"
+                            ]
+                        }
+                    ]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let window = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .latest_audio_clip_window_for_big_transcription(2)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(window.anchor_id, "audio:2");
+    assert_eq!(window.clips.len(), 2);
+    assert_eq!(window.clips[0].id, "audio:1");
+    assert_eq!(window.clips[1].id, "audio:2");
+    assert_eq!(window.clips[1].clip.base64, "AQE=");
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_loads_latest_unprocessed_audio_clip_for_voice_recognition() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (a:GraphNode:AudioClip)")
+                .body_contains("HAS_VOICE_RECOGNITION_RUN")
+                .body_contains("OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(a)")
+                .body_contains("ORDER BY observed_at DESC");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": [
+                        "a.id",
+                        "a.mime",
+                        "a.base64",
+                        "a.sample_rate",
+                        "a.channels",
+                        "a.captured_at",
+                        "a.occurred_at",
+                        "s.id"
+                    ],
+                    "data": [{
+                        "row": [
+                            "audio:1",
+                            "audio/pcm;format=s16le;rate=16000",
+                            "AAA=",
+                            16000,
+                            1,
+                            "2026-05-05T12:34:56Z",
+                            "2026-05-05T12:34:57Z",
+                            "sensation:audio:1"
+                        ]
+                    }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let clip = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .latest_unprocessed_audio_clip_for_voice_recognition()
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(clip.id, "audio:1");
+    assert_eq!(clip.clip.mime, "audio/pcm;format=s16le;rate=16000");
+    assert_eq!(clip.clip.base64, "AAA=");
+    assert_eq!(clip.clip.sample_rate, 16000);
+    assert_eq!(clip.clip.channels, 1);
+    assert_eq!(clip.sensation_id.as_deref(), Some("sensation:audio:1"));
+    query.assert_async().await;
+}
+
+#[tokio::test]
 async fn neo4j_client_loads_latest_unprocessed_image_frame_for_face_recognition() {
     let server = MockServer::start_async().await;
     let query = server
@@ -283,6 +413,173 @@ async fn neo4j_client_loads_latest_unprocessed_image_frame_for_face_recognition(
         frame.sensation_id.as_deref(),
         Some("sensation:image:image:1:2026-05-05T12:34:56Z")
     );
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_loads_latest_unprocessed_image_frame_for_scene_vectorization() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (i:GraphNode:Image)")
+                .body_contains("HAS_SCENE_VECTORIZATION_RUN")
+                .body_contains("SceneVectorizationRun")
+                .body_contains("OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(i)")
+                .body_contains("ORDER BY observed_at DESC");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": [
+                        "i.id",
+                        "i.mime",
+                        "i.base64",
+                        "i.captured_at",
+                        "i.occurred_at",
+                        "s.id"
+                    ],
+                    "data": [{
+                        "row": [
+                            "image:1",
+                            "image/jpeg",
+                            "/9j/AA==",
+                            "2026-05-05T12:34:56Z",
+                            "2026-05-05T12:34:57Z",
+                            "sensation:image:image:1:2026-05-05T12:34:56Z"
+                        ]
+                    }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let frame = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .latest_unprocessed_image_frame_for_scene_vectorization()
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(frame.id, "image:1");
+    assert_eq!(frame.image.mime, "image/jpeg");
+    assert_eq!(frame.image.base64, "/9j/AA==");
+    assert_eq!(
+        frame.image.captured_at.as_deref(),
+        Some("2026-05-05T12:34:56Z")
+    );
+    assert_eq!(frame.occurred_at.as_deref(), Some("2026-05-05T12:34:57Z"));
+    assert_eq!(
+        frame.sensation_id.as_deref(),
+        Some("sensation:image:image:1:2026-05-05T12:34:56Z")
+    );
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_loads_latest_unprocessed_image_frame_for_description() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (i:GraphNode:Image)")
+                .body_contains("HAS_IMAGE_DESCRIPTION_RUN")
+                .body_contains("ImageDescriptionRun")
+                .body_contains("OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(i)")
+                .body_contains("ORDER BY observed_at DESC");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": [
+                        "i.id",
+                        "i.mime",
+                        "i.base64",
+                        "i.captured_at",
+                        "i.occurred_at",
+                        "s.id"
+                    ],
+                    "data": [{
+                        "row": [
+                            "image:1",
+                            "image/jpeg",
+                            "/9j/AA==",
+                            "2026-05-05T12:34:56Z",
+                            "2026-05-05T12:34:57Z",
+                            "sensation:image:image:1:2026-05-05T12:34:56Z"
+                        ]
+                    }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let frame = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .latest_unprocessed_image_frame_for_description()
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(frame.id, "image:1");
+    assert_eq!(frame.image.mime, "image/jpeg");
+    assert_eq!(frame.image.base64, "/9j/AA==");
+    assert_eq!(
+        frame.sensation_id.as_deref(),
+        Some("sensation:image:image:1:2026-05-05T12:34:56Z")
+    );
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_loads_latest_unprocessed_geolocation_for_vectorization() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (g:GraphNode:Geolocation)")
+                .body_contains("HAS_GEOLOCATION_VECTOR")
+                .body_contains("HAS_GEOLOCATION_VECTORIZATION_RUN")
+                .body_contains("GeolocationVectorizationRun")
+                .body_contains("OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(g)")
+                .body_contains("ORDER BY observed_at DESC");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": [
+                        "g.id",
+                        "g.latitude",
+                        "g.longitude",
+                        "g.observed_at",
+                        "g.occurred_at",
+                        "s.id"
+                    ],
+                    "data": [{
+                        "row": [
+                            "geolocation:1",
+                            37.7749,
+                            -122.4194,
+                            "2026-05-05T12:34:56Z",
+                            "2026-05-05T12:34:57Z",
+                            "sensation:geolocation:1"
+                        ]
+                    }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let loc = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .latest_unprocessed_geolocation_for_vectorization()
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(loc.id, "geolocation:1");
+    assert_eq!(loc.loc.latitude, 37.7749);
+    assert_eq!(loc.loc.longitude, -122.4194);
+    assert_eq!(loc.loc.observed_at.as_deref(), Some("2026-05-05T12:34:56Z"));
+    assert_eq!(loc.occurred_at.as_deref(), Some("2026-05-05T12:34:57Z"));
+    assert_eq!(loc.sensation_id.as_deref(), Some("sensation:geolocation:1"));
     query.assert_async().await;
 }
 
@@ -443,10 +740,15 @@ async fn neo4j_client_attaches_audio_transcription() {
                 .body_contains("SpeechSegment")
                 .body_contains("HAS_TRANSCRIPTION")
                 .body_contains("HAS_SEGMENT")
-                .body_contains("SEGMENT_OF")
                 .body_contains("\"start_ms\":250")
                 .body_contains("\"end_ms\":1250")
-                .body_contains("2026-05-05T12:34:56.250+00:00");
+                .body_contains("2026-05-05T12:34:56.250+00:00")
+                .matches(|req| {
+                    req.body
+                        .as_deref()
+                        .and_then(|body| std::str::from_utf8(body).ok())
+                        .is_some_and(|body| !body.contains("SEGMENT_OF"))
+                });
             then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
         })
         .await;
@@ -463,6 +765,74 @@ async fn neo4j_client_attaches_audio_transcription() {
                 end_ms: 1250,
                 occurred_at: Some("2026-05-05T12:34:56.250+00:00".into()),
                 ended_at: Some("2026-05-05T12:34:57.250+00:00".into()),
+            }],
+        )
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_big_audio_transcription() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("\"kind\":\"big\"")
+                .body_contains("\"audio_clip_ids\":[\"audio:1\",\"audio:2\"]")
+                .body_contains("HAS_BIG_TRANSCRIPTION")
+                .body_contains("HAS_SEGMENT")
+                .body_contains("DERIVED_FROM_AUDIO")
+                .body_contains("\"anchor\":true")
+                .body_contains("\"source_index\":1")
+                .body_contains("\"text\":\"hello there\"");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_big_audio_transcription(
+            &[
+                GraphAudioSourceSpan {
+                    index: 0,
+                    audio_clip_id: "audio:1".into(),
+                    start_ms: 0,
+                    end_ms: 1000,
+                    occurred_at: Some("2026-05-05T12:34:56Z".into()),
+                    ended_at: Some("2026-05-05T12:34:57Z".into()),
+                    anchor: false,
+                },
+                GraphAudioSourceSpan {
+                    index: 1,
+                    audio_clip_id: "audio:2".into(),
+                    start_ms: 1000,
+                    end_ms: 2000,
+                    occurred_at: Some("2026-05-05T12:34:58Z".into()),
+                    ended_at: Some("2026-05-05T12:34:59Z".into()),
+                    anchor: true,
+                },
+            ],
+            "hello there",
+            Some("2026-05-05T12:34:56Z"),
+            Some("2026-05-05T12:34:58Z"),
+            &[GraphSpeechSegment {
+                index: 0,
+                text: "hello there".into(),
+                start_ms: 900,
+                end_ms: 1300,
+                occurred_at: Some("2026-05-05T12:34:56.900+00:00".into()),
+                ended_at: Some("2026-05-05T12:34:57.300+00:00".into()),
             }],
         )
         .await
@@ -525,6 +895,299 @@ async fn neo4j_client_attaches_face_recognition() {
                 vector_id: "point-1".into(),
                 embedding_len: 512,
             }],
+        )
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_scene_vectorization() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("SceneVectorizationRun")
+                .body_contains("HAS_SCENE_VECTORIZATION_RUN")
+                .body_contains("HAS_SCENE_VECTOR")
+                .body_contains("DERIVED_FROM")
+                .body_contains("qdrant:scene_vectors:point-1")
+                .body_contains("sensation:image:1")
+                .body_contains("\"embedding_len\":512")
+                .body_contains("\"model\":\"clip-test\"");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_scene_vectorization(
+            &GraphImageFrame {
+                id: "image:1".into(),
+                image: ImageData {
+                    mime: "image/jpeg".into(),
+                    base64: "/9j/AA==".into(),
+                    captured_at: Some("2026-05-05T12:34:56Z".into()),
+                },
+                occurred_at: Some("2026-05-05T12:34:57Z".into()),
+                sensation_id: Some("sensation:image:1".into()),
+            },
+            "clip-test",
+            &GraphSceneVectorization {
+                vector_id: "point-1".into(),
+                embedding_len: 512,
+            },
+        )
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_image_description() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("ImageDescriptionRun")
+                .body_contains("ImageDescription")
+                .body_contains("HAS_IMAGE_DESCRIPTION_RUN")
+                .body_contains("HAS_IMAGE_DESCRIPTION")
+                .body_contains("HAS_IMAGE_DESCRIPTION_VECTOR")
+                .body_contains("qdrant:image_descriptions:point-1")
+                .body_contains("sensation:image:1")
+                .body_contains("\"embedding_len\":768")
+                .body_contains("\"model\":\"vision-test\"")
+                .body_contains("\"embedding_model\":\"embed-test\"");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_image_description(
+            &GraphImageFrame {
+                id: "image:1".into(),
+                image: ImageData {
+                    mime: "image/jpeg".into(),
+                    base64: "/9j/AA==".into(),
+                    captured_at: Some("2026-05-05T12:34:56Z".into()),
+                },
+                occurred_at: Some("2026-05-05T12:34:57Z".into()),
+                sensation_id: Some("sensation:image:1".into()),
+            },
+            "vision-test",
+            "embed-test",
+            &GraphImageDescription {
+                description_id: "image-description-text:image:1".into(),
+                text: "I see a test frame.".into(),
+                vector_id: "point-1".into(),
+                embedding_len: 768,
+            },
+        )
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_geolocation_vectorization() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("GeolocationVectorizationRun")
+                .body_contains("HAS_GEOLOCATION_VECTORIZATION_RUN")
+                .body_contains("HAS_GEOLOCATION_VECTOR")
+                .body_contains("PROCESSED_GEOLOCATION")
+                .body_contains("qdrant:geolocations:point-1")
+                .body_contains("sensation:geolocation:1")
+                .body_contains("\"embedding_len\":3")
+                .body_contains("\"model\":\"earth-unit-sphere/v1\"");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_geolocation_vectorization(
+            &GraphGeolocation {
+                id: "geolocation:1".into(),
+                loc: GeoLoc {
+                    latitude: 37.7749,
+                    longitude: -122.4194,
+                    observed_at: Some("2026-05-05T12:34:56Z".into()),
+                },
+                occurred_at: Some("2026-05-05T12:34:57Z".into()),
+                sensation_id: Some("sensation:geolocation:1".into()),
+            },
+            "earth-unit-sphere/v1",
+            "point-1",
+            3,
+        )
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_voice_recognition() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("VoiceRecognitionRun")
+                .body_contains("VoiceSignature")
+                .body_contains("VoiceSample")
+                .body_contains("HAS_VOICE_RECOGNITION_RUN")
+                .body_contains("HAS_VOICE_VECTOR")
+                .body_contains("qdrant:voices:point-1")
+                .body_contains("sensation:audio:1")
+                .body_contains("fundamental_frequency")
+                .body_contains("quality_score")
+                .body_contains("\"model\":\"voxudio\"");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_voice_recognition(
+            &GraphVoiceClip {
+                id: "audio:1".into(),
+                clip: psyche::AudioClip {
+                    mime: "audio/pcm;format=s16le;rate=16000".into(),
+                    base64: "AAA=".into(),
+                    sample_rate: 16000,
+                    channels: 1,
+                    transcript: None,
+                    captured_at: Some("2026-05-05T12:34:56Z".into()),
+                },
+                occurred_at: Some("2026-05-05T12:34:57Z".into()),
+                sensation_id: Some("sensation:audio:1".into()),
+            },
+            "voxudio",
+            &GraphVoiceRecognition {
+                signature: GraphVoiceSignature {
+                    user_id: "speaker:1".into(),
+                    fundamental_frequency: 150.0,
+                    frequency_range: (100.0, 300.0),
+                    formant_frequencies: vec![800.0, 1200.0, 2500.0],
+                    speech_rate: 4.5,
+                    mfcc_signature: vec![0.1, 0.2],
+                    spectral_centroid: 1500.0,
+                    jitter: 0.5,
+                    shimmer: 3.0,
+                    harmonic_to_noise_ratio: 20.0,
+                    sample_count: 1,
+                    last_updated: Utc::now(),
+                    tags: vec!["voice".into()],
+                },
+                sample: GraphVoiceSample {
+                    id: "voice-sample:1".into(),
+                    user_id: "speaker:1".into(),
+                    duration_ms: 2000,
+                    sample_rate: 16000,
+                    fundamental_frequency: 150.0,
+                    formant_frequencies: vec![800.0, 1200.0, 2500.0],
+                    mfcc: vec![0.1, 0.2],
+                    quality_score: 0.9,
+                    timestamp: Utc::now(),
+                },
+                vector_id: "point-1".into(),
+                embedding_len: 256,
+            },
+        )
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_skipped_voice_recognition() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("VoiceRecognitionRun")
+                .body_contains("HAS_VOICE_RECOGNITION_RUN")
+                .body_contains("PROCESSED_AUDIO")
+                .body_contains("sensation:audio:1")
+                .body_contains("\"status\":\"skipped\"")
+                .body_contains("\"reason\":\"audio clip too short\"")
+                .body_contains("\"model\":\"voxudio\"");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_skipped_voice_recognition(
+            &GraphVoiceClip {
+                id: "audio:1".into(),
+                clip: psyche::AudioClip {
+                    mime: "audio/pcm;format=s16le;rate=16000".into(),
+                    base64: "AAA=".into(),
+                    sample_rate: 16000,
+                    channels: 1,
+                    transcript: None,
+                    captured_at: Some("2026-05-05T12:34:56Z".into()),
+                },
+                occurred_at: Some("2026-05-05T12:34:57Z".into()),
+                sensation_id: Some("sensation:audio:1".into()),
+            },
+            "voxudio",
+            "audio clip too short",
         )
         .await
         .unwrap();

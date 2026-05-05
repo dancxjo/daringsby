@@ -4,9 +4,33 @@ set dotenv-load := true
 default:
     @just --list
 
-# Start Pete. Extra args are forwarded to the pete binary.
-run *args:
-    cargo run -p pete --bin pete -- {{args}}
+# Start Pete's sensor and offline-processing binaries.
+run:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    pids=()
+    cleanup() {
+        if ((${#pids[@]})); then
+            kill "${pids[@]}" 2>/dev/null || true
+        fi
+    }
+    trap cleanup INT TERM EXIT
+
+    cargo run -p pete --bin face &
+    pids+=("$!")
+    cargo run -p pete --bin frecog &
+    pids+=("$!")
+    cargo run -p pete --bin locate &
+    pids+=("$!")
+    cargo run -p pete --features scene-vec --bin scene_vec &
+    pids+=("$!")
+    cargo run -p pete --bin transcription &
+    pids+=("$!")
+    cargo run -p pete --bin vrecog &
+    pids+=("$!")
+
+    wait -n "${pids[@]}"
 
 # Start Pete with debug logging unless RUST_LOG is already set.
 debug *args:

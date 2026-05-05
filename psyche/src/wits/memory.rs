@@ -20,6 +20,7 @@ use uuid::Uuid;
 const MEMORY_COLLECTION: &str = "memories";
 const IMAGE_COLLECTION: &str = "images";
 const IMAGE_DESCRIPTION_COLLECTION: &str = "image_descriptions";
+const SCENE_VECTOR_COLLECTION: &str = "scene_vectors";
 const FACE_COLLECTION: &str = "faces";
 const GEOLOCATION_COLLECTION: &str = "geolocations";
 const VOICE_COLLECTION: &str = "voices";
@@ -176,6 +177,27 @@ impl QdrantClient {
         related_neo4j_node_ids: &[&str],
         vector: &[f32],
     ) -> Result<Uuid> {
+        self.store_image_description_vector_for_node_with_model(
+            image_id,
+            description,
+            neo4j_node_id,
+            related_neo4j_node_ids,
+            None,
+            vector,
+        )
+        .await
+    }
+
+    /// Store an image-description embedding with graph back-references and model metadata.
+    pub async fn store_image_description_vector_for_node_with_model(
+        &self,
+        image_id: &str,
+        description: &str,
+        neo4j_node_id: &str,
+        related_neo4j_node_ids: &[&str],
+        model: Option<&str>,
+        vector: &[f32],
+    ) -> Result<Uuid> {
         let id = self
             .upsert_vector(
                 IMAGE_DESCRIPTION_COLLECTION,
@@ -185,11 +207,38 @@ impl QdrantClient {
                     "image_id": image_id,
                     "neo4j_node_id": neo4j_node_id,
                     "related_neo4j_node_ids": related_neo4j_node_ids,
+                    "model": model,
                     "description": description,
                 }),
             )
             .await?;
         info!(target: "qdrant", image_id, len = vector.len(), url = %self.url, "stored image description vector");
+        Ok(id)
+    }
+
+    /// Store a CLIP scene embedding in its own collection.
+    pub async fn store_scene_vector_for_sensation(
+        &self,
+        image_id: &str,
+        sensation_id: Option<&str>,
+        model: &str,
+        vector: &[f32],
+    ) -> Result<Uuid> {
+        let id = self
+            .upsert_vector(
+                SCENE_VECTOR_COLLECTION,
+                vector,
+                json!({
+                    "kind": "scene",
+                    "image_id": image_id,
+                    "neo4j_node_id": image_id,
+                    "source_image_id": image_id,
+                    "sensation_id": sensation_id,
+                    "model": model,
+                }),
+            )
+            .await?;
+        info!(target: "qdrant", image_id, len = vector.len(), url = %self.url, "stored scene vector");
         Ok(id)
     }
 
@@ -270,6 +319,18 @@ impl QdrantClient {
         clip_id: Option<&str>,
         vector: &[f32],
     ) -> Result<Uuid> {
+        self.store_voice_vector_for_sensation(clip_id, None, None, vector)
+            .await
+    }
+
+    /// Store a voice embedding with graph and source sensation metadata.
+    pub async fn store_voice_vector_for_sensation(
+        &self,
+        clip_id: Option<&str>,
+        sensation_id: Option<&str>,
+        user_id: Option<&str>,
+        vector: &[f32],
+    ) -> Result<Uuid> {
         let id = self
             .upsert_vector(
                 VOICE_COLLECTION,
@@ -278,6 +339,8 @@ impl QdrantClient {
                     "kind": "voice",
                     "clip_id": clip_id,
                     "neo4j_node_id": clip_id,
+                    "sensation_id": sensation_id,
+                    "user_id": user_id,
                 }),
             )
             .await?;
@@ -478,6 +541,28 @@ pub struct GraphAudioClip {
     pub occurred_at: Option<String>,
 }
 
+/// Ordered audio clips selected for aggregate transcription.
+#[derive(Clone, Debug)]
+pub struct GraphAudioClipWindow {
+    /// The newest clip in the window that had not yet received a big transcription.
+    pub anchor_id: String,
+    /// Source clips in playback order.
+    pub clips: Vec<GraphAudioClip>,
+}
+
+/// Audio clip loaded directly from the graph store for offline voice recognition.
+#[derive(Clone, Debug)]
+pub struct GraphVoiceClip {
+    /// Stable graph node id for the `AudioClip`.
+    pub id: String,
+    /// Audio payload and metadata stored on the graph node.
+    pub clip: AudioClip,
+    /// Graph observation timestamp, when present.
+    pub occurred_at: Option<String>,
+    /// Source `Sensation` node that observed this clip, when present.
+    pub sensation_id: Option<String>,
+}
+
 /// Image frame loaded directly from the graph store for offline processing.
 #[derive(Clone, Debug)]
 pub struct GraphImageFrame {
@@ -488,6 +573,32 @@ pub struct GraphImageFrame {
     /// Graph observation timestamp, when present.
     pub occurred_at: Option<String>,
     /// Source `Sensation` node that observed this frame, when present.
+    pub sensation_id: Option<String>,
+}
+
+/// LLM image description ready to be linked into the graph.
+#[derive(Clone, Debug)]
+pub struct GraphImageDescription {
+    /// Stable graph node id for the description.
+    pub description_id: String,
+    /// Single-sentence description of the source image.
+    pub text: String,
+    /// Qdrant point id for the text embedding.
+    pub vector_id: String,
+    /// Text embedding dimension.
+    pub embedding_len: usize,
+}
+
+/// Geolocation loaded directly from the graph store for offline vectorization.
+#[derive(Clone, Debug)]
+pub struct GraphGeolocation {
+    /// Stable graph node id for the `Geolocation`.
+    pub id: String,
+    /// Latitude/longitude payload stored on the graph node.
+    pub loc: GeoLoc,
+    /// Graph observation timestamp, when present.
+    pub occurred_at: Option<String>,
+    /// Source `Sensation` node that observed this location, when present.
     pub sensation_id: Option<String>,
 }
 
@@ -506,6 +617,59 @@ pub struct GraphFaceDetection {
     pub embedding_len: usize,
 }
 
+/// Scene-level image vector ready to be linked into the graph.
+#[derive(Clone, Debug)]
+pub struct GraphSceneVectorization {
+    /// Qdrant point id for the scene embedding.
+    pub vector_id: String,
+    /// Scene embedding dimension.
+    pub embedding_len: usize,
+}
+
+/// Voice signature extracted from an audio clip.
+#[derive(Clone, Debug)]
+pub struct GraphVoiceSignature {
+    /// Stable speaker/signature id.
+    pub user_id: String,
+    pub fundamental_frequency: f32,
+    pub frequency_range: (f32, f32),
+    pub formant_frequencies: Vec<f32>,
+    pub speech_rate: f32,
+    pub mfcc_signature: Vec<f32>,
+    pub spectral_centroid: f32,
+    pub jitter: f32,
+    pub shimmer: f32,
+    pub harmonic_to_noise_ratio: f32,
+    pub sample_count: usize,
+    pub last_updated: chrono::DateTime<chrono::Utc>,
+    pub tags: Vec<String>,
+}
+
+/// Voice sample extracted from one source audio clip.
+#[derive(Clone, Debug)]
+pub struct GraphVoiceSample {
+    pub id: String,
+    pub user_id: String,
+    pub duration_ms: u32,
+    pub sample_rate: u32,
+    pub fundamental_frequency: f32,
+    pub formant_frequencies: Vec<f32>,
+    pub mfcc: Vec<f32>,
+    pub quality_score: f32,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+/// Voice recognition result ready to be linked into the graph.
+#[derive(Clone, Debug)]
+pub struct GraphVoiceRecognition {
+    pub signature: GraphVoiceSignature,
+    pub sample: GraphVoiceSample,
+    /// Qdrant point id for the voice embedding.
+    pub vector_id: String,
+    /// Voice embedding dimension.
+    pub embedding_len: usize,
+}
+
 /// Speech segment produced by transcribing an `AudioClip`.
 #[derive(Clone, Debug)]
 pub struct GraphSpeechSegment {
@@ -521,6 +685,25 @@ pub struct GraphSpeechSegment {
     pub occurred_at: Option<String>,
     /// Absolute segment end timestamp, when the source clip was timestamped.
     pub ended_at: Option<String>,
+}
+
+/// Source clip span within an aggregate audio transcription.
+#[derive(Clone, Debug)]
+pub struct GraphAudioSourceSpan {
+    /// Zero-based source order within the aggregate audio.
+    pub index: usize,
+    /// Stable graph node id for the source `AudioClip`.
+    pub audio_clip_id: String,
+    /// Start offset from the beginning of the aggregate audio.
+    pub start_ms: u32,
+    /// End offset from the beginning of the aggregate audio.
+    pub end_ms: u32,
+    /// Absolute source start timestamp, when known.
+    pub occurred_at: Option<String>,
+    /// Absolute source end timestamp, when known.
+    pub ended_at: Option<String>,
+    /// Whether this clip was the unprocessed anchor that caused the window to run.
+    pub anchor: bool,
 }
 
 /// Graph node returned for browser-side visualization.
@@ -610,6 +793,92 @@ impl Neo4jClient {
         rows.first().map(graph_audio_clip_from_row).transpose()
     }
 
+    /// Return recent `AudioClip` nodes for aggregate transcription.
+    ///
+    /// The anchor is the latest clip that has not been linked to a big
+    /// transcription. The returned window includes that anchor plus earlier
+    /// clips, regardless of whether those clips already have first-order
+    /// transcripts.
+    pub async fn latest_audio_clip_window_for_big_transcription(
+        &self,
+        limit: usize,
+    ) -> Result<Option<GraphAudioClipWindow>> {
+        let limit = limit.max(1);
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (anchor:GraphNode:AudioClip)
+                    WHERE anchor.base64 IS NOT NULL
+                      AND NOT (anchor)-[:HAS_BIG_TRANSCRIPTION]->(:GraphNode:Transcription)
+                    WITH anchor, coalesce(anchor.captured_at, anchor.occurred_at, "") AS anchor_observed_at
+                    ORDER BY anchor_observed_at DESC
+                    LIMIT 1
+                    MATCH (a:GraphNode:AudioClip)
+                    WHERE a.base64 IS NOT NULL
+                    WITH anchor, anchor_observed_at, a, coalesce(a.captured_at, a.occurred_at, "") AS observed_at
+                    WHERE observed_at <= anchor_observed_at
+                    WITH anchor, a, observed_at
+                    ORDER BY observed_at DESC
+                    LIMIT $limit
+                    WITH anchor, collect({
+                        id: a.id,
+                        mime: a.mime,
+                        base64: a.base64,
+                        sample_rate: a.sample_rate,
+                        channels: a.channels,
+                        captured_at: a.captured_at,
+                        occurred_at: a.occurred_at,
+                        observed_at: observed_at
+                    }) AS clips
+                    UNWIND reverse(clips) AS clip
+                    RETURN anchor.id, clip.id, clip.mime, clip.base64, clip.sample_rate, clip.channels, clip.captured_at, clip.occurred_at
+                "#
+                .into(),
+                parameters: json!({
+                    "limit": i64::try_from(limit).unwrap_or(i64::MAX),
+                }),
+            },
+            "finding latest audio clip window for big transcription",
+        )
+        .await?;
+        graph_audio_clip_window_from_rows(&rows)
+    }
+
+    /// Return the latest `AudioClip` graph node that has no voice-recognition run.
+    pub async fn latest_unprocessed_audio_clip_for_voice_recognition(
+        &self,
+    ) -> Result<Option<GraphVoiceClip>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (a:GraphNode:AudioClip)
+                    WHERE a.base64 IS NOT NULL
+                      AND NOT (a)-[:HAS_VOICE_RECOGNITION_RUN]->(:GraphNode:VoiceRecognitionRun)
+                    OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(a)
+                    WITH a, s, coalesce(a.captured_at, a.occurred_at, s.occurred_at, "") AS observed_at
+                    RETURN a.id, a.mime, a.base64, a.sample_rate, a.channels, a.captured_at, a.occurred_at, s.id
+                    ORDER BY observed_at DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest unprocessed audio clip for voice recognition",
+        )
+        .await?;
+        rows.first().map(graph_voice_clip_from_row).transpose()
+    }
+
     /// Return the latest `Image` graph node that has no face-recognition run.
     pub async fn latest_unprocessed_image_frame_for_face_recognition(
         &self,
@@ -638,6 +907,98 @@ impl Neo4jClient {
         )
         .await?;
         rows.first().map(graph_image_frame_from_row).transpose()
+    }
+
+    /// Return the latest `Image` graph node that has no scene-vectorization run.
+    pub async fn latest_unprocessed_image_frame_for_scene_vectorization(
+        &self,
+    ) -> Result<Option<GraphImageFrame>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (i:GraphNode:Image)
+                    WHERE i.base64 IS NOT NULL
+                      AND NOT (i)-[:HAS_SCENE_VECTORIZATION_RUN]->(:GraphNode:SceneVectorizationRun)
+                    OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(i)
+                    WITH i, s, coalesce(i.captured_at, i.occurred_at, s.occurred_at, "") AS observed_at
+                    RETURN i.id, i.mime, i.base64, i.captured_at, i.occurred_at, s.id
+                    ORDER BY observed_at DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest unprocessed image frame for scene vectorization",
+        )
+        .await?;
+        rows.first().map(graph_image_frame_from_row).transpose()
+    }
+
+    /// Return the latest `Image` graph node that has no image-description run.
+    pub async fn latest_unprocessed_image_frame_for_description(
+        &self,
+    ) -> Result<Option<GraphImageFrame>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (i:GraphNode:Image)
+                    WHERE i.base64 IS NOT NULL
+                      AND NOT (i)-[:HAS_IMAGE_DESCRIPTION_RUN]->(:GraphNode:ImageDescriptionRun)
+                    OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(i)
+                    WITH i, s, coalesce(i.captured_at, i.occurred_at, s.occurred_at, "") AS observed_at
+                    RETURN i.id, i.mime, i.base64, i.captured_at, i.occurred_at, s.id
+                    ORDER BY observed_at DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest unprocessed image frame for description",
+        )
+        .await?;
+        rows.first().map(graph_image_frame_from_row).transpose()
+    }
+
+    /// Return the latest `Geolocation` graph node that has no geolocation vector.
+    pub async fn latest_unprocessed_geolocation_for_vectorization(
+        &self,
+    ) -> Result<Option<GraphGeolocation>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (g:GraphNode:Geolocation)
+                    WHERE g.latitude IS NOT NULL
+                      AND g.longitude IS NOT NULL
+                      AND NOT (g)-[:HAS_GEOLOCATION_VECTOR]->(:GraphNode:Vector)
+                      AND NOT (g)-[:HAS_GEOLOCATION_VECTORIZATION_RUN]->(:GraphNode:GeolocationVectorizationRun)
+                    OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(g)
+                    WITH g, s, coalesce(g.observed_at, g.occurred_at, s.occurred_at, "") AS observed_at
+                    RETURN g.id, g.latitude, g.longitude, g.observed_at, g.occurred_at, s.id
+                    ORDER BY observed_at DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest unprocessed geolocation for vectorization",
+        )
+        .await?;
+        rows.first().map(graph_geolocation_from_row).transpose()
     }
 
     /// Return a display-oriented snapshot of the latest graph nodes and their relationships.
@@ -780,11 +1141,6 @@ impl Neo4jClient {
                 "type": "HAS_SEGMENT",
                 "segment_index": segment.index,
             }));
-            relationships.push(json!({
-                "from": segment_id,
-                "to": audio_clip_id,
-                "type": "SEGMENT_OF",
-            }));
         }
         let mut statements = vec![CypherStatement {
             statement: r#"
@@ -811,6 +1167,104 @@ impl Neo4jClient {
             &self.pass,
             &statements,
             "attaching audio transcription",
+        )
+        .await
+    }
+
+    /// Attach one aggregate Whisper transcript to several source audio clips.
+    pub async fn attach_big_audio_transcription(
+        &self,
+        sources: &[GraphAudioSourceSpan],
+        transcript: &str,
+        source_started_at: Option<&str>,
+        source_ended_at: Option<&str>,
+        segments: &[GraphSpeechSegment],
+    ) -> Result<()> {
+        anyhow::ensure!(!sources.is_empty(), "big transcription has no source clips");
+        let endpoint = self.http_endpoint()?;
+        let client = reqwest::Client::new();
+        self.ensure_constraint(&client, &endpoint).await?;
+        let transcribed_at = chrono::Utc::now().to_rfc3339();
+        let source_ids = sources
+            .iter()
+            .map(|source| source.audio_clip_id.clone())
+            .collect::<Vec<_>>();
+        let transcription_id = stable_bytes_id(
+            "big-transcription",
+            format!("{}:{transcribed_at}", source_ids.join(",")).as_bytes(),
+        );
+        let mut nodes = vec![json!({
+            "label": "Transcription",
+            "id": transcription_id,
+            "kind": "big",
+            "audio_clip_ids": source_ids,
+            "source_count": sources.len(),
+            "text": transcript,
+            "transcribed_at": transcribed_at,
+            "source_started_at": source_started_at,
+            "source_ended_at": source_ended_at,
+        })];
+        let mut relationships = Vec::new();
+        for source in sources {
+            relationships.push(json!({
+                "from": source.audio_clip_id,
+                "to": transcription_id,
+                "type": "HAS_BIG_TRANSCRIPTION",
+                "source_index": source.index,
+                "start_ms": source.start_ms,
+                "end_ms": source.end_ms,
+                "occurred_at": source.occurred_at,
+                "ended_at": source.ended_at,
+                "anchor": source.anchor,
+            }));
+        }
+        for segment in segments {
+            let segment_id = format!("{transcription_id}:segment:{}", segment.index);
+            nodes.push(json!({
+                "label": "SpeechSegment",
+                "id": segment_id,
+                "transcription_id": transcription_id,
+                "segment_index": segment.index,
+                "text": segment.text,
+                "start_ms": segment.start_ms,
+                "end_ms": segment.end_ms,
+                "occurred_at": segment.occurred_at,
+                "ended_at": segment.ended_at,
+            }));
+            relationships.push(json!({
+                "from": transcription_id,
+                "to": segment_id,
+                "type": "HAS_SEGMENT",
+                "segment_index": segment.index,
+            }));
+            for source in sources.iter().filter(|source| {
+                spans_overlap(
+                    segment.start_ms,
+                    segment.end_ms,
+                    source.start_ms,
+                    source.end_ms,
+                )
+            }) {
+                relationships.push(json!({
+                    "from": segment_id,
+                    "to": source.audio_clip_id,
+                    "type": "DERIVED_FROM_AUDIO",
+                    "source_index": source.index,
+                }));
+            }
+        }
+        let statements = graph_statements(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))?;
+        commit_neo4j_statements(
+            &client,
+            &endpoint,
+            &self.user,
+            &self.pass,
+            &statements,
+            "attaching big audio transcription",
         )
         .await
     }
@@ -925,6 +1379,461 @@ impl Neo4jClient {
                     "type": "PRODUCED",
                 }));
             }
+        }
+
+        self.store_data(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))
+        .await
+    }
+
+    /// Attach scene vectorization results to an existing `Image` graph node.
+    pub async fn attach_scene_vectorization(
+        &self,
+        frame: &GraphImageFrame,
+        model: &str,
+        scene: &GraphSceneVectorization,
+    ) -> Result<()> {
+        let processed_at = chrono::Utc::now().to_rfc3339();
+        let run_id = format!("scene-vectorization:{}", frame.id);
+        let vector_id = qdrant_vector_node_id(SCENE_VECTOR_COLLECTION, &scene.vector_id);
+        let mut nodes = vec![
+            json!({
+                "label": "Image",
+                "id": frame.id,
+            }),
+            json!({
+                "label": "SceneVectorizationRun",
+                "id": run_id,
+                "image_id": frame.id,
+                "model": model,
+                "processed_at": processed_at,
+                "embedding_len": scene.embedding_len,
+            }),
+            qdrant_vector_node(
+                SCENE_VECTOR_COLLECTION,
+                &scene.vector_id,
+                "scene",
+                Some(model),
+            ),
+        ];
+        let mut relationships = vec![
+            json!({
+                "from": frame.id,
+                "to": run_id,
+                "type": "HAS_SCENE_VECTORIZATION_RUN",
+            }),
+            json!({
+                "from": run_id,
+                "to": frame.id,
+                "type": "PROCESSED_IMAGE",
+            }),
+            json!({
+                "from": frame.id,
+                "to": vector_id,
+                "type": "HAS_SCENE_VECTOR",
+            }),
+            json!({
+                "from": vector_id,
+                "to": frame.id,
+                "type": "DERIVED_FROM",
+            }),
+            json!({
+                "from": run_id,
+                "to": vector_id,
+                "type": "PRODUCED",
+            }),
+        ];
+
+        if let Some(sensation_id) = &frame.sensation_id {
+            nodes.push(json!({
+                "label": "Sensation",
+                "id": sensation_id,
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": run_id,
+                "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": vector_id,
+                "type": "PRODUCED",
+            }));
+        }
+
+        self.store_data(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))
+        .await
+    }
+
+    /// Attach an LLM image description and its text embedding to an existing `Image`.
+    pub async fn attach_image_description(
+        &self,
+        frame: &GraphImageFrame,
+        vision_model: &str,
+        embedding_model: &str,
+        description: &GraphImageDescription,
+    ) -> Result<()> {
+        let processed_at = chrono::Utc::now().to_rfc3339();
+        let run_id = format!("image-description:{}", frame.id);
+        let vector_id = qdrant_vector_node_id(IMAGE_DESCRIPTION_COLLECTION, &description.vector_id);
+        let mut nodes = vec![
+            json!({
+                "label": "Image",
+                "id": frame.id,
+            }),
+            json!({
+                "label": "ImageDescriptionRun",
+                "id": run_id,
+                "image_id": frame.id,
+                "model": vision_model,
+                "embedding_model": embedding_model,
+                "processed_at": processed_at,
+                "embedding_len": description.embedding_len,
+            }),
+            json!({
+                "label": "ImageDescription",
+                "id": description.description_id,
+                "image_id": frame.id,
+                "text": description.text,
+                "model": vision_model,
+                "described_at": processed_at,
+                "occurred_at": frame
+                    .image
+                    .captured_at
+                    .clone()
+                    .or_else(|| frame.occurred_at.clone()),
+            }),
+            qdrant_vector_node(
+                IMAGE_DESCRIPTION_COLLECTION,
+                &description.vector_id,
+                "image_description",
+                Some(embedding_model),
+            ),
+        ];
+        let mut relationships = vec![
+            json!({
+                "from": frame.id,
+                "to": run_id,
+                "type": "HAS_IMAGE_DESCRIPTION_RUN",
+            }),
+            json!({
+                "from": run_id,
+                "to": frame.id,
+                "type": "PROCESSED_IMAGE",
+            }),
+            json!({
+                "from": run_id,
+                "to": description.description_id,
+                "type": "PRODUCED",
+            }),
+            json!({
+                "from": frame.id,
+                "to": description.description_id,
+                "type": "HAS_IMAGE_DESCRIPTION",
+            }),
+            json!({
+                "from": description.description_id,
+                "to": frame.id,
+                "type": "DERIVED_FROM",
+            }),
+            json!({
+                "from": description.description_id,
+                "to": vector_id,
+                "type": "HAS_IMAGE_DESCRIPTION_VECTOR",
+            }),
+            json!({
+                "from": frame.id,
+                "to": vector_id,
+                "type": "HAS_IMAGE_DESCRIPTION_VECTOR",
+            }),
+            json!({
+                "from": vector_id,
+                "to": description.description_id,
+                "type": "DERIVED_FROM",
+            }),
+            json!({
+                "from": run_id,
+                "to": vector_id,
+                "type": "PRODUCED",
+            }),
+        ];
+
+        if let Some(sensation_id) = &frame.sensation_id {
+            nodes.push(json!({
+                "label": "Sensation",
+                "id": sensation_id,
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": run_id,
+                "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": description.description_id,
+                "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": vector_id,
+                "type": "PRODUCED",
+            }));
+        }
+
+        self.store_data(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))
+        .await
+    }
+
+    /// Mark an `AudioClip` as attempted when voice recognition cannot use it.
+    pub async fn attach_skipped_voice_recognition(
+        &self,
+        clip: &GraphVoiceClip,
+        model: &str,
+        reason: &str,
+    ) -> Result<()> {
+        let processed_at = chrono::Utc::now().to_rfc3339();
+        let run_id = format!("voice-recognition:{}", clip.id);
+        let mut nodes = vec![
+            json!({
+                "label": "AudioClip",
+                "id": clip.id,
+            }),
+            json!({
+                "label": "VoiceRecognitionRun",
+                "id": run_id,
+                "audio_clip_id": clip.id,
+                "model": model,
+                "processed_at": processed_at,
+                "status": "skipped",
+                "reason": reason,
+            }),
+        ];
+        let mut relationships = vec![
+            json!({
+                "from": clip.id,
+                "to": run_id,
+                "type": "HAS_VOICE_RECOGNITION_RUN",
+            }),
+            json!({
+                "from": run_id,
+                "to": clip.id,
+                "type": "PROCESSED_AUDIO",
+            }),
+        ];
+
+        if let Some(sensation_id) = &clip.sensation_id {
+            nodes.push(json!({
+                "label": "Sensation",
+                "id": sensation_id,
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": run_id,
+                "type": "PRODUCED",
+            }));
+        }
+
+        self.store_data(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))
+        .await
+    }
+
+    /// Attach geolocation vectorization results to an existing `Geolocation` graph node.
+    pub async fn attach_geolocation_vectorization(
+        &self,
+        geolocation: &GraphGeolocation,
+        model: &str,
+        vector_id: &str,
+        embedding_len: usize,
+    ) -> Result<()> {
+        let processed_at = chrono::Utc::now().to_rfc3339();
+        let run_id = format!("geolocation-vectorization:{}", geolocation.id);
+        let vector_node_id = qdrant_vector_node_id(GEOLOCATION_COLLECTION, vector_id);
+        let mut nodes = vec![
+            json!({
+                "label": "Geolocation",
+                "id": geolocation.id,
+            }),
+            json!({
+                "label": "GeolocationVectorizationRun",
+                "id": run_id,
+                "geolocation_id": geolocation.id,
+                "model": model,
+                "processed_at": processed_at,
+                "embedding_len": embedding_len,
+            }),
+            qdrant_vector_node(
+                GEOLOCATION_COLLECTION,
+                vector_id,
+                "geolocation",
+                Some(model),
+            ),
+        ];
+        let mut relationships = vec![
+            json!({
+                "from": geolocation.id,
+                "to": run_id,
+                "type": "HAS_GEOLOCATION_VECTORIZATION_RUN",
+            }),
+            json!({
+                "from": run_id,
+                "to": geolocation.id,
+                "type": "PROCESSED_GEOLOCATION",
+            }),
+            json!({
+                "from": geolocation.id,
+                "to": vector_node_id,
+                "type": "HAS_GEOLOCATION_VECTOR",
+            }),
+            json!({
+                "from": vector_node_id,
+                "to": geolocation.id,
+                "type": "DERIVED_FROM",
+            }),
+            json!({
+                "from": run_id,
+                "to": vector_node_id,
+                "type": "PRODUCED",
+            }),
+        ];
+
+        if let Some(sensation_id) = &geolocation.sensation_id {
+            nodes.push(json!({
+                "label": "Sensation",
+                "id": sensation_id,
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": run_id,
+                "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": vector_node_id,
+                "type": "PRODUCED",
+            }));
+        }
+
+        self.store_data(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))
+        .await
+    }
+
+    /// Attach voice recognition results to an existing `AudioClip` graph node.
+    pub async fn attach_voice_recognition(
+        &self,
+        clip: &GraphVoiceClip,
+        model: &str,
+        recognition: &GraphVoiceRecognition,
+    ) -> Result<()> {
+        let processed_at = chrono::Utc::now().to_rfc3339();
+        let run_id = format!("voice-recognition:{}", clip.id);
+        let signature_id = format!("voice-signature:{}", recognition.signature.user_id);
+        let sample_id = recognition.sample.id.clone();
+        let vector_id = qdrant_vector_node_id(VOICE_COLLECTION, &recognition.vector_id);
+        let nodes = vec![
+            json!({
+                "label": "AudioClip",
+                "id": clip.id,
+            }),
+            json!({
+                "label": "VoiceRecognitionRun",
+                "id": run_id,
+                "audio_clip_id": clip.id,
+                "model": model,
+                "processed_at": processed_at,
+                "embedding_len": recognition.embedding_len,
+            }),
+            voice_signature_node(&signature_id, &recognition.signature),
+            voice_sample_node(&recognition.sample, &clip.id),
+            qdrant_vector_node(
+                VOICE_COLLECTION,
+                &recognition.vector_id,
+                "voice",
+                Some(model),
+            ),
+        ];
+        let mut relationships = vec![
+            json!({
+                "from": clip.id,
+                "to": run_id,
+                "type": "HAS_VOICE_RECOGNITION_RUN",
+            }),
+            json!({
+                "from": run_id,
+                "to": clip.id,
+                "type": "PROCESSED_AUDIO",
+            }),
+            json!({
+                "from": run_id,
+                "to": signature_id,
+                "type": "PRODUCED_SIGNATURE",
+            }),
+            json!({
+                "from": run_id,
+                "to": sample_id,
+                "type": "PRODUCED_SAMPLE",
+            }),
+            json!({
+                "from": signature_id,
+                "to": sample_id,
+                "type": "HAS_VOICE_SAMPLE",
+            }),
+            json!({
+                "from": sample_id,
+                "to": clip.id,
+                "type": "DERIVED_FROM",
+            }),
+            json!({
+                "from": signature_id,
+                "to": vector_id,
+                "type": "HAS_VOICE_VECTOR",
+            }),
+            json!({
+                "from": sample_id,
+                "to": vector_id,
+                "type": "HAS_VOICE_VECTOR",
+            }),
+            json!({
+                "from": run_id,
+                "to": vector_id,
+                "type": "PRODUCED",
+            }),
+        ];
+
+        if let Some(sensation_id) = &clip.sensation_id {
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": run_id,
+                "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": signature_id,
+                "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": vector_id,
+                "type": "PRODUCED",
+            }));
         }
 
         self.store_data(&json!({
@@ -1198,6 +2107,62 @@ fn graph_audio_clip_from_row(row: &Value) -> Result<GraphAudioClip> {
     })
 }
 
+fn graph_audio_clip_window_from_rows(rows: &[Value]) -> Result<Option<GraphAudioClipWindow>> {
+    let Some(first) = rows.first() else {
+        return Ok(None);
+    };
+    let first_values = first
+        .as_array()
+        .context("Neo4j audio clip window row was not an array")?;
+    let anchor_id = row_string(first_values, 0, "anchor_id")?;
+    let clips = rows
+        .iter()
+        .map(graph_audio_clip_from_window_row)
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Some(GraphAudioClipWindow { anchor_id, clips }))
+}
+
+fn graph_audio_clip_from_window_row(row: &Value) -> Result<GraphAudioClip> {
+    let values = row
+        .as_array()
+        .context("Neo4j audio clip window row was not an array")?;
+    let id = row_string(values, 1, "id")?;
+    let clip = AudioClip {
+        mime: row_string(values, 2, "mime")?,
+        base64: row_string(values, 3, "base64")?,
+        sample_rate: row_u32(values, 4, "sample_rate")?,
+        channels: row_u16(values, 5, "channels")?,
+        transcript: None,
+        captured_at: row_optional_string(values, 6),
+    };
+    Ok(GraphAudioClip {
+        id,
+        clip,
+        occurred_at: row_optional_string(values, 7),
+    })
+}
+
+fn graph_voice_clip_from_row(row: &Value) -> Result<GraphVoiceClip> {
+    let values = row
+        .as_array()
+        .context("Neo4j voice clip row was not an array")?;
+    let id = row_string(values, 0, "id")?;
+    let clip = AudioClip {
+        mime: row_string(values, 1, "mime")?,
+        base64: row_string(values, 2, "base64")?,
+        sample_rate: row_u32(values, 3, "sample_rate")?,
+        channels: row_u16(values, 4, "channels")?,
+        transcript: None,
+        captured_at: row_optional_string(values, 5),
+    };
+    Ok(GraphVoiceClip {
+        id,
+        clip,
+        occurred_at: row_optional_string(values, 6),
+        sensation_id: row_optional_string(values, 7),
+    })
+}
+
 fn graph_image_frame_from_row(row: &Value) -> Result<GraphImageFrame> {
     let values = row
         .as_array()
@@ -1211,6 +2176,23 @@ fn graph_image_frame_from_row(row: &Value) -> Result<GraphImageFrame> {
     Ok(GraphImageFrame {
         id,
         image,
+        occurred_at: row_optional_string(values, 4),
+        sensation_id: row_optional_string(values, 5),
+    })
+}
+
+fn graph_geolocation_from_row(row: &Value) -> Result<GraphGeolocation> {
+    let values = row
+        .as_array()
+        .context("Neo4j geolocation row was not an array")?;
+    let id = row_string(values, 0, "id")?;
+    Ok(GraphGeolocation {
+        id,
+        loc: GeoLoc {
+            latitude: row_f64(values, 1, "latitude")?,
+            longitude: row_f64(values, 2, "longitude")?,
+            observed_at: row_optional_string(values, 3),
+        },
         occurred_at: row_optional_string(values, 4),
         sensation_id: row_optional_string(values, 5),
     })
@@ -1242,6 +2224,13 @@ fn row_u32(values: &[Value], index: usize, name: &str) -> Result<u32> {
 fn row_u16(values: &[Value], index: usize, name: &str) -> Result<u16> {
     let value = row_u32(values, index, name)?;
     u16::try_from(value).with_context(|| format!("Neo4j audio clip {name} is out of range"))
+}
+
+fn row_f64(values: &[Value], index: usize, name: &str) -> Result<f64> {
+    values
+        .get(index)
+        .and_then(Value::as_f64)
+        .with_context(|| format!("Neo4j row is missing numeric {name}"))
 }
 
 async fn commit_neo4j_statements(
@@ -1713,6 +2702,44 @@ fn audio_node(audio: &AudioClip, id: &str, occurred_at: String) -> Value {
     })
 }
 
+fn voice_signature_node(id: &str, signature: &GraphVoiceSignature) -> Value {
+    json!({
+        "label": "VoiceSignature",
+        "id": id,
+        "user_id": signature.user_id,
+        "fundamental_frequency": signature.fundamental_frequency,
+        "frequency_range_min": signature.frequency_range.0,
+        "frequency_range_max": signature.frequency_range.1,
+        "formant_frequencies": signature.formant_frequencies,
+        "speech_rate": signature.speech_rate,
+        "mfcc_signature": signature.mfcc_signature,
+        "spectral_centroid": signature.spectral_centroid,
+        "jitter": signature.jitter,
+        "shimmer": signature.shimmer,
+        "harmonic_to_noise_ratio": signature.harmonic_to_noise_ratio,
+        "sample_count": signature.sample_count,
+        "last_updated": signature.last_updated.to_rfc3339(),
+        "tags": signature.tags,
+        "immutable": false,
+    })
+}
+
+fn voice_sample_node(sample: &GraphVoiceSample, clip_id: &str) -> Value {
+    json!({
+        "label": "VoiceSample",
+        "id": sample.id,
+        "user_id": sample.user_id,
+        "audio_clip_id": clip_id,
+        "duration_ms": sample.duration_ms,
+        "sample_rate": sample.sample_rate,
+        "fundamental_frequency": sample.fundamental_frequency,
+        "formant_frequencies": sample.formant_frequencies,
+        "mfcc": sample.mfcc,
+        "quality_score": sample.quality_score,
+        "timestamp": sample.timestamp.to_rfc3339(),
+    })
+}
+
 fn geolocation_node(loc: &GeoLoc, id: &str, occurred_at: String) -> Value {
     json!({
         "label": "Geolocation",
@@ -1788,6 +2815,10 @@ fn stable_bytes_id(prefix: &str, bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("{prefix}:sha256:{:x}", hasher.finalize())
+}
+
+fn spans_overlap(a_start_ms: u32, a_end_ms: u32, b_start_ms: u32, b_end_ms: u32) -> bool {
+    a_start_ms < b_end_ms && b_start_ms < a_end_ms
 }
 
 #[async_trait]

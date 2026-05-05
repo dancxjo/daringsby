@@ -65,6 +65,21 @@ pub struct ClipTranscription {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct SourceClipSpan {
+    pub index: usize,
+    pub start_ms: u32,
+    pub end_ms: u32,
+    pub sample_count: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MultiClipTranscription {
+    pub text: String,
+    pub segments: Vec<SegmentMessage>,
+    pub source_spans: Vec<SourceClipSpan>,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct AsrTranscript {
     pub text: String,
     pub occurred_at: DateTime<Utc>,
@@ -190,7 +205,7 @@ impl AsrService {
             text,
             segments: segments
                 .iter()
-                .map(|segment| segment_to_message(segment, 0.0))
+                .flat_map(|segment| segment_to_messages(segment, 0.0))
                 .collect(),
         })
     }
@@ -198,6 +213,44 @@ impl AsrService {
     /// Transcribe a stored audio clip and return Whisper's joined text.
     pub async fn transcribe_clip_text(&self, clip: &AudioClip) -> Result<String> {
         Ok(self.transcribe_clip(clip).await?.text)
+    }
+
+    /// Transcribe several stored clips as one continuous audio buffer.
+    ///
+    /// The returned segment timings are relative to the beginning of the
+    /// concatenated audio. `source_spans` records where each original clip lands
+    /// inside that larger buffer so callers can link the aggregate transcript
+    /// back to the source clips.
+    pub async fn transcribe_clips(&self, clips: &[AudioClip]) -> Result<MultiClipTranscription> {
+        anyhow::ensure!(self.has_whisper_model(), "Whisper model not configured");
+        anyhow::ensure!(!clips.is_empty(), "no audio clips supplied");
+
+        let mut audio = Vec::new();
+        let mut source_spans = Vec::with_capacity(clips.len());
+        for (index, clip) in clips.iter().enumerate() {
+            let samples = decode_audio_clip_samples(clip, self.sample_rate)?;
+            let start_sample = audio.len();
+            audio.extend(samples);
+            let end_sample = audio.len();
+            source_spans.push(SourceClipSpan {
+                index,
+                start_ms: samples_to_ms(start_sample, self.sample_rate),
+                end_ms: samples_to_ms(end_sample, self.sample_rate),
+                sample_count: end_sample.saturating_sub(start_sample),
+            });
+        }
+
+        anyhow::ensure!(!audio.is_empty(), "audio clips contained no samples");
+        let segments = self.transcribe(audio).await?;
+        let text = join_segments(&segments);
+        Ok(MultiClipTranscription {
+            text,
+            segments: segments
+                .iter()
+                .flat_map(|segment| segment_to_messages(segment, 0.0))
+                .collect(),
+            source_spans,
+        })
     }
 
     pub fn set_topic_bus(&mut self, bus: TopicBus) {
@@ -258,6 +311,7 @@ impl AsrService {
             params.set_print_realtime(false);
             params.set_print_timestamps(false);
             params.set_token_timestamps(true);
+            params.set_split_on_word(true);
             params.set_no_context(true);
             params.set_single_segment(false);
             params.set_n_threads(std::cmp::max(1, num_cpus::get() as i32 - 1));
@@ -279,60 +333,29 @@ impl AsrService {
                 let token_count = segment.n_tokens();
                 let mut current = String::new();
                 let mut word_start = None;
+                let mut word_end = None;
                 for t in 0..token_count {
                     let token = segment
                         .get_token(t)
                         .ok_or_else(|| anyhow!("missing whisper token {t}"))?;
                     let token_data = token.token_data();
                     let piece = token.to_str_lossy()?.to_string();
-                    let clean = piece.replace('▁', " ");
-                    if piece.contains('▁') {
-                        if let Some(start) = word_start.take() {
-                            let word = current.trim().to_string();
-                            if !word.is_empty() {
-                                let end = token_data.t0 as f32 / 100.0;
-                                words.push(WordTiming {
-                                    text: word,
-                                    start_ms: (start * 1000.0) as u32,
-                                    end_ms: (end * 1000.0) as u32,
-                                });
-                            }
-                            current.clear();
-                        }
-                        word_start = Some(token_data.t0 as f32 / 100.0);
-                    } else if word_start.is_none() {
-                        word_start = Some(token_data.t0 as f32 / 100.0);
-                    }
-                    current.push_str(&clean);
-                    let end = token_data.t1 as f32 / 100.0;
-                    if end > start_s
-                        && current
-                            .trim()
-                            .ends_with(|c: char| c == ' ' || c == ',' || c == '.')
-                    {
-                        if let Some(start) = word_start.take() {
-                            let word = current.trim().to_string();
-                            if !word.is_empty() {
-                                words.push(WordTiming {
-                                    text: word,
-                                    start_ms: (start * 1000.0) as u32,
-                                    end_ms: (end * 1000.0) as u32,
-                                });
-                            }
-                            current.clear();
-                        }
-                    }
+                    push_word_token(
+                        &mut words,
+                        &mut current,
+                        &mut word_start,
+                        &mut word_end,
+                        &piece,
+                        centiseconds_to_ms(token_data.t0),
+                        centiseconds_to_ms(token_data.t1),
+                    );
                 }
-                if let Some(start) = word_start {
-                    let word = current.trim().to_string();
-                    if !word.is_empty() {
-                        words.push(WordTiming {
-                            text: word,
-                            start_ms: (start * 1000.0) as u32,
-                            end_ms: (end_s * 1000.0) as u32,
-                        });
-                    }
-                }
+                finish_word(
+                    &mut words,
+                    &mut current,
+                    &mut word_start,
+                    word_end.unwrap_or_else(|| seconds_to_ms(end_s)),
+                );
 
                 segments.push(SegmentInternal {
                     text: text.trim().to_string(),
@@ -818,9 +841,100 @@ fn rms(samples: &[f32]) -> f32 {
     (sum_sq / samples.len().max(1) as f64).sqrt() as f32
 }
 
-fn segment_to_message(segment: &SegmentInternal, offset_seconds: f32) -> SegmentMessage {
+fn centiseconds_to_ms(centiseconds: i64) -> u32 {
+    centiseconds
+        .max(0)
+        .saturating_mul(10)
+        .try_into()
+        .unwrap_or(u32::MAX)
+}
+
+fn seconds_to_ms(seconds: f32) -> u32 {
+    (seconds.max(0.0) * 1000.0) as u32
+}
+
+fn samples_to_ms(samples: usize, sample_rate: u32) -> u32 {
+    if sample_rate == 0 {
+        return 0;
+    }
+    let ms = (samples as u128).saturating_mul(1000) / u128::from(sample_rate);
+    ms.min(u128::from(u32::MAX)) as u32
+}
+
+fn push_word_token(
+    words: &mut Vec<WordTiming>,
+    current: &mut String,
+    word_start: &mut Option<u32>,
+    word_end: &mut Option<u32>,
+    piece: &str,
+    start_ms: u32,
+    end_ms: u32,
+) {
+    let starts_new_word = piece
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_whitespace() || c == '▁');
+    let clean = piece.replace('▁', " ");
+    if starts_new_word && !current.trim().is_empty() {
+        finish_word(words, current, word_start, start_ms);
+        *word_end = None;
+    }
+    if word_start.is_none() && !clean.trim().is_empty() {
+        *word_start = Some(start_ms);
+    }
+    current.push_str(&clean);
+    if !clean.trim().is_empty() {
+        *word_end = Some(end_ms);
+    }
+}
+
+fn finish_word(
+    words: &mut Vec<WordTiming>,
+    current: &mut String,
+    word_start: &mut Option<u32>,
+    end_ms: u32,
+) {
+    let Some(start_ms) = word_start.take() else {
+        current.clear();
+        return;
+    };
+    let text = current.trim().to_string();
+    current.clear();
+    if text.is_empty() {
+        return;
+    }
+    words.push(WordTiming {
+        text,
+        start_ms,
+        end_ms: end_ms.max(start_ms),
+    });
+}
+
+fn segment_to_messages(segment: &SegmentInternal, offset_seconds: f32) -> Vec<SegmentMessage> {
     let offset_ms = (offset_seconds * 1000.0) as u32;
-    SegmentMessage {
+    let offset_word = |word: &WordTiming| WordTiming {
+        text: word.text.clone(),
+        start_ms: word.start_ms + offset_ms,
+        end_ms: word.end_ms + offset_ms,
+    };
+
+    if !segment.words.is_empty() {
+        return segment
+            .words
+            .iter()
+            .map(|word| {
+                let word = offset_word(word);
+                SegmentMessage {
+                    text: word.text.clone(),
+                    start_ms: word.start_ms,
+                    end_ms: word.end_ms,
+                    words: vec![word],
+                }
+            })
+            .collect();
+    }
+
+    vec![SegmentMessage {
         text: segment.text.clone(),
         start_ms: ((offset_seconds + segment.start_s) * 1000.0) as u32,
         end_ms: ((offset_seconds + segment.end_s) * 1000.0) as u32,
@@ -833,7 +947,7 @@ fn segment_to_message(segment: &SegmentInternal, offset_seconds: f32) -> Segment
                 end_ms: word.end_ms + offset_ms,
             })
             .collect(),
-    }
+    }]
 }
 
 async fn emit_transcript(
@@ -875,7 +989,7 @@ async fn emit_transcript(
         channels: 1,
         segments: segments
             .iter()
-            .map(|seg| segment_to_message(seg, global_offset))
+            .flat_map(|seg| segment_to_messages(seg, global_offset))
             .collect(),
     };
     if let Some(bus) = topic_bus {
@@ -912,7 +1026,7 @@ fn encode_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
 mod tests {
     use super::{
         SegmentInternal, SilenceTracker, WordTiming, decode_audio_clip_samples, emit_transcript,
-        encode_wav, trim_silence,
+        encode_wav, finish_word, push_word_token, segment_to_messages, trim_silence,
     };
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
@@ -929,6 +1043,79 @@ mod tests {
             end_s: end,
             words: Vec::<WordTiming>::new(),
         }
+    }
+
+    #[test]
+    fn word_timing_splits_on_leading_whitespace_tokens() {
+        let mut words = Vec::new();
+        let mut current = String::new();
+        let mut word_start = None;
+        let mut word_end = None;
+
+        push_word_token(
+            &mut words,
+            &mut current,
+            &mut word_start,
+            &mut word_end,
+            " hello",
+            100,
+            220,
+        );
+        push_word_token(
+            &mut words,
+            &mut current,
+            &mut word_start,
+            &mut word_end,
+            " there",
+            260,
+            420,
+        );
+        push_word_token(
+            &mut words,
+            &mut current,
+            &mut word_start,
+            &mut word_end,
+            ".",
+            420,
+            460,
+        );
+        finish_word(&mut words, &mut current, &mut word_start, word_end.unwrap());
+
+        assert_eq!(words.len(), 2);
+        assert_eq!(words[0].text, "hello");
+        assert_eq!(words[0].start_ms, 100);
+        assert_eq!(words[0].end_ms, 260);
+        assert_eq!(words[1].text, "there.");
+        assert_eq!(words[1].start_ms, 260);
+        assert_eq!(words[1].end_ms, 460);
+    }
+
+    #[test]
+    fn segment_messages_prefer_word_level_segments() {
+        let mut segment = make_segment("hello there", 0.0, 0.8);
+        segment.words = vec![
+            WordTiming {
+                text: "hello".into(),
+                start_ms: 0,
+                end_ms: 300,
+            },
+            WordTiming {
+                text: "there".into(),
+                start_ms: 350,
+                end_ms: 800,
+            },
+        ];
+
+        let messages = segment_to_messages(&segment, 2.0);
+
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].text, "hello");
+        assert_eq!(messages[0].start_ms, 2000);
+        assert_eq!(messages[0].end_ms, 2300);
+        assert_eq!(messages[0].words.len(), 1);
+        assert_eq!(messages[1].text, "there");
+        assert_eq!(messages[1].start_ms, 2350);
+        assert_eq!(messages[1].end_ms, 2800);
     }
 
     #[test]

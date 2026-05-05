@@ -35,12 +35,15 @@ hound = { version = "3", optional = true }
 num_cpus = { version = "1", optional = true }
 whisper-rs = { version = "0.16", optional = true }
 voxudio = { version = "0.6.2", default-features = false, features = ["model"], optional = true }
+open_clip_inference = { version = "0.4.0", optional = true }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"], optional = true }
 
 [features]
 default = ["tts", "asr", "voice", "all-sensors"]
 tts = []
 asr = ["dep:hound", "dep:num_cpus", "dep:whisper-rs"]
 voice = ["asr", "dep:voxudio"]
+scene-vec = ["dep:open_clip_inference", "dep:image"]
 e2e = []
 eye = []
 face = []
@@ -82,6 +85,29 @@ path = "src/bin/transcription.rs"
 required-features = ["asr"]
 
 [[bin]]
+name = "big_transcribe"
+path = "src/bin/big_transcribe.rs"
+required-features = ["asr"]
+
+[[bin]]
 name = "frecog"
 path = "src/bin/frecog.rs"
 required-features = ["face"]
+
+[[bin]]
+name = "vrecog"
+path = "src/bin/vrecog.rs"
+required-features = ["voice"]
+
+[[bin]]
+name = "locate"
+path = "src/bin/locate.rs"
+
+[[bin]]
+name = "scene_vec"
+path = "src/bin/scene_vec.rs"
+required-features = ["scene-vec"]
+
+[[bin]]
+name = "image_desc"
+path = "src/bin/image_desc.rs"
