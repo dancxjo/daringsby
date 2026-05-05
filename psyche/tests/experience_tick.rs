@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use lingproc::{Chatter, Doer, LlmInstruction, Message, Vectorizer};
-use psyche::{Ear, Impression, Mouth, Psyche, wit::Wit};
+use psyche::{Ear, Impression, Mouth, Psyche, Sensation, wit::Wit};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -84,4 +84,47 @@ async fn experience_tick_configurable() {
     handle.abort();
     let _ = handle.await;
     assert!(wit.0.load(Ordering::SeqCst) >= 2);
+}
+
+#[tokio::test]
+async fn activity_wakes_wits_before_idle_tick() {
+    let mouth = Arc::new(Dummy);
+    let ear = mouth.clone();
+    let mut psyche = Psyche::new(
+        Box::new(Dummy),
+        Box::new(Dummy),
+        Box::new(Dummy),
+        Arc::new(psyche::NoopMemory),
+        mouth,
+        ear,
+    );
+    psyche.set_turn_limit(3);
+    psyche.set_speak_when_spoken_to(true);
+    psyche.set_experience_tick(Duration::from_secs(60));
+    psyche.set_active_experience_tick(Duration::from_millis(5));
+    let input = psyche.input_sender();
+    let wit = Arc::new(CountingWit(AtomicUsize::new(0)));
+    psyche.register_typed_wit(wit.clone());
+    let handle = tokio::spawn(async move { psyche.run().await });
+
+    wait_for_tick(&wit, Duration::from_millis(100)).await;
+    wit.0.store(0, Ordering::SeqCst);
+    input.send(Sensation::of(())).await.unwrap();
+    wait_for_tick(&wit, Duration::from_millis(100)).await;
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+async fn wait_for_tick(wit: &CountingWit, timeout: Duration) {
+    tokio::time::timeout(timeout, async {
+        loop {
+            if wit.0.load(Ordering::SeqCst) > 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("wit should tick before timeout");
 }

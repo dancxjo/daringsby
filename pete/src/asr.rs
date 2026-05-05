@@ -465,14 +465,11 @@ async fn run_connection(
                 buffer.clear();
                 buffer_started_at = None;
                 total_consumed_samples += submitted_samples;
-                let dropped_pending_samples = drain_pending_pcm(&mut pcm_rx);
-                total_consumed_samples += dropped_pending_samples;
                 silence_tracker.reset();
 
                 if trimmed_audio.is_empty() {
                     debug!(
                         submitted_samples,
-                        dropped_pending_samples,
                         has_pause,
                         hit_max_buffer,
                         "dropping silent ASR utterance"
@@ -487,46 +484,63 @@ async fn run_connection(
                 let leading_trim_ms = ((leading_trim as f32 / sample_rate) * 1000.0) as i64;
                 let occurred_at =
                     utterance_started_at + chrono::Duration::milliseconds(leading_trim_ms);
-
-                #[cfg(feature = "voice")]
-                if let Some(voice_embeddings) = &service.voice_embeddings {
-                    if service.sample_rate == 16_000 {
-                        if let Err(err) = voice_embeddings
-                            .process(&trimmed_audio, &wav_bytes, occurred_at)
-                            .await
-                        {
-                            warn!(error = %err, "voice embedding failed");
-                        }
-                    } else {
-                        warn!(
-                            sample_rate = service.sample_rate,
-                            "voice embeddings currently require 16 kHz ASR audio"
-                        );
-                    }
-                }
-
-                if service.context.is_some() {
-                    match service.transcribe(trimmed_audio).await {
-                        Ok(segments) => {
-                            emit_transcript(
-                                segments,
-                                occurred_at,
-                                global_offset,
-                                wav_bytes,
-                                &out_tx,
-                            )
-                            .await;
-                        }
-                        Err(err) => {
-                            error!(error = %err, "transcription error");
-                        }
-                    }
-                }
+                let service = Arc::clone(&service);
+                let out_tx = out_tx.clone();
+                tokio::spawn(async move {
+                    process_utterance(
+                        service,
+                        trimmed_audio,
+                        occurred_at,
+                        global_offset,
+                        wav_bytes,
+                        out_tx,
+                    )
+                    .await;
+                });
             }
         }
     }
 
     Ok(())
+}
+
+async fn process_utterance(
+    service: Arc<AsrService>,
+    trimmed_audio: Vec<f32>,
+    occurred_at: DateTime<Utc>,
+    global_offset: f32,
+    wav_bytes: Vec<u8>,
+    out_tx: mpsc::Sender<AsrTranscript>,
+) {
+    #[cfg(feature = "voice")]
+    if let Some(voice_embeddings) = &service.voice_embeddings {
+        if service.sample_rate == 16_000 {
+            if let Err(err) = voice_embeddings
+                .process(&trimmed_audio, &wav_bytes, occurred_at)
+                .await
+            {
+                warn!(error = %err, "voice embedding failed");
+            }
+        } else {
+            warn!(
+                sample_rate = service.sample_rate,
+                "voice embeddings currently require 16 kHz ASR audio"
+            );
+        }
+    }
+
+    if service.context.is_none() {
+        return;
+    }
+
+    match service.transcribe(trimmed_audio).await {
+        Ok(segments) => {
+            emit_transcript(segments, occurred_at, global_offset, wav_bytes, &out_tx).await;
+        }
+        Err(err) => {
+            error!(error = %err, "transcription error");
+        }
+    }
 }
 
 struct SilenceTracker {
@@ -585,14 +599,6 @@ fn extend_buffer(buffer: &mut VecDeque<f32>, bytes: &[u8]) -> (usize, f32) {
         0.0
     };
     (count, rms)
-}
-
-fn drain_pending_pcm(pcm_rx: &mut mpsc::Receiver<AudioChunk>) -> usize {
-    let mut samples = 0usize;
-    while let Ok(chunk) = pcm_rx.try_recv() {
-        samples += chunk.bytes.len() / 2;
-    }
-    samples
 }
 
 fn trim_silence(
@@ -731,10 +737,7 @@ fn encode_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        AudioChunk, SegmentInternal, SilenceTracker, WordTiming, drain_pending_pcm,
-        emit_transcript, trim_silence,
-    };
+    use super::{SegmentInternal, SilenceTracker, WordTiming, emit_transcript, trim_silence};
     use chrono::Utc;
     use std::time::Duration;
     use tokio::sync::mpsc;
@@ -807,27 +810,5 @@ mod tests {
         assert_eq!(transcript.text, "hello there");
         assert_eq!(transcript.start_ms, 2000);
         assert_eq!(transcript.end_ms, 3000);
-    }
-
-    #[tokio::test]
-    async fn drain_pending_pcm_discards_queued_audio() {
-        let (tx, mut rx) = mpsc::channel(4);
-        tx.send(AudioChunk {
-            bytes: vec![0, 0, 1, 0],
-            captured_at: Utc::now(),
-        })
-        .await
-        .unwrap();
-        tx.send(AudioChunk {
-            bytes: vec![2, 0, 3, 0, 4, 0],
-            captured_at: Utc::now(),
-        })
-        .await
-        .unwrap();
-
-        let drained = drain_pending_pcm(&mut rx);
-
-        assert_eq!(drained, 5);
-        assert!(rx.try_recv().is_err());
     }
 }

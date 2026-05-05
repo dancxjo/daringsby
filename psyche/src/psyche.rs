@@ -31,7 +31,7 @@ use quick_xml::{Reader, events::Event as XmlEvent};
 use rand::Rng;
 use std::any::Any;
 use std::panic::AssertUnwindSafe;
-use tokio::sync::{Mutex, broadcast, mpsc};
+use tokio::sync::{Mutex, broadcast, mpsc, watch};
 use tracing::{debug, error, info, trace, warn};
 
 /// A minimal history of exchanged messages.
@@ -186,6 +186,7 @@ pub struct Psyche {
     last_ticks: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
     pending_turn: Arc<PendingTurn>,
     topic_bus: crate::topics::TopicBus,
+    activity_tx: watch::Sender<u64>,
     fallback_turn: bool,
 }
 
@@ -232,6 +233,11 @@ fn fallback_extract(text: &str, name: &str) -> Option<String> {
     Some(text[start..end].to_string())
 }
 
+fn notify_activity(activity_tx: &watch::Sender<u64>) {
+    let next = (*activity_tx.borrow()).wrapping_add(1);
+    let _ = activity_tx.send(next);
+}
+
 impl Psyche {
     /// Construct a new [`Psyche`] using the given language model providers and IO components.
     pub fn new(
@@ -266,6 +272,7 @@ impl Psyche {
         let (events_tx, _r) = broadcast::channel(capacity);
         let (wit_tx, _r2) = broadcast::channel(capacity);
         let (input_tx, input_rx) = mpsc::channel(capacity);
+        let (activity_tx, _activity_rx) = watch::channel(0u64);
         let voice = crate::voice::Voice::new(Arc::from(voice), mouth, events_tx.clone());
         let conversation = Arc::new(Mutex::new(Conversation::default()));
         let prompt_builder = Arc::new(Mutex::new(crate::PromptBuilder::new(
@@ -301,6 +308,7 @@ impl Psyche {
             last_ticks: Arc::new(Mutex::new(HashMap::new())),
             pending_turn,
             topic_bus: crate::topics::TopicBus::new(capacity),
+            activity_tx,
             fallback_turn: true,
         }
     }
@@ -576,6 +584,7 @@ impl Psyche {
             obs.observe_sensation(sensation as &(dyn Any + Send + Sync))
                 .await;
         }
+        notify_activity(&self.activity_tx);
     }
 
     /// Main loop that handles the conversation with the assistant.
@@ -732,6 +741,7 @@ impl Psyche {
         buffer: Arc<Mutex<VecDeque<Arc<Sensation>>>>,
         observers: Vec<Arc<dyn crate::traits::observer::SensationObserver + Send + Sync>>,
         bus: crate::topics::TopicBus,
+        activity_tx: watch::Sender<u64>,
         idle_tick: Duration,
         active_tick: Duration,
         speaking: Arc<AtomicBool>,
@@ -744,6 +754,9 @@ impl Psyche {
                         .await;
                 }
                 bus.publish(crate::topics::Topic::Sensation, s.clone());
+            }
+            if !batch.is_empty() {
+                notify_activity(&activity_tx);
             }
             let jitter = rand::thread_rng().gen_range(0..50);
             let tick = if speaking.load(Ordering::SeqCst) || !batch.is_empty() {
@@ -762,7 +775,10 @@ impl Psyche {
         mem: Arc<dyn Memory>,
         prompt_builder: Arc<Mutex<crate::PromptBuilder>>,
         pending_turn: Arc<PendingTurn>,
-        tick: Duration,
+        mut activity_rx: watch::Receiver<u64>,
+        idle_tick: Duration,
+        active_tick: Duration,
+        speaking: Arc<AtomicBool>,
     ) {
         loop {
             let name = wit.name();
@@ -788,7 +804,19 @@ impl Psyche {
             }
             prompt_builder.lock().await.add_impressions(&imps).await;
             let jitter = rand::thread_rng().gen_range(0..50);
-            tokio::time::sleep(tick + Duration::from_millis(jitter)).await;
+            let tick = if speaking.load(Ordering::SeqCst) {
+                active_tick
+            } else {
+                idle_tick
+            };
+            tokio::select! {
+                _ = tokio::time::sleep(tick + Duration::from_millis(jitter)) => {}
+                changed = activity_rx.changed() => {
+                    if changed.is_err() {
+                        break;
+                    }
+                }
+            }
         }
     }
     /// Start the conversation and background tasks.
@@ -805,7 +833,7 @@ impl Psyche {
         let memory = Arc::clone(&self.memory);
         let prompt_builder = Arc::clone(&self.prompt_builder);
         let pending = Arc::clone(&self.pending_turn);
-        let tick = self.experience_tick;
+        let activity_tx = self.activity_tx.clone();
 
         let mut tasks = TaskGroup::new();
 
@@ -816,6 +844,7 @@ impl Psyche {
             let prompt_builder = Arc::clone(&prompt_builder);
             let pending_turn = Arc::clone(&pending);
             let name = wit.name().to_string();
+            let activity_rx = activity_tx.subscribe();
 
             let fut = AssertUnwindSafe(Self::wit_loop(
                 wit,
@@ -823,7 +852,10 @@ impl Psyche {
                 mem,
                 prompt_builder,
                 pending_turn,
-                tick,
+                activity_rx,
+                self.experience_tick,
+                self.active_experience_tick,
+                Arc::clone(&self.is_speaking),
             ))
             .catch_unwind()
             .map(move |res| {
@@ -838,6 +870,7 @@ impl Psyche {
             buf,
             observers,
             bus,
+            activity_tx,
             self.experience_tick,
             self.active_experience_tick,
             Arc::clone(&self.is_speaking),
