@@ -1,4 +1,4 @@
-use httpmock::{Method::DELETE, Method::GET, Method::PUT, MockServer};
+use httpmock::{Method::DELETE, Method::GET, Method::POST, Method::PUT, MockServer};
 use psyche::QdrantClient;
 
 #[tokio::test]
@@ -433,4 +433,47 @@ async fn existing_collection_dimension_mismatch_recreates_collection_before_upse
     delete_collection.assert_async().await;
     create_collection.assert_async().await;
     upsert_point.assert_async().await;
+}
+
+#[tokio::test]
+async fn scroll_vectors_reads_points_with_payloads_and_vectors() {
+    let server = MockServer::start_async().await;
+    let scroll = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/collections/memories/points/scroll")
+                .body_contains("\"with_payload\":true")
+                .body_contains("\"with_vector\":true")
+                .body_contains("\"limit\":2");
+            then.status(200).json_body(serde_json::json!({
+                "result": {
+                    "points": [
+                        {
+                            "id": "point-1",
+                            "payload": {"neo4j_node_id": "memory:1"},
+                            "vector": [1.0, 0.0]
+                        },
+                        {
+                            "id": "point-2",
+                            "payload": {"neo4j_node_id": "memory:2"},
+                            "vector": [0.9, 0.1]
+                        }
+                    ],
+                    "next_page_offset": null
+                },
+                "status": "ok"
+            }));
+        })
+        .await;
+
+    let points = QdrantClient::new(server.base_url())
+        .scroll_vectors("memories", 10, 2)
+        .await
+        .unwrap();
+
+    assert_eq!(points.len(), 2);
+    assert_eq!(points[0].point_id, "point-1");
+    assert_eq!(points[0].vector, vec![1.0, 0.0]);
+    assert_eq!(points[0].payload["neo4j_node_id"], "memory:1");
+    scroll.assert_async().await;
 }

@@ -115,3 +115,7 @@ path = "src/bin/image_desc.rs"
 [[bin]]
 name = "combobulate"
 path = "src/bin/combobulate.rs"
+
+[[bin]]
+name = "cluster"
+path = "src/bin/cluster.rs"

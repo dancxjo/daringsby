@@ -4,7 +4,8 @@ use psyche::{
     GeoLoc, GraphAudioSourceSpan, GraphAwareness, GraphFaceDetection, GraphGeolocation,
     GraphImageDescription, GraphImageFrame, GraphSceneVectorization, GraphSpeechSegment,
     GraphTimelineItem, GraphTimelineWindow, GraphVoiceClip, GraphVoiceRecognition,
-    GraphVoiceSample, GraphVoiceSignature, ImageData, Neo4jClient,
+    GraphVoiceSample, GraphVoiceSignature, ImageData, Neo4jClient, VectorCluster,
+    VectorClusterMember,
 };
 use serde_json::json;
 
@@ -737,6 +738,67 @@ async fn neo4j_client_loads_graph_node_details_with_media_payload() {
 }
 
 #[tokio::test]
+async fn neo4j_client_loads_speech_segment_audio_source() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (s:GraphNode:SpeechSegment {id: $id})")
+                .body_contains("HAS_BIG_TRANSCRIPTION")
+                .body_contains("DERIVED_FROM_AUDIO")
+                .body_contains("\"id\":\"speech:1\"");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": [
+                        "s.id",
+                        "coalesce(s.text, \"\")",
+                        "a.id",
+                        "a.mime",
+                        "a.base64",
+                        "a.sample_rate",
+                        "a.channels",
+                        "clip_start_ms",
+                        "clip_end_ms"
+                    ],
+                    "data": [{
+                        "row": [
+                            "speech:1",
+                            "hello",
+                            "audio:1",
+                            "audio/pcm;format=s16le;rate=16000",
+                            "AAAA",
+                            16000,
+                            1,
+                            250,
+                            550
+                        ]
+                    }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let audio = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .graph_speech_segment_audio("speech:1")
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(audio.segment_id, "speech:1");
+    assert_eq!(audio.text, "hello");
+    assert_eq!(audio.audio_clip_id, "audio:1");
+    assert_eq!(audio.mime, "audio/pcm;format=s16le;rate=16000");
+    assert_eq!(audio.base64, "AAAA");
+    assert_eq!(audio.sample_rate, 16000);
+    assert_eq!(audio.channels, 1);
+    assert_eq!(audio.start_ms, 250);
+    assert_eq!(audio.end_ms, 550);
+    query.assert_async().await;
+}
+
+#[tokio::test]
 async fn neo4j_client_attaches_audio_transcription() {
     let server = MockServer::start_async().await;
     let constraint = server
@@ -1085,6 +1147,68 @@ async fn neo4j_client_attaches_geolocation_vectorization() {
             "earth-unit-sphere/v1",
             "point-1",
             3,
+        )
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_vector_clusters() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("ClusterDiscoveryRun")
+                .body_contains("Cluster")
+                .body_contains("PRODUCED_CLUSTER")
+                .body_contains("HAS_CLUSTER_MEMBER")
+                .body_contains("MEMBER_OF_CLUSTER")
+                .body_contains("qdrant:memories:point-1")
+                .body_contains("qdrant:memories:point-2")
+                .body_contains("\"cluster_count\":1")
+                .body_contains("\"source_count\":3")
+                .body_contains("\"member_count\":2")
+                .body_contains("\"algorithm\":\"cosine-threshold-components/v1\"");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_vector_clusters(
+            "memories",
+            "cosine-threshold-components/v1",
+            0.9,
+            2,
+            3,
+            &[VectorCluster {
+                cluster_id: "cluster:1".into(),
+                collection: "memories".into(),
+                threshold: 0.9,
+                centroid: vec![0.95, 0.05],
+                mean_similarity: 0.95,
+                members: vec![
+                    VectorClusterMember {
+                        point_id: "point-1".into(),
+                        average_similarity: 0.95,
+                    },
+                    VectorClusterMember {
+                        point_id: "point-2".into(),
+                        average_similarity: 0.95,
+                    },
+                ],
+            }],
         )
         .await
         .unwrap();

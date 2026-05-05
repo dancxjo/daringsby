@@ -63,9 +63,10 @@ pub mod wits {
         BasicMemory, GraphAudioClip, GraphAudioClipWindow, GraphAudioSourceSpan, GraphAwareness,
         GraphFaceDetection, GraphGeolocation, GraphImageDescription, GraphImageFrame,
         GraphNodeDetails, GraphNodeSnapshot, GraphRelationshipSnapshot, GraphSceneVectorization,
-        GraphSnapshot, GraphSpeechSegment, GraphStore, GraphTimelineItem, GraphTimelineWindow,
-        GraphVoiceClip, GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature, Memory,
-        Neo4jClient, NoopMemory, QdrantClient,
+        GraphSnapshot, GraphSpeechSegment, GraphSpeechSegmentAudio, GraphStore, GraphTimelineItem,
+        GraphTimelineWindow, GraphVoiceClip, GraphVoiceRecognition, GraphVoiceSample,
+        GraphVoiceSignature, Memory, Neo4jClient, NoopMemory, QdrantClient, QdrantVectorPoint,
+        VectorCluster, VectorClusterMember, find_vector_clusters,
     };
     pub use memory_wit::MemoryWit;
     pub use moment_wit::MomentWit;
@@ -143,7 +144,8 @@ pub use wits::{
     GraphAudioClipWindow, GraphAudioSourceSpan, GraphAwareness, GraphFaceDetection,
     GraphGeolocation, GraphImageDescription, GraphImageFrame, GraphNodeDetails, GraphNodeSnapshot,
     GraphRelationshipSnapshot, GraphSceneVectorization, GraphSnapshot, GraphSpeechSegment,
-    GraphStore, GraphTimelineItem, GraphTimelineWindow, GraphVoiceClip, GraphVoiceRecognition,
-    GraphVoiceSample, GraphVoiceSignature, HeartWit, IdentityWit, Memory, MemoryWit, Neo4jClient,
-    NoopMemory, QdrantClient, SensationGraphObserver, VisionWit, VoiceMemoryWit, Will,
+    GraphSpeechSegmentAudio, GraphStore, GraphTimelineItem, GraphTimelineWindow, GraphVoiceClip,
+    GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature, HeartWit, IdentityWit, Memory,
+    MemoryWit, Neo4jClient, NoopMemory, QdrantClient, QdrantVectorPoint, SensationGraphObserver,
+    VectorCluster, VectorClusterMember, VisionWit, VoiceMemoryWit, Will, find_vector_clusters,
 };

@@ -301,7 +301,12 @@
     const transcript = typeof props.transcript === "string" ? props.transcript : "";
 
     let preview = null;
-    if (base64 && mime.startsWith("image/")) {
+    if (nodeKind(node) === "SpeechSegment") {
+      preview = document.createElement("audio");
+      preview.controls = true;
+      preview.preload = "metadata";
+      preview.src = speechSegmentAudioSrc(node);
+    } else if (base64 && mime.startsWith("image/")) {
       preview = document.createElement("img");
       preview.alt = nodeLabel(node);
       preview.src = dataUrl(mime, base64);
@@ -458,6 +463,10 @@
       return mediaObjectUrl;
     }
     return dataUrl(mime, base64);
+  }
+
+  function speechSegmentAudioSrc(node) {
+    return `/graph/speech-segment/${encodeURIComponent(node.id)}/audio.wav`;
   }
 
   function base64ToBytes(base64) {

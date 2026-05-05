@@ -5,10 +5,12 @@ use crate::{
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
 use lingproc::Vectorizer;
+use lingproc::math::cosine_similarity;
 use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -26,6 +28,43 @@ const GEOLOCATION_COLLECTION: &str = "geolocations";
 const VOICE_COLLECTION: &str = "voices";
 const QDRANT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const NEO4J_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// One vector point loaded from Qdrant for offline analysis.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QdrantVectorPoint {
+    /// Qdrant point id.
+    pub point_id: String,
+    /// Dense vector payload.
+    pub vector: Vec<f32>,
+    /// Qdrant payload metadata.
+    pub payload: Value,
+}
+
+/// One member of a discovered vector cluster.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VectorClusterMember {
+    /// Qdrant point id.
+    pub point_id: String,
+    /// Average cosine similarity from this member to the other members.
+    pub average_similarity: f32,
+}
+
+/// A connected component of nearby vectors in one Qdrant collection.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VectorCluster {
+    /// Stable graph id for the cluster.
+    pub cluster_id: String,
+    /// Qdrant collection analyzed.
+    pub collection: String,
+    /// Minimum pairwise edge similarity used to form the component.
+    pub threshold: f32,
+    /// Mean vector of the cluster members.
+    pub centroid: Vec<f32>,
+    /// Mean pairwise cosine similarity across all members.
+    pub mean_similarity: f32,
+    /// Cluster members, sorted by point id for stable output.
+    pub members: Vec<VectorClusterMember>,
+}
 
 /// Trait representing the memory subsystem.
 #[async_trait]
@@ -348,6 +387,65 @@ impl QdrantClient {
         Ok(id)
     }
 
+    /// Load vector points from a Qdrant collection using the scroll API.
+    pub async fn scroll_vectors(
+        &self,
+        collection: &str,
+        max_points: usize,
+        page_size: usize,
+    ) -> Result<Vec<QdrantVectorPoint>> {
+        if max_points == 0 {
+            return Ok(Vec::new());
+        }
+        let page_size = page_size.max(1).min(max_points);
+        let client = reqwest::Client::new();
+        let url = self.endpoint(&format!("collections/{collection}/points/scroll"))?;
+        let mut points = Vec::new();
+        let mut offset: Option<Value> = None;
+
+        while points.len() < max_points {
+            let limit = (max_points - points.len()).min(page_size);
+            let mut body = json!({
+                "limit": limit,
+                "with_payload": true,
+                "with_vector": true,
+            });
+            if let Some(offset) = &offset {
+                body["offset"] = offset.clone();
+            }
+            let response = client
+                .post(url.clone())
+                .json(&body)
+                .timeout(QDRANT_REQUEST_TIMEOUT)
+                .send()
+                .await
+                .with_context(|| format!("failed to scroll Qdrant collection {collection}"))?;
+            if !response.status().is_success() {
+                return Err(unexpected_qdrant_response(
+                    response,
+                    &format!("scrolling collection {collection}"),
+                )
+                .await);
+            }
+            let body: Value = response.json().await.with_context(|| {
+                format!("failed to decode Qdrant scroll response for {collection}")
+            })?;
+            let page = qdrant_scroll_points(&body)
+                .with_context(|| format!("Qdrant scroll response for {collection} was invalid"))?;
+            let next_offset = body.pointer("/result/next_page_offset").cloned();
+            if page.is_empty() {
+                break;
+            }
+            points.extend(page);
+            offset = next_offset.filter(|value| !value.is_null());
+            if offset.is_none() {
+                break;
+            }
+        }
+
+        Ok(points)
+    }
+
     async fn upsert_vector(
         &self,
         collection: &str,
@@ -508,6 +606,233 @@ fn qdrant_collection_vector_size(collection: &Value) -> Option<usize> {
         .values()
         .find_map(|vector| vector.get("size").and_then(Value::as_u64))
         .and_then(|size| usize::try_from(size).ok())
+}
+
+fn qdrant_scroll_points(response: &Value) -> Result<Vec<QdrantVectorPoint>> {
+    response
+        .pointer("/result/points")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(qdrant_vector_point)
+        .collect()
+}
+
+fn qdrant_vector_point(value: Value) -> Result<QdrantVectorPoint> {
+    let object = value
+        .as_object()
+        .context("Qdrant scroll point was not an object")?;
+    let point_id = qdrant_point_id(
+        object
+            .get("id")
+            .context("Qdrant scroll point is missing id")?,
+    )?;
+    let vector = qdrant_point_vector(
+        object
+            .get("vector")
+            .context("Qdrant scroll point is missing vector")?,
+    )?;
+    Ok(QdrantVectorPoint {
+        point_id,
+        vector,
+        payload: object.get("payload").cloned().unwrap_or_else(|| json!({})),
+    })
+}
+
+fn qdrant_point_id(value: &Value) -> Result<String> {
+    match value {
+        Value::String(id) => Ok(id.clone()),
+        Value::Number(number) => Ok(number.to_string()),
+        _ => bail!("Qdrant point id was not a string or number"),
+    }
+}
+
+fn qdrant_point_vector(value: &Value) -> Result<Vec<f32>> {
+    if let Some(vector) = qdrant_vector_array(value) {
+        return vector;
+    }
+    let object = value
+        .as_object()
+        .context("Qdrant point vector was not an array or named vector object")?;
+    object
+        .values()
+        .find_map(qdrant_vector_array)
+        .context("Qdrant named vector object did not contain a dense vector")?
+}
+
+fn qdrant_vector_array(value: &Value) -> Option<Result<Vec<f32>>> {
+    let values = value.as_array()?;
+    Some(
+        values
+            .iter()
+            .map(|value| {
+                value
+                    .as_f64()
+                    .map(|value| value as f32)
+                    .context("Qdrant dense vector contained a non-number")
+            })
+            .collect(),
+    )
+}
+
+/// Find connected components of vectors whose cosine similarity meets `threshold`.
+pub fn find_vector_clusters(
+    collection: &str,
+    points: &[QdrantVectorPoint],
+    threshold: f32,
+    min_size: usize,
+) -> Vec<VectorCluster> {
+    let min_size = min_size.max(2);
+    if points.len() < min_size {
+        return Vec::new();
+    }
+
+    let mut components = DisjointSet::new(points.len());
+    for left in 0..points.len() {
+        for right in (left + 1)..points.len() {
+            if points[left].vector.len() != points[right].vector.len() {
+                continue;
+            }
+            if cosine_similarity(&points[left].vector, &points[right].vector) >= threshold {
+                components.union(left, right);
+            }
+        }
+    }
+
+    let mut grouped: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for index in 0..points.len() {
+        let root = components.find(index);
+        grouped.entry(root).or_default().push(index);
+    }
+
+    let mut clusters = grouped
+        .values()
+        .filter(|indices| indices.len() >= min_size)
+        .map(|indices| vector_cluster(collection, points, indices, threshold))
+        .collect::<Vec<_>>();
+    clusters.sort_by(|left, right| {
+        right
+            .members
+            .len()
+            .cmp(&left.members.len())
+            .then_with(|| left.cluster_id.cmp(&right.cluster_id))
+    });
+    clusters
+}
+
+fn vector_cluster(
+    collection: &str,
+    points: &[QdrantVectorPoint],
+    indices: &[usize],
+    threshold: f32,
+) -> VectorCluster {
+    let dimension = indices
+        .iter()
+        .find_map(|index| points.get(*index))
+        .map_or(0, |point| point.vector.len());
+    let mut centroid = vec![0.0; dimension];
+    for index in indices {
+        if let Some(point) = points.get(*index) {
+            for (target, value) in centroid.iter_mut().zip(&point.vector) {
+                *target += value;
+            }
+        }
+    }
+    for value in &mut centroid {
+        *value /= indices.len() as f32;
+    }
+
+    let mut total_similarity = 0.0;
+    let mut pair_count = 0usize;
+    let members = indices
+        .iter()
+        .map(|index| {
+            let point = &points[*index];
+            let mut member_similarity = 0.0;
+            let mut member_pairs = 0usize;
+            for other in indices {
+                if other == index {
+                    continue;
+                }
+                let similarity = cosine_similarity(&point.vector, &points[*other].vector);
+                member_similarity += similarity;
+                member_pairs += 1;
+                if *index < *other {
+                    total_similarity += similarity;
+                    pair_count += 1;
+                }
+            }
+            VectorClusterMember {
+                point_id: point.point_id.clone(),
+                average_similarity: if member_pairs == 0 {
+                    1.0
+                } else {
+                    member_similarity / member_pairs as f32
+                },
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let mut sorted_members = members;
+    sorted_members.sort_by(|left, right| left.point_id.cmp(&right.point_id));
+    let member_ids = sorted_members
+        .iter()
+        .map(|member| member.point_id.as_str())
+        .collect::<Vec<_>>()
+        .join(",");
+    VectorCluster {
+        cluster_id: stable_bytes_id(
+            "cluster",
+            format!("{collection}:{threshold:.4}:{member_ids}").as_bytes(),
+        ),
+        collection: collection.to_string(),
+        threshold,
+        centroid,
+        mean_similarity: if pair_count == 0 {
+            1.0
+        } else {
+            total_similarity / pair_count as f32
+        },
+        members: sorted_members,
+    }
+}
+
+struct DisjointSet {
+    parents: Vec<usize>,
+    ranks: Vec<u8>,
+}
+
+impl DisjointSet {
+    fn new(len: usize) -> Self {
+        Self {
+            parents: (0..len).collect(),
+            ranks: vec![0; len],
+        }
+    }
+
+    fn find(&mut self, index: usize) -> usize {
+        if self.parents[index] != index {
+            self.parents[index] = self.find(self.parents[index]);
+        }
+        self.parents[index]
+    }
+
+    fn union(&mut self, left: usize, right: usize) {
+        let left_root = self.find(left);
+        let right_root = self.find(right);
+        if left_root == right_root {
+            return;
+        }
+        match self.ranks[left_root].cmp(&self.ranks[right_root]) {
+            std::cmp::Ordering::Less => self.parents[left_root] = right_root,
+            std::cmp::Ordering::Greater => self.parents[right_root] = left_root,
+            std::cmp::Ordering::Equal => {
+                self.parents[right_root] = left_root;
+                self.ranks[left_root] += 1;
+            }
+        }
+    }
 }
 
 /// Client for persisting raw data in Neo4j.
@@ -687,6 +1012,29 @@ pub struct GraphSpeechSegment {
     pub occurred_at: Option<String>,
     /// Absolute segment end timestamp, when the source clip was timestamped.
     pub ended_at: Option<String>,
+}
+
+/// Audio source data and clip-local offsets for a `SpeechSegment`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphSpeechSegmentAudio {
+    /// Stable graph node id for the speech segment.
+    pub segment_id: String,
+    /// Segment text.
+    pub text: String,
+    /// Stable graph node id for the source `AudioClip`.
+    pub audio_clip_id: String,
+    /// Source audio MIME type.
+    pub mime: String,
+    /// Source audio payload.
+    pub base64: String,
+    /// Source sample rate.
+    pub sample_rate: u32,
+    /// Source channel count.
+    pub channels: u16,
+    /// Segment start offset from the beginning of the source audio clip.
+    pub start_ms: u32,
+    /// Segment end offset from the beginning of the source audio clip.
+    pub end_ms: u32,
 }
 
 /// Source clip span within an aggregate audio transcription.
@@ -1139,6 +1487,79 @@ impl Neo4jClient {
         )
         .await?;
         rows.first().map(graph_node_details_from_row).transpose()
+    }
+
+    /// Return the source audio and clip-local offsets for a speech segment.
+    pub async fn graph_speech_segment_audio(
+        &self,
+        id: &str,
+    ) -> Result<Option<GraphSpeechSegmentAudio>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (s:GraphNode:SpeechSegment {id: $id})
+                    CALL {
+                        WITH s
+                        MATCH (a:GraphNode:AudioClip {id: s.audio_clip_id})
+                        WITH s, a,
+                            toInteger(coalesce(s.start_ms, 0)) AS clip_start_ms,
+                            toInteger(coalesce(s.end_ms, s.start_ms, 0)) AS clip_end_ms
+                        RETURN a, clip_start_ms, clip_end_ms
+
+                        UNION
+
+                        WITH s
+                        MATCH (s)<-[:HAS_SEGMENT]-(t:GraphNode:Transcription)
+                        MATCH (s)-[:DERIVED_FROM_AUDIO]->(a:GraphNode:AudioClip)
+                        OPTIONAL MATCH (t)-[out:DERIVED_FROM_AUDIO]->(a)
+                        OPTIONAL MATCH (a)-[source_in:HAS_BIG_TRANSCRIPTION]->(t)
+                        WITH s, a,
+                            toInteger(coalesce(s.start_ms, 0)) AS segment_start_ms,
+                            toInteger(coalesce(s.end_ms, s.start_ms, 0)) AS segment_end_ms,
+                            toInteger(coalesce(out.start_ms, source_in.start_ms, 0)) AS source_start_ms,
+                            toInteger(coalesce(out.end_ms, source_in.end_ms, s.end_ms, s.start_ms, 0)) AS source_end_ms
+                        WHERE segment_start_ms < source_end_ms
+                          AND segment_end_ms > source_start_ms
+                        WITH s, a, source_start_ms, source_end_ms,
+                            CASE
+                                WHEN segment_start_ms > source_start_ms THEN segment_start_ms - source_start_ms
+                                ELSE 0
+                            END AS clip_start_ms,
+                            CASE
+                                WHEN segment_end_ms < source_end_ms THEN segment_end_ms - source_start_ms
+                                ELSE source_end_ms - source_start_ms
+                            END AS clip_end_ms
+                        RETURN a, clip_start_ms, clip_end_ms
+                    }
+                    RETURN
+                        s.id,
+                        coalesce(s.text, ""),
+                        a.id,
+                        a.mime,
+                        a.base64,
+                        a.sample_rate,
+                        a.channels,
+                        clip_start_ms,
+                        clip_end_ms
+                    ORDER BY clip_end_ms - clip_start_ms DESC, a.id
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({
+                    "id": id,
+                }),
+            },
+            "loading graph speech segment audio",
+        )
+        .await?;
+        rows.first()
+            .map(graph_speech_segment_audio_from_row)
+            .transpose()
     }
 
     /// Return a recent graph timeline for an offline combobulation pass.
@@ -1896,6 +2317,88 @@ impl Neo4jClient {
         .await
     }
 
+    /// Attach vector cluster discovery output to existing Qdrant vector nodes.
+    pub async fn attach_vector_clusters(
+        &self,
+        collection: &str,
+        algorithm: &str,
+        threshold: f32,
+        min_size: usize,
+        source_count: usize,
+        clusters: &[VectorCluster],
+    ) -> Result<()> {
+        let processed_at = chrono::Utc::now().to_rfc3339();
+        let run_id = stable_bytes_id(
+            "cluster-discovery",
+            format!("{collection}:{algorithm}:{threshold:.4}:{min_size}:{processed_at}").as_bytes(),
+        );
+        let mut nodes = vec![json!({
+            "label": "ClusterDiscoveryRun",
+            "id": run_id,
+            "collection": collection,
+            "algorithm": algorithm,
+            "threshold": threshold,
+            "min_size": min_size,
+            "source_count": source_count,
+            "cluster_count": clusters.len(),
+            "processed_at": processed_at,
+        })];
+        let mut relationships = Vec::new();
+
+        for (cluster_index, cluster) in clusters.iter().enumerate() {
+            let member_ids = cluster
+                .members
+                .iter()
+                .map(|member| member.point_id.clone())
+                .collect::<Vec<_>>();
+            nodes.push(json!({
+                "label": "Cluster",
+                "id": cluster.cluster_id,
+                "collection": cluster.collection,
+                "algorithm": algorithm,
+                "threshold": cluster.threshold,
+                "member_count": cluster.members.len(),
+                "member_ids": member_ids,
+                "mean_similarity": cluster.mean_similarity,
+                "centroid_len": cluster.centroid.len(),
+            }));
+            relationships.push(json!({
+                "from": run_id,
+                "to": cluster.cluster_id,
+                "type": "PRODUCED_CLUSTER",
+                "cluster_index": cluster_index,
+            }));
+            for member in &cluster.members {
+                let vector_id = qdrant_vector_node_id(collection, &member.point_id);
+                nodes.push(qdrant_vector_node(
+                    collection,
+                    &member.point_id,
+                    collection,
+                    None,
+                ));
+                relationships.push(json!({
+                    "from": cluster.cluster_id,
+                    "to": vector_id,
+                    "type": "HAS_CLUSTER_MEMBER",
+                    "average_similarity": member.average_similarity,
+                }));
+                relationships.push(json!({
+                    "from": vector_id,
+                    "to": cluster.cluster_id,
+                    "type": "MEMBER_OF_CLUSTER",
+                    "average_similarity": member.average_similarity,
+                }));
+            }
+        }
+
+        self.store_data(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))
+        .await
+    }
+
     /// Mark an `AudioClip` as attempted when voice recognition cannot use it.
     pub async fn attach_skipped_voice_recognition(
         &self,
@@ -2485,6 +2988,23 @@ fn graph_timeline_item_from_row(row: &Value) -> Result<GraphTimelineItem> {
         labels,
         text: row_string(values, 4, "timeline item text")?,
         occurred_at: row_string(values, 5, "timeline item timestamp")?,
+    })
+}
+
+fn graph_speech_segment_audio_from_row(row: &Value) -> Result<GraphSpeechSegmentAudio> {
+    let values = row
+        .as_array()
+        .context("Neo4j speech segment audio row was not an array")?;
+    Ok(GraphSpeechSegmentAudio {
+        segment_id: row_string(values, 0, "segment_id")?,
+        text: row_string(values, 1, "text")?,
+        audio_clip_id: row_string(values, 2, "audio_clip_id")?,
+        mime: row_string(values, 3, "mime")?,
+        base64: row_string(values, 4, "base64")?,
+        sample_rate: row_u32(values, 5, "sample_rate")?,
+        channels: row_u16(values, 6, "channels")?,
+        start_ms: row_u32(values, 7, "start_ms")?,
+        end_ms: row_u32(values, 8, "end_ms")?,
     })
 }
 
