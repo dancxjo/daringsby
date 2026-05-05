@@ -10,6 +10,8 @@ pub trait PromptFragment {
     fn build_prompt(&self, input: &str) -> String;
 }
 
+pub(crate) const IMAGE_CAPTION_PROMPT: &str = "Describe only what you see in this image in a single sentence, in the first person. This is your own vision looking out: Anyone you see is probably someone else, unless you're looking in a mirror.";
+
 /// Prompt builder for the `Voice` subagent.
 #[derive(Clone, Default)]
 pub struct VoicePrompt;

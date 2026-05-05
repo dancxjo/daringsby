@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use lingproc::LlmInstruction;
+use psyche::model::localized_timestamp;
 use psyche::topics::{Topic, TopicBus};
 use psyche::traits::Doer;
 use psyche::wits::MomentWit;
@@ -68,4 +69,33 @@ async fn debug_report_contains_prompt_and_summary() {
     assert!(report.prompt.contains("Summarize"));
     assert!(report.output.contains("SUMMARY:"));
     psyche::disable_debug("MomentWit").await;
+}
+
+#[tokio::test]
+async fn prompt_timestamps_recent_instants() {
+    let bus = TopicBus::new(8);
+    let wit = MomentWit::new(bus.clone(), Arc::new(DummyDoer));
+    sleep(Duration::from_millis(20)).await;
+    let timestamp = chrono::DateTime::parse_from_rfc3339("2026-05-05T12:34:56Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    for i in 0..3 {
+        bus.publish(
+            Topic::Instant,
+            Impression {
+                stimuli: vec![Stimulus {
+                    what: format!("i{i}"),
+                    timestamp,
+                }],
+                summary: format!("i{i}"),
+                emoji: None,
+                timestamp,
+            },
+        );
+    }
+    sleep(Duration::from_millis(50)).await;
+    let out = wit.tick().await;
+
+    assert!(out[0].summary.contains(&localized_timestamp(timestamp)));
+    assert!(out[0].summary.contains("i0"));
 }

@@ -87,9 +87,7 @@ impl Wit for VisionWit {
         debug!("vision wit captioning image");
         let permit = self.llm_semaphore.clone().acquire_owned().await.unwrap();
         let start = Instant::now();
-        let prompt = crate::with_default_system_prompt(
-            "Describe only what you see in this image in a single sentence, in the first person. Remember, this is what you are *seeing* in the first person, so unless you're looking into a mirror, you won't be seeing yourself.",
-        );
+        let prompt = crate::with_default_system_prompt(crate::prompt::IMAGE_CAPTION_PROMPT);
         let caption = if img.base64.is_empty() {
             "I can't see anything.".to_string()
         } else {

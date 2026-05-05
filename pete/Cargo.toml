@@ -34,17 +34,20 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 hound = { version = "3", optional = true }
 num_cpus = { version = "1", optional = true }
 whisper-rs = { version = "0.16", optional = true }
+voxudio = { version = "0.6.2", default-features = false, features = ["model"], optional = true }
 
 [features]
-default = ["tts", "asr", "all-sensors"]
+default = ["tts", "asr", "voice", "all-sensors"]
 tts = []
 asr = ["dep:hound", "dep:num_cpus", "dep:whisper-rs"]
+voice = ["asr", "dep:voxudio"]
 e2e = []
 eye = []
 face = []
+image-vector = []
 geo = []
 ear = []
-all-sensors = ["eye", "face", "geo", "ear"]
+all-sensors = ["eye", "image-vector", "face", "geo", "ear"]
 
 [build-dependencies]
 dioxus = { version = "0.4.3", default-features = false, features = ["html", "macro"] }

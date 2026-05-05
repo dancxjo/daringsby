@@ -105,24 +105,25 @@ async fn main() -> anyhow::Result<()> {
 
     use psyche::wits::{
         BasicMemory, Combobulator, FaceMemoryWit, FondDuCoeur, HeartWit, IdentityWit, MemoryWit,
-        Neo4jClient, QdrantClient, Quick, VisionWit, Will,
+        Neo4jClient, QdrantClient, Quick, SensationGraphObserver, VisionWit, VoiceMemoryWit, Will,
     };
 
     let narrator = ollama_provider_from_args(&cli.chatter_host, &cli.chatter_model)?;
     let voice_provider = ollama_provider_from_args(&cli.chatter_host, &cli.chatter_model)?;
     let vectorizer = ollama_provider_from_args(&cli.embeddings_host, &cli.embeddings_model)?;
 
+    let graph_store = Arc::new(Neo4jClient::new(
+        cli.neo4j_uri.clone(),
+        cli.neo4j_user.clone(),
+        cli.neo4j_pass.clone(),
+    ));
     let memory = Arc::new(BasicMemory {
         vectorizer: Arc::new(ollama_provider_from_args(
             &cli.embeddings_host,
             &cli.embeddings_model,
         )?),
         qdrant: QdrantClient::new(cli.qdrant_url.clone()),
-        neo4j: Arc::new(Neo4jClient::new(
-            cli.neo4j_uri.clone(),
-            cli.neo4j_user.clone(),
-            cli.neo4j_pass.clone(),
-        )),
+        neo4j: graph_store.clone(),
     });
 
     let mouth_placeholder = Arc::new(NoopMouth::default());
@@ -147,7 +148,11 @@ async fn main() -> anyhow::Result<()> {
     ));
     let latest_image = vision.latest_image_handle();
     psyche.register_observing_wit(vision);
+    let graph_observer = Arc::new(SensationGraphObserver::new(graph_store));
+    psyche.register_observer(graph_observer.clone());
+    graph_observer.spawn_topic_listener(psyche.topic_bus());
     psyche.register_observing_wit(Arc::new(FaceMemoryWit::with_debug(wit_tx.clone())));
+    psyche.register_observing_wit(Arc::new(VoiceMemoryWit::with_debug(wit_tx.clone())));
     psyche.register_observing_wit(Arc::new(Quick::with_debug(
         psyche.topic_bus(),
         Arc::new(ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?),
@@ -207,11 +212,11 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "ear"))]
     let ear: Arc<dyn Ear> = Arc::new(NoopEar) as Arc<dyn Ear>;
     #[cfg(feature = "eye")]
-    let (latest_image_tx, mut latest_image_rx) =
-        tokio::sync::watch::channel::<Option<ImageData>>(None);
+    let (latest_image_tx, latest_image_rx) = tokio::sync::watch::channel::<Option<ImageData>>(None);
     #[cfg(feature = "eye")]
     let eye: Arc<dyn Sensor<ImageData>> = {
-        let sensor = Arc::new(EyeSensor::latest_only(
+        let sensor = Arc::new(EyeSensor::with_latest_stream(
+            psyche.input_sender(),
             latest_image.clone(),
             latest_image_tx,
         )) as Arc<dyn Sensor<ImageData>>;
@@ -224,7 +229,7 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(feature = "face")]
     let face_sensor = Arc::new(FaceSensor::new(
         Arc::new(psyche::FaceIdDetector::from_hf().await?),
-        psyche::QdrantClient::default(),
+        psyche::QdrantClient::new(cli.qdrant_url.clone()),
         psyche.topic_bus(),
     ));
     #[cfg(feature = "face")]
@@ -234,19 +239,42 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(all(feature = "eye", feature = "face"))]
     {
         let face_clone = face_sensor.clone();
+        let mut face_image_rx = latest_image_rx.clone();
         tokio::spawn(async move {
-            while latest_image_rx.changed().await.is_ok() {
-                let Some(img) = latest_image_rx.borrow_and_update().clone() else {
+            while face_image_rx.changed().await.is_ok() {
+                let Some(img) = face_image_rx.borrow_and_update().clone() else {
                     continue;
                 };
                 face_clone.sense(img).await;
             }
         });
     }
+    #[cfg(all(feature = "eye", feature = "image-vector"))]
+    {
+        let image_vector_sensor = Arc::new(psyche::ImageVectorSensor::new(
+            Arc::new(psyche::RuVectorCnnImageVectorizer::new()?),
+            psyche::QdrantClient::new(cli.qdrant_url.clone()),
+            psyche.topic_bus(),
+        ));
+        psyche.add_sense(image_vector_sensor.describe().into());
+        let mut image_vector_rx = latest_image_rx.clone();
+        tokio::spawn(async move {
+            while image_vector_rx.changed().await.is_ok() {
+                let Some(img) = image_vector_rx.borrow_and_update().clone() else {
+                    continue;
+                };
+                image_vector_sensor.sense(img).await;
+            }
+        });
+    }
 
     #[cfg(feature = "geo")]
     let geo: Arc<dyn Sensor<GeoLoc>> = {
-        let g = Arc::new(GeoSensor::new(psyche.input_sender())) as Arc<dyn Sensor<GeoLoc>>;
+        let g = Arc::new(GeoSensor::with_vector_store(
+            psyche.input_sender(),
+            psyche::QdrantClient::new(cli.qdrant_url.clone()),
+            psyche.topic_bus(),
+        )) as Arc<dyn Sensor<GeoLoc>>;
         psyche.add_sense(g.describe().into());
         g
     };
@@ -288,7 +316,17 @@ async fn main() -> anyhow::Result<()> {
     let system_prompt = psyche.described_system_prompt();
     psyche.set_system_prompt(system_prompt.clone());
     #[cfg(feature = "asr")]
-    let asr = pete::AsrService::from_env()?.map(Arc::new);
+    let asr = {
+        let mut asr = pete::AsrService::from_env()?;
+        #[cfg(feature = "voice")]
+        if let Some(service) = asr.as_mut() {
+            service.enable_voice_embeddings_from_env(
+                psyche::QdrantClient::new(cli.qdrant_url.clone()),
+                psyche.topic_bus(),
+            )?;
+        }
+        asr.map(Arc::new)
+    };
     tokio::spawn(async move {
         psyche.run().await;
     });

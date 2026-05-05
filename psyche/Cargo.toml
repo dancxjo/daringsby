@@ -30,6 +30,8 @@ face_id = { version = "0.4.1", default-features = false, features = ["download-b
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"], optional = true }
 base64 = "0.21"
 rand = "0.8"
+sha2 = "0.10"
+ruvector-cnn = { version = "2.0.6", default-features = false, features = ["std"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
@@ -39,8 +41,9 @@ httpmock = "0.6"
 [features]
 default = ["all-sensors"]
 eye = []
+image-vector = ["dep:ruvector-cnn", "dep:image"]
 face = ["dep:face_id", "dep:image"]
 geo = []
 ear = []
-all-sensors = ["eye", "face", "geo", "ear"]
+all-sensors = ["eye", "image-vector", "face", "geo", "ear"]
 ts = ["ts-rs", "lingproc/ts"]

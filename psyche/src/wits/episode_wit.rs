@@ -14,7 +14,7 @@ use tracing::debug;
 
 /// Wit that groups situations into higher-level narrative episodes.
 pub struct EpisodeWit {
-    buffer: Arc<Mutex<Vec<String>>>,
+    buffer: Arc<Mutex<Vec<Impression<String>>>>,
     bus: TopicBus,
     doer: Arc<dyn Doer>,
     break_flag: Arc<AtomicBool>,
@@ -45,7 +45,7 @@ impl EpisodeWit {
             tokio::pin!(stream);
             while let Some(payload) = stream.next().await {
                 if let Ok(i) = Arc::downcast::<Impression<String>>(payload) {
-                    buf_clone.lock().unwrap().push(i.summary.clone());
+                    buf_clone.lock().unwrap().push((*i).clone());
                 }
             }
         });
@@ -99,9 +99,13 @@ impl crate::wit::Wit for EpisodeWit {
             buf.drain(..).collect::<Vec<_>>()
         };
         debug!(count = items.len(), "episode wit summarizing situations");
+        let bullets = items
+            .iter()
+            .map(Impression::prompt_list_item)
+            .collect::<Vec<_>>();
         let prompt = format!(
             "The following situations form a coherent story. Write a one-sentence summary suitable for a chapter heading.\n- {}",
-            items.join("\n- ")
+            bullets.join("\n- ")
         );
         let command = crate::with_default_system_prompt(&prompt);
         let resp = match self

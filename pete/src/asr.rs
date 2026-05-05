@@ -11,17 +11,27 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use chrono::{DateTime, Utc};
 use hound::{SampleFormat, WavSpec, WavWriter};
 use serde::Serialize;
+#[cfg(feature = "voice")]
+use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::mpsc;
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
+#[cfg(feature = "voice")]
+use psyche::{AudioClip, QdrantClient, Sensation, TopicBus, VoiceInfo, audio_clip_id};
+
 pub const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-base.en.bin";
+#[cfg(feature = "voice")]
+pub const DEFAULT_VOICE_EMBEDDING_MODEL_PATH: &str =
+    "models/voice/speaker_embedding_extractor.onnx";
 const DEFAULT_PCM_QUEUE_CAPACITY: usize = 4;
 
 #[derive(Clone)]
 pub struct AsrService {
-    context: Arc<Mutex<WhisperContext>>,
+    context: Option<Arc<Mutex<WhisperContext>>>,
+    #[cfg(feature = "voice")]
+    voice_embeddings: Option<Arc<VoiceEmbeddingService>>,
     sample_rate: u32,
     hop: Duration,
     min_duration: Duration,
@@ -72,21 +82,26 @@ struct SegmentInternal {
 
 impl AsrService {
     pub fn from_env() -> Result<Option<Self>> {
-        let model_path = match env::var("WHISPER_MODEL") {
-            Ok(path) => PathBuf::from(path),
-            Err(_) => {
+        let model_path = env::var("WHISPER_MODEL")
+            .map(PathBuf::from)
+            .ok()
+            .or_else(|| {
                 let default = PathBuf::from(DEFAULT_MODEL_PATH);
-                if default.exists() {
-                    default
-                } else {
-                    info!(
-                        default_model_path = DEFAULT_MODEL_PATH,
-                        "Whisper model not found; run `cargo run -p xtask -- fetch-asr-model` or set WHISPER_MODEL"
-                    );
-                    return Ok(None);
-                }
-            }
-        };
+                default.exists().then_some(default)
+            });
+        #[cfg(feature = "voice")]
+        let voice_model_requested = voice_embedding_model_path().is_some();
+        #[cfg(not(feature = "voice"))]
+        let voice_model_requested = false;
+
+        if model_path.is_none() && !voice_model_requested {
+            info!(
+                default_model_path = DEFAULT_MODEL_PATH,
+                "Whisper model not found and voice embeddings are not configured; run `just fetch` to enable audio analysis"
+            );
+            return Ok(None);
+        }
+
         let sample_rate = parse_env("ASR_SAMPLE_RATE", 16_000)?;
         let hop_ms = parse_env("ASR_HOP_MS", 250u64)?.max(100);
         let min_duration_ms = parse_env("ASR_MIN_DURATION_MS", 2_000u64)?.max(100);
@@ -98,17 +113,28 @@ impl AsrService {
         let pcm_queue_capacity =
             parse_env("ASR_PCM_QUEUE_CAPACITY", DEFAULT_PCM_QUEUE_CAPACITY)?.clamp(1usize, 64usize);
 
-        info!(model_path = %model_path.display(), "loading whisper model");
-        let context = WhisperContext::new_with_params(
-            model_path
-                .to_str()
-                .ok_or_else(|| anyhow!("WHISPER_MODEL path is not valid UTF-8"))?,
-            WhisperContextParameters::default(),
-        )
-        .with_context(|| format!("failed to load whisper model from {}", model_path.display()))?;
+        let context = if let Some(model_path) = model_path {
+            info!(model_path = %model_path.display(), "loading whisper model");
+            Some(Arc::new(Mutex::new(
+                WhisperContext::new_with_params(
+                    model_path
+                        .to_str()
+                        .ok_or_else(|| anyhow!("WHISPER_MODEL path is not valid UTF-8"))?,
+                    WhisperContextParameters::default(),
+                )
+                .with_context(|| {
+                    format!("failed to load whisper model from {}", model_path.display())
+                })?,
+            )))
+        } else {
+            info!("Whisper model not configured; audio analysis will skip transcription");
+            None
+        };
 
         Ok(Some(Self {
-            context: Arc::new(Mutex::new(context)),
+            context,
+            #[cfg(feature = "voice")]
+            voice_embeddings: None,
             sample_rate,
             hop: Duration::from_millis(hop_ms),
             min_duration: Duration::from_millis(min_duration_ms),
@@ -123,6 +149,30 @@ impl AsrService {
         self.sample_rate
     }
 
+    #[cfg(feature = "voice")]
+    pub fn enable_voice_embeddings_from_env(
+        &mut self,
+        qdrant: QdrantClient,
+        bus: TopicBus,
+    ) -> Result<()> {
+        let model_path = match env::var("VOICE_EMBEDDING_MODEL") {
+            Ok(path) if !path.trim().is_empty() => path,
+            _ => match voice_embedding_model_path() {
+                Some(path) => path,
+                None => {
+                    info!(
+                        default_model_path = DEFAULT_VOICE_EMBEDDING_MODEL_PATH,
+                        "voice embeddings disabled; run `just fetch` or set VOICE_EMBEDDING_MODEL"
+                    );
+                    return Ok(());
+                }
+            },
+        };
+        self.voice_embeddings = Some(Arc::new(VoiceEmbeddingService::new(
+            model_path, qdrant, bus,
+        )?));
+        Ok(())
+    }
     pub fn spawn_connection(
         self: Arc<Self>,
     ) -> (mpsc::Sender<AudioChunk>, mpsc::Receiver<AsrTranscript>) {
@@ -137,7 +187,9 @@ impl AsrService {
     }
 
     async fn transcribe(&self, audio: Vec<f32>) -> Result<Vec<SegmentInternal>> {
-        let ctx = self.context.clone();
+        let Some(ctx) = self.context.clone() else {
+            return Ok(Vec::new());
+        };
         Ok(tokio::task::spawn_blocking(move || {
             let guard = ctx
                 .lock()
@@ -238,6 +290,96 @@ impl AsrService {
             Ok::<_, anyhow::Error>(segments)
         })
         .await??)
+    }
+}
+
+#[cfg(feature = "voice")]
+fn voice_embedding_model_path() -> Option<String> {
+    env::var("VOICE_EMBEDDING_MODEL")
+        .ok()
+        .filter(|path| !path.trim().is_empty())
+        .or_else(|| {
+            PathBuf::from(DEFAULT_VOICE_EMBEDDING_MODEL_PATH)
+                .exists()
+                .then(|| DEFAULT_VOICE_EMBEDDING_MODEL_PATH.to_string())
+        })
+}
+
+#[cfg(feature = "voice")]
+struct VoiceEmbeddingService {
+    extractor: AsyncMutex<voxudio::SpeakerEmbeddingExtractor>,
+    qdrant: QdrantClient,
+    bus: TopicBus,
+    model: String,
+}
+
+#[cfg(feature = "voice")]
+impl VoiceEmbeddingService {
+    fn new(model_path: String, qdrant: QdrantClient, bus: TopicBus) -> Result<Self> {
+        let extractor = voxudio::SpeakerEmbeddingExtractor::new(&model_path)
+            .with_context(|| format!("failed to load voice embedding model {model_path}"))?;
+        info!(%model_path, "voice embedding model loaded");
+        Ok(Self {
+            extractor: AsyncMutex::new(extractor),
+            qdrant,
+            bus,
+            model: model_path,
+        })
+    }
+
+    async fn process(
+        &self,
+        audio_16k: &[f32],
+        wav_bytes: &[u8],
+        occurred_at: DateTime<Utc>,
+    ) -> Result<()> {
+        if audio_16k.is_empty() {
+            return Ok(());
+        }
+        let audio_22050 = voxudio::resample::<16000, 22050, f32>(audio_16k, 1, 1)
+            .context("failed to resample audio for voice embedding")?;
+        if audio_22050.is_empty() {
+            return Ok(());
+        }
+        let embeddings = self
+            .extractor
+            .lock()
+            .await
+            .extract(&audio_22050, 1)
+            .await
+            .context("failed to extract voice embedding")?;
+        let Some(embedding) = embeddings.into_iter().next() else {
+            return Ok(());
+        };
+        let clip = AudioClip {
+            mime: "audio/wav".to_string(),
+            base64: BASE64_STANDARD.encode(wav_bytes),
+            sample_rate: 16_000,
+            channels: 1,
+            captured_at: Some(occurred_at.to_rfc3339()),
+        };
+        let clip_id = audio_clip_id(&clip);
+        let embedding = embedding.to_vec();
+        let vector_id = self
+            .qdrant
+            .store_voice_vector_for(Some(&clip_id), &embedding)
+            .await
+            .context("failed to store voice embedding")?
+            .to_string();
+        self.bus.publish(
+            psyche::Topic::Sensation,
+            Sensation::of_at(
+                VoiceInfo {
+                    clip,
+                    clip_id,
+                    embedding,
+                    vector_id: Some(vector_id),
+                    model: Some(self.model.clone()),
+                },
+                occurred_at,
+            ),
+        );
+        Ok(())
     }
 }
 
@@ -342,18 +484,42 @@ async fn run_connection(
                     (utterance_start_samples + leading_trim) as f32 / sample_rate;
                 let wav_bytes = encode_wav(&trimmed_audio, service.sample_rate)
                     .context("failed to encode wav")?;
+                let leading_trim_ms = ((leading_trim as f32 / sample_rate) * 1000.0) as i64;
+                let occurred_at =
+                    utterance_started_at + chrono::Duration::milliseconds(leading_trim_ms);
 
-                match service.transcribe(trimmed_audio).await {
-                    Ok(segments) => {
-                        let leading_trim_ms =
-                            ((leading_trim as f32 / sample_rate) * 1000.0) as i64;
-                        let occurred_at =
-                            utterance_started_at + chrono::Duration::milliseconds(leading_trim_ms);
-                        emit_transcript(segments, occurred_at, global_offset, wav_bytes, &out_tx)
-                            .await;
+                #[cfg(feature = "voice")]
+                if let Some(voice_embeddings) = &service.voice_embeddings {
+                    if service.sample_rate == 16_000 {
+                        if let Err(err) = voice_embeddings
+                            .process(&trimmed_audio, &wav_bytes, occurred_at)
+                            .await
+                        {
+                            warn!(error = %err, "voice embedding failed");
+                        }
+                    } else {
+                        warn!(
+                            sample_rate = service.sample_rate,
+                            "voice embeddings currently require 16 kHz ASR audio"
+                        );
                     }
-                    Err(err) => {
-                        error!(error = %err, "transcription error");
+                }
+
+                if service.context.is_some() {
+                    match service.transcribe(trimmed_audio).await {
+                        Ok(segments) => {
+                            emit_transcript(
+                                segments,
+                                occurred_at,
+                                global_offset,
+                                wav_bytes,
+                                &out_tx,
+                            )
+                            .await;
+                        }
+                        Err(err) => {
+                            error!(error = %err, "transcription error");
+                        }
                     }
                 }
             }

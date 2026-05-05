@@ -116,17 +116,15 @@ impl Combobulator {
         &self,
         inputs: &[Impression<String>],
     ) -> anyhow::Result<Impression<String>> {
-        let mut combined = String::new();
-        for imp in inputs {
-            if let Some(stim) = imp.stimuli.first() {
-                if !combined.is_empty() {
-                    combined.push(' ');
-                }
-                combined.push_str(&stim.what);
-            }
-        }
+        let combined = inputs
+            .iter()
+            .filter_map(|imp| imp.stimuli.first().map(Stimulus::prompt_list_item))
+            .collect::<Vec<_>>()
+            .join("\n- ");
         let instruction = LlmInstruction {
-            command: crate::with_default_system_prompt(self.prompt.build_prompt(&combined)),
+            command: crate::with_default_system_prompt(
+                self.prompt.build_prompt(&format!("- {combined}")),
+            ),
             images: Vec::new(),
         };
         let resp = self.doer.follow(instruction.clone()).await?;
@@ -153,7 +151,7 @@ impl Combobulator {
         let caption = self
             .doer
             .follow(LlmInstruction {
-                command: crate::with_default_system_prompt("Describe only what you see in this image in a single sentence, in the first person. Remember, this is what you are *seeing* in the first person, so unless you're looking into a mirror, you won't be seeing yourself."),
+                command: crate::with_default_system_prompt(crate::prompt::IMAGE_CAPTION_PROMPT),
                 images: vec![LImageData {
                     mime: image.mime.clone(),
                     base64: image.base64.clone(),

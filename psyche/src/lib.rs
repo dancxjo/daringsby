@@ -46,8 +46,10 @@ pub mod wits {
     pub mod memory_wit;
     pub mod moment_wit;
     pub mod quick;
+    pub mod sensation_graph_observer;
     pub mod situation_wit;
     pub mod vision_wit;
+    pub mod voice_memory_wit;
     pub mod will;
 
     pub use combobulator::Combobulator;
@@ -61,8 +63,10 @@ pub mod wits {
     pub use memory_wit::MemoryWit;
     pub use moment_wit::MomentWit;
     pub use quick::Quick;
+    pub use sensation_graph_observer::SensationGraphObserver;
     pub use situation_wit::SituationWit;
     pub use vision_wit::VisionWit;
+    pub use voice_memory_wit::VoiceMemoryWit;
     pub use will::Will;
 }
 
@@ -82,6 +86,10 @@ pub mod prompt;
 mod task_group;
 pub use task_group::TaskGroup;
 pub mod sensors {
+    #[cfg(feature = "image-vector")]
+    pub mod image_vector;
+    #[cfg(feature = "image-vector")]
+    pub use image_vector::{ImageVectorSensor, RuVectorCnnImageVectorizer, WholeImageVectorizer};
     #[cfg(feature = "face")]
     pub mod face;
     #[cfg(feature = "face")]
@@ -102,8 +110,9 @@ pub use prompt::{CombobulatorPrompt, ContextualPrompt, PromptFragment, VoiceProm
 pub use topics::{Topic, TopicBus, TopicMessage};
 pub use trim_mouth::TrimMouth;
 pub use types::{
-    Decision, GeoLoc, Heartbeat, ImageData, ObjectInfo, geoloc_observed_at, image_captured_at,
-    parse_observed_at,
+    AudioClip, Decision, GeoEmbedding, GeoLoc, Heartbeat, ImageData, ImageEmbedding, ObjectInfo,
+    VoiceInfo, audio_captured_at, audio_clip_id, geoloc_content_id, geoloc_observed_at,
+    geoloc_vector, image_captured_at, image_content_id, parse_observed_at,
 };
 
 pub use ling::{Feeling, PromptBuilder};
@@ -112,6 +121,8 @@ pub use psyche::{Conversation, Psyche};
 pub use sensation::{Event, Sensation, WitReport};
 #[cfg(feature = "face")]
 pub use sensors::{DummyDetector, FaceDetector, FaceIdDetector, FaceInfo, FaceSensor};
+#[cfg(feature = "image-vector")]
+pub use sensors::{ImageVectorSensor, RuVectorCnnImageVectorizer, WholeImageVectorizer};
 pub use traits::{
     BufferedWit, Doer, Ear, ErasedWit, Motor, Mouth, NoopMotor, SensationObserver, Sensor, Tts,
     TtsStream, Wit, WitAdapter,
@@ -119,6 +130,6 @@ pub use traits::{
 pub use voice::{Voice, extract_emojis};
 pub use wits::{
     BasicMemory, Combobulator, EntityWit, EpisodeWit, FaceMemoryWit, FondDuCoeur, GraphStore,
-    HeartWit, IdentityWit, Memory, MemoryWit, Neo4jClient, NoopMemory, QdrantClient, VisionWit,
-    Will,
+    HeartWit, IdentityWit, Memory, MemoryWit, Neo4jClient, NoopMemory, QdrantClient,
+    SensationGraphObserver, VisionWit, VoiceMemoryWit, Will,
 };

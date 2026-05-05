@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 use lingproc::{Chatter, Doer, LlmInstruction, Message, TextStream, Vectorizer};
-use psyche::{DEFAULT_SYSTEM_PROMPT, Ear, Mouth, Psyche, with_default_system_prompt};
+use psyche::{
+    Conversation, DEFAULT_SYSTEM_PROMPT, Ear, Impression, Mouth, PromptBuilder, Psyche, Stimulus,
+    with_default_system_prompt,
+};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Clone, Default)]
@@ -90,4 +93,28 @@ fn senses_are_described() {
     psyche.add_sense("Heartbeat: Announces the time every 7 minutes.".into());
     let prompt = psyche.described_system_prompt();
     assert!(prompt.contains("Heartbeat"));
+}
+
+#[tokio::test]
+async fn prompt_builder_timestamps_impression_notes() {
+    let conversation = std::sync::Arc::new(tokio::sync::Mutex::new(Conversation::default()));
+    let mut builder = PromptBuilder::new("base", conversation);
+    let timestamp = chrono::DateTime::parse_from_rfc3339("2026-05-05T12:34:56Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    let impression = Impression {
+        stimuli: vec![Stimulus {
+            what: "heard hi".to_string(),
+            timestamp,
+        }],
+        summary: "greeting".into(),
+        emoji: None,
+        timestamp,
+    };
+
+    builder.add_impressions(&[impression.clone()]).await;
+    let prompt = builder.build_prompt().await;
+
+    assert!(prompt.contains(&impression.localized_timestamp()));
+    assert!(prompt.contains("greeting"));
 }

@@ -50,6 +50,11 @@ impl BufferedWit for HeartWit {
 
     async fn process_buffer(&self, inputs: Vec<Self::Input>) -> Vec<Impression<Self::Output>> {
         let inputs = { inputs };
+        let prompt_items = inputs
+            .iter()
+            .flat_map(|i| i.stimuli.iter().map(Stimulus::prompt_list_item))
+            .collect::<Vec<_>>()
+            .join("\n- ");
         let summary = inputs
             .iter()
             .flat_map(|i| i.stimuli.iter().map(|s| s.what.clone()))
@@ -57,7 +62,7 @@ impl BufferedWit for HeartWit {
             .join(" ");
         let instruction = LlmInstruction {
             command: crate::with_default_system_prompt(format!(
-                "What emoji reflects Pete's mood? {summary}"
+                "What emoji reflects Pete's mood from these recent experiences?\n- {prompt_items}"
             )),
             images: Vec::new(),
         };

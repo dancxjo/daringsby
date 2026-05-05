@@ -103,21 +103,23 @@ cargo run -p pete --bin pete
 ### ASR Model
 
 Server-side ASR is enabled by default when a Whisper model is available. Fetch
-the default `base.en` model with:
+the default `base.en` model and voice embedding model with:
 
 ```sh
-just fetch-asr-model
+just fetch
 ```
 
-That writes `models/whisper/ggml-base.en.bin`, which Pete discovers
-automatically. To fetch a different model:
+That writes `models/whisper/ggml-base.en.bin` and
+`models/voice/speaker_embedding_extractor.onnx`, which Pete discovers
+automatically. To fetch a different Whisper model:
 
 ```sh
-just fetch-asr-model tiny.en
-just fetch-asr-model small.en
+just fetch tiny.en
+just fetch small.en
 ```
 
-You can also set `WHISPER_MODEL` in `.env` to point at a custom model path.
+You can also set `WHISPER_MODEL` or `VOICE_EMBEDDING_MODEL` in `.env` to point
+at custom model paths.
 
 ---
 

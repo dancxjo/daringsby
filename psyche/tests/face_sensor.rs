@@ -173,38 +173,15 @@ async fn stores_distinct_faces() {
 }
 
 #[tokio::test]
-async fn logs_skipped_detection() {
-    use tracing_subscriber::fmt::MakeWriter;
-    #[derive(Clone)]
-    struct Writer(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
-    impl std::io::Write for Writer {
-        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().unwrap().extend_from_slice(buf);
-            Ok(buf.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-    impl<'a> MakeWriter<'a> for Writer {
-        type Writer = Writer;
-        fn make_writer(&'a self) -> Self::Writer {
-            Writer(self.0.clone())
-        }
-    }
-    let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let collector = tracing_subscriber::fmt()
-        .with_writer(Writer(buf.clone()))
-        .with_max_level(tracing::Level::DEBUG)
-        .finish();
-    let _guard = tracing::subscriber::set_default(collector);
-
+async fn skips_similar_face_detection_without_emitting() {
     let bus = psyche::TopicBus::new(16);
     let detector = Arc::new(SeqDetector {
         embeddings: std::sync::Mutex::new(vec![vec![0.2, 0.0], vec![0.2, 0.0]]),
     });
     let (_server, qdrant) = qdrant_with_faces_collection(2).await;
     let sensor = FaceSensor::new(detector, qdrant, bus.clone());
+    let sub = bus.subscribe(Topic::Sensation);
+    pin_mut!(sub);
     sensor
         .sense(ImageData {
             mime: "image/png".into(),
@@ -212,6 +189,7 @@ async fn logs_skipped_detection() {
             captured_at: None,
         })
         .await;
+    assert!(sub.next().await.is_some());
     sensor
         .sense(ImageData {
             mime: "image/png".into(),
@@ -219,8 +197,6 @@ async fn logs_skipped_detection() {
             captured_at: None,
         })
         .await;
-
-    drop(_guard);
-    let logs = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
-    assert!(logs.contains("skipping similar face detection"));
+    let second = tokio::time::timeout(std::time::Duration::from_millis(50), sub.next()).await;
+    assert!(second.is_err());
 }

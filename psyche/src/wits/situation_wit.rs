@@ -10,7 +10,7 @@ use tracing::debug;
 
 /// Wit that summarizes recent moments into an ongoing situation.
 pub struct SituationWit {
-    buffer: Arc<Mutex<Vec<String>>>,
+    buffer: Arc<Mutex<Vec<Impression<String>>>>,
     bus: TopicBus,
     doer: Arc<dyn Doer>,
     last: Arc<Mutex<Option<String>>>,
@@ -41,7 +41,7 @@ impl SituationWit {
             tokio::pin!(stream);
             while let Some(payload) = stream.next().await {
                 if let Ok(i) = Arc::downcast::<Impression<String>>(payload) {
-                    buf_clone.lock().unwrap().push(i.summary.clone());
+                    buf_clone.lock().unwrap().push((*i).clone());
                 }
             }
         });
@@ -82,8 +82,12 @@ impl crate::wit::Wit for SituationWit {
                 prompt.push_str(&format!("Previous situation: {}\n", prev));
             }
         }
+        let bullets = items
+            .iter()
+            .map(Impression::prompt_list_item)
+            .collect::<Vec<_>>();
         prompt.push_str("Given the following recent moments, summarize the ongoing situation in one sentence:\n- ");
-        prompt.push_str(&items.join("\n- "));
+        prompt.push_str(&bullets.join("\n- "));
         let command = crate::with_default_system_prompt(&prompt);
         let resp = match self
             .doer

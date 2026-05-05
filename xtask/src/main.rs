@@ -8,11 +8,16 @@ const DEFAULT_MODEL: &str = "base.en";
 const DEFAULT_MODEL_URL: &str =
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin";
 const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-base.en.bin";
+const DEFAULT_VOICE_EMBEDDING_MODEL_URL: &str =
+    "https://github.com/mzdk100/voxudio/releases/download/model/speaker_embedding_extractor.onnx";
+const DEFAULT_VOICE_EMBEDDING_MODEL_PATH: &str = "models/voice/speaker_embedding_extractor.onnx";
 
 fn main() -> Result<()> {
     let mut args = env::args().skip(1);
     match args.next().as_deref() {
+        Some("fetch") => fetch_asr_model(args.next())?,
         Some("fetch-asr-model") => fetch_asr_model(args.next())?,
+        Some("fetch-voice-embedding-model") => fetch_voice_embedding_model(args.next())?,
         Some("help") | Some("--help") | Some("-h") | None => print_help(),
         Some(other) => bail!("unknown xtask command: {other}"),
     }
@@ -21,15 +26,27 @@ fn main() -> Result<()> {
 
 fn print_help() {
     println!("xtask commands:");
-    println!("  fetch-asr-model [tiny.en|base.en|small.en|URL]");
+    println!("  fetch [tiny.en|base.en|small.en|URL]            # fetches local models");
+    println!("  fetch-asr-model [tiny.en|base.en|small.en|URL]  # also fetches voice embeddings");
+    println!("  fetch-voice-embedding-model [URL]");
 }
 
 fn fetch_asr_model(choice: Option<String>) -> Result<()> {
     let choice = choice.unwrap_or_else(|| DEFAULT_MODEL.to_string());
     let (url, path) = model_choice(&choice);
+    fetch_model(&url, &path, "ASR", "WHISPER_MODEL")?;
+    fetch_voice_embedding_model(None)
+}
+
+fn fetch_voice_embedding_model(choice: Option<String>) -> Result<()> {
+    let (url, path) = voice_embedding_model_choice(choice.as_deref());
+    fetch_model(&url, &path, "voice embedding", "VOICE_EMBEDDING_MODEL")
+}
+
+fn fetch_model(url: &str, path: &Path, label: &str, env_key: &str) -> Result<()> {
     if path.exists() {
-        println!("ASR model already exists: {}", path.display());
-        println!("WHISPER_MODEL={}", path.display());
+        println!("{label} model already exists: {}", path.display());
+        println!("{env_key}={}", path.display());
         return Ok(());
     }
 
@@ -42,7 +59,7 @@ fn fetch_asr_model(choice: Option<String>) -> Result<()> {
     println!("Downloading {url}");
     println!("Writing {}", path.display());
 
-    let mut response = reqwest::blocking::get(&url)
+    let mut response = reqwest::blocking::get(url)
         .with_context(|| format!("failed to request {url}"))?
         .error_for_status()
         .with_context(|| format!("download failed for {url}"))?;
@@ -71,8 +88,8 @@ fn fetch_asr_model(choice: Option<String>) -> Result<()> {
 
     fs::rename(&tmp, &path)
         .with_context(|| format!("failed to move {} to {}", tmp.display(), path.display()))?;
-    println!("Fetched ASR model: {}", path.display());
-    println!("WHISPER_MODEL={}", path.display());
+    println!("Fetched {label} model: {}", path.display());
+    println!("{env_key}={}", path.display());
     Ok(())
 }
 
@@ -102,4 +119,49 @@ fn model_choice(choice: &str) -> (String, PathBuf) {
         Path::new("models").join("whisper").join(file)
     };
     (url, path)
+}
+
+fn voice_embedding_model_choice(choice: Option<&str>) -> (String, PathBuf) {
+    match choice {
+        Some(choice) if choice.starts_with("http://") || choice.starts_with("https://") => {
+            let filename = choice
+                .rsplit('/')
+                .next()
+                .unwrap_or("speaker_embedding_extractor.onnx");
+            (
+                choice.to_string(),
+                Path::new("models").join("voice").join(filename),
+            )
+        }
+        Some(choice) if !choice.trim().is_empty() => (
+            choice.to_string(),
+            Path::new("models").join("voice").join(choice),
+        ),
+        _ => (
+            DEFAULT_VOICE_EMBEDDING_MODEL_URL.to_string(),
+            PathBuf::from(DEFAULT_VOICE_EMBEDDING_MODEL_PATH),
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn voice_embedding_model_defaults_to_discovered_path() {
+        let (url, path) = voice_embedding_model_choice(None);
+
+        assert_eq!(url, DEFAULT_VOICE_EMBEDDING_MODEL_URL);
+        assert_eq!(path, PathBuf::from(DEFAULT_VOICE_EMBEDDING_MODEL_PATH));
+    }
+
+    #[test]
+    fn voice_embedding_model_url_uses_voice_model_directory() {
+        let (url, path) =
+            voice_embedding_model_choice(Some("https://example.com/custom-speaker.onnx"));
+
+        assert_eq!(url, "https://example.com/custom-speaker.onnx");
+        assert_eq!(path, PathBuf::from("models/voice/custom-speaker.onnx"));
+    }
 }

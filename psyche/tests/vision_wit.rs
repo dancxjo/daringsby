@@ -3,6 +3,7 @@ use lingproc::LlmInstruction;
 use psyche::traits::Doer;
 use psyche::{ImageData, VisionWit, Wit};
 use std::sync::Arc;
+use tokio::sync::Mutex as TokioMutex;
 
 #[derive(Clone)]
 struct Dummy;
@@ -10,6 +11,17 @@ struct Dummy;
 #[async_trait]
 impl Doer for Dummy {
     async fn follow(&self, _instruction: LlmInstruction) -> anyhow::Result<String> {
+        Ok("I see a test pattern.".into())
+    }
+}
+
+#[derive(Default)]
+struct PromptSpy(TokioMutex<Option<String>>);
+
+#[async_trait]
+impl Doer for PromptSpy {
+    async fn follow(&self, instruction: LlmInstruction) -> anyhow::Result<String> {
+        *self.0.lock().await = Some(instruction.command);
         Ok("I see a test pattern.".into())
     }
 }
@@ -61,4 +73,22 @@ async fn caption_stimulus_uses_image_capture_time() {
         out[0].stimuli[0].timestamp.to_rfc3339(),
         "2026-05-05T12:34:56+00:00"
     );
+}
+
+#[tokio::test]
+async fn caption_prompt_explains_own_vision() {
+    let doer = Arc::new(PromptSpy::default());
+    let wit = Arc::new(VisionWit::new(doer.clone()));
+    wit.observe(ImageData {
+        mime: "image/png".into(),
+        base64: "zzz".into(),
+        captured_at: None,
+    })
+    .await;
+
+    let _ = wit.tick().await;
+
+    let prompt = doer.0.lock().await.clone().unwrap();
+    assert!(prompt.contains("This is your own vision looking out"));
+    assert!(prompt.contains("Anyone you see is probably someone else"));
 }

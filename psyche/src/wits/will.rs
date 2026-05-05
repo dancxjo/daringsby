@@ -130,7 +130,7 @@ impl crate::wit::Wit for Will {
         let input = inputs
             .last()
             .and_then(|i| i.stimuli.last())
-            .map(|s| s.what.clone())
+            .map(Stimulus::prompt_list_item)
             .unwrap_or_default();
         let llm_instruction = LlmInstruction {
             command: crate::with_default_system_prompt(self.prompt.build_prompt(&input)),

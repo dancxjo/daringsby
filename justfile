@@ -12,9 +12,17 @@ run *args:
 debug *args:
     RUST_LOG="${RUST_LOG:-debug}" cargo run -p pete --bin pete -- {{args}}
 
-# Fetch the default Whisper ASR model, or pass tiny.en/base.en/small.en/URL.
+# Fetch all local models, or pass tiny.en/base.en/small.en/URL for Whisper.
+fetch model="base.en":
+    cargo run -p xtask -- fetch {{model}}
+
+# Compatibility alias for fetching the audio models.
 fetch-asr-model model="base.en":
-    cargo run -p xtask -- fetch-asr-model {{model}}
+    just fetch {{model}}
+
+# Fetch the default voice embedding model, or pass a custom ONNX URL/filename.
+fetch-voice-embedding-model model="":
+    cargo run -p xtask -- fetch-voice-embedding-model {{model}}
 
 # Run all Rust and frontend tests.
 test: test-rust test-frontend

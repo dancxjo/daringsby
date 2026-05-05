@@ -1,4 +1,4 @@
-use crate::{Impression, Stimulus};
+use crate::{ImageData, Impression, Stimulus, image_content_id};
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
 use lingproc::Vectorizer;
@@ -11,7 +11,11 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 const MEMORY_COLLECTION: &str = "memories";
+const IMAGE_COLLECTION: &str = "images";
+const IMAGE_DESCRIPTION_COLLECTION: &str = "image_descriptions";
 const FACE_COLLECTION: &str = "faces";
+const GEOLOCATION_COLLECTION: &str = "geolocations";
+const VOICE_COLLECTION: &str = "voices";
 const QDRANT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Trait representing the memory subsystem.
@@ -101,35 +105,141 @@ impl QdrantClient {
         Self { url }
     }
     /// Store `vector` associated with `headline`.
-    pub async fn store_vector(&self, headline: &str, vector: &[f32]) -> Result<()> {
-        self.upsert_vector(
-            MEMORY_COLLECTION,
-            vector,
-            json!({
-                "kind": "memory",
-                "headline": headline,
-            }),
-        )
-        .await?;
+    pub async fn store_vector(&self, headline: &str, vector: &[f32]) -> Result<Uuid> {
+        let id = self
+            .upsert_vector(
+                MEMORY_COLLECTION,
+                vector,
+                json!({
+                    "kind": "memory",
+                    "headline": headline,
+                }),
+            )
+            .await?;
         info!(target: "qdrant", ?headline, len = vector.len(), url = %self.url, "stored vector");
-        Ok(())
+        Ok(id)
+    }
+
+    /// Store a whole-frame image embedding in the image collection.
+    pub async fn store_image_vector(&self, image_id: &str, vector: &[f32]) -> Result<Uuid> {
+        let id = self
+            .upsert_vector(
+                IMAGE_COLLECTION,
+                vector,
+                json!({
+                    "kind": "image",
+                    "image_id": image_id,
+                }),
+            )
+            .await?;
+        info!(target: "qdrant", image_id, len = vector.len(), url = %self.url, "stored image vector");
+        Ok(id)
+    }
+
+    /// Store an LLM image-description embedding in its own collection.
+    pub async fn store_image_description_vector(
+        &self,
+        image_id: &str,
+        description: &str,
+        vector: &[f32],
+    ) -> Result<Uuid> {
+        let id = self
+            .upsert_vector(
+                IMAGE_DESCRIPTION_COLLECTION,
+                vector,
+                json!({
+                    "kind": "image_description",
+                    "image_id": image_id,
+                    "description": description,
+                }),
+            )
+            .await?;
+        info!(target: "qdrant", image_id, len = vector.len(), url = %self.url, "stored image description vector");
+        Ok(id)
+    }
+
+    /// Store a geolocation embedding in the geolocation collection.
+    pub async fn store_geolocation_vector_for(
+        &self,
+        geoloc_id: &str,
+        latitude: f64,
+        longitude: f64,
+        vector: &[f32],
+    ) -> Result<Uuid> {
+        let id = self
+            .upsert_vector(
+                GEOLOCATION_COLLECTION,
+                vector,
+                json!({
+                    "kind": "geolocation",
+                    "geoloc_id": geoloc_id,
+                    "latitude": latitude,
+                    "longitude": longitude,
+                }),
+            )
+            .await?;
+        info!(target: "qdrant", geoloc_id, len = vector.len(), url = %self.url, "stored geolocation vector");
+        Ok(id)
     }
 
     /// Store a face embedding in the face collection.
-    pub async fn store_face_vector(&self, vector: &[f32]) -> Result<()> {
-        self.upsert_vector(
-            FACE_COLLECTION,
-            vector,
-            json!({
-                "kind": "face",
-            }),
-        )
-        .await?;
-        info!(target: "qdrant", len = vector.len(), url = %self.url, "stored face vector");
-        Ok(())
+    pub async fn store_face_vector(&self, vector: &[f32]) -> Result<Uuid> {
+        self.store_face_vector_for(None, None, vector).await
     }
 
-    async fn upsert_vector(&self, collection: &str, vector: &[f32], payload: Value) -> Result<()> {
+    /// Store a face embedding with graph-linking metadata.
+    pub async fn store_face_vector_for(
+        &self,
+        face_id: Option<&str>,
+        source_image_id: Option<&str>,
+        vector: &[f32],
+    ) -> Result<Uuid> {
+        let id = self
+            .upsert_vector(
+                FACE_COLLECTION,
+                vector,
+                json!({
+                    "kind": "face",
+                    "face_id": face_id,
+                    "source_image_id": source_image_id,
+                }),
+            )
+            .await?;
+        info!(target: "qdrant", len = vector.len(), url = %self.url, "stored face vector");
+        Ok(id)
+    }
+
+    /// Store a voice embedding in the voice collection.
+    pub async fn store_voice_vector(&self, vector: &[f32]) -> Result<Uuid> {
+        self.store_voice_vector_for(None, vector).await
+    }
+
+    /// Store a voice embedding with graph-linking metadata.
+    pub async fn store_voice_vector_for(
+        &self,
+        clip_id: Option<&str>,
+        vector: &[f32],
+    ) -> Result<Uuid> {
+        let id = self
+            .upsert_vector(
+                VOICE_COLLECTION,
+                vector,
+                json!({
+                    "kind": "voice",
+                    "clip_id": clip_id,
+                }),
+            )
+            .await?;
+        info!(target: "qdrant", len = vector.len(), url = %self.url, "stored voice vector");
+        Ok(id)
+    }
+
+    async fn upsert_vector(
+        &self,
+        collection: &str,
+        vector: &[f32],
+        payload: Value,
+    ) -> Result<Uuid> {
         if vector.is_empty() {
             bail!("refusing to store empty vector in Qdrant collection {collection}");
         }
@@ -137,9 +247,10 @@ impl QdrantClient {
         self.ensure_collection(collection, vector.len()).await?;
 
         let url = self.endpoint(&format!("collections/{collection}/points?wait=true"))?;
+        let id = Uuid::new_v4();
         let body = json!({
             "points": [{
-                "id": Uuid::new_v4().to_string(),
+                "id": id.to_string(),
                 "vector": vector,
                 "payload": payload,
             }]
@@ -155,7 +266,7 @@ impl QdrantClient {
             })?;
 
         if response.status().is_success() {
-            Ok(())
+            Ok(id)
         } else {
             Err(unexpected_qdrant_response(
                 response,
@@ -364,6 +475,20 @@ impl Memory for BasicMemory {
             }
         };
         if let Some(v) = vector {
+            if let Some(image_id) = impression
+                .stimuli
+                .first()
+                .and_then(|stim| serde_json::from_value::<ImageData>(stim.what.clone()).ok())
+                .map(|image| image_content_id(&image))
+            {
+                if let Err(e) = self
+                    .qdrant
+                    .store_image_description_vector(&image_id, &impression.summary, &v)
+                    .await
+                {
+                    tracing::error!(?e, "failed to store image description vector");
+                }
+            }
             if let Err(e) = self.qdrant.store_vector(&impression.summary, &v).await {
                 tracing::error!(?e, "failed to store vector");
             }

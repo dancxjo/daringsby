@@ -1,5 +1,6 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use uuid::Uuid;
 
 /// A raw observation in time.
@@ -18,6 +19,18 @@ impl<T> Stimulus<T> {
             what,
             timestamp: Utc::now(),
         }
+    }
+
+    /// Return this stimulus timestamp in the host's local timezone.
+    pub fn localized_timestamp(&self) -> String {
+        localized_timestamp(self.timestamp)
+    }
+}
+
+impl<T: Display> Stimulus<T> {
+    /// Render this stimulus as a timestamped prompt list item.
+    pub fn prompt_list_item(&self) -> String {
+        format!("[{}] {}", self.localized_timestamp(), self.what)
     }
 }
 
@@ -57,6 +70,18 @@ impl<T> Impression<T> {
             timestamp: Utc::now(),
         }
     }
+
+    /// Return this impression timestamp in the host's local timezone.
+    pub fn localized_timestamp(&self) -> String {
+        localized_timestamp(self.timestamp)
+    }
+}
+
+impl<T> Impression<T> {
+    /// Render this impression summary as a timestamped prompt list item.
+    pub fn prompt_list_item(&self) -> String {
+        format!("[{}] {}", self.localized_timestamp(), self.summary)
+    }
 }
 
 /// A remembered impression stored with vector metadata.
@@ -80,4 +105,27 @@ impl<T> Experience<T> {
             id: Uuid::new_v4(),
         }
     }
+
+    /// Return this experience timestamp in the host's local timezone.
+    pub fn localized_timestamp(&self) -> String {
+        self.impression.localized_timestamp()
+    }
+
+    /// Render this experience summary as a timestamped prompt list item.
+    pub fn prompt_list_item(&self) -> String {
+        format!(
+            "[{}] {} ({})",
+            self.localized_timestamp(),
+            self.impression.summary,
+            self.id
+        )
+    }
+}
+
+/// Format a UTC timestamp in the host's local timezone for LLM prompts.
+pub fn localized_timestamp(timestamp: DateTime<Utc>) -> String {
+    timestamp
+        .with_timezone(&Local)
+        .format("%Y-%m-%d %H:%M:%S %Z")
+        .to_string()
 }

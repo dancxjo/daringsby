@@ -1,16 +1,21 @@
 use psyche::Wit;
+use psyche::image_content_id;
 use psyche::sensors::face::FaceInfo;
 use psyche::wits::face_memory_wit::FaceMemoryWit;
 use std::sync::Arc;
 
 fn dummy_info(val: f32) -> FaceInfo {
+    let crop = psyche::ImageData {
+        mime: "image/png".into(),
+        base64: "".into(),
+        captured_at: None,
+    };
     FaceInfo {
-        crop: psyche::ImageData {
-            mime: "image/png".into(),
-            base64: "".into(),
-            captured_at: None,
-        },
+        face_id: image_content_id(&crop),
+        source_image_id: image_content_id(&crop),
+        crop,
         embedding: vec![val],
+        vector_id: None,
     }
 }
 

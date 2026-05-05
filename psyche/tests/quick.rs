@@ -3,7 +3,7 @@ use lingproc::LlmInstruction;
 use psyche::sensors::face::FaceInfo;
 use psyche::traits::Doer;
 use psyche::wits::Quick;
-use psyche::{Heartbeat, ImageData, Sensation, Topic, TopicBus, Wit};
+use psyche::{Heartbeat, ImageData, Sensation, Topic, TopicBus, Wit, image_content_id};
 use std::sync::Arc;
 use tokio::time::{Duration, sleep};
 
@@ -45,14 +45,23 @@ async fn debug_report_uses_full_prompt() {
     let (tx, mut rx) = tokio::sync::broadcast::channel(8);
     psyche::enable_debug("Quick").await;
     let quick = Quick::with_debug(bus, Arc::new(Dummy), Some(tx));
-    quick.observe(Sensation::heard_user_voice("hi")).await;
+    let occurred_at = chrono::Utc::now() - chrono::Duration::seconds(1);
+    quick
+        .observe(Sensation::heard_user_voice_at("hi", occurred_at))
+        .await;
 
-    let _ = quick.tick().await;
+    let out = quick.tick().await;
     let report = rx.recv().await.unwrap();
 
     assert_eq!(report.name, "Quick");
     assert!(report.prompt.contains(psyche::DEFAULT_SYSTEM_PROMPT.trim()));
     assert!(report.prompt.contains("using I/my/me"));
+    assert!(
+        report
+            .prompt
+            .contains(&out[0].stimuli[0].localized_timestamp())
+    );
+    assert!(report.prompt.contains("User said \"hi\""));
     psyche::disable_debug("Quick").await;
 }
 
@@ -92,14 +101,18 @@ async fn describes_heartbeat_before_type_erasure() {
 async fn describes_faces_in_first_person() {
     let bus = TopicBus::new(8);
     let quick = Quick::new(bus, Arc::new(Dummy));
+    let crop = ImageData {
+        mime: "image/png".into(),
+        base64: "zzz".into(),
+        captured_at: None,
+    };
     quick
         .observe(Sensation::of(FaceInfo {
-            crop: ImageData {
-                mime: "image/png".into(),
-                base64: "zzz".into(),
-                captured_at: None,
-            },
+            face_id: image_content_id(&crop),
+            source_image_id: image_content_id(&crop),
+            crop,
             embedding: vec![0.1],
+            vector_id: None,
         }))
         .await;
 
@@ -114,14 +127,18 @@ async fn repeated_faces_are_framed_as_stream_frames() {
     let bus = TopicBus::new(8);
     let quick = Quick::new(bus, Arc::new(Dummy));
     for _ in 0..2 {
+        let crop = ImageData {
+            mime: "image/png".into(),
+            base64: "zzz".into(),
+            captured_at: None,
+        };
         quick
             .observe(Sensation::of(FaceInfo {
-                crop: ImageData {
-                    mime: "image/png".into(),
-                    base64: "zzz".into(),
-                    captured_at: None,
-                },
+                face_id: image_content_id(&crop),
+                source_image_id: image_content_id(&crop),
+                crop,
                 embedding: vec![0.1],
+                vector_id: None,
             }))
             .await;
     }

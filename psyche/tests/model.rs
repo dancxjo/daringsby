@@ -1,3 +1,4 @@
+use chrono::{DateTime, Local, Utc};
 use psyche::model::{Experience, Impression, Stimulus};
 
 #[test]
@@ -20,4 +21,33 @@ fn experience_wraps_impression() {
     let exp = Experience::new(imp.clone(), vec![0.1]);
     assert_eq!(exp.impression.summary, "greeting");
     assert_eq!(exp.embedding.len(), 1);
+}
+
+#[test]
+fn prompt_list_items_include_localized_timestamps() {
+    let timestamp = DateTime::parse_from_rfc3339("2026-05-05T12:34:56Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let expected = timestamp
+        .with_timezone(&Local)
+        .format("%Y-%m-%d %H:%M:%S %Z")
+        .to_string();
+    let stim = Stimulus {
+        what: "hi",
+        timestamp,
+    };
+    let imp = Impression {
+        stimuli: vec![stim.clone()],
+        summary: "greeting".into(),
+        emoji: None,
+        timestamp,
+    };
+    let exp = Experience::new(imp.clone(), vec![0.1]);
+
+    assert_eq!(stim.prompt_list_item(), format!("[{expected}] hi"));
+    assert_eq!(imp.prompt_list_item(), format!("[{expected}] greeting"));
+    assert!(
+        exp.prompt_list_item()
+            .starts_with(&format!("[{expected}] greeting"))
+    );
 }

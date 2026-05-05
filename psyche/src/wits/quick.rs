@@ -80,6 +80,12 @@ impl Quick {
             Sensation::Of { payload, .. } => {
                 if let Some(_f) = payload.downcast_ref::<crate::sensors::face::FaceInfo>() {
                     Some("I saw a face".to_string())
+                } else if payload.downcast_ref::<crate::ImageEmbedding>().is_some() {
+                    Some("I recognized the whole camera frame visually".to_string())
+                } else if payload.downcast_ref::<crate::GeoEmbedding>().is_some() {
+                    Some("I recognized where I am".to_string())
+                } else if payload.downcast_ref::<crate::VoiceInfo>().is_some() {
+                    Some("I heard a voice".to_string())
                 } else if payload.downcast_ref::<crate::ImageData>().is_some() {
                     None
                 } else if let Some(loc) = payload.downcast_ref::<crate::GeoLoc>() {
@@ -153,10 +159,11 @@ impl crate::traits::wit::Wit for Quick {
         };
         debug!(count = items.len(), "quick summarizing sensations");
         let stimuli = items;
-        let bullets: Vec<String> = stimuli.iter().map(|s| s.what.clone()).collect();
+        let prompt_bullets: Vec<String> = stimuli.iter().map(Stimulus::prompt_list_item).collect();
+        let fallback_bullets: Vec<String> = stimuli.iter().map(|s| s.what.clone()).collect();
         let prompt = format!(
             "Summarize these recent sensations in one sentence, in the first person, using I/my/me. Some sensations may be consecutive frames from the same sensor stream; repeated similar camera or face observations usually mean one thing persisted across frames, not multiple simultaneous things. Do not refer to Pete, the individual, the observer, or the person. Return only the summary sentence.\n- {}",
-            bullets.join("\n- ")
+            prompt_bullets.join("\n- ")
         );
         let command = crate::with_default_system_prompt(prompt);
         let out = match self
@@ -170,12 +177,12 @@ impl crate::traits::wit::Wit for Quick {
             Ok(s) => {
                 let summary = s.trim();
                 if summary.is_empty() {
-                    bullets.join("; ")
+                    fallback_bullets.join("; ")
                 } else {
                     summary.to_string()
                 }
             }
-            Err(_) => bullets.join("; "),
+            Err(_) => fallback_bullets.join("; "),
         };
         info!(count = stimuli.len(), out = %out, "quick emitting instant impression");
         debug!(

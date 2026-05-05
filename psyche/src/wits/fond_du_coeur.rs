@@ -45,18 +45,24 @@ impl FondDuCoeur {
         &self,
         inputs: &[Impression<String>],
     ) -> anyhow::Result<Impression<String>> {
-        let mut combined = self.story();
-        for imp in inputs {
-            if let Some(stim) = imp.stimuli.first() {
-                if !combined.is_empty() {
-                    combined.push(' ');
-                }
-                combined.push_str(&stim.what);
-            }
+        let previous_story = self.story();
+        let recent = inputs
+            .iter()
+            .filter_map(|imp| imp.stimuli.first().map(Stimulus::prompt_list_item))
+            .collect::<Vec<_>>();
+        let mut context = String::new();
+        if !previous_story.trim().is_empty() {
+            context.push_str("Previous story:\n");
+            context.push_str(&previous_story);
+            context.push('\n');
+        }
+        if !recent.is_empty() {
+            context.push_str("Recent moments:\n- ");
+            context.push_str(&recent.join("\n- "));
         }
         let instruction = LlmInstruction {
             command: crate::with_default_system_prompt(format!(
-                "Summarize Pete's life story in one paragraph:\n{combined}"
+                "Summarize Pete's life story in one paragraph:\n{context}"
             )),
             images: Vec::new(),
         };

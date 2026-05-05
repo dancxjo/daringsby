@@ -1,7 +1,7 @@
 use crate::topics::TopicBus;
 use crate::traits::Sensor;
 use crate::wits::memory::QdrantClient;
-use crate::{ImageData, Sensation, image_captured_at};
+use crate::{ImageData, Sensation, image_captured_at, image_content_id};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use base64::Engine;
@@ -18,8 +18,15 @@ use serde::{Deserialize, Serialize};
 pub struct FaceInfo {
     /// Cropped face image.
     pub crop: ImageData,
+    /// Stable content id of the cropped face image.
+    pub face_id: String,
+    /// Stable content id of the source image.
+    pub source_image_id: String,
     /// Embedding vector describing the face.
     pub embedding: Vec<f32>,
+    /// Qdrant vector id for the face embedding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_id: Option<String>,
 }
 
 /// Trait for extracting embeddings from images.
@@ -166,12 +173,25 @@ impl Sensor<ImageData> for FaceSensor {
                         debug!("skipping similar face detection");
                         continue;
                     }
-                    if let Err(e) = self.qdrant.store_face_vector(&embed).await {
-                        error!(?e, "failed storing face vector");
-                    }
+                    let source_image_id = image_content_id(&input);
+                    let face_id = image_content_id(&crop);
+                    let vector_id = match self
+                        .qdrant
+                        .store_face_vector_for(Some(&face_id), Some(&source_image_id), &embed)
+                        .await
+                    {
+                        Ok(id) => Some(id.to_string()),
+                        Err(e) => {
+                            error!(?e, "failed storing face vector");
+                            None
+                        }
+                    };
                     let info = FaceInfo {
                         crop,
+                        face_id,
+                        source_image_id,
                         embedding: embed,
+                        vector_id,
                     };
                     self.bus.publish(
                         crate::topics::Topic::Sensation,

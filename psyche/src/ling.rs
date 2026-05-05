@@ -75,7 +75,7 @@ impl PromptBuilder {
     /// Include impression headlines as context notes.
     pub async fn add_impressions<T>(&mut self, impressions: &[Impression<T>]) {
         for imp in impressions {
-            self.add_context_note(&imp.summary);
+            self.add_context_note(&imp.prompt_list_item());
         }
     }
 

@@ -10,7 +10,7 @@ use tracing::debug;
 
 /// Wit summarizing recent instant impressions into a single moment.
 pub struct MomentWit {
-    buffer: Arc<Mutex<Vec<String>>>,
+    buffer: Arc<Mutex<Vec<Impression<String>>>>,
     bus: TopicBus,
     doer: Arc<dyn Doer>,
     tx: Option<broadcast::Sender<WitReport>>,
@@ -39,7 +39,7 @@ impl MomentWit {
             tokio::pin!(stream);
             while let Some(payload) = stream.next().await {
                 if let Ok(i) = Arc::downcast::<Impression<String>>(payload) {
-                    buf_clone.lock().unwrap().push(i.summary.clone());
+                    buf_clone.lock().unwrap().push((*i).clone());
                 }
             }
         });
@@ -72,7 +72,11 @@ impl crate::wit::Wit for MomentWit {
             buf.drain(..).collect::<Vec<_>>()
         };
         debug!(count = items.len(), "moment wit summarizing instants");
-        let prompt = format!("Summarize these recent events:\n- {}", items.join("\n- "));
+        let bullets = items
+            .iter()
+            .map(Impression::prompt_list_item)
+            .collect::<Vec<_>>();
+        let prompt = format!("Summarize these recent events:\n- {}", bullets.join("\n- "));
         let command = crate::with_default_system_prompt(&prompt);
         let resp = match self
             .doer

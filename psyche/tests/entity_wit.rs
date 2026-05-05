@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use psyche::sensors::face::FaceInfo;
 use psyche::wits::Memory;
 use psyche::wits::entity_wit::{EntityWit, InMemoryEmbeddingDb};
-use psyche::{ImageData, Impression, ObjectInfo};
+use psyche::{ImageData, Impression, ObjectInfo, image_content_id};
 use psyche::{Sensation, Wit};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -19,13 +19,17 @@ impl Memory for DummyMemory {
 }
 
 fn dummy_face(v: f32) -> FaceInfo {
+    let crop = ImageData {
+        mime: "m".into(),
+        base64: "b".into(),
+        captured_at: None,
+    };
     FaceInfo {
-        crop: ImageData {
-            mime: "m".into(),
-            base64: "b".into(),
-            captured_at: None,
-        },
+        face_id: image_content_id(&crop),
+        source_image_id: image_content_id(&crop),
+        crop,
         embedding: vec![v],
+        vector_id: None,
     }
 }
 

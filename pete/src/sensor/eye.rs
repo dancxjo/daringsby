@@ -46,6 +46,19 @@ impl EyeSensor {
             latest_tx: Some(latest_tx),
         }
     }
+
+    /// Create a new `EyeSensor` that forwards sensations and publishes latest-frame state.
+    pub fn with_latest_stream(
+        forward: mpsc::Sender<Sensation>,
+        latest: Arc<Mutex<Option<ImageData>>>,
+        latest_tx: watch::Sender<Option<ImageData>>,
+    ) -> Self {
+        Self {
+            forward: Some(forward),
+            latest: Some(latest),
+            latest_tx: Some(latest_tx),
+        }
+    }
 }
 
 #[async_trait]
