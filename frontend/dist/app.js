@@ -327,34 +327,77 @@
   async function setupAudio() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec = new MediaRecorder(stream);
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      const targetSampleRate = 16000;
+
       window.onbeforeunload = () => {
         try {
-          if (rec.state !== "inactive") rec.stop();
+          processor.disconnect();
+          source.disconnect();
+          audioContext.close();
           stream.getTracks().forEach((t) => t.stop());
         } catch (err) {
-          console.warn("recorder cleanup", err);
+          console.warn("audio cleanup", err);
         }
       };
-      rec.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64 = reader.result.split(",")[1];
-            safeSend(
-              JSON.stringify({
-                type: "Hear",
-                data: { base64: base64, mime: e.data.type },
-              })
-            );
-          };
-          reader.readAsDataURL(e.data);
-        }
+
+      processor.onaudioprocess = (event) => {
+        const input = event.inputBuffer.getChannelData(0);
+        const pcm = floatTo16BitPcm(resample(input, audioContext.sampleRate, targetSampleRate));
+        if (!pcm.byteLength) return;
+        safeSend(
+          JSON.stringify({
+            type: "Hear",
+            data: {
+              base64: arrayBufferToBase64(pcm.buffer),
+              mime: "audio/pcm;format=s16le;rate=16000",
+              sample_rate: targetSampleRate,
+              channels: 1,
+            },
+          })
+        );
       };
-      rec.start(1000);
+
+      source.connect(processor);
+      processor.connect(audioContext.destination);
     } catch (e) {
       console.error("audio", e);
     }
+  }
+
+  function resample(input, fromRate, toRate) {
+    if (fromRate === toRate) return input;
+    const ratio = fromRate / toRate;
+    const length = Math.floor(input.length / ratio);
+    const output = new Float32Array(length);
+    for (let i = 0; i < length; i += 1) {
+      const pos = i * ratio;
+      const before = Math.floor(pos);
+      const after = Math.min(before + 1, input.length - 1);
+      const weight = pos - before;
+      output[i] = input[before] * (1 - weight) + input[after] * weight;
+    }
+    return output;
+  }
+
+  function floatTo16BitPcm(input) {
+    const output = new Int16Array(input.length);
+    for (let i = 0; i < input.length; i += 1) {
+      const s = Math.max(-1, Math.min(1, input[i]));
+      output[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    return output;
+  }
+
+  function arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.byteLength; i += 1) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
   }
 
   function setupSpeechRecognition() {

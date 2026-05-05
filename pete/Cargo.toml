@@ -31,10 +31,14 @@ mime_guess = "2"
 dotenvy = "0.15"
 rand = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+hound = { version = "3", optional = true }
+num_cpus = { version = "1", optional = true }
+whisper-rs = { version = "0.16", optional = true }
 
 [features]
-default = ["tts", "all-sensors"]
+default = ["tts", "asr", "all-sensors"]
 tts = []
+asr = ["dep:hound", "dep:num_cpus", "dep:whisper-rs"]
 e2e = []
 eye = []
 face = []

@@ -5,6 +5,7 @@ Cargo.lock
 /qdrant_data
 /tts
 /ollama
+/models
 .env
 debug.log
 node_modules/

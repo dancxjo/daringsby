@@ -10,11 +10,15 @@ use pete::FaceSensor;
 #[cfg(feature = "geo")]
 use pete::GeoSensor;
 use pete::HeartbeatSensor;
+#[cfg(any(not(feature = "eye"), not(feature = "geo")))]
+use pete::NoopSensor;
 use pete::{Body, LoggingMotor, NoopEar, NoopMouth, app, init_logging, listen_user_input};
 // helper for building Ollama providers
 use pete::default_mouth;
 use pete::ollama_provider_from_args;
-use psyche::{Ear, GeoLoc, ImageData, Mouth, Sensation, Sensor, TrimMouth};
+#[cfg(all(feature = "eye", feature = "face"))]
+use psyche::Sensation;
+use psyche::{Ear, GeoLoc, ImageData, Mouth, Sensor, TrimMouth};
 use std::{
     net::SocketAddr,
     sync::{
@@ -22,6 +26,7 @@ use std::{
         atomic::{AtomicBool, AtomicUsize},
     },
 };
+#[cfg(feature = "eye")]
 use tokio::sync::mpsc;
 use tracing::info;
 
@@ -284,11 +289,15 @@ async fn main() -> anyhow::Result<()> {
     });
     let system_prompt = psyche.described_system_prompt();
     psyche.set_system_prompt(system_prompt.clone());
+    #[cfg(feature = "asr")]
+    let asr = pete::AsrService::from_env()?.map(Arc::new);
     tokio::spawn(async move {
         psyche.run().await;
     });
 
     let state = Body {
+        #[cfg(feature = "asr")]
+        asr,
         bus: bus.clone(),
         ear: ear.clone(),
         eye: eye.clone(),

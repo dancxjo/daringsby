@@ -1,19 +1,30 @@
+#[cfg(not(feature = "tts"))]
+use crate::ChannelMouth;
+use crate::EventBus;
+#[cfg(feature = "tts")]
 use async_trait::async_trait;
+#[cfg(feature = "tts")]
 use futures::StreamExt;
+#[cfg(feature = "tts")]
 use lingproc::segment_text_into_sentences;
-use psyche::{Event, PlainMouth, traits::Mouth};
+use psyche::traits::Mouth;
 #[cfg(feature = "tts")]
 use psyche::traits::{Tts, TtsStream};
-use crate::EventBus;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+#[cfg(feature = "tts")]
+use psyche::{Event, PlainMouth};
+#[cfg(feature = "tts")]
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, atomic::AtomicBool};
+#[cfg(feature = "tts")]
 use tokio::sync::broadcast;
+#[cfg(feature = "tts")]
 use tracing::{error, info};
 
+#[cfg(feature = "tts")]
 use anyhow::Result;
+#[cfg(feature = "tts")]
 use base64::{Engine as _, engine::general_purpose};
+#[cfg(feature = "tts")]
 use reqwest::{Client, Url};
 
 /// Client for a Coqui TTS server.
@@ -171,11 +182,8 @@ pub fn default_mouth(
     #[cfg(feature = "tts")]
     {
         let tts = Arc::new(CoquiTts::new(tts_url, speaker_id, language_id)) as Arc<dyn Tts>;
-        let mouth = Arc::new(TtsMouth::new(
-            bus.event_sender(),
-            speaking.clone(),
-            tts,
-        )) as Arc<dyn Mouth>;
+        let mouth =
+            Arc::new(TtsMouth::new(bus.event_sender(), speaking.clone(), tts)) as Arc<dyn Mouth>;
         return Arc::new(PlainMouth::new(mouth)) as Arc<dyn Mouth>;
     }
     #[cfg(not(feature = "tts"))]

@@ -8,6 +8,10 @@ use axum::{
     response::{Html, IntoResponse},
     routing::{get, get_service},
 };
+#[cfg(feature = "asr")]
+use base64::Engine;
+#[cfg(feature = "asr")]
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shared::{ConversationEntry as ConvEntry, WsPayload};
@@ -17,6 +21,8 @@ use std::sync::{
 };
 use tokio::sync::{broadcast, mpsc};
 use tower_http::services::ServeDir;
+#[cfg(feature = "asr")]
+use tracing::warn;
 use tracing::{debug, error, info};
 
 use crate::EventBus;
@@ -42,6 +48,8 @@ use psyche::{Ear, Event, GeoLoc, ImageData, Sensor};
 /// sensation and interaction.
 #[derive(Clone)]
 pub struct Body {
+    #[cfg(feature = "asr")]
+    pub asr: Option<Arc<crate::AsrService>>,
     pub bus: Arc<EventBus>,
     pub ear: Arc<dyn Ear>,
     pub eye: Arc<dyn Sensor<ImageData>>,
@@ -80,6 +88,26 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
     state.connections.fetch_add(1, Ordering::SeqCst);
     let mut events = state.bus.subscribe_events();
     let mut wits = state.bus.subscribe_wits();
+    let (asr_text_tx, mut asr_text_rx) = mpsc::channel::<String>(64);
+    let mut asr_open = false;
+    #[cfg(feature = "asr")]
+    let asr_pcm_tx = if let Some(asr) = state.asr.clone() {
+        let (pcm_tx, mut transcript_rx) = asr.spawn_connection();
+        let text_tx = asr_text_tx.clone();
+        asr_open = true;
+        tokio::spawn(async move {
+            while let Some(transcript) = transcript_rx.recv().await {
+                let text = transcript.text.trim().to_string();
+                if !text.is_empty() && text_tx.send(text).await.is_err() {
+                    break;
+                }
+            }
+        });
+        Some(pcm_tx)
+    } else {
+        None
+    };
+    drop(asr_text_tx);
     let prompt = state.system_prompt.lock().await.clone();
     let _ = socket
         .send(WsMessage::Text(
@@ -142,6 +170,26 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
                 }
             }
+            , transcript = asr_text_rx.recv(), if asr_open => {
+                match transcript {
+                    Some(text) => {
+                        info!(%text, "asr finalized transcript");
+                        let _ = state.bus.user_input_sender().send(text.clone());
+                        let entry = ConvEntry {
+                            role: "user".into(),
+                            content: text,
+                            timestamp: Utc::now().to_rfc3339(),
+                        };
+                        let msg = serde_json::to_string(&WsResponse::ConversationEntry(entry)).unwrap();
+                        if socket.send(WsMessage::Text(msg.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    None => {
+                        asr_open = false;
+                    }
+                }
+            }
             , wit = wits.recv() => {
                 if let Ok(report) = wit {
                     let msg = serde_json::to_string(&WsResponse::Think(report)).unwrap();
@@ -182,10 +230,13 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                                     }
                                 }
                                 WsRequest::Hear { data, .. } => {
+                                    #[cfg(feature = "asr")]
+                                    handle_hear_frame(&data, &asr_pcm_tx).await;
+                                    #[cfg(not(feature = "asr"))]
                                     info!(
                                         mime = %data.mime,
                                         bytes = data.base64.len(),
-                                        "audio fragment received; waiting for browser transcript"
+                                        "audio fragment received; server-side ASR disabled"
                                     );
                                 }
                                 WsRequest::Geolocate { data, .. } => {
@@ -207,6 +258,47 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
     }
     state.connections.fetch_sub(1, Ordering::SeqCst);
     info!("websocket disconnected");
+}
+
+#[cfg(feature = "asr")]
+async fn handle_hear_frame(data: &shared::AudioData, asr_pcm_tx: &Option<mpsc::Sender<Vec<u8>>>) {
+    let Some(tx) = asr_pcm_tx else {
+        info!(
+            mime = %data.mime,
+            bytes = data.base64.len(),
+            "audio fragment received; Whisper model not configured"
+        );
+        return;
+    };
+    if !is_pcm_mime(&data.mime) {
+        info!(
+            mime = %data.mime,
+            bytes = data.base64.len(),
+            "audio fragment ignored; expected 16-bit mono PCM"
+        );
+        return;
+    }
+    if let Some(channels) = data.channels {
+        if channels != 1 {
+            warn!(channels, "ASR expects mono PCM; forwarding chunk anyway");
+        }
+    }
+    let bytes = match BASE64_STANDARD.decode(data.base64.trim().as_bytes()) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            warn!(%error, "failed to decode ASR pcm payload");
+            return;
+        }
+    };
+    if !bytes.is_empty() && tx.send(bytes).await.is_err() {
+        warn!("ASR processor is closed");
+    }
+}
+
+#[cfg(feature = "asr")]
+fn is_pcm_mime(mime: &str) -> bool {
+    let lower = mime.to_ascii_lowercase();
+    lower.starts_with("audio/pcm") || lower.starts_with("audio/l16") || lower.contains("format=s16")
 }
 
 async fn handle_log_socket(mut socket: WebSocket, state: Body) {

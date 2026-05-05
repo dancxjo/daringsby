@@ -43,6 +43,10 @@ mod simulator;
 mod tts;
 mod web;
 
+#[cfg(feature = "asr")]
+mod asr;
+#[cfg(feature = "asr")]
+pub use asr::{AsrService, AsrTranscript, SegmentMessage, WordTiming};
 #[cfg(feature = "ear")]
 pub use ear::ChannelEar;
 pub use ear::NoopEar;

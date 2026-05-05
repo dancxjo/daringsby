@@ -67,27 +67,49 @@ psyche.run().await;
 
 ## 🚀 Running the System
 
-To run Pete with all services wired:
+The easiest way to work with Pete is through [`just`](https://github.com/casey/just).
+The repo `justfile` loads `.env` automatically before running commands.
 
 ```sh
-cargo run -p pete -- \
-  --chatter-host http://localhost:11434 --chatter-model gemma3 \
-  --wits-host http://localhost:11434 --wits-model gemma3 \
-  --embeddings-host http://localhost:11434 --embeddings-model gemma3 \
-  --qdrant-url http://localhost:6333 \
-  --neo4j-uri bolt://localhost:7687 \
-  --neo4j-user neo4j \
-  --neo4j-pass password
+just run
 ```
 
-To enable audio output with Coqui TTS:
+For debug logs:
 
 ```sh
-cargo run -p pete --features tts -- \
-  --tts-url http://localhost:5002/api/tts \
-  --tts-speaker-id p123 \
-  --tts-language-id en
+just debug
 ```
+
+Extra CLI args are forwarded to the `pete` binary:
+
+```sh
+just run --addr 127.0.0.1:3000
+```
+
+Without `just`, use:
+
+```sh
+cargo run -p pete --bin pete
+```
+
+### ASR Model
+
+Server-side ASR is enabled by default when a Whisper model is available. Fetch
+the default `base.en` model with:
+
+```sh
+just fetch-asr-model
+```
+
+That writes `models/whisper/ggml-base.en.bin`, which Pete discovers
+automatically. To fetch a different model:
+
+```sh
+just fetch-asr-model tiny.en
+just fetch-asr-model small.en
+```
+
+You can also set `WHISPER_MODEL` in `.env` to point at a custom model path.
 
 ---
 
@@ -116,24 +138,39 @@ Events from Pete include speech, emotion changes, wit reports and conversation u
 Run tests:
 
 ```sh
-cargo test
+just test
+```
+
+Rust only:
+
+```sh
+just test-rust
+```
+
+Frontend only:
+
+```sh
+just test-frontend
 ```
 
 Simulate input:
 
 ```sh
-cargo run -p pete --bin simulate -- text "hello"
-cargo run -p pete --bin simulate -- image some.png
+just simulate-text "hello"
+just simulate-image some.png
 ```
 
 ---
 
 ## 🔧 Build Notes
 
-* Format: `cargo fmt`
-* Lint: `cargo clippy`
+* List commands: `just`
+* Format: `just fmt`
+* Check formatting: `just fmt-check`
+* Check Rust: `just check`
+* Lint: `just clippy`
 * Logging: `RUST_LOG=debug`
-* Features: `tts`, `geo`, `eye`, `face`, `heartbeat`, `all-sensors`
+* Features: `tts`, `asr`, `geo`, `eye`, `face`, `all-sensors`
 
 ---
 

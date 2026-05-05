@@ -74,6 +74,10 @@ pub enum WsPayload {
 pub struct AudioData {
     pub base64: String,
     pub mime: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sample_rate: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channels: Option<u32>,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

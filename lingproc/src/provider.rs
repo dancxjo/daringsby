@@ -23,7 +23,10 @@ pub struct OllamaProvider {
 
 impl OllamaProvider {
     /// Create a new provider for `model` hosted at one or more `hosts`.
-    pub fn new(hosts: impl IntoIterator<Item = impl AsRef<str>>, model: impl Into<String>) -> Result<Self> {
+    pub fn new(
+        hosts: impl IntoIterator<Item = impl AsRef<str>>,
+        model: impl Into<String>,
+    ) -> Result<Self> {
         let model = model.into();
         let mut clients = Vec::new();
         for host in hosts {
@@ -139,7 +142,12 @@ impl Vectorizer for OllamaProvider {
             attempts += 1;
             let req =
                 GenerateEmbeddingsRequest::new(self.model.clone(), EmbeddingsInput::from(text));
-            match timeout(Duration::from_secs(5), self.client().generate_embeddings(req)).await {
+            match timeout(
+                Duration::from_secs(5),
+                self.client().generate_embeddings(req),
+            )
+            .await
+            {
                 Err(_) => {
                     warn!("ollama vectorize timed out");
                     return Err(anyhow!("timeout"));
@@ -148,7 +156,7 @@ impl Vectorizer for OllamaProvider {
                     debug!(
                         embedding_len = res.embeddings.len(),
                         "ollama vectorize response"
-                     );
+                    );
                     let Some(embedding) = res.embeddings.into_iter().next() else {
                         warn!("ollama returned no embeddings");
                         return Err(anyhow!("empty embedding"));

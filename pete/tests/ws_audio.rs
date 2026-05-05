@@ -26,6 +26,7 @@ async fn websocket_forwards_audio() {
     let bus = Arc::new(bus);
     let debug = psyche.debug_handle();
     let state = Body {
+        asr: None,
         bus: bus.clone(),
         ear,
         eye,

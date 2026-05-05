@@ -24,6 +24,7 @@ async fn returns_log_json() {
     psyche.add_sense(geo.description());
     let debug = psyche.debug_handle();
     let state = Body {
+        asr: None,
         bus: bus.clone(),
         ear,
         eye,
@@ -63,6 +64,7 @@ async fn debug_mode_includes_timestamps() {
     psyche.add_sense(geo.description());
     let debug = psyche.debug_handle();
     let state = Body {
+        asr: None,
         bus: bus.clone(),
         ear,
         eye,

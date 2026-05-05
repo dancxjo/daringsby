@@ -6,6 +6,8 @@ export interface GeoLoc {
 export interface AudioData {
   base64: string;
   mime: string;
+  sample_rate?: number;
+  channels?: number;
 }
 
 export interface WitReport {

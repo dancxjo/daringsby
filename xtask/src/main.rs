@@ -1,0 +1,105 @@
+use anyhow::{Context, Result, bail};
+use std::env;
+use std::fs::{self, File};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+
+const DEFAULT_MODEL: &str = "base.en";
+const DEFAULT_MODEL_URL: &str =
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin";
+const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-base.en.bin";
+
+fn main() -> Result<()> {
+    let mut args = env::args().skip(1);
+    match args.next().as_deref() {
+        Some("fetch-asr-model") => fetch_asr_model(args.next())?,
+        Some("help") | Some("--help") | Some("-h") | None => print_help(),
+        Some(other) => bail!("unknown xtask command: {other}"),
+    }
+    Ok(())
+}
+
+fn print_help() {
+    println!("xtask commands:");
+    println!("  fetch-asr-model [tiny.en|base.en|small.en|URL]");
+}
+
+fn fetch_asr_model(choice: Option<String>) -> Result<()> {
+    let choice = choice.unwrap_or_else(|| DEFAULT_MODEL.to_string());
+    let (url, path) = model_choice(&choice);
+    if path.exists() {
+        println!("ASR model already exists: {}", path.display());
+        println!("WHISPER_MODEL={}", path.display());
+        return Ok(());
+    }
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+
+    let tmp = path.with_extension("bin.part");
+    println!("Downloading {url}");
+    println!("Writing {}", path.display());
+
+    let mut response = reqwest::blocking::get(&url)
+        .with_context(|| format!("failed to request {url}"))?
+        .error_for_status()
+        .with_context(|| format!("download failed for {url}"))?;
+    let total = response.content_length();
+    let mut out =
+        File::create(&tmp).with_context(|| format!("failed to create {}", tmp.display()))?;
+    let mut buf = [0u8; 64 * 1024];
+    let mut written = 0u64;
+
+    loop {
+        let n = response.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        out.write_all(&buf[..n])?;
+        written += n as u64;
+        if let Some(total) = total {
+            print!("\r{:.1}%", written as f64 * 100.0 / total as f64);
+        } else {
+            print!("\r{} bytes", written);
+        }
+        let _ = std::io::stdout().flush();
+    }
+    println!();
+    drop(out);
+
+    fs::rename(&tmp, &path)
+        .with_context(|| format!("failed to move {} to {}", tmp.display(), path.display()))?;
+    println!("Fetched ASR model: {}", path.display());
+    println!("WHISPER_MODEL={}", path.display());
+    Ok(())
+}
+
+fn model_choice(choice: &str) -> (String, PathBuf) {
+    if choice.starts_with("http://") || choice.starts_with("https://") {
+        let filename = choice.rsplit('/').next().unwrap_or("ggml-base.en.bin");
+        return (
+            choice.to_string(),
+            Path::new("models").join("whisper").join(filename),
+        );
+    }
+
+    let file = match choice {
+        "tiny.en" => "ggml-tiny.en.bin",
+        "base.en" => "ggml-base.en.bin",
+        "small.en" => "ggml-small.en.bin",
+        other => other,
+    };
+    let url = if choice == "base.en" {
+        DEFAULT_MODEL_URL.to_string()
+    } else {
+        format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{file}")
+    };
+    let path = if choice == "base.en" {
+        PathBuf::from(DEFAULT_MODEL_PATH)
+    } else {
+        Path::new("models").join("whisper").join(file)
+    };
+    (url, path)
+}
