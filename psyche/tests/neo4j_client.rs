@@ -310,6 +310,14 @@ async fn neo4j_client_loads_graph_snapshot() {
                                     "base64": "too-large"
                                 }
                             }, {
+                                "id": "face:1",
+                                "labels": ["GraphNode", "Face"],
+                                "properties": {
+                                    "id": "face:1",
+                                    "crop_mime": "image/jpeg",
+                                    "crop_base64": "too-large-face"
+                                }
+                            }, {
                                 "id": "qdrant:images:point-1",
                                 "labels": ["GraphNode", "Vector"],
                                 "properties": {
@@ -339,11 +347,14 @@ async fn neo4j_client_loads_graph_snapshot() {
         .await
         .unwrap();
 
-    assert_eq!(snapshot.nodes.len(), 2);
+    assert_eq!(snapshot.nodes.len(), 3);
     assert_eq!(snapshot.nodes[0].id, "image:1");
     assert_eq!(snapshot.nodes[0].labels, vec!["GraphNode", "Image"]);
     assert_eq!(snapshot.nodes[0].properties["mime"], "image/jpeg");
     assert!(snapshot.nodes[0].properties.get("base64").is_none());
+    assert_eq!(snapshot.nodes[1].id, "face:1");
+    assert_eq!(snapshot.nodes[1].properties["crop_mime"], "image/jpeg");
+    assert!(snapshot.nodes[1].properties.get("crop_base64").is_none());
     assert_eq!(snapshot.relationships.len(), 1);
     assert_eq!(snapshot.relationships[0].source, "image:1");
     assert_eq!(snapshot.relationships[0].target, "qdrant:images:point-1");

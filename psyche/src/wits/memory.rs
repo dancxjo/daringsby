@@ -1157,7 +1157,7 @@ fn sanitize_graph_properties(value: Value) -> Value {
 }
 
 fn should_omit_graph_snapshot_property(key: &str) -> bool {
-    matches!(key, "base64" | "embedding" | "raw_json")
+    matches!(key, "base64" | "crop_base64" | "embedding" | "raw_json")
 }
 
 fn sanitize_graph_detail_properties(value: Value) -> Value {
