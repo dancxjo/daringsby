@@ -1,7 +1,7 @@
 use crate::sensors::face::FaceInfo;
 use crate::traits::observer::SensationObserver;
 use crate::traits::wit::Wit;
-use crate::{Impression, Sensation, Stimulus};
+use crate::{Impression, Sensation, Stimulus, image_captured_at};
 use async_trait::async_trait;
 use std::sync::{
     Mutex,
@@ -12,7 +12,7 @@ use tracing::info;
 
 /// Wit that notes when familiar or new faces appear.
 pub struct FaceMemoryWit {
-    buffer: Mutex<Vec<FaceInfo>>,
+    buffer: Mutex<Vec<Stimulus<FaceInfo>>>,
     last_face: Mutex<Option<Vec<f32>>>,
     ticks_without_face: AtomicUsize,
     tx: Option<broadcast::Sender<crate::WitReport>>,
@@ -57,7 +57,11 @@ impl Wit for FaceMemoryWit {
     type Output = FaceInfo;
 
     async fn observe(&self, info: Self::Input) {
-        self.buffer.lock().unwrap().push(info);
+        let timestamp = image_captured_at(&info.crop).unwrap_or_else(chrono::Utc::now);
+        self.buffer.lock().unwrap().push(Stimulus {
+            what: info,
+            timestamp,
+        });
     }
 
     async fn tick(&self) -> Vec<Impression<Self::Output>> {
@@ -81,7 +85,8 @@ impl Wit for FaceMemoryWit {
         };
 
         let mut out = Vec::new();
-        for info in items {
+        for item in items {
+            let info = item.what;
             let summary;
             {
                 let mut last = self.last_face.lock().unwrap();
@@ -107,7 +112,10 @@ impl Wit for FaceMemoryWit {
                 }
             }
             out.push(Impression::new(
-                vec![Stimulus::new(info.clone())],
+                vec![Stimulus {
+                    what: info.clone(),
+                    timestamp: item.timestamp,
+                }],
                 summary,
                 None::<String>,
             ));
@@ -124,9 +132,16 @@ impl Wit for FaceMemoryWit {
 impl SensationObserver for FaceMemoryWit {
     async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
         if let Some(s) = payload.downcast_ref::<Sensation>() {
-            if let Sensation::Of(any) = s {
-                if let Some(info) = any.downcast_ref::<FaceInfo>() {
-                    self.observe(info.clone()).await;
+            if let Sensation::Of {
+                payload,
+                occurred_at,
+            } = s
+            {
+                if let Some(info) = payload.downcast_ref::<FaceInfo>() {
+                    self.buffer.lock().unwrap().push(Stimulus {
+                        what: info.clone(),
+                        timestamp: *occurred_at,
+                    });
                 }
             }
         }

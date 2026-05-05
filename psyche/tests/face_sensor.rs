@@ -100,12 +100,13 @@ async fn emits_face_info() {
         .sense(ImageData {
             mime: "image/png".into(),
             base64: "AA==".into(),
+            captured_at: None,
         })
         .await;
     let sensed = sub.next().await.unwrap();
     if let Some(s) = sensed.downcast_ref::<Sensation>() {
-        if let Sensation::Of(any) = s {
-            let info = any.downcast_ref::<FaceInfo>().unwrap();
+        if let Sensation::Of { payload, .. } = s {
+            let info = payload.downcast_ref::<FaceInfo>().unwrap();
             assert_eq!(info.crop.mime, "image/png");
             assert_eq!(info.embedding, vec![0.0]);
         } else {
@@ -140,6 +141,7 @@ async fn skips_identical_face() {
     let img = ImageData {
         mime: "image/png".into(),
         base64: "AA==".into(),
+        captured_at: None,
     };
     sensor.sense(img.clone()).await;
     assert!(sub.next().await.is_some());
@@ -161,6 +163,7 @@ async fn stores_distinct_faces() {
     let img = ImageData {
         mime: "image/png".into(),
         base64: "AA==".into(),
+        captured_at: None,
     };
     sensor.sense(img.clone()).await;
     assert!(sub.next().await.is_some());
@@ -206,12 +209,14 @@ async fn logs_skipped_detection() {
         .sense(ImageData {
             mime: "image/png".into(),
             base64: "AA==".into(),
+            captured_at: None,
         })
         .await;
     sensor
         .sense(ImageData {
             mime: "image/png".into(),
             base64: "AA==".into(),
+            captured_at: None,
         })
         .await;
 

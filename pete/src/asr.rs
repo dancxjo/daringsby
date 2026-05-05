@@ -8,6 +8,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use chrono::{DateTime, Utc};
 use hound::{SampleFormat, WavSpec, WavWriter};
 use serde::Serialize;
 use tokio::sync::mpsc;
@@ -48,10 +49,17 @@ pub struct SegmentMessage {
 #[derive(Clone, Debug, Serialize)]
 pub struct AsrTranscript {
     pub text: String,
+    pub occurred_at: DateTime<Utc>,
     pub start_ms: u32,
     pub end_ms: u32,
     pub audio_base64: String,
     pub segments: Vec<SegmentMessage>,
+}
+
+#[derive(Clone, Debug)]
+pub struct AudioChunk {
+    pub bytes: Vec<u8>,
+    pub captured_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]
@@ -117,7 +125,7 @@ impl AsrService {
 
     pub fn spawn_connection(
         self: Arc<Self>,
-    ) -> (mpsc::Sender<Vec<u8>>, mpsc::Receiver<AsrTranscript>) {
+    ) -> (mpsc::Sender<AudioChunk>, mpsc::Receiver<AsrTranscript>) {
         let (pcm_tx, pcm_rx) = mpsc::channel(self.pcm_queue_capacity);
         let (transcript_tx, transcript_rx) = mpsc::channel(64);
         tokio::spawn(async move {
@@ -253,10 +261,11 @@ where
 
 async fn run_connection(
     service: Arc<AsrService>,
-    mut pcm_rx: mpsc::Receiver<Vec<u8>>,
+    mut pcm_rx: mpsc::Receiver<AudioChunk>,
     out_tx: mpsc::Sender<AsrTranscript>,
 ) -> Result<()> {
     let mut buffer = VecDeque::<f32>::new();
+    let mut buffer_started_at = None::<DateTime<Utc>>;
     let mut total_consumed_samples = 0usize;
     let sample_rate = service.sample_rate as f32;
     let mut silence_tracker = SilenceTracker::new(
@@ -274,8 +283,11 @@ async fn run_connection(
         tokio::select! {
             chunk = pcm_rx.recv(), if pcm_open => {
                 match chunk {
-                    Some(bytes) => {
-                        let (samples, rms) = extend_buffer(&mut buffer, &bytes);
+                    Some(chunk) => {
+                        if buffer.is_empty() {
+                            buffer_started_at = Some(chunk.captured_at);
+                        }
+                        let (samples, rms) = extend_buffer(&mut buffer, &chunk.bytes);
                         silence_tracker.ingest(rms, samples);
                     }
                     None => pcm_open = false,
@@ -299,6 +311,7 @@ async fn run_connection(
 
                 let audio = buffer.iter().copied().collect::<Vec<_>>();
                 let utterance_start_samples = total_consumed_samples;
+                let utterance_started_at = buffer_started_at.unwrap_or_else(Utc::now);
                 let submitted_samples = buffer.len();
                 let (trimmed_audio, leading_trim) = trim_silence(
                     &audio,
@@ -308,6 +321,7 @@ async fn run_connection(
                 );
 
                 buffer.clear();
+                buffer_started_at = None;
                 total_consumed_samples += submitted_samples;
                 let dropped_pending_samples = drain_pending_pcm(&mut pcm_rx);
                 total_consumed_samples += dropped_pending_samples;
@@ -331,7 +345,12 @@ async fn run_connection(
 
                 match service.transcribe(trimmed_audio).await {
                     Ok(segments) => {
-                        emit_transcript(segments, global_offset, wav_bytes, &out_tx).await;
+                        let leading_trim_ms =
+                            ((leading_trim as f32 / sample_rate) * 1000.0) as i64;
+                        let occurred_at =
+                            utterance_started_at + chrono::Duration::milliseconds(leading_trim_ms);
+                        emit_transcript(segments, occurred_at, global_offset, wav_bytes, &out_tx)
+                            .await;
                     }
                     Err(err) => {
                         error!(error = %err, "transcription error");
@@ -402,10 +421,10 @@ fn extend_buffer(buffer: &mut VecDeque<f32>, bytes: &[u8]) -> (usize, f32) {
     (count, rms)
 }
 
-fn drain_pending_pcm(pcm_rx: &mut mpsc::Receiver<Vec<u8>>) -> usize {
+fn drain_pending_pcm(pcm_rx: &mut mpsc::Receiver<AudioChunk>) -> usize {
     let mut samples = 0usize;
-    while let Ok(bytes) = pcm_rx.try_recv() {
-        samples += bytes.len() / 2;
+    while let Ok(chunk) = pcm_rx.try_recv() {
+        samples += chunk.bytes.len() / 2;
     }
     samples
 }
@@ -486,6 +505,7 @@ fn segment_to_message(segment: &SegmentInternal, offset_seconds: f32) -> Segment
 
 async fn emit_transcript(
     segments: Vec<SegmentInternal>,
+    occurred_at: DateTime<Utc>,
     global_offset: f32,
     wav_bytes: Vec<u8>,
     out_tx: &mpsc::Sender<AsrTranscript>,
@@ -512,6 +532,7 @@ async fn emit_transcript(
 
     let transcript = AsrTranscript {
         text,
+        occurred_at: occurred_at + chrono::Duration::milliseconds((first.start_s * 1000.0) as i64),
         start_ms: ((global_offset + first.start_s) * 1000.0) as u32,
         end_ms: ((global_offset + last.end_s) * 1000.0) as u32,
         audio_base64: BASE64_STANDARD.encode(&wav_bytes),
@@ -545,9 +566,10 @@ fn encode_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        SegmentInternal, SilenceTracker, WordTiming, drain_pending_pcm, emit_transcript,
-        trim_silence,
+        AudioChunk, SegmentInternal, SilenceTracker, WordTiming, drain_pending_pcm,
+        emit_transcript, trim_silence,
     };
+    use chrono::Utc;
     use std::time::Duration;
     use tokio::sync::mpsc;
 
@@ -587,7 +609,14 @@ mod tests {
     async fn emit_transcript_skips_empty_segments() {
         let (tx, mut rx) = mpsc::channel(1);
 
-        emit_transcript(vec![make_segment(" ", 0.0, 1.0)], 0.0, Vec::new(), &tx).await;
+        emit_transcript(
+            vec![make_segment(" ", 0.0, 1.0)],
+            Utc::now(),
+            0.0,
+            Vec::new(),
+            &tx,
+        )
+        .await;
 
         assert!(rx.try_recv().is_err());
     }
@@ -601,6 +630,7 @@ mod tests {
                 make_segment("hello", 0.0, 0.5),
                 make_segment("there", 0.5, 1.0),
             ],
+            Utc::now(),
             2.0,
             Vec::new(),
             &tx,
@@ -616,8 +646,18 @@ mod tests {
     #[tokio::test]
     async fn drain_pending_pcm_discards_queued_audio() {
         let (tx, mut rx) = mpsc::channel(4);
-        tx.send(vec![0, 0, 1, 0]).await.unwrap();
-        tx.send(vec![2, 0, 3, 0, 4, 0]).await.unwrap();
+        tx.send(AudioChunk {
+            bytes: vec![0, 0, 1, 0],
+            captured_at: Utc::now(),
+        })
+        .await
+        .unwrap();
+        tx.send(AudioChunk {
+            bytes: vec![2, 0, 3, 0, 4, 0],
+            captured_at: Utc::now(),
+        })
+        .await
+        .unwrap();
 
         let drained = drain_pending_pcm(&mut rx);
 

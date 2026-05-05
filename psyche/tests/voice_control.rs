@@ -99,10 +99,7 @@ async fn no_speech_without_command() {
     psyche.set_fallback_turn_enabled(false);
     let input = psyche.input_sender();
     let handle = tokio::spawn(async move { psyche.run().await });
-    input
-        .send(Sensation::HeardUserVoice("hi".into()))
-        .await
-        .unwrap();
+    input.send(Sensation::heard_user_voice("hi")).await.unwrap();
     tokio::time::sleep(Duration::from_millis(50)).await;
     handle.abort();
     let _ = handle.await;
@@ -154,10 +151,7 @@ async fn speaks_with_fallback_when_no_wit() {
     // fallback enabled by default
     let input = psyche.input_sender();
     let handle = tokio::spawn(async move { psyche.run().await });
-    input
-        .send(Sensation::HeardUserVoice("hi".into()))
-        .await
-        .unwrap();
+    input.send(Sensation::heard_user_voice("hi")).await.unwrap();
     tokio::time::sleep(Duration::from_millis(50)).await;
     handle.abort();
     let _ = handle.await;

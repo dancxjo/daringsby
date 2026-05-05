@@ -55,7 +55,10 @@ impl Quick {
                 if let Ok(s) = Arc::downcast::<Sensation>(payload) {
                     if let Some(description) = Quick::describe(&s) {
                         let mut buf = buf_clone.lock().unwrap();
-                        buf.push_back(Stimulus::new(description));
+                        buf.push_back(Stimulus {
+                            what: description,
+                            timestamp: s.occurred_at(),
+                        });
                     }
                 }
             }
@@ -72,22 +75,22 @@ impl Quick {
     /// Describe a sensation for the summarization prompt.
     fn describe(s: &Sensation) -> Option<String> {
         match s {
-            Sensation::HeardOwnVoice(t) => Some(format!("I said \"{}\"", t)),
-            Sensation::HeardUserVoice(t) => Some(format!("User said \"{}\"", t)),
-            Sensation::Of(any) => {
-                if let Some(_f) = any.downcast_ref::<crate::sensors::face::FaceInfo>() {
+            Sensation::HeardOwnVoice { text, .. } => Some(format!("I said \"{}\"", text)),
+            Sensation::HeardUserVoice { text, .. } => Some(format!("User said \"{}\"", text)),
+            Sensation::Of { payload, .. } => {
+                if let Some(_f) = payload.downcast_ref::<crate::sensors::face::FaceInfo>() {
                     Some("I saw a face".to_string())
-                } else if any.downcast_ref::<crate::ImageData>().is_some() {
+                } else if payload.downcast_ref::<crate::ImageData>().is_some() {
                     None
-                } else if let Some(loc) = any.downcast_ref::<crate::GeoLoc>() {
+                } else if let Some(loc) = payload.downcast_ref::<crate::GeoLoc>() {
                     Some(format!(
                         "I detected location ({:.1}, {:.1})",
                         loc.latitude, loc.longitude
                     ))
-                } else if let Some(beat) = any.downcast_ref::<crate::Heartbeat>() {
+                } else if let Some(beat) = payload.downcast_ref::<crate::Heartbeat>() {
                     Some(format!("I felt a heartbeat at {}", beat.timestamp))
                 } else {
-                    debug!("unrecognized sensation type: {:?}", any.type_id());
+                    debug!("unrecognized sensation type: {:?}", payload.type_id());
                     Some("I sensed something happened".to_string())
                 }
             }
@@ -113,7 +116,10 @@ impl crate::traits::observer::SensationObserver for Quick {
         if let Some(s) = payload.downcast_ref::<Sensation>() {
             if let Some(description) = Self::describe(s) {
                 let mut buf = self.buffer.lock().unwrap();
-                buf.push_back(Stimulus::new(description));
+                buf.push_back(Stimulus {
+                    what: description,
+                    timestamp: s.occurred_at(),
+                });
                 Self::trim_old(&mut buf, self.window);
             }
         }
@@ -128,7 +134,10 @@ impl crate::traits::wit::Wit for Quick {
     async fn observe(&self, input: Self::Input) {
         if let Some(description) = Self::describe(&input) {
             let mut buf = self.buffer.lock().unwrap();
-            buf.push_back(Stimulus::new(description));
+            buf.push_back(Stimulus {
+                what: description,
+                timestamp: input.occurred_at(),
+            });
             Self::trim_old(&mut buf, self.window);
         }
     }

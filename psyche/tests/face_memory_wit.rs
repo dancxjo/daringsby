@@ -8,6 +8,7 @@ fn dummy_info(val: f32) -> FaceInfo {
         crop: psyche::ImageData {
             mime: "image/png".into(),
             base64: "".into(),
+            captured_at: None,
         },
         embedding: vec![val],
     }

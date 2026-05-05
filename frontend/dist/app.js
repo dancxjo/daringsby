@@ -201,7 +201,7 @@
       player.removeEventListener("ended", done);
       player.removeEventListener("error", done);
       if (next.text) {
-        safeSend(JSON.stringify({ type: "Echo", text: next.text }));
+        safeSend(JSON.stringify({ type: "Echo", text: next.text, at: new Date().toISOString() }));
       }
       playNext();
     };
@@ -250,7 +250,7 @@
     const input = document.getElementById("text-input");
     const text = input.value.trim();
     if (text) {
-      safeSend(JSON.stringify({ type: "Text", data: { text } }));
+      safeSend(JSON.stringify({ type: "Text", data: { text, at: new Date().toISOString() } }));
       input.value = "";
     }
   });
@@ -264,6 +264,7 @@
             longitude: pos.coords.longitude,
             latitude: pos.coords.latitude,
           },
+          at: new Date(pos.timestamp).toISOString(),
         })
       );
     });
@@ -313,7 +314,7 @@
           thoughtImage.style.display = "none";
           imageThumbnail.style.display = "none";
         }
-        safeSend(JSON.stringify({ type: "See", data }));
+        safeSend(JSON.stringify({ type: "See", data, at: new Date().toISOString() }));
       }, 1000);
     } catch (e) {
       if (e?.name === "NotFoundError") {
@@ -461,7 +462,7 @@
         if (!result.isFinal) continue;
         const transcript = result[0]?.transcript?.trim();
         if (transcript) {
-          safeSend(JSON.stringify({ type: "Text", data: { text: transcript } }));
+          safeSend(JSON.stringify({ type: "Text", data: { text: transcript, at: new Date().toISOString() } }));
         }
       }
     };

@@ -17,7 +17,7 @@ use ts_rs::TS;
 ///
 /// ```
 /// use shared::WsPayload;
-/// let msg = WsPayload::Text { text: "hi".into() };
+/// let msg = WsPayload::Text { text: "hi".into(), at: None };
 /// let json = serde_json::to_string(&msg).unwrap();
 /// assert!(json.contains("\"Text\""));
 /// ```
@@ -33,9 +33,13 @@ pub enum WsPayload {
     Think(WitReport),
     Text {
         text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<String>,
     },
     Echo {
         text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<String>,
     },
     See {
         data: String,

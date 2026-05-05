@@ -20,6 +20,7 @@ async fn captions_image() {
     wit.observe(ImageData {
         mime: "image/png".into(),
         base64: "zzz".into(),
+        captured_at: None,
     })
     .await;
     let out = wit.tick().await;
@@ -35,9 +36,29 @@ async fn tick_does_not_consume_latest_image() {
     wit.observe(ImageData {
         mime: "image/png".into(),
         base64: "zzz".into(),
+        captured_at: None,
     })
     .await;
 
     assert_eq!(wit.tick().await.len(), 1);
     assert!(wit.latest_image_handle().lock().unwrap().is_some());
+}
+
+#[tokio::test]
+async fn caption_stimulus_uses_image_capture_time() {
+    let wit = Arc::new(VisionWit::new(Arc::new(Dummy)));
+    let captured_at = "2026-05-05T12:34:56Z";
+    wit.observe(ImageData {
+        mime: "image/png".into(),
+        base64: "zzz".into(),
+        captured_at: Some(captured_at.into()),
+    })
+    .await;
+
+    let out = wit.tick().await;
+
+    assert_eq!(
+        out[0].stimuli[0].timestamp.to_rfc3339(),
+        "2026-05-05T12:34:56+00:00"
+    );
 }

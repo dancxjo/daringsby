@@ -31,6 +31,7 @@ impl Simulator {
         let img = ImageData {
             mime: mime.to_string(),
             base64: data,
+            captured_at: None,
         };
         self.eye.sense(img).await;
     }

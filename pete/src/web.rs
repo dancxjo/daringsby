@@ -88,7 +88,7 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
     state.connections.fetch_add(1, Ordering::SeqCst);
     let mut events = state.bus.subscribe_events();
     let mut wits = state.bus.subscribe_wits();
-    let (asr_text_tx, mut asr_text_rx) = mpsc::channel::<String>(64);
+    let (asr_text_tx, mut asr_text_rx) = mpsc::channel::<(String, DateTime<Utc>)>(64);
     let mut asr_open = false;
     #[cfg(feature = "asr")]
     let asr_pcm_tx = if let Some(asr) = state.asr.clone() {
@@ -98,7 +98,7 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
         tokio::spawn(async move {
             while let Some(transcript) = transcript_rx.recv().await {
                 let text = transcript.text.trim().to_string();
-                if !text.is_empty() && text_tx.send(text).await.is_err() {
+                if !text.is_empty() && text_tx.send((text, transcript.occurred_at)).await.is_err() {
                     break;
                 }
             }
@@ -172,13 +172,13 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
             }
             , transcript = asr_text_rx.recv(), if asr_open => {
                 match transcript {
-                    Some(text) => {
+                    Some((text, occurred_at)) => {
                         info!(%text, "asr finalized transcript");
-                        state.ear.hear_user_say(&text).await;
+                        state.ear.hear_user_say_at(&text, occurred_at).await;
                         let entry = ConvEntry {
                             role: "user".into(),
                             content: text,
-                            timestamp: Utc::now().to_rfc3339(),
+                            timestamp: occurred_at.to_rfc3339(),
                         };
                         let msg = serde_json::to_string(&WsResponse::ConversationEntry(entry)).unwrap();
                         if socket.send(WsMessage::Text(msg.into())).await.is_err() {
@@ -203,35 +203,37 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                     Some(Ok(WsMessage::Text(text))) => {
                         if let Some(req) = parse_ws_request(&text) {
                             match req {
-                                WsRequest::Text { text: message } => {
+                                WsRequest::Text { text: message, at } => {
+                                    let occurred_at = parse_ws_at(at.as_deref());
                                     debug!("user message: {}", message);
-                                    state.ear.hear_user_say(&message).await;
+                                    state.ear.hear_user_say_at(&message, occurred_at).await;
                                     let entry = ConvEntry {
                                         role: "user".into(),
                                         content: message,
-                                        timestamp: Utc::now().to_rfc3339(),
+                                        timestamp: occurred_at.to_rfc3339(),
                                     };
                                     let msg = serde_json::to_string(&WsResponse::ConversationEntry(entry)).unwrap();
                                     let _ = socket.send(WsMessage::Text(msg.into())).await;
                                 }
-                                WsRequest::Echo { text } => {
+                                WsRequest::Echo { text, at } => {
+                                    let occurred_at = parse_ws_at(at.as_deref());
                                     debug!("played ack: {}", text);
-                                    state.ear.hear_self_say(&text).await;
+                                    state.ear.hear_self_say_at(&text, occurred_at).await;
                                 }
-                                WsRequest::See { data, .. } => {
+                                WsRequest::See { data, at } => {
                                     if let Some((mime, base64)) = parse_data_url(&data) {
                                         if base64.trim().is_empty() {
                                             debug!("blank image ignored");
-                                            state.eye.sense(ImageData { mime, base64: String::new() }).await;
+                                            state.eye.sense(ImageData { mime, base64: String::new(), captured_at: at }).await;
                                         } else {
                                             debug!("image received");
-                                            state.eye.sense(ImageData { mime, base64 }).await;
+                                            state.eye.sense(ImageData { mime, base64, captured_at: at }).await;
                                         }
                                     }
                                 }
-                                WsRequest::Hear { data, .. } => {
+                                WsRequest::Hear { data, at } => {
                                     #[cfg(feature = "asr")]
-                                    handle_hear_frame(&data, &asr_pcm_tx).await;
+                                    handle_hear_frame(&data, at.as_deref(), &asr_pcm_tx).await;
                                     #[cfg(not(feature = "asr"))]
                                     info!(
                                         mime = %data.mime,
@@ -239,8 +241,9 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                                         "audio fragment received; server-side ASR disabled"
                                     );
                                 }
-                                WsRequest::Geolocate { data, .. } => {
+                                WsRequest::Geolocate { mut data, at } => {
                                     debug!("geolocation received");
+                                    data.observed_at = at;
                                     state.geo.sense(data).await;
                                 }
                                 WsRequest::Sense { .. } => {
@@ -266,16 +269,29 @@ fn parse_ws_request(text: &str) -> Option<WsRequest> {
         .or_else(|| parse_flat_ws_request(text))
 }
 
+fn parse_ws_at(at: Option<&str>) -> DateTime<Utc> {
+    at.and_then(psyche::parse_observed_at)
+        .unwrap_or_else(Utc::now)
+}
+
 fn parse_flat_ws_request(text: &str) -> Option<WsRequest> {
     let value: serde_json::Value = serde_json::from_str(text).ok()?;
     match value.get("type")?.as_str()? {
         "Text" => {
             let text = value.get("text")?.as_str()?.to_string();
-            Some(WsRequest::Text { text })
+            let at = value
+                .get("at")
+                .and_then(|at| at.as_str())
+                .map(ToString::to_string);
+            Some(WsRequest::Text { text, at })
         }
         "Echo" => {
             let text = value.get("text")?.as_str()?.to_string();
-            Some(WsRequest::Echo { text })
+            let at = value
+                .get("at")
+                .and_then(|at| at.as_str())
+                .map(ToString::to_string);
+            Some(WsRequest::Echo { text, at })
         }
         "See" => {
             let data = value.get("data")?.as_str()?.to_string();
@@ -309,7 +325,11 @@ fn parse_flat_ws_request(text: &str) -> Option<WsRequest> {
 }
 
 #[cfg(feature = "asr")]
-async fn handle_hear_frame(data: &shared::AudioData, asr_pcm_tx: &Option<mpsc::Sender<Vec<u8>>>) {
+async fn handle_hear_frame(
+    data: &shared::AudioData,
+    at: Option<&str>,
+    asr_pcm_tx: &Option<mpsc::Sender<crate::asr::AudioChunk>>,
+) {
     let Some(tx) = asr_pcm_tx else {
         info!(
             mime = %data.mime,
@@ -341,7 +361,11 @@ async fn handle_hear_frame(data: &shared::AudioData, asr_pcm_tx: &Option<mpsc::S
     if bytes.is_empty() {
         return;
     }
-    match tx.try_send(bytes) {
+    let chunk = crate::asr::AudioChunk {
+        bytes,
+        captured_at: parse_ws_at(at),
+    };
+    match tx.try_send(chunk) {
         Ok(()) => {}
         Err(mpsc::error::TrySendError::Full(_)) => {
             warn!("dropping ASR pcm chunk because processor queue is full");

@@ -11,10 +11,11 @@ async fn vision_wit_receives_images() {
     let tx = psyche.input_sender();
     let handle = tokio::spawn(async move { psyche.run().await });
 
-    tx.send(Sensation::Of(Box::new(ImageData {
+    tx.send(Sensation::of(ImageData {
         mime: "image/png".into(),
         base64: "zzz".into(),
-    })))
+        captured_at: None,
+    }))
     .await
     .unwrap();
 

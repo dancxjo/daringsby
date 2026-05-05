@@ -2,7 +2,7 @@ use crate::ImageData;
 use crate::traits::Doer;
 use crate::traits::observer::SensationObserver;
 use crate::traits::wit::Wit;
-use crate::{Impression, Stimulus};
+use crate::{Impression, Stimulus, image_captured_at};
 use async_trait::async_trait;
 use lingproc::ImageData as LImageData;
 use lingproc::LlmInstruction;
@@ -100,6 +100,7 @@ impl Wit for VisionWit {
                     images: vec![LImageData {
                         mime: img.mime.clone(),
                         base64: img.base64.clone(),
+                        captured_at: img.captured_at.clone(),
                     }],
                 })
                 .await
@@ -121,7 +122,10 @@ impl Wit for VisionWit {
             }
         }
         vec![Impression::new(
-            vec![Stimulus::new(img)],
+            vec![Stimulus {
+                timestamp: image_captured_at(&img).unwrap_or_else(chrono::Utc::now),
+                what: img,
+            }],
             how,
             None::<String>,
         )]
@@ -152,9 +156,17 @@ impl VisionWit {
 impl SensationObserver for VisionWit {
     async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
         if let Some(sensation) = payload.downcast_ref::<crate::Sensation>() {
-            if let crate::Sensation::Of(any) = sensation {
-                if let Some(img) = any.downcast_ref::<ImageData>() {
-                    self.observe(img.clone()).await;
+            if let crate::Sensation::Of {
+                payload,
+                occurred_at,
+            } = sensation
+            {
+                if let Some(img) = payload.downcast_ref::<ImageData>() {
+                    let mut img = img.clone();
+                    if img.captured_at.is_none() {
+                        img.captured_at = Some(occurred_at.to_rfc3339());
+                    }
+                    self.observe(img).await;
                 }
             }
         }

@@ -23,7 +23,7 @@ async fn summarizes_heard_text() {
     let quick = Quick::new(bus.clone(), Arc::new(Dummy));
     // allow subscriber spawn
     sleep(Duration::from_millis(20)).await;
-    bus.publish(Topic::Sensation, Sensation::HeardUserVoice("hi".into()));
+    bus.publish(Topic::Sensation, Sensation::heard_user_voice("hi"));
     sleep(Duration::from_millis(20)).await;
     let out = quick.tick().await;
     assert_eq!(out.len(), 1);
@@ -45,7 +45,7 @@ async fn debug_report_uses_full_prompt() {
     let (tx, mut rx) = tokio::sync::broadcast::channel(8);
     psyche::enable_debug("Quick").await;
     let quick = Quick::with_debug(bus, Arc::new(Dummy), Some(tx));
-    quick.observe(Sensation::HeardUserVoice("hi".into())).await;
+    quick.observe(Sensation::heard_user_voice("hi")).await;
 
     let _ = quick.tick().await;
     let report = rx.recv().await.unwrap();
@@ -57,13 +57,28 @@ async fn debug_report_uses_full_prompt() {
 }
 
 #[tokio::test]
+async fn preserves_sensation_occurrence_time() {
+    let bus = TopicBus::new(8);
+    let quick = Quick::new(bus, Arc::new(Dummy));
+    let occurred_at = chrono::Utc::now() - chrono::Duration::seconds(1);
+    quick
+        .observe(Sensation::heard_user_voice_at("hi", occurred_at))
+        .await;
+
+    let out = quick.tick().await;
+
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].stimuli[0].timestamp, occurred_at);
+}
+
+#[tokio::test]
 async fn describes_heartbeat_before_type_erasure() {
     let bus = TopicBus::new(8);
     let quick = Quick::new(bus, Arc::new(Dummy));
     quick
-        .observe(Sensation::Of(Box::new(Heartbeat {
+        .observe(Sensation::of(Heartbeat {
             timestamp: chrono::Utc::now(),
-        })))
+        }))
         .await;
 
     let out = quick.tick().await;
@@ -78,13 +93,14 @@ async fn describes_faces_in_first_person() {
     let bus = TopicBus::new(8);
     let quick = Quick::new(bus, Arc::new(Dummy));
     quick
-        .observe(Sensation::Of(Box::new(FaceInfo {
+        .observe(Sensation::of(FaceInfo {
             crop: ImageData {
                 mime: "image/png".into(),
                 base64: "zzz".into(),
+                captured_at: None,
             },
             embedding: vec![0.1],
-        })))
+        }))
         .await;
 
     let out = quick.tick().await;
@@ -99,13 +115,14 @@ async fn repeated_faces_are_framed_as_stream_frames() {
     let quick = Quick::new(bus, Arc::new(Dummy));
     for _ in 0..2 {
         quick
-            .observe(Sensation::Of(Box::new(FaceInfo {
+            .observe(Sensation::of(FaceInfo {
                 crop: ImageData {
                     mime: "image/png".into(),
                     base64: "zzz".into(),
+                    captured_at: None,
                 },
                 embedding: vec![0.1],
-            })))
+            }))
             .await;
     }
 
@@ -126,10 +143,11 @@ async fn ignores_raw_image_frames() {
     let bus = TopicBus::new(8);
     let quick = Quick::new(bus, Arc::new(Dummy));
     quick
-        .observe(Sensation::Of(Box::new(ImageData {
+        .observe(Sensation::of(ImageData {
             mime: "image/png".into(),
             base64: "zzz".into(),
-        })))
+            captured_at: None,
+        }))
         .await;
 
     let out = quick.tick().await;

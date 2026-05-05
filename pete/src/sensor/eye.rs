@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use psyche::{ImageData, Sensation, Sensor};
+use chrono::Utc;
+use psyche::{ImageData, Sensation, Sensor, image_captured_at};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, watch};
 use tracing::{debug, info};
@@ -59,7 +60,8 @@ impl Sensor<ImageData> for EyeSensor {
             let _ = tx.send(Some(image.clone()));
         }
         if let Some(forward) = &self.forward {
-            let _ = forward.send(Sensation::Of(Box::new(image))).await;
+            let occurred_at = image_captured_at(&image).unwrap_or_else(Utc::now);
+            let _ = forward.send(Sensation::of_at(image, occurred_at)).await;
         }
     }
 

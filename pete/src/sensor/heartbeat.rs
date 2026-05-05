@@ -32,8 +32,9 @@ impl HeartbeatSensor {
                 let beat = Heartbeat {
                     timestamp: Utc::now(),
                 };
+                let occurred_at = beat.timestamp;
                 info!("heartbeat");
-                let _ = forward.send(Sensation::Of(Box::new(beat))).await;
+                let _ = forward.send(Sensation::of_at(beat, occurred_at)).await;
             }
         });
     }

@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "ts")]
 use ts_rs::TS;
@@ -28,19 +29,93 @@ pub struct WitReport {
 #[derive(Debug)]
 pub enum Sensation {
     /// The assistant's speech was heard.
-    HeardOwnVoice(String),
+    HeardOwnVoice {
+        text: String,
+        occurred_at: DateTime<Utc>,
+    },
     /// The user spoke to the assistant.
-    HeardUserVoice(String),
+    HeardUserVoice {
+        text: String,
+        occurred_at: DateTime<Utc>,
+    },
     /// Arbitrary input that the assistant can process
-    Of(Box<dyn std::any::Any + Send + Sync>),
+    Of {
+        payload: Box<dyn std::any::Any + Send + Sync>,
+        occurred_at: DateTime<Utc>,
+    },
+}
+
+impl Sensation {
+    /// Record Pete hearing his own speech at the moment it occurred.
+    pub fn heard_own_voice(text: impl Into<String>) -> Self {
+        Self::heard_own_voice_at(text, Utc::now())
+    }
+
+    /// Record Pete hearing his own speech with an externally supplied occurrence time.
+    pub fn heard_own_voice_at(text: impl Into<String>, occurred_at: DateTime<Utc>) -> Self {
+        Self::HeardOwnVoice {
+            text: text.into(),
+            occurred_at,
+        }
+    }
+
+    /// Record Pete hearing user speech at the moment it occurred.
+    pub fn heard_user_voice(text: impl Into<String>) -> Self {
+        Self::heard_user_voice_at(text, Utc::now())
+    }
+
+    /// Record Pete hearing user speech with an externally supplied occurrence time.
+    pub fn heard_user_voice_at(text: impl Into<String>, occurred_at: DateTime<Utc>) -> Self {
+        Self::HeardUserVoice {
+            text: text.into(),
+            occurred_at,
+        }
+    }
+
+    /// Record arbitrary sensory data at the moment it occurred.
+    pub fn of<T>(payload: T) -> Self
+    where
+        T: std::any::Any + Send + Sync + 'static,
+    {
+        Self::of_at(payload, Utc::now())
+    }
+
+    /// Record arbitrary sensory data with an externally supplied occurrence time.
+    pub fn of_at<T>(payload: T, occurred_at: DateTime<Utc>) -> Self
+    where
+        T: std::any::Any + Send + Sync + 'static,
+    {
+        Self::Of {
+            payload: Box::new(payload),
+            occurred_at,
+        }
+    }
+
+    /// The time this sensation first happened in the real world.
+    pub fn occurred_at(&self) -> DateTime<Utc> {
+        match self {
+            Self::HeardOwnVoice { occurred_at, .. }
+            | Self::HeardUserVoice { occurred_at, .. }
+            | Self::Of { occurred_at, .. } => *occurred_at,
+        }
+    }
 }
 
 impl Clone for Sensation {
     fn clone(&self) -> Self {
         match self {
-            Self::HeardOwnVoice(t) => Self::HeardOwnVoice(t.clone()),
-            Self::HeardUserVoice(t) => Self::HeardUserVoice(t.clone()),
-            Self::Of(_) => Self::Of(Box::new(())),
+            Self::HeardOwnVoice { text, occurred_at } => Self::HeardOwnVoice {
+                text: text.clone(),
+                occurred_at: *occurred_at,
+            },
+            Self::HeardUserVoice { text, occurred_at } => Self::HeardUserVoice {
+                text: text.clone(),
+                occurred_at: *occurred_at,
+            },
+            Self::Of { occurred_at, .. } => Self::Of {
+                payload: Box::new(()),
+                occurred_at: *occurred_at,
+            },
         }
     }
 }

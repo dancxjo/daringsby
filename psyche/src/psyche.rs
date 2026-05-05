@@ -549,20 +549,26 @@ impl Psyche {
         self.fallback_turn
     }
 
-    /// Buffer that Pete heard himself say `text`.
-    async fn buffer_self_speech(&self, text: &str) {
+    /// Buffer that Pete heard himself say `text` at a known occurrence time.
+    async fn buffer_self_speech_at(&self, text: &str, occurred_at: DateTime<Utc>) {
         self.sensation_buffer
             .lock()
             .await
-            .push_back(Arc::new(Sensation::HeardOwnVoice(text.to_string())));
+            .push_back(Arc::new(Sensation::heard_own_voice_at(
+                text.to_string(),
+                occurred_at,
+            )));
     }
 
-    /// Buffer that the user said `text`.
-    async fn buffer_user_speech(&self, text: &str) {
+    /// Buffer that the user said `text` at a known occurrence time.
+    async fn buffer_user_speech_at(&self, text: &str, occurred_at: DateTime<Utc>) {
         self.sensation_buffer
             .lock()
             .await
-            .push_back(Arc::new(Sensation::HeardUserVoice(text.to_string())));
+            .push_back(Arc::new(Sensation::heard_user_voice_at(
+                text.to_string(),
+                occurred_at,
+            )));
     }
 
     async fn notify_observers(&self, sensation: &Sensation) {
@@ -585,21 +591,27 @@ impl Psyche {
             while let Ok(s) = self.input_rx.try_recv() {
                 let arc = Arc::new(s);
                 match &*arc {
-                    Sensation::HeardOwnVoice(msg) => {
+                    Sensation::HeardOwnVoice {
+                        text: msg,
+                        occurred_at,
+                    } => {
                         let mut conv = self.conversation.lock().await;
                         conv.add_message_from_ai(msg.clone());
-                        self.buffer_self_speech(msg).await;
+                        self.buffer_self_speech_at(msg, *occurred_at).await;
                     }
-                    Sensation::HeardUserVoice(msg) => {
+                    Sensation::HeardUserVoice {
+                        text: msg,
+                        occurred_at,
+                    } => {
                         let mut conv = self.conversation.lock().await;
                         conv.add_message_from_user(msg.clone());
-                        self.buffer_user_speech(msg).await;
+                        self.buffer_user_speech_at(msg, *occurred_at).await;
                         if self.pending_turn.is_empty() && self.fallback_turn {
                             self.pending_turn.set("I'm listening.".to_string());
                         }
                         self.speak_policy.received_user_message();
                     }
-                    Sensation::Of(_) => {
+                    Sensation::Of { .. } => {
                         self.sensation_buffer.lock().await.push_back(arc.clone());
                     }
                 }
@@ -607,27 +619,39 @@ impl Psyche {
             }
             if self.speak_policy.waiting_for_user() {
                 match self.input_rx.recv().await {
-                    Some(Sensation::HeardUserVoice(msg)) => {
+                    Some(Sensation::HeardUserVoice {
+                        text: msg,
+                        occurred_at,
+                    }) => {
                         debug!("heard user voice: {}", msg);
-                        self.ear.hear_user_say(&msg).await;
-                        self.buffer_user_speech(&msg).await;
+                        self.ear.hear_user_say_at(&msg, occurred_at).await;
+                        self.buffer_user_speech_at(&msg, occurred_at).await;
                         if self.pending_turn.is_empty() && self.fallback_turn {
                             self.pending_turn.set("I'm listening.".to_string());
                         }
-                        self.notify_observers(&Sensation::HeardUserVoice(msg.clone()))
-                            .await;
+                        self.notify_observers(&Sensation::heard_user_voice_at(
+                            msg.clone(),
+                            occurred_at,
+                        ))
+                        .await;
                         self.speak_policy.received_user_message();
                         continue;
                     }
-                    Some(Sensation::HeardOwnVoice(msg)) => {
+                    Some(Sensation::HeardOwnVoice {
+                        text: msg,
+                        occurred_at,
+                    }) => {
                         debug!("Received HeardOwnVoice: '{}'", msg);
-                        self.ear.hear_self_say(&msg).await;
-                        self.buffer_self_speech(&msg).await;
-                        self.notify_observers(&Sensation::HeardOwnVoice(msg.clone()))
-                            .await;
+                        self.ear.hear_self_say_at(&msg, occurred_at).await;
+                        self.buffer_self_speech_at(&msg, occurred_at).await;
+                        self.notify_observers(&Sensation::heard_own_voice_at(
+                            msg.clone(),
+                            occurred_at,
+                        ))
+                        .await;
                         continue;
                     }
-                    Some(s @ Sensation::Of(_)) => {
+                    Some(s @ Sensation::Of { .. }) => {
                         debug!("received non-voice sensation while waiting");
                         self.notify_observers(&s).await;
                         self.sensation_buffer.lock().await.push_back(Arc::new(s));
@@ -670,21 +694,27 @@ impl Psyche {
                         };
                         let arc = Arc::new(s);
                         match &*arc {
-                            Sensation::HeardOwnVoice(msg) => {
+                            Sensation::HeardOwnVoice {
+                                text: msg,
+                                occurred_at,
+                            } => {
                                 let mut conv = self.conversation.lock().await;
                                 conv.add_message_from_ai(msg.clone());
-                                self.buffer_self_speech(msg).await;
+                                self.buffer_self_speech_at(msg, *occurred_at).await;
                             }
-                            Sensation::HeardUserVoice(msg) => {
+                            Sensation::HeardUserVoice {
+                                text: msg,
+                                occurred_at,
+                            } => {
                                 let mut conv = self.conversation.lock().await;
                                 conv.add_message_from_user(msg.clone());
-                                self.buffer_user_speech(msg).await;
+                                self.buffer_user_speech_at(msg, *occurred_at).await;
                                 if self.pending_turn.is_empty() && self.fallback_turn {
                                     self.pending_turn.set("I'm listening.".to_string());
                                 }
                                 self.speak_policy.received_user_message();
                             }
-                            Sensation::Of(_) => {
+                            Sensation::Of { .. } => {
                                 self.sensation_buffer.lock().await.push_back(arc.clone());
                             }
                         }

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use psyche::{GeoLoc, Sensation, Sensor};
+use chrono::Utc;
+use psyche::{GeoLoc, Sensation, Sensor, geoloc_observed_at};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
@@ -21,7 +22,8 @@ impl Sensor<GeoLoc> for GeoSensor {
     async fn sense(&self, loc: GeoLoc) {
         info!("geo sensor received location");
         debug!("geo sensor received location");
-        match self.forward.try_send(Sensation::Of(Box::new(loc))) {
+        let occurred_at = geoloc_observed_at(&loc).unwrap_or_else(Utc::now);
+        match self.forward.try_send(Sensation::of_at(loc, occurred_at)) {
             Ok(()) => {}
             Err(mpsc::error::TrySendError::Full(_)) => {
                 warn!("dropping geolocation update because psyche input is full");

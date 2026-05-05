@@ -82,9 +82,9 @@ pub struct EntityWit {
     memory: Arc<dyn Memory>,
     face_db: Arc<dyn EmbeddingDb>,
     object_db: Arc<dyn EmbeddingDb>,
-    faces: Mutex<Vec<FaceInfo>>,
-    names: Mutex<Vec<String>>,
-    objects: Mutex<Vec<ObjectInfo>>,
+    faces: Mutex<Vec<Stimulus<FaceInfo>>>,
+    names: Mutex<Vec<Stimulus<String>>>,
+    objects: Mutex<Vec<Stimulus<ObjectInfo>>>,
     people: Mutex<HashMap<usize, Person>>,       // id -> person
     objects_seen: Mutex<HashMap<usize, Object>>, // id -> object
     tx: Option<broadcast::Sender<crate::WitReport>>,
@@ -134,15 +134,27 @@ impl crate::traits::wit::Wit for EntityWit {
 
     async fn observe(&self, sensation: Self::Input) {
         match sensation {
-            Sensation::HeardUserVoice(text) => {
-                self.names.lock().unwrap().push(text);
+            Sensation::HeardUserVoice { text, occurred_at } => {
+                self.names.lock().unwrap().push(Stimulus {
+                    what: text,
+                    timestamp: occurred_at,
+                });
             }
-            Sensation::HeardOwnVoice(_) => {}
-            Sensation::Of(any) => {
-                if let Some(face) = any.downcast_ref::<FaceInfo>() {
-                    self.faces.lock().unwrap().push(face.clone());
-                } else if let Some(obj) = any.downcast_ref::<ObjectInfo>() {
-                    self.objects.lock().unwrap().push(obj.clone());
+            Sensation::HeardOwnVoice { .. } => {}
+            Sensation::Of {
+                payload,
+                occurred_at,
+            } => {
+                if let Some(face) = payload.downcast_ref::<FaceInfo>() {
+                    self.faces.lock().unwrap().push(Stimulus {
+                        what: face.clone(),
+                        timestamp: occurred_at,
+                    });
+                } else if let Some(obj) = payload.downcast_ref::<ObjectInfo>() {
+                    self.objects.lock().unwrap().push(Stimulus {
+                        what: obj.clone(),
+                        timestamp: occurred_at,
+                    });
                 }
             }
         }
@@ -153,22 +165,20 @@ impl crate::traits::wit::Wit for EntityWit {
         let mut names = { self.names.lock().unwrap().drain(..).collect::<Vec<_>>() };
         let objects = { self.objects.lock().unwrap().drain(..).collect::<Vec<_>>() };
         let mut out = Vec::new();
-        for face in faces {
+        for face_stimulus in faces {
+            let face = face_stimulus.what;
             let id = if let Some(pid) = self.face_db.search(&face.embedding, 0.92).await {
                 pid
             } else {
                 let pid = self.face_db.insert(face.embedding.clone()).await;
                 pid
             };
-            let name = names.pop();
+            let name = names.pop().map(|stimulus| stimulus.what);
             if let Some(n) = name.clone() {
-                self.people.lock().unwrap().insert(
-                    id,
-                    Person {
-                        id,
-                        name: Some(n.clone()),
-                    },
-                );
+                self.people
+                    .lock()
+                    .unwrap()
+                    .insert(id, Person { id, name: Some(n) });
             }
             let summary = if let Some(ref n) = self
                 .people
@@ -181,7 +191,10 @@ impl crate::traits::wit::Wit for EntityWit {
             } else {
                 format!("Saw person #{id}")
             };
-            let stim = Stimulus::new(summary.clone());
+            let stim = Stimulus {
+                what: summary.clone(),
+                timestamp: face_stimulus.timestamp,
+            };
             let imp = Impression::new(vec![stim], summary.clone(), None::<String>);
             let _ = self.memory.store_serializable(&imp).await;
             out.push(imp);
@@ -195,7 +208,8 @@ impl crate::traits::wit::Wit for EntityWit {
                 }
             }
         }
-        for n in names {
+        for name_stimulus in names {
+            let n = name_stimulus.what;
             let id = {
                 let mut people = self.people.lock().unwrap();
                 let id = people.len();
@@ -209,12 +223,16 @@ impl crate::traits::wit::Wit for EntityWit {
                 id
             };
             let summary = format!("Heard {n} (#{id})");
-            let stim = Stimulus::new(summary.clone());
+            let stim = Stimulus {
+                what: summary.clone(),
+                timestamp: name_stimulus.timestamp,
+            };
             let imp = Impression::new(vec![stim], summary.clone(), None::<String>);
             let _ = self.memory.store_serializable(&imp).await;
             out.push(imp);
         }
-        for obj in objects {
+        for obj_stimulus in objects {
+            let obj = obj_stimulus.what;
             let id = if let Some(oid) = self.object_db.search(&obj.embedding, 0.92).await {
                 oid
             } else {
@@ -234,7 +252,10 @@ impl crate::traits::wit::Wit for EntityWit {
             } else {
                 format!("Saw object #{id}")
             };
-            let stim = Stimulus::new(summary.clone());
+            let stim = Stimulus {
+                what: summary.clone(),
+                timestamp: obj_stimulus.timestamp,
+            };
             let imp = Impression::new(vec![stim], summary.clone(), None::<String>);
             let _ = self.memory.store_serializable(&imp).await;
             out.push(imp);
@@ -252,17 +273,24 @@ impl crate::traits::observer::SensationObserver for EntityWit {
     async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
         if let Some(sensation) = payload.downcast_ref::<Sensation>() {
             match sensation {
-                Sensation::HeardUserVoice(t) => {
-                    self.observe(Sensation::HeardUserVoice(t.clone())).await;
+                Sensation::HeardUserVoice { text, occurred_at } => {
+                    self.observe(Sensation::heard_user_voice_at(text.clone(), *occurred_at))
+                        .await;
                 }
-                Sensation::HeardOwnVoice(t) => {
-                    self.observe(Sensation::HeardOwnVoice(t.clone())).await;
+                Sensation::HeardOwnVoice { text, occurred_at } => {
+                    self.observe(Sensation::heard_own_voice_at(text.clone(), *occurred_at))
+                        .await;
                 }
-                Sensation::Of(any) => {
-                    if let Some(face) = any.downcast_ref::<FaceInfo>() {
-                        self.observe(Sensation::Of(Box::new(face.clone()))).await;
-                    } else if let Some(obj) = any.downcast_ref::<ObjectInfo>() {
-                        self.observe(Sensation::Of(Box::new(obj.clone()))).await;
+                Sensation::Of {
+                    payload,
+                    occurred_at,
+                } => {
+                    if let Some(face) = payload.downcast_ref::<FaceInfo>() {
+                        self.observe(Sensation::of_at(face.clone(), *occurred_at))
+                            .await;
+                    } else if let Some(obj) = payload.downcast_ref::<ObjectInfo>() {
+                        self.observe(Sensation::of_at(obj.clone(), *occurred_at))
+                            .await;
                     }
                 }
             }

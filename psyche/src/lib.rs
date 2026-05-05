@@ -101,7 +101,10 @@ pub use plain_mouth::PlainMouth;
 pub use prompt::{CombobulatorPrompt, ContextualPrompt, PromptFragment, VoicePrompt, WillPrompt};
 pub use topics::{Topic, TopicBus, TopicMessage};
 pub use trim_mouth::TrimMouth;
-pub use types::{Decision, GeoLoc, Heartbeat, ImageData, ObjectInfo};
+pub use types::{
+    Decision, GeoLoc, Heartbeat, ImageData, ObjectInfo, geoloc_observed_at, image_captured_at,
+    parse_observed_at,
+};
 
 pub use ling::{Feeling, PromptBuilder};
 pub use psyche::extract_tag as test_extract_tag;

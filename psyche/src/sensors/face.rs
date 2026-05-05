@@ -1,7 +1,7 @@
 use crate::topics::TopicBus;
 use crate::traits::Sensor;
 use crate::wits::memory::QdrantClient;
-use crate::{ImageData, Sensation};
+use crate::{ImageData, Sensation, image_captured_at};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use base64::Engine;
@@ -117,6 +117,7 @@ fn crop_face(
     Ok(ImageData {
         mime: "image/jpeg".to_string(),
         base64: BASE64_STANDARD.encode(bytes.into_inner()),
+        captured_at: None,
     })
 }
 
@@ -143,10 +144,14 @@ impl FaceSensor {
 #[async_trait]
 impl Sensor<ImageData> for FaceSensor {
     async fn sense(&self, input: ImageData) {
+        let occurred_at = image_captured_at(&input).unwrap_or_else(chrono::Utc::now);
         match self.detector.detect_faces(&input).await {
             Ok(faces) => {
                 debug!(count = faces.len(), "face detector completed");
-                for (crop, embed) in faces {
+                for (mut crop, embed) in faces {
+                    if crop.captured_at.is_none() {
+                        crop.captured_at = Some(occurred_at.to_rfc3339());
+                    }
                     let skip = {
                         let mut last = self.last_face.lock().unwrap();
                         let similar = last
@@ -170,7 +175,7 @@ impl Sensor<ImageData> for FaceSensor {
                     };
                     self.bus.publish(
                         crate::topics::Topic::Sensation,
-                        Sensation::Of(Box::new(info)),
+                        Sensation::of_at(info, occurred_at),
                     );
                 }
             }

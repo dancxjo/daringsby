@@ -1,4 +1,6 @@
 use async_trait::async_trait;
+#[cfg(feature = "ear")]
+use chrono::{DateTime, Utc};
 use psyche::traits::Ear;
 #[cfg(feature = "ear")]
 use psyche::{Sensation, Voice};
@@ -56,18 +58,32 @@ impl ChannelEar {
 #[async_trait]
 impl Ear for ChannelEar {
     async fn hear_self_say(&self, text: &str) {
+        self.hear_self_say_at(text, Utc::now()).await;
+    }
+
+    async fn hear_self_say_at(&self, text: &str, occurred_at: DateTime<Utc>) {
         self.speaking.store(false, Ordering::SeqCst);
         info!(%text, "ear heard self say");
         debug!("ear heard self say: {}", text);
         self.voice.permit(None);
-        self.queue_sensation(Sensation::HeardOwnVoice(text.to_string()), "self");
+        self.queue_sensation(
+            Sensation::heard_own_voice_at(text.to_string(), occurred_at),
+            "self",
+        );
     }
 
     async fn hear_user_say(&self, text: &str) {
+        self.hear_user_say_at(text, Utc::now()).await;
+    }
+
+    async fn hear_user_say_at(&self, text: &str, occurred_at: DateTime<Utc>) {
         info!(%text, "ear heard user say");
         debug!("ear heard user say: {}", text);
         self.voice.permit(None);
-        self.queue_sensation(Sensation::HeardUserVoice(text.to_string()), "user");
+        self.queue_sensation(
+            Sensation::heard_user_voice_at(text.to_string(), occurred_at),
+            "user",
+        );
     }
 }
 

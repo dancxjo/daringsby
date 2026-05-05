@@ -66,6 +66,8 @@ pub async fn take_prompt_context() -> Vec<String> {
 pub struct ImageData {
     pub mime: String,   // e.g., "image/png"
     pub base64: String, // base64-encoded content
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub captured_at: Option<String>, // RFC3339 time when the frame was captured
 }
 
 /// Use `LlmInstruction` to pass natural language plus multimedia context to the
@@ -78,6 +80,7 @@ pub struct ImageData {
 ///     images: vec![ImageData {
 ///         mime: "image/png".to_string(),
 ///         base64: capture_base64_image(), // <- User-defined
+///         captured_at: None,
 ///     }],
 /// };
 /// let result = doer.follow(instruction).await?;

@@ -23,6 +23,7 @@ fn dummy_face(v: f32) -> FaceInfo {
         crop: ImageData {
             mime: "m".into(),
             base64: "b".into(),
+            captured_at: None,
         },
         embedding: vec![v],
     }
@@ -39,9 +40,9 @@ fn dummy_object(v: f32) -> ObjectInfo {
 async fn deduplicates_faces() {
     let db = Arc::new(InMemoryEmbeddingDb::default());
     let wit = EntityWit::new(Arc::new(DummyMemory::default()), db.clone(), db.clone());
-    wit.observe(Sensation::Of(Box::new(dummy_face(0.1)))).await;
+    wit.observe(Sensation::of(dummy_face(0.1))).await;
     let out1 = wit.tick().await;
-    wit.observe(Sensation::Of(Box::new(dummy_face(0.1)))).await;
+    wit.observe(Sensation::of(dummy_face(0.1))).await;
     let out2 = wit.tick().await;
     assert!(out1[0].summary.contains("#0"));
     assert!(out2[0].summary.contains("#0"));
@@ -51,8 +52,7 @@ async fn deduplicates_faces() {
 async fn name_creates_person() {
     let db = Arc::new(InMemoryEmbeddingDb::default());
     let wit = EntityWit::new(Arc::new(DummyMemory::default()), db.clone(), db.clone());
-    wit.observe(Sensation::HeardUserVoice("Travis".into()))
-        .await;
+    wit.observe(Sensation::heard_user_voice("Travis")).await;
     let out = wit.tick().await;
     assert!(out[0].summary.contains("Travis"));
     assert!(out[0].summary.contains("#0"));
@@ -62,8 +62,8 @@ async fn name_creates_person() {
 async fn face_and_name_link() {
     let db = Arc::new(InMemoryEmbeddingDb::default());
     let wit = EntityWit::new(Arc::new(DummyMemory::default()), db.clone(), db.clone());
-    wit.observe(Sensation::Of(Box::new(dummy_face(0.2)))).await;
-    wit.observe(Sensation::HeardUserVoice("Anna".into())).await;
+    wit.observe(Sensation::of(dummy_face(0.2))).await;
+    wit.observe(Sensation::heard_user_voice("Anna")).await;
     let out = wit.tick().await;
     assert!(out[0].summary.contains("Anna"));
 }
@@ -72,11 +72,9 @@ async fn face_and_name_link() {
 async fn dedup_objects() {
     let db = Arc::new(InMemoryEmbeddingDb::default());
     let wit = EntityWit::new(Arc::new(DummyMemory::default()), db.clone(), db.clone());
-    wit.observe(Sensation::Of(Box::new(dummy_object(0.3))))
-        .await;
+    wit.observe(Sensation::of(dummy_object(0.3))).await;
     let out1 = wit.tick().await;
-    wit.observe(Sensation::Of(Box::new(dummy_object(0.3))))
-        .await;
+    wit.observe(Sensation::of(dummy_object(0.3))).await;
     let out2 = wit.tick().await;
     assert!(out1[0].summary.contains("#0"));
     assert!(out2[0].summary.contains("#0"));

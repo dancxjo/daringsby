@@ -34,7 +34,7 @@ async fn channel_ear_does_not_block_when_psyche_input_is_full() {
     let voice = psyche.voice();
     let speaking = std::sync::Arc::new(AtomicBool::new(false));
     let (tx, _rx) = mpsc::channel(1);
-    tx.send(Sensation::HeardUserVoice("queued".into()))
+    tx.send(Sensation::heard_user_voice("queued"))
         .await
         .unwrap();
     let ear = ChannelEar::new(tx, speaking, voice);

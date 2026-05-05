@@ -45,6 +45,7 @@ async fn follow_includes_images() {
             images: vec![ImageData {
                 mime: "image/jpeg".into(),
                 base64: "abcd".into(),
+                captured_at: None,
             }],
         })
         .await
