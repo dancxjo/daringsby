@@ -16,9 +16,9 @@ Responsible for Pete's internal thinking and memory.
 
 * **Wits**: Modular units of cognition.
 
-  * `Quick`: Integrates raw `Sensation`s into a coherent `Instant`.
-  * `Combobulator`: Summarizes the present `Instant` into an `Impression`.
-  * `Memory`: Stores `Experience<Impression>` in Neo4j and Qdrant.
+  * `Quick`: Integrates raw `Sensation`s into timestamped `Stimulus` entries and emits an immediate `Impression`.
+  * `Combobulator`: Summarizes immediate `Impression`s into broader awareness.
+  * `Memory`: Stores remembered `Experience<T>` records in Neo4j and Qdrant.
   * `Heart`: Detects emotional tone (emoji) from recent experience.
   * `Will`: Chooses actions based on situation, emits tagged commands (e.g. `<pounce>`).
   * `Voice`: Generates natural language dialogue (when permitted).
@@ -57,7 +57,7 @@ Provides LLM and embedding utilities.
 1. **Perception**
 
    * Sensors emit `Sensation`s to the `Psyche`.
-   * `Quick` converts them into an `Instant`.
+   * `Quick` converts them into an immediate `Impression`.
 
 2. **Integration**
 
@@ -107,7 +107,7 @@ Provides LLM and embedding utilities.
 
 | Agent          | Role                                       |
 | -------------- | ------------------------------------------ |
-| `Quick`        | Turns `Sensation[]` into an `Instant`      |
+| `Quick`        | Turns `Sensation[]` into an immediate `Impression` |
 | `Combobulator` | Describes the moment in a single sentence  |
 | `Memory`       | Stores, links, and recalls impressions     |
 | `Heart`        | Assesses how Pete feels                    |

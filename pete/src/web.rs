@@ -181,8 +181,12 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                                         }
                                     }
                                 }
-                                WsRequest::Hear { data: _, .. } => {
-                                    debug!("audio fragment received");
+                                WsRequest::Hear { data, .. } => {
+                                    info!(
+                                        mime = %data.mime,
+                                        bytes = data.base64.len(),
+                                        "audio fragment received; waiting for browser transcript"
+                                    );
                                 }
                                 WsRequest::Geolocate { data, .. } => {
                                     debug!("geolocation received");

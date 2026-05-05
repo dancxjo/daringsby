@@ -16,8 +16,8 @@ use ts_rs::TS;
 /// conversation. Serialization uses an external `type` tag.
 ///
 /// ```
-/// use shared::MessageType;
-/// let msg = MessageType::Text("hi".into());
+/// use shared::WsPayload;
+/// let msg = WsPayload::Text { text: "hi".into() };
 /// let json = serde_json::to_string(&msg).unwrap();
 /// assert!(json.contains("\"Text\""));
 /// ```

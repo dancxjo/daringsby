@@ -106,7 +106,7 @@ pub use types::{Decision, GeoLoc, Heartbeat, ImageData, ObjectInfo};
 pub use ling::{Feeling, PromptBuilder};
 pub use psyche::extract_tag as test_extract_tag;
 pub use psyche::{Conversation, Psyche};
-pub use sensation::{Event, Instant, Sensation, WitReport};
+pub use sensation::{Event, Sensation, WitReport};
 #[cfg(feature = "face")]
 pub use sensors::{DummyDetector, FaceDetector, FaceInfo, FaceSensor};
 pub use traits::{

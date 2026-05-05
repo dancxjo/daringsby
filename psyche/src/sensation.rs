@@ -1,6 +1,4 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 #[cfg(feature = "ts")]
 use ts_rs::TS;
 /// Event types emitted by the [`Psyche`] during conversation.
@@ -45,14 +43,4 @@ impl Clone for Sensation {
             Self::Of(_) => Self::Of(Box::new(())),
         }
     }
-}
-
-/// A coherent bundle of recently perceived sensations.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct Instant {
-    /// Time the sensations were observed.
-    pub at: DateTime<Utc>,
-    /// The grouped sensations.
-    #[serde(skip)]
-    pub sensations: Vec<Arc<Sensation>>,
 }

@@ -35,13 +35,13 @@ struct Cli {
     #[arg(long, env = "CHATTER_HOST", default_value = "http://localhost:11434")]
     chatter_host: String,
     /// Model name to use for chatter
-    #[arg(long, env = "CHATTER_MODEL", default_value = "mistral")]
+    #[arg(long, env = "CHATTER_MODEL", default_value = "gemma3")]
     chatter_model: String,
     /// URL of the wits Ollama server
     #[arg(long, env = "WITS_HOST", default_value = "http://localhost:11434")]
     wits_host: String,
     /// Model name to use for wits
-    #[arg(long, env = "WITS_MODEL", default_value = "mistral")]
+    #[arg(long, env = "WITS_MODEL", default_value = "gemma3")]
     wits_model: String,
     /// URL of the embeddings Ollama server
     #[arg(
@@ -51,7 +51,7 @@ struct Cli {
     )]
     embeddings_host: String,
     /// Model name to use for embeddings
-    #[arg(long, env = "EMBEDDINGS_MODEL", default_value = "mistral")]
+    #[arg(long, env = "EMBEDDINGS_MODEL", default_value = "gemma3")]
     embeddings_model: String,
     /// URL of the Coqui TTS server
     #[arg(

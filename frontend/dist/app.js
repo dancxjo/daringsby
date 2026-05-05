@@ -357,9 +357,62 @@
     }
   }
 
+  function setupSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.warn("speech recognition unavailable; raw Hear frames will not produce text");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = navigator.language || "en-US";
+
+    let active = false;
+    const start = () => {
+      if (active || ws.readyState !== WebSocket.OPEN || document.visibilityState === "hidden") {
+        return;
+      }
+      try {
+        recognition.start();
+        active = true;
+      } catch (err) {
+        console.warn("speech recognition start", err);
+      }
+    };
+
+    recognition.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const result = event.results[i];
+        if (!result.isFinal) continue;
+        const transcript = result[0]?.transcript?.trim();
+        if (transcript) {
+          safeSend(JSON.stringify({ type: "Text", text: transcript }));
+        }
+      }
+    };
+    recognition.onerror = (event) => {
+      console.warn("speech recognition", event.error || event);
+    };
+    recognition.onend = () => {
+      active = false;
+      setTimeout(start, 500);
+    };
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden" && active) {
+        recognition.stop();
+      } else {
+        start();
+      }
+    });
+    start();
+  }
+
   if (navigator.mediaDevices?.getUserMedia) {
     setupAudio();
   }
+  setupSpeechRecognition();
 
   function updateConversation() {
     const system = document.getElementById("system-prompt");

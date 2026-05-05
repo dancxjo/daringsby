@@ -685,14 +685,6 @@ impl Psyche {
                 }
                 bus.publish(crate::topics::Topic::Sensation, s.clone());
             }
-            if !batch.is_empty() {
-                let instant = crate::sensation::Instant {
-                    at: Utc::now(),
-                    sensations: batch.clone(),
-                };
-                bus.publish(crate::topics::Topic::Instant, Arc::new(instant));
-                debug!("Published Instant with {} sensations", batch.len());
-            }
             let jitter = rand::thread_rng().gen_range(0..50);
             let tick = if speaking.load(Ordering::SeqCst) || !batch.is_empty() {
                 active_tick

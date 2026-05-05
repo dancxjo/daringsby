@@ -15,13 +15,13 @@ Pete's cognitive engine is structured as a sequence of `Wit` modules. Each Wit i
 Key concepts:
 
 * `Sensation`: Raw input from sensors
-* `Instant`: Narrative bundle of sensations
-* `Impression<T>`: One-sentence summary with optional emotion
-* `Experience<T>`: Stored impression with vector and ID
+* `Stimulus<T>`: Timestamped observation of input or a prior impression
+* `Impression<T>`: Interpretation of one or more stimuli with summary text and optional emoji
+* `Experience<T>`: Remembered impression with vector embedding and ID
 
 ### Primary Wits
 
-* **Quick**: Groups `Sensation`s into a coherent `Instant`
+* **Quick**: Groups `Sensation`s into an immediate `Impression`
 * **Combobulator**: Generates a concise `Impression` of what just happened
 * **Memory**: Stores impressions in Neo4j and Qdrant
 * **Heart**: Derives emotional state (emoji)
@@ -36,9 +36,9 @@ Key concepts:
 use lingproc::OllamaProvider;
 use psyche::Psyche;
 
-let narrator = OllamaProvider::new("http://localhost:11434", "mistral").unwrap();
-let voice = OllamaProvider::new("http://localhost:11434", "mistral").unwrap();
-let vectorizer = OllamaProvider::new("http://localhost:11434", "mistral").unwrap();
+let narrator = OllamaProvider::new("http://localhost:11434", "gemma3").unwrap();
+let voice = OllamaProvider::new("http://localhost:11434", "gemma3").unwrap();
+let vectorizer = OllamaProvider::new("http://localhost:11434", "gemma3").unwrap();
 
 use psyche::{Ear, Mouth};
 use async_trait::async_trait;
@@ -71,9 +71,9 @@ To run Pete with all services wired:
 
 ```sh
 cargo run -p pete -- \
-  --chatter-host http://localhost:11434 --chatter-model mistral \
-  --wits-host http://localhost:11434 --wits-model mistral \
-  --embeddings-host http://localhost:11434 --embeddings-model mistral \
+  --chatter-host http://localhost:11434 --chatter-model gemma3 \
+  --wits-host http://localhost:11434 --wits-model gemma3 \
+  --embeddings-host http://localhost:11434 --embeddings-model gemma3 \
   --qdrant-url http://localhost:6333 \
   --neo4j-uri bolt://localhost:7687 \
   --neo4j-user neo4j \

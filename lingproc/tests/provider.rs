@@ -13,7 +13,7 @@ async fn vectorize_returns_floats() {
             .body("{\"embeddings\": [[1.0,2.0,3.0]]}");
     });
 
-    let provider = OllamaProvider::new(server.base_url(), "mistral").unwrap();
+    let provider = OllamaProvider::new(vec![server.base_url()], "gemma3").unwrap();
     let vec = provider.vectorize("hello").await.unwrap();
     mock.assert();
     assert_eq!(vec, vec![1.0, 2.0, 3.0]);
@@ -35,10 +35,10 @@ async fn follow_includes_images() {
             .matches(body_contains_abcd);
         then.status(200)
             .header("content-type", "application/json")
-            .body("{\"model\":\"mistral\",\"created_at\":\"now\",\"message\":{\"role\":\"assistant\",\"content\":\"ok\"},\"done\":true}");
+            .body("{\"model\":\"gemma3\",\"created_at\":\"now\",\"message\":{\"role\":\"assistant\",\"content\":\"ok\"},\"done\":true}");
     });
 
-    let provider = OllamaProvider::new(server.base_url(), "mistral").unwrap();
+    let provider = OllamaProvider::new(vec![server.base_url()], "gemma3").unwrap();
     let res = provider
         .follow(LlmInstruction {
             command: "look".into(),
@@ -79,7 +79,7 @@ async fn vectorize_errors_on_empty_embeddings() {
             .body("{\"embeddings\": []}");
     });
 
-    let provider = OllamaProvider::new(server.base_url(), "mistral").unwrap();
+    let provider = OllamaProvider::new(vec![server.base_url()], "gemma3").unwrap();
     let result = provider.vectorize("hi").await;
     assert!(result.is_err());
 }

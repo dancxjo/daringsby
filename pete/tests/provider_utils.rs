@@ -13,7 +13,7 @@ async fn builder_returns_provider() {
             .body("{\"embeddings\": [[1.0,2.0,3.0]]}");
     });
 
-    let provider = ollama_provider_from_args(server.base_url().as_str(), "mistral").unwrap();
+    let provider = ollama_provider_from_args(server.base_url().as_str(), "gemma3").unwrap();
     let vec = provider.vectorize("hello").await.unwrap();
     mock.assert();
     assert_eq!(vec, vec![1.0, 2.0, 3.0]);

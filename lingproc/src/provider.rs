@@ -1,5 +1,3 @@
-//! Providers implementing the [`Doer`], [`Chatter`], and [`Vectorizer`] traits.
-
 use crate::types::{Chatter, Doer, LlmInstruction, Message, Role, TextStream, Vectorizer};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
@@ -8,37 +6,61 @@ use ollama_rs::{
     generation::chat::{ChatMessage, request::ChatMessageRequest},
     generation::embeddings::request::{EmbeddingsInput, GenerateEmbeddingsRequest},
 };
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_stream::StreamExt;
 use tracing::{debug, info, warn};
 
-/// Provider backed by an Ollama server.
+/// Provider backed by one or more Ollama servers.
 #[derive(Clone)]
 pub struct OllamaProvider {
-    client: Ollama,
+    clients: Vec<Ollama>,
     model: String,
+    next: Arc<AtomicUsize>,
 }
 
 impl OllamaProvider {
-    /// Create a new provider for `model` hosted at `host`.
-    pub fn new(host: impl AsRef<str>, model: impl Into<String>) -> Result<Self> {
-        let host_ref = host.as_ref();
+    /// Create a new provider for `model` hosted at one or more `hosts`.
+    pub fn new(hosts: impl IntoIterator<Item = impl AsRef<str>>, model: impl Into<String>) -> Result<Self> {
         let model = model.into();
-        let client = Ollama::try_new(host_ref)?;
-        info!(%host_ref, %model, "creating Ollama provider");
-        Ok(Self { client, model })
+        let mut clients = Vec::new();
+        for host in hosts {
+            let host_ref = host.as_ref();
+            if host_ref.is_empty() {
+                continue;
+            }
+            let client = Ollama::try_new(host_ref)?;
+            info!(%host_ref, %model, "adding Ollama client to provider");
+            clients.push(client);
+        }
+        if clients.is_empty() {
+            return Err(anyhow!("at least one host must be provided"));
+        }
+        Ok(Self {
+            clients,
+            model,
+            next: Arc::new(AtomicUsize::new(0)),
+        })
     }
 
-    /// Create a new provider using the given host and model, falling back to
+    /// Create a new provider using the given host(s) and model, falling back to
     /// sensible defaults when either is `None`.
     ///
+    /// The host parameter can be a single URL or a comma-separated list of URLs.
     /// The default host is `http://localhost:11434` and the default model is
-    /// `mistral`.
+    /// `gemma3`.
     pub fn new_with_defaults(host: Option<&str>, model: Option<&str>) -> Result<Self> {
-        let host = host.unwrap_or("http://localhost:11434");
-        let model = model.unwrap_or("mistral");
-        Self::new(host, model)
+        let host_str = host.unwrap_or("http://localhost:11434");
+        let model = model.unwrap_or("gemma3");
+        let hosts: Vec<&str> = host_str.split(',').map(|s| s.trim()).collect();
+        Self::new(hosts, model)
+    }
+
+    fn client(&self) -> &Ollama {
+        let idx = self.next.fetch_add(1, Ordering::SeqCst) % self.clients.len();
+        &self.clients[idx]
     }
 }
 
@@ -60,7 +82,7 @@ impl Doer for OllamaProvider {
             msg = msg.with_images(imgs);
         }
         let req = ChatMessageRequest::new(self.model.clone(), vec![msg]);
-        let res = self.client.send_chat_messages(req).await?;
+        let res = self.client().send_chat_messages(req).await?;
         debug!(response = %res.message.content, "ollama follow response");
         Ok(res.message.content)
     }
@@ -88,7 +110,7 @@ impl Chatter for OllamaProvider {
         debug!(%prompt, ?history, "ollama chat request");
         let req = ChatMessageRequest::new(self.model.clone(), msgs);
         let stream = self
-            .client
+            .client()
             .send_chat_messages_stream(req)
             .await?
             .map(|res| match res {
@@ -117,7 +139,7 @@ impl Vectorizer for OllamaProvider {
             attempts += 1;
             let req =
                 GenerateEmbeddingsRequest::new(self.model.clone(), EmbeddingsInput::from(text));
-            match timeout(Duration::from_secs(5), self.client.generate_embeddings(req)).await {
+            match timeout(Duration::from_secs(5), self.client().generate_embeddings(req)).await {
                 Err(_) => {
                     warn!("ollama vectorize timed out");
                     return Err(anyhow!("timeout"));
@@ -126,7 +148,7 @@ impl Vectorizer for OllamaProvider {
                     debug!(
                         embedding_len = res.embeddings.len(),
                         "ollama vectorize response"
-                    );
+                     );
                     let Some(embedding) = res.embeddings.into_iter().next() else {
                         warn!("ollama returned no embeddings");
                         return Err(anyhow!("empty embedding"));
