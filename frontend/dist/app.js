@@ -190,10 +190,12 @@
     if (!next) {
       playing = false;
       face.classList.remove("playing");
+      startSpeechRecognition();
       return;
     }
     playing = true;
     face.classList.add("playing");
+    stopSpeechRecognition();
 
     const done = () => {
       player.removeEventListener("ended", done);
@@ -338,9 +340,36 @@
       const source = audioContext.createMediaStreamSource(stream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
       const targetSampleRate = 16000;
+      const audioFrameSamples = targetSampleRate / 2;
+      let pendingAudio = [];
+      let pendingAudioSamples = 0;
+
+      const flushAudio = () => {
+        if (!pendingAudioSamples) return;
+        const merged = new Int16Array(pendingAudioSamples);
+        let offset = 0;
+        pendingAudio.forEach((chunk) => {
+          merged.set(chunk, offset);
+          offset += chunk.length;
+        });
+        pendingAudio = [];
+        pendingAudioSamples = 0;
+        safeSend(
+          JSON.stringify({
+            type: "Hear",
+            data: {
+              base64: arrayBufferToBase64(merged.buffer),
+              mime: "audio/pcm;format=s16le;rate=16000",
+              sample_rate: targetSampleRate,
+              channels: 1,
+            },
+          })
+        );
+      };
 
       window.onbeforeunload = () => {
         try {
+          flushAudio();
           processor.disconnect();
           source.disconnect();
           audioContext.close();
@@ -351,20 +380,19 @@
       };
 
       processor.onaudioprocess = (event) => {
+        if (playing) {
+          pendingAudio = [];
+          pendingAudioSamples = 0;
+          return;
+        }
         const input = event.inputBuffer.getChannelData(0);
         const pcm = floatTo16BitPcm(resample(input, audioContext.sampleRate, targetSampleRate));
         if (!pcm.byteLength) return;
-        safeSend(
-          JSON.stringify({
-            type: "Hear",
-            data: {
-              base64: arrayBufferToBase64(pcm.buffer),
-              mime: "audio/pcm;format=s16le;rate=16000",
-              sample_rate: targetSampleRate,
-              channels: 1,
-            },
-          })
-        );
+        pendingAudio.push(pcm);
+        pendingAudioSamples += pcm.length;
+        if (pendingAudioSamples >= audioFrameSamples) {
+          flushAudio();
+        }
       };
 
       source.connect(processor);
@@ -409,6 +437,7 @@
   }
 
   let startSpeechRecognition = () => {};
+  let stopSpeechRecognition = () => {};
 
   function setupSpeechRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -424,7 +453,12 @@
 
     let active = false;
     const start = () => {
-      if (active || ws.readyState !== WebSocket.OPEN || document.visibilityState === "hidden") {
+      if (
+        active ||
+        playing ||
+        ws.readyState !== WebSocket.OPEN ||
+        document.visibilityState === "hidden"
+      ) {
         return;
       }
       try {
@@ -435,6 +469,14 @@
       }
     };
     startSpeechRecognition = start;
+    stopSpeechRecognition = () => {
+      if (!active) return;
+      try {
+        recognition.stop();
+      } catch (err) {
+        console.warn("speech recognition stop", err);
+      }
+    };
 
     recognition.onresult = (event) => {
       for (let i = event.resultIndex; i < event.results.length; i += 1) {

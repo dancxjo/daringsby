@@ -12,7 +12,7 @@ use hound::{SampleFormat, WavSpec, WavWriter};
 use serde::Serialize;
 use tokio::sync::mpsc;
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 pub const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-base.en.bin";
@@ -24,6 +24,8 @@ pub struct AsrService {
     stability_hits: usize,
     hop: Duration,
     min_duration: Duration,
+    max_buffer_duration: Duration,
+    empty_result_limit: usize,
     finality_lag: Duration,
     silence_threshold: f32,
     silence_duration: Duration,
@@ -90,6 +92,9 @@ impl AsrService {
         let stability_hits = parse_env("ASR_STABILITY_HITS", 2usize)?.max(1);
         let hop_ms = parse_env("ASR_HOP_MS", 750u64)?.max(100);
         let min_duration_ms = parse_env("ASR_MIN_DURATION_MS", 2_000u64)?.max(100);
+        let max_buffer_ms =
+            parse_env("ASR_MAX_BUFFER_MS", 8_000u64)?.clamp(min_duration_ms, 60_000);
+        let empty_result_limit = parse_env("ASR_EMPTY_RESULT_LIMIT", 2usize)?.clamp(1, 10);
         let finality_lag_ms = parse_env("ASR_FINALITY_LAG_MS", 900u64)?.clamp(100, 10_000);
         let silence_threshold = parse_env("ASR_SILENCE_THRESHOLD", 0.015f32)?.clamp(0.0, 1.0);
         let silence_duration_ms =
@@ -110,6 +115,8 @@ impl AsrService {
             stability_hits,
             hop: Duration::from_millis(hop_ms),
             min_duration: Duration::from_millis(min_duration_ms),
+            max_buffer_duration: Duration::from_millis(max_buffer_ms),
+            empty_result_limit,
             finality_lag: Duration::from_millis(finality_lag_ms),
             silence_threshold,
             silence_duration: Duration::from_millis(silence_duration_ms),
@@ -271,6 +278,8 @@ async fn run_connection(
         service.silence_duration,
     );
     let min_samples = (service.min_duration.as_secs_f32() * sample_rate) as usize;
+    let max_samples = (service.max_buffer_duration.as_secs_f32() * sample_rate) as usize;
+    let mut empty_result_hits = 0usize;
     let mut pcm_open = true;
     let mut ticker = interval(service.hop);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -282,6 +291,13 @@ async fn run_connection(
                     Some(bytes) => {
                         let (samples, rms) = extend_buffer(&mut buffer, &bytes);
                         silence_tracker.ingest(rms, samples);
+                        trim_buffer_to_max(
+                            &mut buffer,
+                            &mut tracked,
+                            &mut total_consumed_samples,
+                            max_samples,
+                            sample_rate,
+                        );
                     }
                     None => pcm_open = false,
                 }
@@ -316,19 +332,35 @@ async fn run_connection(
                     continue;
                 }
 
+                let trimmed_len = trimmed_audio.len();
                 match service.transcribe(trimmed_audio).await {
                     Ok(segments) => {
                         let silence_boundary = silence_tracker.has_boundary();
                         if segments.is_empty() {
-                            if silence_boundary && !buffer.is_empty() {
-                                let dropped = buffer.len();
-                                buffer.clear();
+                            empty_result_hits = empty_result_hits.saturating_add(1);
+                            let should_drop =
+                                silence_boundary || empty_result_hits >= service.empty_result_limit;
+                            if should_drop && !buffer.is_empty() {
+                                let dropped = drop_unrecognized_audio(
+                                    &mut buffer,
+                                    leading_trim,
+                                    trimmed_len,
+                                    silence_boundary,
+                                );
                                 total_consumed_samples += dropped;
                                 silence_tracker.reset();
                                 tracked.clear();
+                                debug!(
+                                    dropped_samples = dropped,
+                                    empty_result_hits,
+                                    silence_boundary,
+                                    "dropped ASR audio after empty Whisper result"
+                                );
+                                empty_result_hits = 0;
                             }
                             continue;
                         }
+                        empty_result_hits = 0;
 
                         let buffer_duration =
                             buffer.len().saturating_sub(leading_trim) as f32 / sample_rate;
@@ -480,6 +512,47 @@ fn extend_buffer(buffer: &mut VecDeque<f32>, bytes: &[u8]) -> (usize, f32) {
     (count, rms)
 }
 
+fn trim_buffer_to_max(
+    buffer: &mut VecDeque<f32>,
+    tracked: &mut Vec<TrackedSegment>,
+    total_consumed_samples: &mut usize,
+    max_samples: usize,
+    sample_rate: f32,
+) {
+    if max_samples == 0 || buffer.len() <= max_samples {
+        return;
+    }
+
+    let overflow = buffer.len() - max_samples;
+    buffer.drain(..overflow);
+    *total_consumed_samples += overflow;
+
+    let shift_s = overflow as f32 / sample_rate;
+    for segment in tracked.iter_mut() {
+        segment.start_s = (segment.start_s - shift_s).max(0.0);
+        segment.end_s = (segment.end_s - shift_s).max(0.0);
+    }
+    tracked.retain(|segment| segment.end_s > 0.0);
+}
+
+fn drop_unrecognized_audio(
+    buffer: &mut VecDeque<f32>,
+    leading_trim: usize,
+    trimmed_len: usize,
+    drop_all: bool,
+) -> usize {
+    let requested = if drop_all {
+        buffer.len()
+    } else {
+        leading_trim.saturating_add(trimmed_len).min(buffer.len())
+    };
+    if requested == 0 {
+        return 0;
+    }
+    buffer.drain(..requested);
+    requested
+}
+
 fn trim_silence(
     samples: &[f32],
     sample_rate: u32,
@@ -614,7 +687,11 @@ fn encode_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{SegmentInternal, SilenceTracker, TrackedSegment, WordTiming, reconcile_segments};
+    use super::{
+        SegmentInternal, SilenceTracker, TrackedSegment, WordTiming, drop_unrecognized_audio,
+        reconcile_segments, trim_buffer_to_max,
+    };
+    use std::collections::VecDeque;
     use std::time::Duration;
 
     fn make_segment(text: &str, start: f32, end: f32) -> SegmentInternal {
@@ -699,5 +776,44 @@ mod tests {
         tracker.reset();
         tracker.ingest(0.02, 8_000);
         assert!(!tracker.has_boundary());
+    }
+
+    #[test]
+    fn trim_buffer_to_max_drops_old_audio_and_shifts_tracked_segments() {
+        let mut buffer = VecDeque::from(vec![0.0; 10]);
+        let mut tracked = vec![TrackedSegment {
+            text: "hello".to_string(),
+            start_s: 0.5,
+            end_s: 1.5,
+            stability: 1,
+        }];
+        let mut consumed = 20usize;
+
+        trim_buffer_to_max(&mut buffer, &mut tracked, &mut consumed, 6, 10.0);
+
+        assert_eq!(buffer.len(), 6);
+        assert_eq!(consumed, 24);
+        assert!((tracked[0].start_s - 0.1).abs() < f32::EPSILON);
+        assert!((tracked[0].end_s - 1.1).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn drop_unrecognized_audio_removes_submitted_window() {
+        let mut buffer = VecDeque::from(vec![0.0; 10]);
+
+        let dropped = drop_unrecognized_audio(&mut buffer, 2, 5, false);
+
+        assert_eq!(dropped, 7);
+        assert_eq!(buffer.len(), 3);
+    }
+
+    #[test]
+    fn drop_unrecognized_audio_can_clear_whole_buffer() {
+        let mut buffer = VecDeque::from(vec![0.0; 10]);
+
+        let dropped = drop_unrecognized_audio(&mut buffer, 2, 5, true);
+
+        assert_eq!(dropped, 10);
+        assert!(buffer.is_empty());
     }
 }
