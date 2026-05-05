@@ -115,7 +115,6 @@
     fullGraph.nodes = (snapshot.nodes || []).map((node) => {
       const old = previous.get(node.id) || nodeState.get(node.id);
       const next = { ...node };
-      next.time = nodeTime(next);
       if (old) {
         next.x = old.x;
         next.y = old.y;
@@ -131,9 +130,12 @@
     fullGraph.relationships = (snapshot.relationships || []).filter(
       (rel) => nodeIds.has(rel.source) && nodeIds.has(rel.target),
     );
+    graph.nodes = fullGraph.nodes;
+    graph.relationships = fullGraph.relationships;
+    nodeCountEl.textContent = graph.nodes.length.toString();
+    relationshipCountEl.textContent = graph.relationships.length.toString();
 
-    updateTimeline(true);
-    applyTimeFilter(topologyChanged);
+    render(topologyChanged);
     if (!selected && graph.nodes.length > 0) {
       selectItem({ kind: "node", value: graph.nodes[0] });
     } else if (selected?.kind === "node") {
@@ -214,133 +216,9 @@
 
     simulation.nodes(graph.nodes);
     simulation.force("link").links(graph.relationships.map((rel) => ({ ...rel })));
-    updateTimeForce();
     if (reheat) {
       simulation.alpha(Math.max(simulation.alpha(), 0.72)).restart();
     }
-  }
-
-  function applyTimeFilter(reheat = false) {
-    if (!visibleTimeRange) {
-      graph.nodes = fullGraph.nodes;
-      graph.relationships = fullGraph.relationships;
-    } else {
-      const [start, end] = visibleTimeRange;
-      const seedIds = new Set(
-        fullGraph.nodes
-          .filter((node) => node.time && node.time >= start && node.time <= end)
-          .map((node) => node.id),
-      );
-      const visibleIds = new Set(seedIds);
-      for (const rel of fullGraph.relationships) {
-        const source = relationshipEndpoint(rel.source);
-        const target = relationshipEndpoint(rel.target);
-        if (seedIds.has(source)) visibleIds.add(target);
-        if (seedIds.has(target)) visibleIds.add(source);
-      }
-      graph.nodes = fullGraph.nodes.filter((node) => visibleIds.has(node.id));
-      graph.relationships = fullGraph.relationships.filter((rel) => {
-        const source = relationshipEndpoint(rel.source);
-        const target = relationshipEndpoint(rel.target);
-        return visibleIds.has(source) && visibleIds.has(target);
-      });
-    }
-
-    nodeCountEl.textContent = graph.nodes.length.toString();
-    relationshipCountEl.textContent = graph.relationships.length.toString();
-    render(reheat);
-    updateTimeRangeText();
-  }
-
-  function updateTimeline(moveBrush = true) {
-    const rect = timelineSvg.node().getBoundingClientRect();
-    const width = Math.max(rect.width, 1);
-    const height = Math.max(rect.height, 1);
-    const margin = { top: 6, right: 18, bottom: 22, left: 18 };
-    const timedNodes = fullGraph.nodes.filter((node) => node.time);
-
-    timelineSvg.attr("viewBox", `0 0 ${width} ${height}`);
-    timelineBrush.extent([
-      [margin.left, margin.top],
-      [width - margin.right, height - margin.bottom],
-    ]);
-
-    if (!timedNodes.length) {
-      timelineDotLayer.selectAll("circle").remove();
-      timelineAxisLayer.selectAll("*").remove();
-      timelineBrushLayer.call(timelineBrush);
-      timeRangeEl.textContent = "No timestamps";
-      return;
-    }
-
-    let [minTime, maxTime] = d3.extent(timedNodes, (node) => node.time);
-    if (+minTime === +maxTime) {
-      minTime = new Date(+minTime - 60_000);
-      maxTime = new Date(+maxTime + 60_000);
-    }
-    timelineScale = d3.scaleTime().domain([minTime, maxTime]).range([margin.left, width - margin.right]);
-
-    timelineAxisLayer
-      .attr("transform", `translate(0,${height - margin.bottom})`)
-      .call(d3.axisBottom(timelineScale).ticks(Math.max(2, Math.floor(width / 150))).tickSizeOuter(0));
-
-    const dots = timelineDotLayer.selectAll("circle").data(timedNodes, (node) => node.id);
-    dots.exit().remove();
-    const enteredDots = dots
-      .enter()
-      .append("circle")
-      .attr("class", "timeline-dot")
-      .attr("r", 4);
-    enteredDots.append("title");
-
-    const merged = enteredDots.merge(dots);
-    merged
-      .attr("cx", (node) => timelineScale(node.time))
-      .attr("cy", (node) => margin.top + 8 + (hashString(node.id) % 4) * 10)
-      .attr("fill", (node) => styleForNode(node).color)
-      .classed("selected", (node) => selected?.kind === "node" && selected.value.id === node.id);
-    merged.select("title").text((node) => `${nodeLabel(node)}\n${formatDateTime(node.time)}`);
-
-    timelineBrushLayer.call(timelineBrush);
-    if (moveBrush) {
-      suppressBrushEvent = true;
-      timelineBrushLayer.call(
-        timelineBrush.move,
-        visibleTimeRange ? visibleTimeRange.map(timelineScale) : null,
-      );
-      suppressBrushEvent = false;
-    }
-    updateTimeRangeText();
-  }
-
-  function updateTimeForce() {
-    const rect = svg.node().getBoundingClientRect();
-    if (!timeGravityEnabled || !graph.nodes.some((node) => node.time)) {
-      simulation.force("time", null);
-      return;
-    }
-    const yScale = timelineScale.copy().range([48, Math.max(rect.height - 48, 49)]);
-    simulation.force(
-      "time",
-      d3
-        .forceY((node) => (node.time ? yScale(node.time) : rect.height / 2))
-        .strength((node) => (node.time ? 0.18 : 0.03)),
-    );
-  }
-
-  function updateTimeRangeText() {
-    const timedNodes = fullGraph.nodes.filter((node) => node.time);
-    if (!timedNodes.length) {
-      timeRangeEl.textContent = "No timestamps";
-      return;
-    }
-    if (visibleTimeRange) {
-      const [start, end] = visibleTimeRange;
-      timeRangeEl.textContent = `${formatDateTime(start)} - ${formatDateTime(end)}`;
-      return;
-    }
-    const [start, end] = d3.extent(timedNodes, (node) => node.time);
-    timeRangeEl.textContent = `${formatDateTime(start)} - ${formatDateTime(end)}`;
   }
 
   function ticked() {
@@ -387,7 +265,6 @@
       renderProperties({ id: rel.id, source: relationshipEndpoint(rel.source), target: relationshipEndpoint(rel.target), ...(rel.properties || {}) });
     }
     render();
-    updateTimeline(false);
   }
 
   async function loadNodeDetails(node) {
@@ -477,6 +354,7 @@
     Object.entries(properties)
       .filter(([, value]) => value !== null && value !== undefined && value !== "")
       .filter(([key]) => !largeMediaProperty(key))
+      .filter(([key]) => !temporalProperty(key))
       .slice(0, 36)
       .forEach(([key, value]) => {
         const dt = document.createElement("dt");
@@ -489,36 +367,6 @@
 
   function nodeKind(node) {
     return (node.labels || []).find((label) => label !== "GraphNode") || "GraphNode";
-  }
-
-  function nodeTime(node) {
-    const props = node.properties || {};
-    for (const key of [
-      "occurred_at",
-      "observed_at",
-      "captured_at",
-      "transcribed_at",
-      "timestamp",
-      "source_captured_at",
-      "ended_at",
-    ]) {
-      const parsed = parseDate(props[key]);
-      if (parsed) return parsed;
-    }
-    for (const [key, value] of Object.entries(props)) {
-      if (/(^|_)(time|timestamp|at|date)(_|$)/i.test(key)) {
-        const parsed = parseDate(value);
-        if (parsed) return parsed;
-      }
-    }
-    return null;
-  }
-
-  function parseDate(value) {
-    if (typeof value !== "string" || !value.trim()) return null;
-    const normalized = value.trim().replace(/(\.\d{3})\d+(Z|[+-]\d\d:\d\d)$/, "$1$2");
-    const timestamp = Date.parse(normalized);
-    return Number.isNaN(timestamp) ? null : new Date(timestamp);
   }
 
   function nodeLabel(node) {
@@ -575,6 +423,10 @@
     return key === "base64" || key === "crop_base64";
   }
 
+  function temporalProperty(key) {
+    return /(^|_)(time|timestamp|date)(_|$)/i.test(key) || /_at$/i.test(key);
+  }
+
   function compactRelationship(type) {
     return String(type || "").replace(/^HAS_/, "").replace(/_/g, " ").toLowerCase();
   }
@@ -591,24 +443,6 @@
     if (Array.isArray(value)) return value.join(", ");
     if (typeof value === "object") return JSON.stringify(value, null, 2);
     return String(value);
-  }
-
-  function formatDateTime(value) {
-    return new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }).format(value);
-  }
-
-  function hashString(value) {
-    let hash = 0;
-    for (let i = 0; i < value.length; i += 1) {
-      hash = (hash * 31 + value.charCodeAt(i)) | 0;
-    }
-    return Math.abs(hash);
   }
 
   function dataUrl(mime, base64) {
@@ -669,7 +503,7 @@
       .map((node) => [
         node.id,
         [...(node.labels || [])].sort().join("|"),
-        stableStringify(node.properties || {}),
+        stableStringify(structuralProperties(node.properties || {})),
       ])
       .sort((a, b) => a[0].localeCompare(b[0]));
     const relationships = (snapshot.relationships || [])
@@ -678,10 +512,16 @@
         relationshipEndpoint(rel.source),
         relationshipEndpoint(rel.target),
         rel.type,
-        stableStringify(rel.properties || {}),
+        stableStringify(structuralProperties(rel.properties || {})),
       ])
       .sort((a, b) => a[0].localeCompare(b[0]));
     return stableStringify({ nodes, relationships });
+  }
+
+  function structuralProperties(properties) {
+    return Object.fromEntries(
+      Object.entries(properties).filter(([key]) => !temporalProperty(key)),
+    );
   }
 
   function signatureForTopology(snapshot) {
@@ -721,8 +561,6 @@
   function resize() {
     const rect = svg.node().getBoundingClientRect();
     simulation.force("center", d3.forceCenter(rect.width / 2, rect.height / 2));
-    updateTimeline(true);
-    updateTimeForce();
     simulation.alpha(0.3).restart();
   }
 
@@ -757,17 +595,6 @@
   document.getElementById("zoom-in").addEventListener("click", () => zoomBy(1.25));
   document.getElementById("zoom-out").addEventListener("click", () => zoomBy(0.8));
   document.getElementById("zoom-fit").addEventListener("click", fitGraph);
-  timeResetButton.addEventListener("click", () => {
-    visibleTimeRange = null;
-    updateTimeline(true);
-    applyTimeFilter(true);
-  });
-  timeGravityButton.addEventListener("click", () => {
-    timeGravityEnabled = !timeGravityEnabled;
-    timeGravityButton.classList.toggle("active", timeGravityEnabled);
-    updateTimeForce();
-    simulation.alpha(0.35).restart();
-  });
   window.addEventListener("resize", resize);
 
   resize();
