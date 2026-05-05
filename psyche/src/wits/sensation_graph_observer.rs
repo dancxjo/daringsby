@@ -1,7 +1,7 @@
 #[cfg(feature = "face")]
 use crate::sensors::face::FaceInfo;
 use crate::traits::observer::SensationObserver;
-use crate::wits::memory::GraphStore;
+use crate::wits::memory::{GraphStore, qdrant_vector_node};
 use crate::{
     AudioClip, GeoEmbedding, GeoLoc, ImageData, ImageEmbedding, Sensation, Topic, TopicBus,
     VoiceInfo, audio_clip_id, geoloc_content_id, image_content_id,
@@ -58,123 +58,183 @@ impl SensationGraphObserver {
 #[async_trait]
 impl SensationObserver for SensationGraphObserver {
     async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
-        let Some(Sensation::Of {
+        let Some(sensation) = payload.downcast_ref::<Sensation>() else {
+            return;
+        };
+
+        let Sensation::Of {
             payload,
             occurred_at,
-        }) = payload.downcast_ref::<Sensation>()
+        } = sensation
         else {
+            store_spoken_sensation(self, sensation).await;
             return;
         };
 
         if let Some(image) = payload.downcast_ref::<ImageData>() {
             let id = image_content_id(image);
+            let sensation_id = sensation_id("image", &id, occurred_at.to_rfc3339());
             self.store_once(
                 format!("image:{id}"),
                 json!({
                     "op": "merge_graph",
-                    "nodes": [image_node(image, &id, occurred_at.to_rfc3339())],
-                    "relationships": [],
+                    "nodes": [
+                        sensation_node(&sensation_id, "image", occurred_at.to_rfc3339()),
+                        image_node(image, &id, occurred_at.to_rfc3339()),
+                    ],
+                    "relationships": [{
+                        "from": sensation_id,
+                        "to": id,
+                        "type": "OBSERVED",
+                    }],
                 }),
             )
             .await;
         } else if let Some(loc) = payload.downcast_ref::<GeoLoc>() {
             let id = geoloc_content_id(loc);
+            let sensation_id = sensation_id("geolocation", &id, occurred_at.to_rfc3339());
             self.store_once(
                 format!("geolocation:{id}"),
                 json!({
                     "op": "merge_graph",
-                    "nodes": [geolocation_node(loc, &id, occurred_at.to_rfc3339())],
-                    "relationships": [],
+                    "nodes": [
+                        sensation_node(&sensation_id, "geolocation", occurred_at.to_rfc3339()),
+                        geolocation_node(loc, &id, occurred_at.to_rfc3339()),
+                    ],
+                    "relationships": [{
+                        "from": sensation_id,
+                        "to": id,
+                        "type": "OBSERVED",
+                    }],
                 }),
             )
             .await;
         } else if let Some(geo_embedding) = payload.downcast_ref::<GeoEmbedding>() {
-            let vector_id = geo_embedding
+            let point_id = geo_embedding
                 .vector_id
                 .clone()
                 .unwrap_or_else(|| format!("geolocation-vector:{}", geo_embedding.geoloc_id));
+            let vector_id = crate::wits::memory::qdrant_vector_node_id("geolocations", &point_id);
+            let sensation_id = sensation_id(
+                "geolocation_embedding",
+                &vector_id,
+                occurred_at.to_rfc3339(),
+            );
             self.store_once(
                 format!("geolocation_embedding:{vector_id}"),
                 json!({
                     "op": "merge_graph",
                     "nodes": [
+                        sensation_node(
+                            &sensation_id,
+                            "geolocation_embedding",
+                            occurred_at.to_rfc3339(),
+                        ),
                         geolocation_node(
                             &geo_embedding.loc,
                             &geo_embedding.geoloc_id,
                             occurred_at.to_rfc3339(),
                         ),
+                        qdrant_vector_node(
+                            "geolocations",
+                            &point_id,
+                            "geolocation",
+                            geo_embedding.model.as_deref(),
+                        )
+                    ],
+                    "relationships": [
                         {
-                            "label": "Vector",
-                            "id": vector_id,
-                            "collection": "geolocations",
-                            "kind": "geolocation",
-                            "model": geo_embedding.model.clone(),
+                            "from": sensation_id,
+                            "to": vector_id,
+                            "type": "PRODUCED",
+                        },
+                        {
+                            "from": geo_embedding.geoloc_id,
+                            "to": vector_id,
+                            "type": "HAS_GEOLOCATION_VECTOR",
                         }
                     ],
-                    "relationships": [{
-                        "from": geo_embedding.geoloc_id,
-                        "to": vector_id,
-                        "type": "HAS_GEOLOCATION_VECTOR",
-                    }],
                 }),
             )
             .await;
         } else if let Some(image_embedding) = payload.downcast_ref::<ImageEmbedding>() {
-            let vector_id = image_embedding
+            let point_id = image_embedding
                 .vector_id
                 .clone()
                 .unwrap_or_else(|| format!("image-vector:{}", image_embedding.image_id));
+            let vector_id = crate::wits::memory::qdrant_vector_node_id("images", &point_id);
+            let sensation_id =
+                sensation_id("image_embedding", &vector_id, occurred_at.to_rfc3339());
             self.store_once(
                 format!("image_embedding:{vector_id}"),
                 json!({
                     "op": "merge_graph",
                     "nodes": [
+                        sensation_node(&sensation_id, "image_embedding", occurred_at.to_rfc3339()),
                         image_node(
                             &image_embedding.image,
                             &image_embedding.image_id,
                             occurred_at.to_rfc3339(),
                         ),
+                        qdrant_vector_node(
+                            "images",
+                            &point_id,
+                            "image",
+                            image_embedding.model.as_deref(),
+                        )
+                    ],
+                    "relationships": [
                         {
-                            "label": "Vector",
-                            "id": vector_id,
-                            "collection": "images",
-                            "kind": "image",
-                            "model": image_embedding.model.clone(),
+                            "from": sensation_id,
+                            "to": vector_id,
+                            "type": "PRODUCED",
+                        },
+                        {
+                            "from": image_embedding.image_id,
+                            "to": vector_id,
+                            "type": "HAS_IMAGE_VECTOR",
                         }
                     ],
-                    "relationships": [{
-                        "from": image_embedding.image_id,
-                        "to": vector_id,
-                        "type": "HAS_IMAGE_VECTOR",
-                    }],
                 }),
             )
             .await;
         } else {
             #[cfg(feature = "face")]
             if let Some(face) = payload.downcast_ref::<FaceInfo>() {
-                let vector_id = face
+                let point_id = face
                     .vector_id
                     .clone()
                     .unwrap_or_else(|| format!("face-vector:{}", face.face_id));
+                let vector_id = crate::wits::memory::qdrant_vector_node_id("faces", &point_id);
+                let sensation_id = sensation_id("face", &face.face_id, occurred_at.to_rfc3339());
                 self.store_once(
                     format!("face:{}", face.face_id),
                     json!({
                         "op": "merge_graph",
                         "nodes": [
-                            image_node(&face.crop, &face.face_id, occurred_at.to_rfc3339()),
+                            sensation_node(&sensation_id, "face", occurred_at.to_rfc3339()),
                             {
-                                "label": "Vector",
-                                "id": vector_id,
-                                "collection": "faces",
-                                "kind": "face",
-                            }
+                                "label": "Image",
+                                "id": face.source_image_id,
+                            },
+                            face_node(face, occurred_at.to_rfc3339()),
+                            qdrant_vector_node("faces", &point_id, "face", None),
                         ],
                         "relationships": [
+                            {
+                                "from": sensation_id,
+                                "to": face.face_id,
+                                "type": "OBSERVED",
+                            },
                             {
                                 "from": face.source_image_id,
                                 "to": face.face_id,
                                 "type": "CONTAINS_FACE",
+                            },
+                            {
+                                "from": face.face_id,
+                                "to": face.source_image_id,
+                                "type": "DERIVED_FROM",
                             },
                             {
                                 "from": face.face_id,
@@ -191,12 +251,20 @@ impl SensationObserver for SensationGraphObserver {
                 store_voice(self, voice, occurred_at.to_rfc3339()).await;
             } else if let Some(audio) = payload.downcast_ref::<AudioClip>() {
                 let clip_id = audio_clip_id(audio);
+                let sensation_id = sensation_id("audio", &clip_id, occurred_at.to_rfc3339());
                 self.store_once(
                     format!("audio:{clip_id}"),
                     json!({
                         "op": "merge_graph",
-                        "nodes": [audio_node(audio, &clip_id, occurred_at.to_rfc3339())],
-                        "relationships": [],
+                        "nodes": [
+                            sensation_node(&sensation_id, "audio", occurred_at.to_rfc3339()),
+                            audio_node(audio, &clip_id, occurred_at.to_rfc3339()),
+                        ],
+                        "relationships": [{
+                            "from": sensation_id,
+                            "to": clip_id,
+                            "type": "OBSERVED",
+                        }],
                     }),
                 )
                 .await;
@@ -206,33 +274,100 @@ impl SensationObserver for SensationGraphObserver {
 }
 
 async fn store_voice(observer: &SensationGraphObserver, voice: &VoiceInfo, occurred_at: String) {
-    let vector_id = voice
+    let point_id = voice
         .vector_id
         .clone()
         .unwrap_or_else(|| format!("voice-vector:{}", voice.clip_id));
+    let vector_id = crate::wits::memory::qdrant_vector_node_id("voices", &point_id);
+    let sensation_id = sensation_id("voice", &voice.clip_id, occurred_at.clone());
     observer
         .store_once(
             format!("voice:{}", voice.clip_id),
             json!({
                 "op": "merge_graph",
                 "nodes": [
+                    sensation_node(&sensation_id, "voice", occurred_at.clone()),
                     audio_node(&voice.clip, &voice.clip_id, occurred_at),
+                    qdrant_vector_node(
+                        "voices",
+                        &point_id,
+                        "voice",
+                        voice.model.as_deref(),
+                    )
+                ],
+                "relationships": [
                     {
-                        "label": "Vector",
-                        "id": vector_id,
-                        "collection": "voices",
-                        "kind": "voice",
-                        "model": voice.model.clone(),
+                        "from": sensation_id,
+                        "to": vector_id,
+                        "type": "PRODUCED",
+                    },
+                    {
+                        "from": voice.clip_id,
+                        "to": vector_id,
+                        "type": "HAS_VOICE_VECTOR",
+                    }
+                ],
+            }),
+        )
+        .await;
+}
+
+async fn store_spoken_sensation(observer: &SensationGraphObserver, sensation: &Sensation) {
+    let (speaker, text, occurred_at) = match sensation {
+        Sensation::HeardOwnVoice { text, occurred_at } => ("self", text, occurred_at),
+        Sensation::HeardUserVoice { text, occurred_at } => ("user", text, occurred_at),
+        Sensation::Of { .. } => return,
+    };
+    let utterance_id = format!("utterance:{speaker}:{}:{text}", occurred_at.to_rfc3339());
+    let sensation_id = sensation_id("utterance", &utterance_id, occurred_at.to_rfc3339());
+    observer
+        .store_once(
+            format!("utterance:{speaker}:{}:{text}", occurred_at.to_rfc3339()),
+            json!({
+                "op": "merge_graph",
+                "nodes": [
+                    sensation_node(&sensation_id, "utterance", occurred_at.to_rfc3339()),
+                    {
+                        "label": "Utterance",
+                        "id": utterance_id,
+                        "speaker": speaker,
+                        "text": text,
+                        "occurred_at": occurred_at.to_rfc3339(),
                     }
                 ],
                 "relationships": [{
-                    "from": voice.clip_id,
-                    "to": vector_id,
-                    "type": "HAS_VOICE_VECTOR",
+                    "from": sensation_id,
+                    "to": utterance_id,
+                    "type": "OBSERVED",
                 }],
             }),
         )
         .await;
+}
+
+fn sensation_node(id: &str, kind: &str, occurred_at: String) -> Value {
+    json!({
+        "label": "Sensation",
+        "id": id,
+        "kind": kind,
+        "occurred_at": occurred_at,
+    })
+}
+
+#[cfg(feature = "face")]
+fn face_node(face: &FaceInfo, occurred_at: String) -> Value {
+    json!({
+        "label": "Face",
+        "id": face.face_id,
+        "source_image_id": face.source_image_id,
+        "crop_mime": face.crop.mime.clone(),
+        "captured_at": face.crop.captured_at.clone(),
+        "occurred_at": occurred_at,
+    })
+}
+
+fn sensation_id(kind: &str, content_id: &str, occurred_at: String) -> String {
+    format!("sensation:{kind}:{content_id}:{occurred_at}")
 }
 
 fn image_node(image: &ImageData, id: &str, occurred_at: String) -> Value {

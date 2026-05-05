@@ -1,10 +1,14 @@
-use crate::{ImageData, Impression, Stimulus, image_content_id};
+use crate::{
+    AudioClip, GeoLoc, ImageData, Impression, Stimulus, audio_clip_id, geoloc_content_id,
+    image_content_id,
+};
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
 use lingproc::Vectorizer;
 use reqwest::{StatusCode, Url};
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{info, warn};
@@ -17,6 +21,7 @@ const FACE_COLLECTION: &str = "faces";
 const GEOLOCATION_COLLECTION: &str = "geolocations";
 const VOICE_COLLECTION: &str = "voices";
 const QDRANT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const NEO4J_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Trait representing the memory subsystem.
 #[async_trait]
@@ -106,6 +111,16 @@ impl QdrantClient {
     }
     /// Store `vector` associated with `headline`.
     pub async fn store_vector(&self, headline: &str, vector: &[f32]) -> Result<Uuid> {
+        self.store_vector_for_node(headline, None, vector).await
+    }
+
+    /// Store a memory vector with an explicit Neo4j node back-reference.
+    pub async fn store_vector_for_node(
+        &self,
+        headline: &str,
+        neo4j_node_id: Option<&str>,
+        vector: &[f32],
+    ) -> Result<Uuid> {
         let id = self
             .upsert_vector(
                 MEMORY_COLLECTION,
@@ -113,6 +128,7 @@ impl QdrantClient {
                 json!({
                     "kind": "memory",
                     "headline": headline,
+                    "neo4j_node_id": neo4j_node_id,
                 }),
             )
             .await?;
@@ -129,6 +145,7 @@ impl QdrantClient {
                 json!({
                     "kind": "image",
                     "image_id": image_id,
+                    "neo4j_node_id": image_id,
                 }),
             )
             .await?;
@@ -143,6 +160,19 @@ impl QdrantClient {
         description: &str,
         vector: &[f32],
     ) -> Result<Uuid> {
+        self.store_image_description_vector_for_node(image_id, description, image_id, &[], vector)
+            .await
+    }
+
+    /// Store an image-description embedding with Neo4j graph back-references.
+    pub async fn store_image_description_vector_for_node(
+        &self,
+        image_id: &str,
+        description: &str,
+        neo4j_node_id: &str,
+        related_neo4j_node_ids: &[&str],
+        vector: &[f32],
+    ) -> Result<Uuid> {
         let id = self
             .upsert_vector(
                 IMAGE_DESCRIPTION_COLLECTION,
@@ -150,6 +180,8 @@ impl QdrantClient {
                 json!({
                     "kind": "image_description",
                     "image_id": image_id,
+                    "neo4j_node_id": neo4j_node_id,
+                    "related_neo4j_node_ids": related_neo4j_node_ids,
                     "description": description,
                 }),
             )
@@ -173,6 +205,7 @@ impl QdrantClient {
                 json!({
                     "kind": "geolocation",
                     "geoloc_id": geoloc_id,
+                    "neo4j_node_id": geoloc_id,
                     "latitude": latitude,
                     "longitude": longitude,
                 }),
@@ -201,6 +234,7 @@ impl QdrantClient {
                 json!({
                     "kind": "face",
                     "face_id": face_id,
+                    "neo4j_node_id": face_id,
                     "source_image_id": source_image_id,
                 }),
             )
@@ -227,6 +261,7 @@ impl QdrantClient {
                 json!({
                     "kind": "voice",
                     "clip_id": clip_id,
+                    "neo4j_node_id": clip_id,
                 }),
             )
             .await?;
@@ -418,12 +453,487 @@ impl Neo4jClient {
     pub fn new(uri: String, user: String, pass: String) -> Self {
         Self { uri, user, pass }
     }
+
     /// Store `data` in the graph database.
     pub async fn store_data(&self, data: &Value) -> Result<()> {
-        let json = serde_json::to_string(data)?;
-        info!(target: "neo4j", %json, uri = %self.uri, user = %self.user, "stored data");
+        let statements = graph_statements(data)?;
+        if statements.is_empty() {
+            return Ok(());
+        }
+        let endpoint = self.http_endpoint()?;
+        let body = json!({
+            "statements": statements.iter().map(|statement| {
+                json!({
+                    "statement": statement.statement,
+                    "parameters": statement.parameters,
+                })
+            }).collect::<Vec<_>>()
+        });
+        let response = reqwest::Client::new()
+            .post(endpoint.clone())
+            .basic_auth(&self.user, Some(&self.pass))
+            .json(&body)
+            .timeout(NEO4J_REQUEST_TIMEOUT)
+            .send()
+            .await
+            .with_context(|| format!("failed to write graph records to Neo4j at {endpoint}"))?;
+        if !response.status().is_success() {
+            return Err(unexpected_neo4j_response(response, "committing graph records").await);
+        }
+        let body: Value = response
+            .json()
+            .await
+            .context("failed to decode Neo4j transaction response")?;
+        if let Some(errors) = body.get("errors").and_then(Value::as_array) {
+            if !errors.is_empty() {
+                bail!("Neo4j returned errors while committing graph records: {errors:?}");
+            }
+        }
+        info!(
+            target: "neo4j",
+            uri = %self.uri,
+            endpoint = %endpoint,
+            count = statements.len(),
+            "stored graph data"
+        );
         Ok(())
     }
+
+    fn http_endpoint(&self) -> Result<Url> {
+        let parsed =
+            Url::parse(&self.uri).with_context(|| format!("invalid Neo4j URI {}", self.uri))?;
+        let mut url = match parsed.scheme() {
+            "http" | "https" => parsed,
+            "bolt" | "neo4j" => neo4j_http_url(&parsed, "http", 7474)?,
+            "bolt+s" | "neo4j+s" => neo4j_http_url(&parsed, "https", 7473)?,
+            scheme => bail!("unsupported Neo4j URI scheme {scheme}"),
+        };
+        url.set_path("/db/neo4j/tx/commit");
+        url.set_query(None);
+        url.set_fragment(None);
+        Ok(url)
+    }
+}
+
+fn neo4j_http_url(source: &Url, scheme: &str, default_port: u16) -> Result<Url> {
+    let host = source
+        .host_str()
+        .with_context(|| format!("Neo4j URI {} is missing a host", source.as_str()))?;
+    let port = match source.port() {
+        Some(7687) | None => default_port,
+        Some(port) => port,
+    };
+    Url::parse(&format!("{scheme}://{host}:{port}"))
+        .with_context(|| format!("failed to convert {} to {scheme}", source.as_str()))
+}
+
+async fn unexpected_neo4j_response(response: reqwest::Response, action: &str) -> anyhow::Error {
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    anyhow!("Neo4j returned {status} while {action}: {body}")
+}
+
+#[derive(Debug, Clone)]
+struct CypherStatement {
+    statement: String,
+    parameters: Value,
+}
+
+fn graph_statements(data: &Value) -> Result<Vec<CypherStatement>> {
+    let mut statements = vec![CypherStatement {
+        statement: "CREATE CONSTRAINT pete_graph_node_id IF NOT EXISTS FOR (n:GraphNode) REQUIRE n.id IS UNIQUE".into(),
+        parameters: json!({}),
+    }];
+
+    if data.get("op").and_then(Value::as_str) == Some("merge_graph") {
+        let nodes = data
+            .get("nodes")
+            .and_then(Value::as_array)
+            .context("merge_graph record is missing nodes array")?;
+        for node in nodes {
+            statements.push(node_statement(node)?);
+        }
+        let relationships = data
+            .get("relationships")
+            .and_then(Value::as_array)
+            .map(|relationships| {
+                relationships
+                    .iter()
+                    .map(relationship_statement)
+                    .collect::<Result<Vec<_>>>()
+            })
+            .transpose()?
+            .unwrap_or_default();
+        statements.extend(relationships);
+    } else {
+        statements.push(raw_payload_statement(data)?);
+    }
+
+    Ok(statements)
+}
+
+fn node_statement(node: &Value) -> Result<CypherStatement> {
+    let label = node
+        .get("label")
+        .and_then(Value::as_str)
+        .context("graph node is missing label")?;
+    validate_graph_name(label, "label")?;
+    let id = node
+        .get("id")
+        .and_then(Value::as_str)
+        .context("graph node is missing id")?;
+    let props = property_map(node);
+    Ok(CypherStatement {
+        statement: format!("MERGE (n:GraphNode {{id: $id}}) SET n += $props SET n:`{label}`"),
+        parameters: json!({
+            "id": id,
+            "props": props,
+        }),
+    })
+}
+
+fn relationship_statement(rel: &Value) -> Result<CypherStatement> {
+    let rel_type = rel
+        .get("type")
+        .and_then(Value::as_str)
+        .context("graph relationship is missing type")?;
+    validate_graph_name(rel_type, "relationship type")?;
+    let from = rel
+        .get("from")
+        .and_then(Value::as_str)
+        .context("graph relationship is missing from")?;
+    let to = rel
+        .get("to")
+        .and_then(Value::as_str)
+        .context("graph relationship is missing to")?;
+    let props = property_map(rel);
+    Ok(CypherStatement {
+        statement: format!(
+            "MATCH (from:GraphNode {{id: $from}}), (to:GraphNode {{id: $to}}) MERGE (from)-[r:`{rel_type}`]->(to) SET r += $props"
+        ),
+        parameters: json!({
+            "from": from,
+            "to": to,
+            "props": props,
+        }),
+    })
+}
+
+fn raw_payload_statement(data: &Value) -> Result<CypherStatement> {
+    let raw_json = serde_json::to_string(data)?;
+    let id = stable_json_id("raw-payload", data);
+    Ok(CypherStatement {
+        statement: "MERGE (n:GraphNode {id: $id}) SET n += $props SET n:`RawPayload`".into(),
+        parameters: json!({
+            "id": id,
+            "props": {
+                "id": id,
+                "raw_json": raw_json,
+            }
+        }),
+    })
+}
+
+fn property_map(value: &Value) -> Value {
+    let Some(object) = value.as_object() else {
+        return json!({});
+    };
+    let mut props = Map::new();
+    for (key, value) in object {
+        if matches!(
+            key.as_str(),
+            "label" | "merge_key" | "from" | "to" | "type" | "relationships" | "nodes" | "op"
+        ) {
+            continue;
+        }
+        if let Some(prop) = graph_property(value) {
+            props.insert(key.clone(), prop);
+        }
+    }
+    Value::Object(props)
+}
+
+fn graph_property(value: &Value) -> Option<Value> {
+    match value {
+        Value::Null | Value::Object(_) => None,
+        Value::Array(items) => {
+            let props = items.iter().filter_map(graph_property).collect::<Vec<_>>();
+            Some(Value::Array(props))
+        }
+        Value::String(_) | Value::Bool(_) | Value::Number(_) => Some(value.clone()),
+    }
+}
+
+fn validate_graph_name(name: &str, kind: &str) -> Result<()> {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        bail!("empty Neo4j {kind}");
+    };
+    if !(first == '_' || first.is_ascii_alphabetic()) {
+        bail!("invalid Neo4j {kind}: {name}");
+    }
+    if chars.any(|c| !(c == '_' || c.is_ascii_alphanumeric())) {
+        bail!("invalid Neo4j {kind}: {name}");
+    }
+    Ok(())
+}
+
+struct GraphStimulusTarget {
+    stimulus_id: String,
+    target_id: String,
+    nodes: Vec<Value>,
+    relationships: Vec<Value>,
+}
+
+struct GraphVectorLink<'a> {
+    owner_id: String,
+    relationship: &'a str,
+    collection: &'a str,
+    point_id: String,
+    kind: &'a str,
+    model: Option<&'a str>,
+}
+
+fn impression_graph_record(
+    impression: &Impression<Value>,
+    stimulus_targets: &[GraphStimulusTarget],
+    vector_links: &[GraphVectorLink<'_>],
+) -> Result<Value> {
+    let impression_id = impression_id(impression)?;
+    let mut nodes = vec![json!({
+        "label": "Impression",
+        "id": impression_id,
+        "summary": impression.summary,
+        "emoji": impression.emoji,
+        "timestamp": impression.timestamp.to_rfc3339(),
+    })];
+    let mut relationships = Vec::new();
+
+    for target in stimulus_targets {
+        nodes.extend(target.nodes.clone());
+        relationships.extend(target.relationships.clone());
+        relationships.push(json!({
+            "from": impression_id,
+            "to": target.stimulus_id,
+            "type": "HAS_STIMULUS",
+        }));
+        relationships.push(json!({
+            "from": impression_id,
+            "to": target.target_id,
+            "type": "INTERPRETS",
+        }));
+    }
+
+    for link in vector_links {
+        let vector_id = qdrant_vector_node_id(link.collection, &link.point_id);
+        nodes.push(qdrant_vector_node(
+            link.collection,
+            &link.point_id,
+            link.kind,
+            link.model,
+        ));
+        relationships.push(json!({
+            "from": link.owner_id,
+            "to": vector_id,
+            "type": link.relationship,
+        }));
+    }
+
+    Ok(json!({
+        "op": "merge_graph",
+        "nodes": nodes,
+        "relationships": relationships,
+    }))
+}
+
+fn stimulus_target(stimulus: &Stimulus<Value>) -> Result<GraphStimulusTarget> {
+    let stimulus_id = stable_json_id(
+        "stimulus",
+        &json!({
+            "timestamp": stimulus.timestamp.to_rfc3339(),
+            "what": stimulus.what,
+        }),
+    );
+    let raw_json = serde_json::to_string(&redacted_json(&stimulus.what))?;
+    let mut nodes = vec![json!({
+        "label": "Stimulus",
+        "id": stimulus_id,
+        "timestamp": stimulus.timestamp.to_rfc3339(),
+        "raw_json": raw_json,
+    })];
+
+    let (target_id, target_node) = payload_target_node(&stimulus.what, stimulus.timestamp)?;
+    nodes.push(target_node);
+    let relationships = vec![json!({
+        "from": stimulus_id,
+        "to": target_id,
+        "type": "REFERS_TO",
+    })];
+
+    Ok(GraphStimulusTarget {
+        stimulus_id,
+        target_id,
+        nodes,
+        relationships,
+    })
+}
+
+fn payload_target_node(
+    value: &Value,
+    occurred_at: chrono::DateTime<chrono::Utc>,
+) -> Result<(String, Value)> {
+    if let Ok(image) = serde_json::from_value::<ImageData>(value.clone()) {
+        let id = image_content_id(&image);
+        return Ok((
+            id.clone(),
+            image_node(&image, &id, occurred_at.to_rfc3339()),
+        ));
+    }
+    if let Ok(loc) = serde_json::from_value::<GeoLoc>(value.clone()) {
+        let id = geoloc_content_id(&loc);
+        return Ok((
+            id.clone(),
+            geolocation_node(&loc, &id, occurred_at.to_rfc3339()),
+        ));
+    }
+    if let Ok(audio) = serde_json::from_value::<AudioClip>(value.clone()) {
+        let id = audio_clip_id(&audio);
+        return Ok((
+            id.clone(),
+            audio_node(&audio, &id, occurred_at.to_rfc3339()),
+        ));
+    }
+    if let Some(text) = value.as_str() {
+        let node = json!({
+            "label": "TextObservation",
+            "id": stable_string_id("text", text),
+            "text": text,
+            "occurred_at": occurred_at.to_rfc3339(),
+        });
+        return Ok((node["id"].as_str().unwrap().to_string(), node));
+    }
+
+    let id = stable_json_id("payload", value);
+    Ok((
+        id.clone(),
+        json!({
+            "label": "RawPayload",
+            "id": id,
+            "raw_json": serde_json::to_string(&redacted_json(value))?,
+            "occurred_at": occurred_at.to_rfc3339(),
+        }),
+    ))
+}
+
+fn impression_id(impression: &Impression<Value>) -> Result<String> {
+    Ok(stable_json_id(
+        "impression",
+        &json!({
+            "summary": impression.summary,
+            "emoji": impression.emoji,
+            "timestamp": impression.timestamp.to_rfc3339(),
+            "stimuli": impression.stimuli.iter().map(|stimulus| {
+                json!({
+                    "timestamp": stimulus.timestamp.to_rfc3339(),
+                    "what": stimulus.what,
+                })
+            }).collect::<Vec<_>>(),
+        }),
+    ))
+}
+
+pub(crate) fn qdrant_vector_node_id(collection: &str, point_id: &str) -> String {
+    format!("qdrant:{collection}:{point_id}")
+}
+
+pub(crate) fn qdrant_vector_node(
+    collection: &str,
+    point_id: &str,
+    kind: &str,
+    model: Option<&str>,
+) -> Value {
+    json!({
+        "label": "Vector",
+        "id": qdrant_vector_node_id(collection, point_id),
+        "database": "qdrant",
+        "collection": collection,
+        "point_id": point_id,
+        "kind": kind,
+        "model": model,
+    })
+}
+
+fn image_node(image: &ImageData, id: &str, occurred_at: String) -> Value {
+    json!({
+        "label": "Image",
+        "id": id,
+        "mime": image.mime.clone(),
+        "captured_at": image.captured_at.clone(),
+        "occurred_at": occurred_at,
+    })
+}
+
+fn audio_node(audio: &AudioClip, id: &str, occurred_at: String) -> Value {
+    json!({
+        "label": "AudioClip",
+        "id": id,
+        "mime": audio.mime.clone(),
+        "sample_rate": audio.sample_rate,
+        "channels": audio.channels,
+        "captured_at": audio.captured_at.clone(),
+        "occurred_at": occurred_at,
+    })
+}
+
+fn geolocation_node(loc: &GeoLoc, id: &str, occurred_at: String) -> Value {
+    json!({
+        "label": "Geolocation",
+        "id": id,
+        "latitude": loc.latitude,
+        "longitude": loc.longitude,
+        "observed_at": loc.observed_at.clone(),
+        "occurred_at": occurred_at,
+    })
+}
+
+fn redacted_json(value: &Value) -> Value {
+    match value {
+        Value::Object(object) => Value::Object(
+            object
+                .iter()
+                .map(|(key, value)| {
+                    let redacted = if key == "base64" {
+                        json!("<omitted>")
+                    } else if key == "embedding" {
+                        json!({
+                            "omitted": true,
+                            "len": value.as_array().map_or(0, Vec::len),
+                        })
+                    } else {
+                        redacted_json(value)
+                    };
+                    (key.clone(), redacted)
+                })
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(redacted_json).collect()),
+        _ => value.clone(),
+    }
+}
+
+fn stable_json_id(prefix: &str, value: &Value) -> String {
+    let bytes = serde_json::to_vec(value).unwrap_or_default();
+    stable_bytes_id(prefix, &bytes)
+}
+
+fn stable_string_id(prefix: &str, value: &str) -> String {
+    stable_bytes_id(prefix, value.as_bytes())
+}
+
+fn stable_bytes_id(prefix: &str, bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{prefix}:sha256:{:x}", hasher.finalize())
 }
 
 #[async_trait]
@@ -458,6 +968,12 @@ pub struct BasicMemory {
 impl Memory for BasicMemory {
     async fn store(&self, impression: &Impression<Value>) -> Result<()> {
         info!(summary = %impression.summary, "memory store");
+        let stimulus_targets = impression
+            .stimuli
+            .iter()
+            .map(stimulus_target)
+            .collect::<Result<Vec<_>>>()?;
+        let impression_node_id = impression_id(impression)?;
         let vector = match tokio::time::timeout(
             Duration::from_secs(5),
             self.vectorizer.vectorize(&impression.summary),
@@ -474,28 +990,65 @@ impl Memory for BasicMemory {
                 None
             }
         };
+        let mut vector_links = Vec::new();
         if let Some(v) = vector {
-            if let Some(image_id) = impression
+            for image_id in impression
                 .stimuli
-                .first()
-                .and_then(|stim| serde_json::from_value::<ImageData>(stim.what.clone()).ok())
+                .iter()
+                .filter_map(|stim| serde_json::from_value::<ImageData>(stim.what.clone()).ok())
                 .map(|image| image_content_id(&image))
             {
-                if let Err(e) = self
+                match self
                     .qdrant
-                    .store_image_description_vector(&image_id, &impression.summary, &v)
+                    .store_image_description_vector_for_node(
+                        &image_id,
+                        &impression.summary,
+                        &image_id,
+                        &[&impression_node_id],
+                        &v,
+                    )
                     .await
                 {
-                    tracing::error!(?e, "failed to store image description vector");
+                    Ok(id) => {
+                        let point_id = id.to_string();
+                        vector_links.push(GraphVectorLink {
+                            owner_id: image_id,
+                            relationship: "HAS_IMAGE_DESCRIPTION_VECTOR",
+                            collection: IMAGE_DESCRIPTION_COLLECTION,
+                            point_id: point_id.clone(),
+                            kind: "image_description",
+                            model: None,
+                        });
+                        vector_links.push(GraphVectorLink {
+                            owner_id: impression_node_id.clone(),
+                            relationship: "HAS_IMAGE_DESCRIPTION_VECTOR",
+                            collection: IMAGE_DESCRIPTION_COLLECTION,
+                            point_id,
+                            kind: "image_description",
+                            model: None,
+                        });
+                    }
+                    Err(e) => tracing::error!(?e, "failed to store image description vector"),
                 }
             }
-            if let Err(e) = self.qdrant.store_vector(&impression.summary, &v).await {
-                tracing::error!(?e, "failed to store vector");
+            match self
+                .qdrant
+                .store_vector_for_node(&impression.summary, Some(&impression_node_id), &v)
+                .await
+            {
+                Ok(id) => vector_links.push(GraphVectorLink {
+                    owner_id: impression_node_id.clone(),
+                    relationship: "HAS_MEMORY_VECTOR",
+                    collection: MEMORY_COLLECTION,
+                    point_id: id.to_string(),
+                    kind: "memory",
+                    model: None,
+                }),
+                Err(e) => tracing::error!(?e, "failed to store vector"),
             }
         }
-        if let Some(stim) = impression.stimuli.first() {
-            self.neo4j.store_data(&stim.what).await?;
-        }
+        let graph = impression_graph_record(impression, &stimulus_targets, &vector_links)?;
+        self.neo4j.store_data(&graph).await?;
         Ok(())
     }
 

@@ -43,10 +43,11 @@ async fn links_geolocation_embedding_to_geolocation_node() {
 
     let stored = graph.0.lock().unwrap();
     assert_eq!(stored.len(), 1);
-    assert_eq!(stored[0]["nodes"][0]["id"], geoloc_id);
-    assert_eq!(stored[0]["nodes"][1]["collection"], "geolocations");
+    assert_eq!(stored[0]["nodes"][1]["id"], geoloc_id);
+    assert_eq!(stored[0]["nodes"][2]["collection"], "geolocations");
+    assert_eq!(stored[0]["nodes"][2]["database"], "qdrant");
     assert_eq!(
-        stored[0]["relationships"][0]["type"],
+        stored[0]["relationships"][1]["type"],
         "HAS_GEOLOCATION_VECTOR"
     );
 }
@@ -68,6 +69,7 @@ async fn merges_duplicate_image_sensations_once() {
 
     let stored = graph.0.lock().unwrap();
     assert_eq!(stored.len(), 1);
-    assert_eq!(stored[0]["nodes"][0]["id"], expected_id);
-    assert_eq!(stored[0]["nodes"][0]["captured_at"], "2026-05-05T12:34:56Z");
+    assert_eq!(stored[0]["nodes"][1]["id"], expected_id);
+    assert_eq!(stored[0]["nodes"][1]["captured_at"], "2026-05-05T12:34:56Z");
+    assert_eq!(stored[0]["relationships"][0]["type"], "OBSERVED");
 }

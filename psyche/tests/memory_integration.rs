@@ -44,5 +44,8 @@ async fn memory_logs_cypher() {
 
     let logs = store.0.lock().unwrap().clone();
     assert_eq!(logs.len(), 1);
-    assert!(logs[0].contains("\"x\":1"));
+    assert!(logs[0].contains("\"op\":\"merge_graph\""));
+    assert!(logs[0].contains("\"label\":\"Impression\""));
+    assert!(logs[0].contains("\"label\":\"Stimulus\""));
+    assert!(logs[0].contains("\\\"x\\\":1"));
 }

@@ -25,6 +25,9 @@ async fn store_face_vector_creates_collection_and_upserts_point() {
                 .path("/collections/faces/points")
                 .query_param("wait", "true")
                 .body_contains("\"kind\":\"face\"")
+                .body_contains("\"face_id\":\"face:1\"")
+                .body_contains("\"neo4j_node_id\":\"face:1\"")
+                .body_contains("\"source_image_id\":\"image:1\"")
                 .body_contains("\"vector\"")
                 .body_contains("1.0")
                 .body_contains("2.0");
@@ -34,7 +37,7 @@ async fn store_face_vector_creates_collection_and_upserts_point() {
         .await;
 
     QdrantClient::new(server.base_url())
-        .store_face_vector(&[1.0, 2.0])
+        .store_face_vector_for(Some("face:1"), Some("image:1"), &[1.0, 2.0])
         .await
         .unwrap();
 
@@ -68,6 +71,7 @@ async fn store_geolocation_vector_creates_collection_and_upserts_point() {
                 .query_param("wait", "true")
                 .body_contains("\"kind\":\"geolocation\"")
                 .body_contains("\"geoloc_id\":\"geolocation:1\"")
+                .body_contains("\"neo4j_node_id\":\"geolocation:1\"")
                 .body_contains("\"latitude\":10.0")
                 .body_contains("\"longitude\":20.0");
             then.status(200)
@@ -110,6 +114,7 @@ async fn store_image_vector_creates_collection_and_upserts_point() {
                 .query_param("wait", "true")
                 .body_contains("\"kind\":\"image\"")
                 .body_contains("\"image_id\":\"image:1\"")
+                .body_contains("\"neo4j_node_id\":\"image:1\"")
                 .body_contains("\"vector\"");
             then.status(200)
                 .body(r#"{"result":{"operation_id":1},"status":"ok"}"#);
@@ -150,6 +155,7 @@ async fn store_image_description_vector_uses_own_collection() {
                 .query_param("wait", "true")
                 .body_contains("\"kind\":\"image_description\"")
                 .body_contains("\"image_id\":\"image:1\"")
+                .body_contains("\"neo4j_node_id\":\"image:1\"")
                 .body_contains("\"description\":\"I see a test.\"");
             then.status(200)
                 .body(r#"{"result":{"operation_id":1},"status":"ok"}"#);
@@ -184,6 +190,7 @@ async fn store_vector_uses_existing_memory_collection() {
                 .query_param("wait", "true")
                 .body_contains("\"kind\":\"memory\"")
                 .body_contains("\"headline\":\"hello\"")
+                .body_contains("\"neo4j_node_id\":\"impression:1\"")
                 .body_contains("\"vector\"");
             then.status(200)
                 .body(r#"{"result":{"operation_id":1},"status":"ok"}"#);
@@ -191,7 +198,7 @@ async fn store_vector_uses_existing_memory_collection() {
         .await;
 
     QdrantClient::new(server.base_url())
-        .store_vector("hello", &[3.0])
+        .store_vector_for_node("hello", Some("impression:1"), &[3.0])
         .await
         .unwrap();
 
@@ -223,6 +230,8 @@ async fn store_voice_vector_creates_collection_and_upserts_point() {
                 .path("/collections/voices/points")
                 .query_param("wait", "true")
                 .body_contains("\"kind\":\"voice\"")
+                .body_contains("\"clip_id\":\"audio:1\"")
+                .body_contains("\"neo4j_node_id\":\"audio:1\"")
                 .body_contains("\"vector\"")
                 .body_contains("1.0")
                 .body_contains("2.0");
@@ -232,7 +241,7 @@ async fn store_voice_vector_creates_collection_and_upserts_point() {
         .await;
 
     QdrantClient::new(server.base_url())
-        .store_voice_vector(&[1.0, 2.0])
+        .store_voice_vector_for(Some("audio:1"), &[1.0, 2.0])
         .await
         .unwrap();
 
