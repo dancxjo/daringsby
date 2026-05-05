@@ -16,19 +16,18 @@ use tracing::{debug, error, info};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 pub const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-base.en.bin";
+const DEFAULT_PCM_QUEUE_CAPACITY: usize = 4;
 
 #[derive(Clone)]
 pub struct AsrService {
     context: Arc<Mutex<WhisperContext>>,
     sample_rate: u32,
-    stability_hits: usize,
     hop: Duration,
     min_duration: Duration,
     max_buffer_duration: Duration,
-    empty_result_limit: usize,
-    finality_lag: Duration,
     silence_threshold: f32,
     silence_duration: Duration,
+    pcm_queue_capacity: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -63,14 +62,6 @@ struct SegmentInternal {
     words: Vec<WordTiming>,
 }
 
-#[derive(Debug, Clone)]
-struct TrackedSegment {
-    text: String,
-    start_s: f32,
-    end_s: f32,
-    stability: usize,
-}
-
 impl AsrService {
     pub fn from_env() -> Result<Option<Self>> {
         let model_path = match env::var("WHISPER_MODEL") {
@@ -89,16 +80,15 @@ impl AsrService {
             }
         };
         let sample_rate = parse_env("ASR_SAMPLE_RATE", 16_000)?;
-        let stability_hits = parse_env("ASR_STABILITY_HITS", 2usize)?.max(1);
-        let hop_ms = parse_env("ASR_HOP_MS", 750u64)?.max(100);
+        let hop_ms = parse_env("ASR_HOP_MS", 250u64)?.max(100);
         let min_duration_ms = parse_env("ASR_MIN_DURATION_MS", 2_000u64)?.max(100);
         let max_buffer_ms =
             parse_env("ASR_MAX_BUFFER_MS", 8_000u64)?.clamp(min_duration_ms, 60_000);
-        let empty_result_limit = parse_env("ASR_EMPTY_RESULT_LIMIT", 2usize)?.clamp(1, 10);
-        let finality_lag_ms = parse_env("ASR_FINALITY_LAG_MS", 900u64)?.clamp(100, 10_000);
         let silence_threshold = parse_env("ASR_SILENCE_THRESHOLD", 0.015f32)?.clamp(0.0, 1.0);
         let silence_duration_ms =
             parse_env("ASR_SILENCE_DURATION_MS", 1_200u64)?.clamp(100, 10_000);
+        let pcm_queue_capacity =
+            parse_env("ASR_PCM_QUEUE_CAPACITY", DEFAULT_PCM_QUEUE_CAPACITY)?.clamp(1usize, 64usize);
 
         info!(model_path = %model_path.display(), "loading whisper model");
         let context = WhisperContext::new_with_params(
@@ -112,14 +102,12 @@ impl AsrService {
         Ok(Some(Self {
             context: Arc::new(Mutex::new(context)),
             sample_rate,
-            stability_hits,
             hop: Duration::from_millis(hop_ms),
             min_duration: Duration::from_millis(min_duration_ms),
             max_buffer_duration: Duration::from_millis(max_buffer_ms),
-            empty_result_limit,
-            finality_lag: Duration::from_millis(finality_lag_ms),
             silence_threshold,
             silence_duration: Duration::from_millis(silence_duration_ms),
+            pcm_queue_capacity,
         }))
     }
 
@@ -130,7 +118,7 @@ impl AsrService {
     pub fn spawn_connection(
         self: Arc<Self>,
     ) -> (mpsc::Sender<Vec<u8>>, mpsc::Receiver<AsrTranscript>) {
-        let (pcm_tx, pcm_rx) = mpsc::channel(64);
+        let (pcm_tx, pcm_rx) = mpsc::channel(self.pcm_queue_capacity);
         let (transcript_tx, transcript_rx) = mpsc::channel(64);
         tokio::spawn(async move {
             if let Err(err) = run_connection(self, pcm_rx, transcript_tx).await {
@@ -269,7 +257,6 @@ async fn run_connection(
     out_tx: mpsc::Sender<AsrTranscript>,
 ) -> Result<()> {
     let mut buffer = VecDeque::<f32>::new();
-    let mut tracked: Vec<TrackedSegment> = Vec::new();
     let mut total_consumed_samples = 0usize;
     let sample_rate = service.sample_rate as f32;
     let mut silence_tracker = SilenceTracker::new(
@@ -279,7 +266,6 @@ async fn run_connection(
     );
     let min_samples = (service.min_duration.as_secs_f32() * sample_rate) as usize;
     let max_samples = (service.max_buffer_duration.as_secs_f32() * sample_rate) as usize;
-    let mut empty_result_hits = 0usize;
     let mut pcm_open = true;
     let mut ticker = interval(service.hop);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -291,21 +277,11 @@ async fn run_connection(
                     Some(bytes) => {
                         let (samples, rms) = extend_buffer(&mut buffer, &bytes);
                         silence_tracker.ingest(rms, samples);
-                        trim_buffer_to_max(
-                            &mut buffer,
-                            &mut tracked,
-                            &mut total_consumed_samples,
-                            max_samples,
-                            sample_rate,
-                        );
                     }
                     None => pcm_open = false,
                 }
             }
             _ = ticker.tick() => {
-                if buffer.len() < min_samples && pcm_open {
-                    continue;
-                }
                 if buffer.is_empty() {
                     if !pcm_open {
                         break;
@@ -313,7 +289,17 @@ async fn run_connection(
                     continue;
                 }
 
+                let has_pause = silence_tracker.has_boundary();
+                let hit_max_buffer = buffer.len() >= max_samples;
+                let should_transcribe =
+                    !pcm_open || (buffer.len() >= min_samples && (has_pause || hit_max_buffer));
+                if !should_transcribe {
+                    continue;
+                }
+
                 let audio = buffer.iter().copied().collect::<Vec<_>>();
+                let utterance_start_samples = total_consumed_samples;
+                let submitted_samples = buffer.len();
                 let (trimmed_audio, leading_trim) = trim_silence(
                     &audio,
                     service.sample_rate,
@@ -321,130 +307,34 @@ async fn run_connection(
                     service.silence_duration,
                 );
 
+                buffer.clear();
+                total_consumed_samples += submitted_samples;
+                let dropped_pending_samples = drain_pending_pcm(&mut pcm_rx);
+                total_consumed_samples += dropped_pending_samples;
+                silence_tracker.reset();
+
                 if trimmed_audio.is_empty() {
-                    if silence_tracker.has_boundary() && !buffer.is_empty() {
-                        let dropped = buffer.len();
-                        buffer.clear();
-                        total_consumed_samples += dropped;
-                        silence_tracker.reset();
-                        tracked.clear();
-                    }
+                    debug!(
+                        submitted_samples,
+                        dropped_pending_samples,
+                        has_pause,
+                        hit_max_buffer,
+                        "dropping silent ASR utterance"
+                    );
                     continue;
                 }
 
-                let trimmed_len = trimmed_audio.len();
+                let global_offset =
+                    (utterance_start_samples + leading_trim) as f32 / sample_rate;
+                let wav_bytes = encode_wav(&trimmed_audio, service.sample_rate)
+                    .context("failed to encode wav")?;
+
                 match service.transcribe(trimmed_audio).await {
                     Ok(segments) => {
-                        let silence_boundary = silence_tracker.has_boundary();
-                        if segments.is_empty() {
-                            empty_result_hits = empty_result_hits.saturating_add(1);
-                            let should_drop =
-                                silence_boundary || empty_result_hits >= service.empty_result_limit;
-                            if should_drop && !buffer.is_empty() {
-                                let dropped = drop_unrecognized_audio(
-                                    &mut buffer,
-                                    leading_trim,
-                                    trimmed_len,
-                                    silence_boundary,
-                                );
-                                total_consumed_samples += dropped;
-                                silence_tracker.reset();
-                                tracked.clear();
-                                debug!(
-                                    dropped_samples = dropped,
-                                    empty_result_hits,
-                                    silence_boundary,
-                                    "dropped ASR audio after empty Whisper result"
-                                );
-                                empty_result_hits = 0;
-                            }
-                            continue;
-                        }
-                        empty_result_hits = 0;
-
-                        let buffer_duration =
-                            buffer.len().saturating_sub(leading_trim) as f32 / sample_rate;
-                        let (finalized, mut new_tracked) = reconcile_segments(
-                            &segments,
-                            &tracked,
-                            service.stability_hits,
-                            buffer_duration,
-                            service.finality_lag.as_secs_f32(),
-                            silence_boundary,
-                        );
-
-                        if !finalized.is_empty() {
-                            let final_end = finalized
-                                .iter()
-                                .map(|seg| seg.end_s)
-                                .fold(0.0f32, f32::max);
-                            let final_samples = (final_end * sample_rate).round() as usize;
-
-                            if final_samples > 0
-                                && final_samples <= buffer.len().saturating_sub(leading_trim)
-                            {
-                                let global_offset =
-                                    (total_consumed_samples + leading_trim) as f32 / sample_rate;
-                                let wav_audio = buffer
-                                    .iter()
-                                    .skip(leading_trim)
-                                    .take(final_samples)
-                                    .copied()
-                                    .collect::<Vec<_>>();
-                                let wav_bytes = encode_wav(&wav_audio, service.sample_rate)
-                                    .context("failed to encode wav")?;
-
-                                if silence_boundary {
-                                    let dropped = buffer.len();
-                                    buffer.clear();
-                                    total_consumed_samples += dropped;
-                                    silence_tracker.reset();
-                                    new_tracked.clear();
-                                } else {
-                                    let drain_amount = leading_trim + final_samples;
-                                    buffer.drain(..drain_amount);
-                                    total_consumed_samples += drain_amount;
-                                    for seg in &mut new_tracked {
-                                        seg.start_s = (seg.start_s - final_end).max(0.0);
-                                        seg.end_s = (seg.end_s - final_end).max(0.0);
-                                    }
-                                }
-
-                                let text = finalized
-                                    .iter()
-                                    .map(|s| s.text.trim())
-                                    .filter(|s| !s.is_empty())
-                                    .collect::<Vec<_>>()
-                                    .join(" ");
-                                if let (Some(first), Some(last)) =
-                                    (finalized.first(), finalized.last())
-                                {
-                                    let transcript = AsrTranscript {
-                                        text,
-                                        start_ms: ((global_offset + first.start_s) * 1000.0) as u32,
-                                        end_ms: ((global_offset + last.end_s) * 1000.0) as u32,
-                                        audio_base64: BASE64_STANDARD.encode(&wav_bytes),
-                                        segments: finalized
-                                            .iter()
-                                            .map(|seg| segment_to_message(seg, global_offset))
-                                            .collect(),
-                                    };
-                                    let _ = out_tx.send(transcript).await;
-                                }
-                            }
-                        } else if silence_boundary && !buffer.is_empty() {
-                            let dropped = buffer.len();
-                            buffer.clear();
-                            total_consumed_samples += dropped;
-                            silence_tracker.reset();
-                            new_tracked.clear();
-                        }
-
-                        tracked = new_tracked;
+                        emit_transcript(segments, global_offset, wav_bytes, &out_tx).await;
                     }
                     Err(err) => {
                         error!(error = %err, "transcription error");
-                        tokio::time::sleep(Duration::from_millis(250)).await;
                     }
                 }
             }
@@ -512,45 +402,12 @@ fn extend_buffer(buffer: &mut VecDeque<f32>, bytes: &[u8]) -> (usize, f32) {
     (count, rms)
 }
 
-fn trim_buffer_to_max(
-    buffer: &mut VecDeque<f32>,
-    tracked: &mut Vec<TrackedSegment>,
-    total_consumed_samples: &mut usize,
-    max_samples: usize,
-    sample_rate: f32,
-) {
-    if max_samples == 0 || buffer.len() <= max_samples {
-        return;
+fn drain_pending_pcm(pcm_rx: &mut mpsc::Receiver<Vec<u8>>) -> usize {
+    let mut samples = 0usize;
+    while let Ok(bytes) = pcm_rx.try_recv() {
+        samples += bytes.len() / 2;
     }
-
-    let overflow = buffer.len() - max_samples;
-    buffer.drain(..overflow);
-    *total_consumed_samples += overflow;
-
-    let shift_s = overflow as f32 / sample_rate;
-    for segment in tracked.iter_mut() {
-        segment.start_s = (segment.start_s - shift_s).max(0.0);
-        segment.end_s = (segment.end_s - shift_s).max(0.0);
-    }
-    tracked.retain(|segment| segment.end_s > 0.0);
-}
-
-fn drop_unrecognized_audio(
-    buffer: &mut VecDeque<f32>,
-    leading_trim: usize,
-    trimmed_len: usize,
-    drop_all: bool,
-) -> usize {
-    let requested = if drop_all {
-        buffer.len()
-    } else {
-        leading_trim.saturating_add(trimmed_len).min(buffer.len())
-    };
-    if requested == 0 {
-        return 0;
-    }
-    buffer.drain(..requested);
-    requested
+    samples
 }
 
 fn trim_silence(
@@ -627,43 +484,43 @@ fn segment_to_message(segment: &SegmentInternal, offset_seconds: f32) -> Segment
     }
 }
 
-fn reconcile_segments(
-    latest: &[SegmentInternal],
-    tracked: &[TrackedSegment],
-    stability_threshold: usize,
-    buffer_duration: f32,
-    finality_lag_s: f32,
-    force_finalize: bool,
-) -> (Vec<SegmentInternal>, Vec<TrackedSegment>) {
-    if force_finalize {
-        return (latest.to_vec(), Vec::new());
+async fn emit_transcript(
+    segments: Vec<SegmentInternal>,
+    global_offset: f32,
+    wav_bytes: Vec<u8>,
+    out_tx: &mpsc::Sender<AsrTranscript>,
+) {
+    let segments = segments
+        .into_iter()
+        .filter(|segment| !segment.text.trim().is_empty())
+        .collect::<Vec<_>>();
+    let Some(first) = segments.first() else {
+        return;
+    };
+    let Some(last) = segments.last() else {
+        return;
+    };
+
+    let text = segments
+        .iter()
+        .map(|segment| segment.text.trim())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if text.is_empty() {
+        return;
     }
 
-    let mut prefix = Vec::new();
-    let mut new_tracked = Vec::new();
-
-    for (idx, seg) in latest.iter().enumerate() {
-        let mut stability = 1;
-        if let Some(prev) = tracked.get(idx) {
-            if prev.text == seg.text {
-                stability = prev.stability + 1;
-            }
-        }
-        let segment_age = (buffer_duration - seg.end_s).max(0.0);
-        let aged_out = finality_lag_s <= 0.0 || segment_age >= finality_lag_s;
-        if idx == prefix.len() && (stability >= stability_threshold || aged_out) {
-            prefix.push(seg.clone());
-            continue;
-        }
-        new_tracked.push(TrackedSegment {
-            text: seg.text.clone(),
-            start_s: seg.start_s,
-            end_s: seg.end_s,
-            stability,
-        });
-    }
-
-    (prefix, new_tracked)
+    let transcript = AsrTranscript {
+        text,
+        start_ms: ((global_offset + first.start_s) * 1000.0) as u32,
+        end_ms: ((global_offset + last.end_s) * 1000.0) as u32,
+        audio_base64: BASE64_STANDARD.encode(&wav_bytes),
+        segments: segments
+            .iter()
+            .map(|seg| segment_to_message(seg, global_offset))
+            .collect(),
+    };
+    let _ = out_tx.send(transcript).await;
 }
 
 fn encode_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
@@ -688,11 +545,11 @@ fn encode_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        SegmentInternal, SilenceTracker, TrackedSegment, WordTiming, drop_unrecognized_audio,
-        reconcile_segments, trim_buffer_to_max,
+        SegmentInternal, SilenceTracker, WordTiming, drain_pending_pcm, emit_transcript,
+        trim_silence,
     };
-    use std::collections::VecDeque;
     use std::time::Duration;
+    use tokio::sync::mpsc;
 
     fn make_segment(text: &str, start: f32, end: f32) -> SegmentInternal {
         SegmentInternal {
@@ -701,68 +558,6 @@ mod tests {
             end_s: end,
             words: Vec::<WordTiming>::new(),
         }
-    }
-
-    #[test]
-    fn reconcile_segments_promotes_stable_prefix() {
-        let latest = vec![
-            make_segment("hello", 0.0, 1.0),
-            make_segment("world", 1.0, 2.0),
-        ];
-        let tracked = vec![
-            TrackedSegment {
-                text: "hello".to_string(),
-                start_s: 0.0,
-                end_s: 1.0,
-                stability: 2,
-            },
-            TrackedSegment {
-                text: "world".to_string(),
-                start_s: 1.0,
-                end_s: 2.0,
-                stability: 1,
-            },
-        ];
-
-        let (finalized, remaining) = reconcile_segments(&latest, &tracked, 3, 2.5, 0.9, false);
-
-        assert_eq!(finalized.len(), 1);
-        assert_eq!(finalized[0].text, "hello");
-        assert_eq!(remaining.len(), 1);
-        assert_eq!(remaining[0].text, "world");
-        assert_eq!(remaining[0].stability, 2);
-    }
-
-    #[test]
-    fn reconcile_segments_emits_when_audio_has_aged_out() {
-        let latest = vec![make_segment("hello there", 0.0, 1.2)];
-        let tracked = vec![TrackedSegment {
-            text: "hello".to_string(),
-            start_s: 0.0,
-            end_s: 1.2,
-            stability: 1,
-        }];
-
-        let (finalized, remaining) = reconcile_segments(&latest, &tracked, 4, 5.0, 0.5, false);
-
-        assert_eq!(finalized.len(), 1);
-        assert!(remaining.is_empty());
-    }
-
-    #[test]
-    fn reconcile_segments_can_force_finalization() {
-        let latest = vec![make_segment("forced", 0.0, 0.8)];
-        let tracked = vec![TrackedSegment {
-            text: "forced".to_string(),
-            start_s: 0.0,
-            end_s: 0.8,
-            stability: 1,
-        }];
-
-        let (finalized, remaining) = reconcile_segments(&latest, &tracked, 10, 2.0, 5.0, true);
-
-        assert_eq!(finalized.len(), 1);
-        assert!(remaining.is_empty());
     }
 
     #[test]
@@ -779,41 +574,54 @@ mod tests {
     }
 
     #[test]
-    fn trim_buffer_to_max_drops_old_audio_and_shifts_tracked_segments() {
-        let mut buffer = VecDeque::from(vec![0.0; 10]);
-        let mut tracked = vec![TrackedSegment {
-            text: "hello".to_string(),
-            start_s: 0.5,
-            end_s: 1.5,
-            stability: 1,
-        }];
-        let mut consumed = 20usize;
+    fn trim_silence_keeps_middle_audio() {
+        let samples = [0.0, 0.0, 0.2, 0.2, 0.0, 0.0];
 
-        trim_buffer_to_max(&mut buffer, &mut tracked, &mut consumed, 6, 10.0);
+        let (trimmed, leading_trim) = trim_silence(&samples, 50, 0.01, Duration::from_millis(20));
 
-        assert_eq!(buffer.len(), 6);
-        assert_eq!(consumed, 24);
-        assert!((tracked[0].start_s - 0.1).abs() < f32::EPSILON);
-        assert!((tracked[0].end_s - 1.1).abs() < f32::EPSILON);
+        assert_eq!(trimmed, vec![0.2, 0.2]);
+        assert_eq!(leading_trim, 2);
     }
 
-    #[test]
-    fn drop_unrecognized_audio_removes_submitted_window() {
-        let mut buffer = VecDeque::from(vec![0.0; 10]);
+    #[tokio::test]
+    async fn emit_transcript_skips_empty_segments() {
+        let (tx, mut rx) = mpsc::channel(1);
 
-        let dropped = drop_unrecognized_audio(&mut buffer, 2, 5, false);
+        emit_transcript(vec![make_segment(" ", 0.0, 1.0)], 0.0, Vec::new(), &tx).await;
 
-        assert_eq!(dropped, 7);
-        assert_eq!(buffer.len(), 3);
+        assert!(rx.try_recv().is_err());
     }
 
-    #[test]
-    fn drop_unrecognized_audio_can_clear_whole_buffer() {
-        let mut buffer = VecDeque::from(vec![0.0; 10]);
+    #[tokio::test]
+    async fn emit_transcript_sends_joined_text_once() {
+        let (tx, mut rx) = mpsc::channel(1);
 
-        let dropped = drop_unrecognized_audio(&mut buffer, 2, 5, true);
+        emit_transcript(
+            vec![
+                make_segment("hello", 0.0, 0.5),
+                make_segment("there", 0.5, 1.0),
+            ],
+            2.0,
+            Vec::new(),
+            &tx,
+        )
+        .await;
 
-        assert_eq!(dropped, 10);
-        assert!(buffer.is_empty());
+        let transcript = rx.try_recv().expect("transcript should be sent");
+        assert_eq!(transcript.text, "hello there");
+        assert_eq!(transcript.start_ms, 2000);
+        assert_eq!(transcript.end_ms, 3000);
+    }
+
+    #[tokio::test]
+    async fn drain_pending_pcm_discards_queued_audio() {
+        let (tx, mut rx) = mpsc::channel(4);
+        tx.send(vec![0, 0, 1, 0]).await.unwrap();
+        tx.send(vec![2, 0, 3, 0, 4, 0]).await.unwrap();
+
+        let drained = drain_pending_pcm(&mut rx);
+
+        assert_eq!(drained, 5);
+        assert!(rx.try_recv().is_err());
     }
 }

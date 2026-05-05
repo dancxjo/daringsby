@@ -340,36 +340,9 @@
       const source = audioContext.createMediaStreamSource(stream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
       const targetSampleRate = 16000;
-      const audioFrameSamples = targetSampleRate / 2;
-      let pendingAudio = [];
-      let pendingAudioSamples = 0;
-
-      const flushAudio = () => {
-        if (!pendingAudioSamples) return;
-        const merged = new Int16Array(pendingAudioSamples);
-        let offset = 0;
-        pendingAudio.forEach((chunk) => {
-          merged.set(chunk, offset);
-          offset += chunk.length;
-        });
-        pendingAudio = [];
-        pendingAudioSamples = 0;
-        safeSend(
-          JSON.stringify({
-            type: "Hear",
-            data: {
-              base64: arrayBufferToBase64(merged.buffer),
-              mime: "audio/pcm;format=s16le;rate=16000",
-              sample_rate: targetSampleRate,
-              channels: 1,
-            },
-          })
-        );
-      };
 
       window.onbeforeunload = () => {
         try {
-          flushAudio();
           processor.disconnect();
           source.disconnect();
           audioContext.close();
@@ -381,18 +354,22 @@
 
       processor.onaudioprocess = (event) => {
         if (playing) {
-          pendingAudio = [];
-          pendingAudioSamples = 0;
           return;
         }
         const input = event.inputBuffer.getChannelData(0);
         const pcm = floatTo16BitPcm(resample(input, audioContext.sampleRate, targetSampleRate));
         if (!pcm.byteLength) return;
-        pendingAudio.push(pcm);
-        pendingAudioSamples += pcm.length;
-        if (pendingAudioSamples >= audioFrameSamples) {
-          flushAudio();
-        }
+        safeSend(
+          JSON.stringify({
+            type: "Hear",
+            data: {
+              base64: arrayBufferToBase64(pcm.buffer),
+              mime: "audio/pcm;format=s16le;rate=16000",
+              sample_rate: targetSampleRate,
+              channels: 1,
+            },
+          })
+        );
       };
 
       source.connect(processor);
@@ -506,7 +483,9 @@
     startSpeechRecognition();
   }
 
-  setupSpeechRecognition();
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setupSpeechRecognition();
+  }
 
   function updateConversation() {
     const system = document.getElementById("system-prompt");

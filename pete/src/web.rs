@@ -338,7 +338,10 @@ async fn handle_hear_frame(data: &shared::AudioData, asr_pcm_tx: &Option<mpsc::S
             return;
         }
     };
-    if !bytes.is_empty() && tx.send(bytes).await.is_err() {
+    if bytes.is_empty() {
+        return;
+    }
+    if tx.send(bytes).await.is_err() {
         warn!("ASR processor is closed");
     }
 }
