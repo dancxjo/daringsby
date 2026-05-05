@@ -72,6 +72,7 @@ fn one_shot_prompt_includes_default_prompt() {
     assert!(prompt.contains(DEFAULT_SYSTEM_PROMPT.trim()));
     assert!(prompt.contains("Task:\nSummarize what I saw."));
     assert!(prompt.contains("write in the first person"));
+    assert!(prompt.contains("multiple frames from the same continuous stream"));
 }
 
 #[test]

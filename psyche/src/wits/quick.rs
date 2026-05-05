@@ -146,7 +146,7 @@ impl crate::traits::wit::Wit for Quick {
         let stimuli = items;
         let bullets: Vec<String> = stimuli.iter().map(|s| s.what.clone()).collect();
         let prompt = format!(
-            "Summarize these simultaneous sensations in one sentence, in the first person, using I/my/me. Do not refer to Pete, the individual, the observer, or the person. Return only the summary sentence.\n- {}",
+            "Summarize these recent sensations in one sentence, in the first person, using I/my/me. Some sensations may be consecutive frames from the same sensor stream; repeated similar camera or face observations usually mean one thing persisted across frames, not multiple simultaneous things. Do not refer to Pete, the individual, the observer, or the person. Return only the summary sentence.\n- {}",
             bullets.join("\n- ")
         );
         let command = crate::with_default_system_prompt(prompt);

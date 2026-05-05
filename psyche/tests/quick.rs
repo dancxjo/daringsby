@@ -31,6 +31,11 @@ async fn summarizes_heard_text() {
     assert!(out[0].summary.contains("in the first person"));
     assert!(out[0].summary.contains("using I/my/me"));
     assert!(out[0].summary.contains("Do not refer to Pete"));
+    assert!(
+        out[0]
+            .summary
+            .contains("consecutive frames from the same sensor stream")
+    );
     assert_eq!(out[0].stimuli.len(), 1);
 }
 
@@ -86,6 +91,34 @@ async fn describes_faces_in_first_person() {
 
     assert_eq!(out.len(), 1);
     assert_eq!(out[0].stimuli[0].what, "I saw a face");
+}
+
+#[tokio::test]
+async fn repeated_faces_are_framed_as_stream_frames() {
+    let bus = TopicBus::new(8);
+    let quick = Quick::new(bus, Arc::new(Dummy));
+    for _ in 0..2 {
+        quick
+            .observe(Sensation::Of(Box::new(FaceInfo {
+                crop: ImageData {
+                    mime: "image/png".into(),
+                    base64: "zzz".into(),
+                },
+                embedding: vec![0.1],
+            })))
+            .await;
+    }
+
+    let out = quick.tick().await;
+
+    assert_eq!(out.len(), 1);
+    assert!(out[0].summary.contains("recent sensations"));
+    assert!(
+        out[0]
+            .summary
+            .contains("repeated similar camera or face observations")
+    );
+    assert_eq!(out[0].stimuli.len(), 2);
 }
 
 #[tokio::test]
