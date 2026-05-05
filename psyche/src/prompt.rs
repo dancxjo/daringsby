@@ -38,7 +38,10 @@ pub struct CombobulatorPrompt;
 
 impl PromptFragment for CombobulatorPrompt {
     fn build_prompt(&self, input: &str) -> String {
-        format!("Summarize Pete's current awareness in one or two sentences:\n{input}")
+        format!(
+            "The following entries are a timeline of Pete's internal representations of real-world events happening around or to him. Treat them as evidence about the actual situation, not as the topic to describe. Do not say that you are observing a timeline, recordings, entries, or a shift in conversation.\n\n\
+             What is going on right now? Summarize Pete's current awareness in one or two grounded first-person sentences:\n{input}"
+        )
     }
 }
 
