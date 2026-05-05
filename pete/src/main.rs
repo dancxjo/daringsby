@@ -103,7 +103,6 @@ async fn main() -> anyhow::Result<()> {
     let bus = Arc::new(bus);
     init_logging(bus.log_sender());
     dotenv().ok();
-    let _ = dbg!(std::env::var("CHATTER_MODEL"));
     let cli = Cli::parse();
 
     info!(%cli.addr, "starting server");
