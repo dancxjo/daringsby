@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use lingproc::LlmInstruction;
 use psyche::traits::Doer;
 use psyche::wits::Quick;
-use psyche::{Heartbeat, Sensation, Topic, TopicBus, Wit};
+use psyche::{Heartbeat, ImageData, Sensation, Topic, TopicBus, Wit};
 use std::sync::Arc;
 use tokio::time::{Duration, sleep};
 
@@ -45,4 +45,20 @@ async fn describes_heartbeat_before_type_erasure() {
     assert_eq!(out.len(), 1);
     assert!(out[0].stimuli[0].what.starts_with("Heartbeat at "));
     assert!(!out[0].summary.is_empty());
+}
+
+#[tokio::test]
+async fn ignores_raw_image_frames() {
+    let bus = TopicBus::new(8);
+    let quick = Quick::new(bus, Arc::new(Dummy));
+    quick
+        .observe(Sensation::Of(Box::new(ImageData {
+            mime: "image/png".into(),
+            base64: "zzz".into(),
+        })))
+        .await;
+
+    let out = quick.tick().await;
+
+    assert!(out.is_empty());
 }

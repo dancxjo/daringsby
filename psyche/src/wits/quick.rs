@@ -53,8 +53,10 @@ impl Quick {
             tokio::pin!(stream);
             while let Some(payload) = stream.next().await {
                 if let Ok(s) = Arc::downcast::<Sensation>(payload) {
-                    let mut buf = buf_clone.lock().unwrap();
-                    buf.push_back(Stimulus::new(Quick::describe(&s)));
+                    if let Some(description) = Quick::describe(&s) {
+                        let mut buf = buf_clone.lock().unwrap();
+                        buf.push_back(Stimulus::new(description));
+                    }
                 }
             }
         });
@@ -68,23 +70,25 @@ impl Quick {
     }
 
     /// Describe a sensation for the summarization prompt.
-    fn describe(s: &Sensation) -> String {
+    fn describe(s: &Sensation) -> Option<String> {
         match s {
-            Sensation::HeardOwnVoice(t) => format!("Pete said \"{}\"", t),
-            Sensation::HeardUserVoice(t) => format!("User said \"{}\"", t),
+            Sensation::HeardOwnVoice(t) => Some(format!("Pete said \"{}\"", t)),
+            Sensation::HeardUserVoice(t) => Some(format!("User said \"{}\"", t)),
             Sensation::Of(any) => {
                 if let Some(_f) = any.downcast_ref::<crate::sensors::face::FaceInfo>() {
-                    "Saw a face".to_string()
+                    Some("Saw a face".to_string())
+                } else if any.downcast_ref::<crate::ImageData>().is_some() {
+                    None
                 } else if let Some(loc) = any.downcast_ref::<crate::GeoLoc>() {
-                    format!(
+                    Some(format!(
                         "Detected location ({:.1}, {:.1})",
                         loc.latitude, loc.longitude
-                    )
+                    ))
                 } else if let Some(beat) = any.downcast_ref::<crate::Heartbeat>() {
-                    format!("Heartbeat at {}", beat.timestamp)
+                    Some(format!("Heartbeat at {}", beat.timestamp))
                 } else {
                     debug!("unrecognized sensation type: {:?}", any.type_id());
-                    "Something happened".to_string()
+                    Some("Something happened".to_string())
                 }
             }
         }
@@ -107,9 +111,11 @@ impl Quick {
 impl crate::traits::observer::SensationObserver for Quick {
     async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
         if let Some(s) = payload.downcast_ref::<Sensation>() {
-            let mut buf = self.buffer.lock().unwrap();
-            buf.push_back(Stimulus::new(Self::describe(s)));
-            Self::trim_old(&mut buf, self.window);
+            if let Some(description) = Self::describe(s) {
+                let mut buf = self.buffer.lock().unwrap();
+                buf.push_back(Stimulus::new(description));
+                Self::trim_old(&mut buf, self.window);
+            }
         }
     }
 }
@@ -120,9 +126,11 @@ impl crate::traits::wit::Wit for Quick {
     type Output = String;
 
     async fn observe(&self, input: Self::Input) {
-        let mut buf = self.buffer.lock().unwrap();
-        buf.push_back(Stimulus::new(Self::describe(&input)));
-        Self::trim_old(&mut buf, self.window);
+        if let Some(description) = Self::describe(&input) {
+            let mut buf = self.buffer.lock().unwrap();
+            buf.push_back(Stimulus::new(description));
+            Self::trim_old(&mut buf, self.window);
+        }
     }
 
     async fn tick(&self) -> Vec<Impression<Self::Output>> {
