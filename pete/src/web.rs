@@ -263,16 +263,49 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
 fn parse_ws_request(text: &str) -> Option<WsRequest> {
     serde_json::from_str::<WsRequest>(text)
         .ok()
-        .or_else(|| parse_legacy_text_request(text))
+        .or_else(|| parse_flat_ws_request(text))
 }
 
-fn parse_legacy_text_request(text: &str) -> Option<WsRequest> {
+fn parse_flat_ws_request(text: &str) -> Option<WsRequest> {
     let value: serde_json::Value = serde_json::from_str(text).ok()?;
-    if value.get("type")?.as_str()? != "Text" {
-        return None;
+    match value.get("type")?.as_str()? {
+        "Text" => {
+            let text = value.get("text")?.as_str()?.to_string();
+            Some(WsRequest::Text { text })
+        }
+        "Echo" => {
+            let text = value.get("text")?.as_str()?.to_string();
+            Some(WsRequest::Echo { text })
+        }
+        "See" => {
+            let data = value.get("data")?.as_str()?.to_string();
+            let at = value
+                .get("at")
+                .and_then(|at| at.as_str())
+                .map(ToString::to_string);
+            Some(WsRequest::See { data, at })
+        }
+        "Hear" => {
+            let data = serde_json::from_value(value.get("data")?.clone()).ok()?;
+            let at = value
+                .get("at")
+                .and_then(|at| at.as_str())
+                .map(ToString::to_string);
+            Some(WsRequest::Hear { data, at })
+        }
+        "Geolocate" => {
+            let data = serde_json::from_value(value.get("data")?.clone()).ok()?;
+            let at = value
+                .get("at")
+                .and_then(|at| at.as_str())
+                .map(ToString::to_string);
+            Some(WsRequest::Geolocate { data, at })
+        }
+        "Sense" => Some(WsRequest::Sense {
+            data: value.get("data")?.clone(),
+        }),
+        _ => None,
     }
-    let text = value.get("text")?.as_str()?.to_string();
-    Some(WsRequest::Text { text })
 }
 
 #[cfg(feature = "asr")]

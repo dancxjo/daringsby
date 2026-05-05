@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use axum::{Router, routing::get, serve};
 use futures::{SinkExt, StreamExt};
 use pete::{Body, EventBus, EyeSensor, GeoSensor, dummy_psyche, ws_handler};
-use psyche::traits::Ear;
+use psyche::{ImageData, Sensor, traits::Ear};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -12,6 +12,21 @@ use tokio::sync::{Mutex, mpsc};
 struct RecordingEar {
     heard: mpsc::UnboundedSender<String>,
     self_heard: Arc<AtomicUsize>,
+}
+
+struct RecordingEye {
+    seen: mpsc::UnboundedSender<ImageData>,
+}
+
+#[async_trait]
+impl Sensor<ImageData> for RecordingEye {
+    async fn sense(&self, image: ImageData) {
+        let _ = self.seen.send(image);
+    }
+
+    fn describe(&self) -> &'static str {
+        "recording eye"
+    }
 }
 
 #[async_trait]
@@ -80,6 +95,67 @@ async fn websocket_text_is_reported_to_ear() {
         .expect("timed out waiting for websocket text to reach ear")
         .expect("ear channel closed");
     assert_eq!(heard, "hello pete");
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn websocket_flat_see_is_reported_to_eye() {
+    let psyche = dummy_psyche();
+    let conversation = psyche.conversation();
+    let (heard_tx, _heard_rx) = mpsc::unbounded_channel();
+    let ear = Arc::new(RecordingEar {
+        heard: heard_tx,
+        self_heard: Arc::new(AtomicUsize::new(0)),
+    });
+    let (seen_tx, mut seen_rx) = mpsc::unbounded_channel();
+    let eye = Arc::new(RecordingEye { seen: seen_tx });
+    let geo = Arc::new(GeoSensor::new(psyche.input_sender()));
+    let (bus, _user_rx) = EventBus::new();
+    let bus = Arc::new(bus);
+    let debug = psyche.debug_handle();
+    let state = Body {
+        asr: None,
+        bus,
+        ear,
+        eye,
+        geo,
+        conversation,
+        connections: Arc::new(AtomicUsize::new(0)),
+        system_prompt: Arc::new(Mutex::new(psyche.system_prompt())),
+        psyche_debug: debug,
+    };
+    let app = Router::new()
+        .route("/ws", get(ws_handler))
+        .with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        serve(listener, app.into_make_service()).await.unwrap();
+    });
+
+    let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{}/ws", addr))
+        .await
+        .unwrap();
+    let _ = socket.next().await.unwrap().unwrap();
+    socket
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            serde_json::json!({
+                "type": "See",
+                "data": "data:image/jpeg;base64,Zm9v"
+            })
+            .to_string()
+            .into(),
+        ))
+        .await
+        .unwrap();
+
+    let seen = tokio::time::timeout(std::time::Duration::from_secs(1), seen_rx.recv())
+        .await
+        .expect("timed out waiting for websocket image to reach eye")
+        .expect("eye channel closed");
+    assert_eq!(seen.mime, "image/jpeg");
+    assert_eq!(seen.base64, "Zm9v");
 
     server.abort();
 }
