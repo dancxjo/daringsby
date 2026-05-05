@@ -71,3 +71,12 @@ path = "src/main.rs"
 [[bin]]
 name = "face"
 path = "src/bin/face.rs"
+
+[[bin]]
+name = "psychic"
+path = "src/bin/psychic.rs"
+
+[[bin]]
+name = "transcription"
+path = "src/bin/transcription.rs"
+required-features = ["asr"]

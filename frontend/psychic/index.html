@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Psychic</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Psychic</h1>
+      <p id="status">Connecting</p>
+    </div>
+    <div class="metrics" aria-live="polite">
+      <span><strong id="node-count">0</strong> nodes</span>
+      <span><strong id="relationship-count">0</strong> relationships</span>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <section class="graph-shell" aria-label="Graph browser">
+      <svg id="graph" role="img" aria-label="Pete memory graph"></svg>
+      <div class="toolbar" aria-label="Graph controls">
+        <button id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+        <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">-</button>
+        <button id="zoom-fit" type="button" title="Fit graph" aria-label="Fit graph">⛶</button>
+      </div>
+    </section>
+
+    <aside class="inspector" aria-label="Selection inspector">
+      <div class="inspector-empty" id="inspector-empty">Select a node or relationship</div>
+      <div class="inspector-content" id="inspector-content" hidden>
+        <div class="inspector-head">
+          <div id="inspector-icon" class="inspector-icon">◎</div>
+          <div>
+            <h2 id="inspector-title"></h2>
+            <p id="inspector-kind"></p>
+          </div>
+        </div>
+        <dl id="inspector-properties"></dl>
+      </div>
+    </aside>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="/psychic.js"></script>
+</body>
+</html>

@@ -59,7 +59,10 @@ pub mod wits {
     pub use fond_du_coeur::FondDuCoeur;
     pub use heart_wit::HeartWit;
     pub use identity_wit::IdentityWit;
-    pub use memory::{BasicMemory, GraphStore, Memory, Neo4jClient, NoopMemory, QdrantClient};
+    pub use memory::{
+        BasicMemory, GraphAudioClip, GraphNodeSnapshot, GraphRelationshipSnapshot, GraphSnapshot,
+        GraphSpeechSegment, GraphStore, Memory, Neo4jClient, NoopMemory, QdrantClient,
+    };
     pub use memory_wit::MemoryWit;
     pub use moment_wit::MomentWit;
     pub use quick::Quick;
@@ -129,7 +132,8 @@ pub use traits::{
 };
 pub use voice::{Voice, extract_emojis};
 pub use wits::{
-    BasicMemory, Combobulator, EntityWit, EpisodeWit, FaceMemoryWit, FondDuCoeur, GraphStore,
+    BasicMemory, Combobulator, EntityWit, EpisodeWit, FaceMemoryWit, FondDuCoeur, GraphAudioClip,
+    GraphNodeSnapshot, GraphRelationshipSnapshot, GraphSnapshot, GraphSpeechSegment, GraphStore,
     HeartWit, IdentityWit, Memory, MemoryWit, Neo4jClient, NoopMemory, QdrantClient,
     SensationGraphObserver, VisionWit, VoiceMemoryWit, Will,
 };

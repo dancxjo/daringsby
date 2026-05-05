@@ -6,7 +6,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
 use lingproc::Vectorizer;
 use reqwest::{StatusCode, Url};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::sync::{
@@ -454,6 +454,70 @@ impl Default for Neo4jClient {
     }
 }
 
+/// Audio clip loaded directly from the graph store.
+#[derive(Clone, Debug)]
+pub struct GraphAudioClip {
+    /// Stable graph node id for the `AudioClip`.
+    pub id: String,
+    /// Audio payload and metadata stored on the graph node.
+    pub clip: AudioClip,
+    /// Graph observation timestamp, when present.
+    pub occurred_at: Option<String>,
+}
+
+/// Speech segment produced by transcribing an `AudioClip`.
+#[derive(Clone, Debug)]
+pub struct GraphSpeechSegment {
+    /// Zero-based segment order in the transcription.
+    pub index: usize,
+    /// Segment text.
+    pub text: String,
+    /// Start offset from the beginning of the audio clip.
+    pub start_ms: u32,
+    /// End offset from the beginning of the audio clip.
+    pub end_ms: u32,
+    /// Absolute segment start timestamp, when the source clip was timestamped.
+    pub occurred_at: Option<String>,
+    /// Absolute segment end timestamp, when the source clip was timestamped.
+    pub ended_at: Option<String>,
+}
+
+/// Graph node returned for browser-side visualization.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct GraphNodeSnapshot {
+    /// Stable graph node id.
+    pub id: String,
+    /// Neo4j labels attached to the node.
+    pub labels: Vec<String>,
+    /// Display-safe node properties. Large payload fields are omitted.
+    pub properties: Value,
+}
+
+/// Graph relationship returned for browser-side visualization.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct GraphRelationshipSnapshot {
+    /// Neo4j relationship element id.
+    pub id: String,
+    /// Source graph node id.
+    pub source: String,
+    /// Target graph node id.
+    pub target: String,
+    /// Neo4j relationship type.
+    #[serde(rename = "type")]
+    pub relationship_type: String,
+    /// Display-safe relationship properties.
+    pub properties: Value,
+}
+
+/// Latest graph state for a real-time graph browser.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct GraphSnapshot {
+    /// Nodes included in the current graph window.
+    pub nodes: Vec<GraphNodeSnapshot>,
+    /// Relationships between included nodes.
+    pub relationships: Vec<GraphRelationshipSnapshot>,
+}
+
 impl Neo4jClient {
     pub fn new(uri: String, user: String, pass: String) -> Self {
         Self {
@@ -462,6 +526,172 @@ impl Neo4jClient {
             pass,
             constraint_ensured: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Return the latest `AudioClip` graph node that has no transcript property.
+    pub async fn latest_untranscribed_audio_clip(&self) -> Result<Option<GraphAudioClip>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (a:GraphNode:AudioClip)
+                    WHERE a.base64 IS NOT NULL
+                      AND a.transcript IS NULL
+                      AND NOT (a)-[:HAS_TRANSCRIPTION]->(:GraphNode:Transcription)
+                    WITH a, coalesce(a.captured_at, a.occurred_at, "") AS observed_at
+                    RETURN a.id, a.mime, a.base64, a.sample_rate, a.channels, a.captured_at, a.occurred_at
+                    ORDER BY observed_at DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest untranscribed audio clip",
+        )
+        .await?;
+        rows.first().map(graph_audio_clip_from_row).transpose()
+    }
+
+    /// Return a display-oriented snapshot of the latest graph nodes and their relationships.
+    pub async fn graph_snapshot(&self, limit: usize) -> Result<GraphSnapshot> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (n:GraphNode)
+                    WITH n
+                    ORDER BY coalesce(
+                        n.occurred_at,
+                        n.observed_at,
+                        n.captured_at,
+                        n.transcribed_at,
+                        n.timestamp,
+                        ""
+                    ) DESC, n.id
+                    LIMIT $limit
+                    WITH collect(n) AS nodes
+                    UNWIND nodes AS n
+                    OPTIONAL MATCH (n)-[r]-(m:GraphNode)
+                    WHERE m IN nodes
+                    WITH nodes, collect(DISTINCT r) AS relationships
+                    RETURN
+                        [node IN nodes | {
+                            id: node.id,
+                            labels: labels(node),
+                            properties: properties(node)
+                        }],
+                        [rel IN relationships WHERE rel IS NOT NULL | {
+                            id: elementId(rel),
+                            source: startNode(rel).id,
+                            target: endNode(rel).id,
+                            type: type(rel),
+                            properties: properties(rel)
+                        }]
+                "#
+                .into(),
+                parameters: json!({
+                    "limit": i64::try_from(limit).unwrap_or(i64::MAX),
+                }),
+            },
+            "loading graph snapshot",
+        )
+        .await?;
+        rows.first()
+            .map(graph_snapshot_from_row)
+            .transpose()
+            .map(|snapshot| snapshot.unwrap_or_default())
+    }
+
+    /// Attach a Whisper transcript to an existing `AudioClip` graph node.
+    pub async fn attach_audio_transcription(
+        &self,
+        audio_clip_id: &str,
+        transcript: &str,
+        source_captured_at: Option<&str>,
+        segments: &[GraphSpeechSegment],
+    ) -> Result<()> {
+        let endpoint = self.http_endpoint()?;
+        let client = reqwest::Client::new();
+        self.ensure_constraint(&client, &endpoint).await?;
+        let transcribed_at = chrono::Utc::now().to_rfc3339();
+        let transcription_id = stable_bytes_id(
+            "transcription",
+            format!("{audio_clip_id}:{transcribed_at}").as_bytes(),
+        );
+        let mut nodes = vec![json!({
+            "label": "Transcription",
+            "id": transcription_id,
+            "audio_clip_id": audio_clip_id,
+            "text": transcript,
+            "transcribed_at": transcribed_at,
+            "source_captured_at": source_captured_at,
+        })];
+        let mut relationships = vec![json!({
+            "from": audio_clip_id,
+            "to": transcription_id,
+            "type": "HAS_TRANSCRIPTION",
+        })];
+        for segment in segments {
+            let segment_id = format!("{transcription_id}:segment:{}", segment.index);
+            nodes.push(json!({
+                "label": "SpeechSegment",
+                "id": segment_id,
+                "transcription_id": transcription_id,
+                "audio_clip_id": audio_clip_id,
+                "segment_index": segment.index,
+                "text": segment.text,
+                "start_ms": segment.start_ms,
+                "end_ms": segment.end_ms,
+                "occurred_at": segment.occurred_at,
+                "ended_at": segment.ended_at,
+            }));
+            relationships.push(json!({
+                "from": transcription_id,
+                "to": segment_id,
+                "type": "HAS_SEGMENT",
+                "segment_index": segment.index,
+            }));
+            relationships.push(json!({
+                "from": segment_id,
+                "to": audio_clip_id,
+                "type": "SEGMENT_OF",
+            }));
+        }
+        let mut statements = vec![CypherStatement {
+            statement: r#"
+                MATCH (a:GraphNode:AudioClip {id: $id})
+                SET a.transcript = $transcript,
+                    a.transcribed_at = $transcribed_at
+            "#
+            .into(),
+            parameters: json!({
+                "id": audio_clip_id,
+                "transcript": transcript,
+                "transcribed_at": transcribed_at,
+            }),
+        }];
+        statements.extend(graph_statements(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))?);
+        commit_neo4j_statements(
+            &client,
+            &endpoint,
+            &self.user,
+            &self.pass,
+            &statements,
+            "attaching audio transcription",
+        )
+        .await
     }
 
     /// Store `data` in the graph database.
@@ -529,6 +759,157 @@ impl Neo4jClient {
     }
 }
 
+fn graph_snapshot_from_row(row: &Value) -> Result<GraphSnapshot> {
+    let values = row
+        .as_array()
+        .context("Neo4j graph snapshot row was not an array")?;
+    let nodes = values
+        .first()
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(graph_node_snapshot_from_value)
+        .collect::<Result<Vec<_>>>()?;
+    let relationships = values
+        .get(1)
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(graph_relationship_snapshot_from_value)
+        .collect::<Result<Vec<_>>>()?;
+    Ok(GraphSnapshot {
+        nodes,
+        relationships,
+    })
+}
+
+fn graph_node_snapshot_from_value(value: Value) -> Result<GraphNodeSnapshot> {
+    let object = value
+        .as_object()
+        .context("Neo4j graph node snapshot was not an object")?;
+    let id = object
+        .get("id")
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .context("Neo4j graph node snapshot is missing id")?;
+    let labels = object
+        .get("labels")
+        .and_then(Value::as_array)
+        .map(|labels| {
+            labels
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let properties = sanitize_graph_properties(
+        object
+            .get("properties")
+            .cloned()
+            .unwrap_or_else(|| json!({})),
+    );
+    Ok(GraphNodeSnapshot {
+        id,
+        labels,
+        properties,
+    })
+}
+
+fn graph_relationship_snapshot_from_value(value: Value) -> Result<GraphRelationshipSnapshot> {
+    let object = value
+        .as_object()
+        .context("Neo4j graph relationship snapshot was not an object")?;
+    Ok(GraphRelationshipSnapshot {
+        id: snapshot_string(object, "id")?,
+        source: snapshot_string(object, "source")?,
+        target: snapshot_string(object, "target")?,
+        relationship_type: snapshot_string(object, "type")?,
+        properties: sanitize_graph_properties(
+            object
+                .get("properties")
+                .cloned()
+                .unwrap_or_else(|| json!({})),
+        ),
+    })
+}
+
+fn snapshot_string(object: &Map<String, Value>, key: &str) -> Result<String> {
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .with_context(|| format!("Neo4j graph snapshot is missing {key}"))
+}
+
+fn sanitize_graph_properties(value: Value) -> Value {
+    let Value::Object(object) = value else {
+        return value;
+    };
+    let mut sanitized = Map::new();
+    for (key, value) in object {
+        if should_omit_graph_snapshot_property(&key) {
+            continue;
+        }
+        sanitized.insert(key, value);
+    }
+    Value::Object(sanitized)
+}
+
+fn should_omit_graph_snapshot_property(key: &str) -> bool {
+    matches!(key, "base64" | "embedding" | "raw_json")
+}
+
+fn graph_audio_clip_from_row(row: &Value) -> Result<GraphAudioClip> {
+    let values = row
+        .as_array()
+        .context("Neo4j audio clip row was not an array")?;
+    let id = row_string(values, 0, "id")?;
+    let clip = AudioClip {
+        mime: row_string(values, 1, "mime")?,
+        base64: row_string(values, 2, "base64")?,
+        sample_rate: row_u32(values, 3, "sample_rate")?,
+        channels: row_u16(values, 4, "channels")?,
+        transcript: None,
+        captured_at: row_optional_string(values, 5),
+    };
+    Ok(GraphAudioClip {
+        id,
+        clip,
+        occurred_at: row_optional_string(values, 6),
+    })
+}
+
+fn row_string(values: &[Value], index: usize, name: &str) -> Result<String> {
+    values
+        .get(index)
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .with_context(|| format!("Neo4j audio clip row is missing {name}"))
+}
+
+fn row_optional_string(values: &[Value], index: usize) -> Option<String> {
+    values
+        .get(index)
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+}
+
+fn row_u32(values: &[Value], index: usize, name: &str) -> Result<u32> {
+    let value = values
+        .get(index)
+        .and_then(Value::as_u64)
+        .with_context(|| format!("Neo4j audio clip row is missing numeric {name}"))?;
+    u32::try_from(value).with_context(|| format!("Neo4j audio clip {name} is out of range"))
+}
+
+fn row_u16(values: &[Value], index: usize, name: &str) -> Result<u16> {
+    let value = row_u32(values, index, name)?;
+    u16::try_from(value).with_context(|| format!("Neo4j audio clip {name} is out of range"))
+}
+
 async fn commit_neo4j_statements(
     client: &reqwest::Client,
     endpoint: &Url,
@@ -566,6 +947,52 @@ async fn commit_neo4j_statements(
         }
     }
     Ok(())
+}
+
+async fn query_neo4j_rows(
+    client: &reqwest::Client,
+    endpoint: &Url,
+    user: &str,
+    pass: &str,
+    statement: CypherStatement,
+    action: &str,
+) -> Result<Vec<Value>> {
+    let body = json!({
+        "statements": [{
+            "statement": statement.statement,
+            "parameters": statement.parameters,
+            "resultDataContents": ["row"],
+        }]
+    });
+    let response = client
+        .post(endpoint.clone())
+        .basic_auth(user, Some(pass))
+        .json(&body)
+        .timeout(NEO4J_REQUEST_TIMEOUT)
+        .send()
+        .await
+        .with_context(|| format!("failed while {action} at {endpoint}"))?;
+    if !response.status().is_success() {
+        return Err(unexpected_neo4j_response(response, action).await);
+    }
+    let body: Value = response
+        .json()
+        .await
+        .with_context(|| format!("failed to decode Neo4j response while {action}"))?;
+    if let Some(errors) = body.get("errors").and_then(Value::as_array) {
+        if !errors.is_empty() {
+            bail!("Neo4j returned errors while {action}: {errors:?}");
+        }
+    }
+    let data = body
+        .pointer("/results/0/data")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    Ok(data
+        .into_iter()
+        .filter_map(|entry| entry.get("row").cloned())
+        .collect())
 }
 
 fn neo4j_http_url(source: &Url, scheme: &str, default_port: u16) -> Result<Url> {

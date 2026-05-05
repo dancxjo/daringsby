@@ -141,6 +141,18 @@ Events from Pete include speech, emotion changes, wit reports and conversation u
 { "type": "Emote", "data": "😊" }
 ```
 
+### Psychic Graph Client
+
+Run the graph browser beside the face capture server:
+
+```sh
+cargo run -p pete --bin psychic -- --addr 127.0.0.1:3001
+```
+
+Visit [`http://localhost:3001/`](http://localhost:3001/). Psychic streams the
+latest Neo4j graph window over `/ws` and exposes the same snapshot at `/graph`.
+Set `PSYCHIC_GRAPH_LIMIT` or pass `--graph-limit` to adjust the snapshot size.
+
 ---
 
 ## 🧪 Testing & Simulation

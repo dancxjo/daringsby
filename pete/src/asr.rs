@@ -9,7 +9,7 @@ use anyhow::{Context, Result, anyhow};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use chrono::{DateTime, Utc};
-use hound::{SampleFormat, WavSpec, WavWriter};
+use hound::{SampleFormat, WavReader, WavSpec, WavWriter};
 use serde::Serialize;
 #[cfg(feature = "voice")]
 use tokio::sync::Mutex as AsyncMutex;
@@ -56,6 +56,12 @@ pub struct SegmentMessage {
     pub start_ms: u32,
     pub end_ms: u32,
     pub words: Vec<WordTiming>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ClipTranscription {
+    pub text: String,
+    pub segments: Vec<SegmentMessage>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -165,6 +171,33 @@ impl AsrService {
 
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
+    }
+
+    pub fn has_whisper_model(&self) -> bool {
+        self.context.is_some()
+    }
+
+    /// Transcribe a stored audio clip and return text with segment timings.
+    ///
+    /// Stored clips are expected to be 16-bit little-endian PCM or WAV audio at
+    /// the service sample rate. Multi-channel clips are downmixed to mono.
+    pub async fn transcribe_clip(&self, clip: &AudioClip) -> Result<ClipTranscription> {
+        anyhow::ensure!(self.has_whisper_model(), "Whisper model not configured");
+        let audio = decode_audio_clip_samples(clip, self.sample_rate)?;
+        let segments = self.transcribe(audio).await?;
+        let text = join_segments(&segments);
+        Ok(ClipTranscription {
+            text,
+            segments: segments
+                .iter()
+                .map(|segment| segment_to_message(segment, 0.0))
+                .collect(),
+        })
+    }
+
+    /// Transcribe a stored audio clip and return Whisper's joined text.
+    pub async fn transcribe_clip_text(&self, clip: &AudioClip) -> Result<String> {
+        Ok(self.transcribe_clip(clip).await?.text)
     }
 
     pub fn set_topic_bus(&mut self, bus: TopicBus) {
@@ -422,6 +455,102 @@ where
     T: ToString,
 {
     value.to_string()
+}
+
+fn decode_audio_clip_samples(clip: &AudioClip, target_sample_rate: u32) -> Result<Vec<f32>> {
+    let bytes = BASE64_STANDARD
+        .decode(clip.base64.trim().as_bytes())
+        .context("failed to decode audio clip base64")?;
+    if bytes.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mime = clip.mime.to_ascii_lowercase();
+    let (sample_rate, channels, samples) = if mime.starts_with("audio/wav")
+        || mime.starts_with("audio/x-wav")
+        || bytes.starts_with(b"RIFF")
+    {
+        decode_wav_samples(&bytes)?
+    } else if is_pcm_s16_mime(&mime) {
+        (
+            clip.sample_rate,
+            clip.channels,
+            decode_pcm_s16le_samples(&bytes),
+        )
+    } else {
+        return Err(anyhow!("unsupported audio clip MIME type {}", clip.mime));
+    };
+
+    if sample_rate != target_sample_rate {
+        return Err(anyhow!(
+            "audio clip sample rate {sample_rate} does not match Whisper sample rate {target_sample_rate}"
+        ));
+    }
+
+    Ok(downmix_to_mono(samples, channels))
+}
+
+fn decode_wav_samples(bytes: &[u8]) -> Result<(u32, u16, Vec<f32>)> {
+    let mut reader =
+        WavReader::new(Cursor::new(bytes)).context("failed to read audio clip WAV data")?;
+    let spec = reader.spec();
+    let samples = match spec.sample_format {
+        SampleFormat::Float => reader
+            .samples::<f32>()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .context("failed to decode float WAV samples")?,
+        SampleFormat::Int if spec.bits_per_sample <= 16 => reader
+            .samples::<i16>()
+            .map(|sample| sample.map(|sample| sample as f32 / i16::MAX as f32))
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .context("failed to decode 16-bit WAV samples")?,
+        SampleFormat::Int if spec.bits_per_sample <= 32 => reader
+            .samples::<i32>()
+            .map(|sample| sample.map(|sample| sample as f32 / i32::MAX as f32))
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .context("failed to decode 32-bit WAV samples")?,
+        _ => {
+            return Err(anyhow!(
+                "unsupported WAV bit depth {}",
+                spec.bits_per_sample
+            ));
+        }
+    };
+    Ok((spec.sample_rate, spec.channels, samples))
+}
+
+fn decode_pcm_s16le_samples(bytes: &[u8]) -> Vec<f32> {
+    bytes
+        .chunks_exact(2)
+        .map(|chunk| {
+            let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
+            sample as f32 / i16::MAX as f32
+        })
+        .collect()
+}
+
+fn downmix_to_mono(samples: Vec<f32>, channels: u16) -> Vec<f32> {
+    if channels <= 1 {
+        return samples;
+    }
+    let channels = usize::from(channels);
+    samples
+        .chunks_exact(channels)
+        .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+        .collect()
+}
+
+fn is_pcm_s16_mime(mime: &str) -> bool {
+    mime.starts_with("audio/pcm") || mime.starts_with("audio/l16") || mime.contains("format=s16")
+}
+
+fn join_segments(segments: &[SegmentInternal]) -> String {
+    segments
+        .iter()
+        .map(|segment| segment.text.trim())
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 async fn run_connection(
@@ -781,7 +910,12 @@ fn encode_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{SegmentInternal, SilenceTracker, WordTiming, emit_transcript, trim_silence};
+    use super::{
+        SegmentInternal, SilenceTracker, WordTiming, decode_audio_clip_samples, emit_transcript,
+        encode_wav, trim_silence,
+    };
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
     use chrono::Utc;
     use futures::StreamExt;
     use psyche::{AudioClip, Sensation, Topic, TopicBus};
@@ -818,6 +952,45 @@ mod tests {
 
         assert_eq!(trimmed, vec![0.2, 0.2]);
         assert_eq!(leading_trim, 2);
+    }
+
+    #[test]
+    fn decodes_pcm_clip_and_downmixes_to_mono() {
+        let mut bytes = Vec::new();
+        for sample in [10_000i16, -10_000, 20_000, -20_000] {
+            bytes.extend_from_slice(&sample.to_le_bytes());
+        }
+        let clip = AudioClip {
+            mime: "audio/pcm;format=s16le;rate=16000".into(),
+            base64: BASE64_STANDARD.encode(bytes),
+            sample_rate: 16_000,
+            channels: 2,
+            transcript: None,
+            captured_at: None,
+        };
+
+        let samples = decode_audio_clip_samples(&clip, 16_000).unwrap();
+
+        assert_eq!(samples, vec![0.0, 0.0]);
+    }
+
+    #[test]
+    fn decodes_wav_clip() {
+        let wav = encode_wav(&[0.25, -0.25], 16_000).unwrap();
+        let clip = AudioClip {
+            mime: "audio/wav".into(),
+            base64: BASE64_STANDARD.encode(wav),
+            sample_rate: 16_000,
+            channels: 1,
+            transcript: None,
+            captured_at: None,
+        };
+
+        let samples = decode_audio_clip_samples(&clip, 16_000).unwrap();
+
+        assert_eq!(samples.len(), 2);
+        assert!((samples[0] - 0.25).abs() < 0.001);
+        assert!((samples[1] + 0.25).abs() < 0.001);
     }
 
     #[tokio::test]

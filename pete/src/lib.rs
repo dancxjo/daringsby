@@ -47,7 +47,7 @@ mod web;
 #[cfg(feature = "asr")]
 mod asr;
 #[cfg(feature = "asr")]
-pub use asr::{AsrService, AsrTranscript, SegmentMessage, WordTiming};
+pub use asr::{AsrService, AsrTranscript, ClipTranscription, SegmentMessage, WordTiming};
 #[cfg(feature = "ear")]
 pub use ear::ChannelEar;
 pub use ear::NoopEar;
