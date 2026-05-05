@@ -5,21 +5,13 @@
   }
 
   const svg = d3.select("#graph");
-  const timelineSvg = d3.select("#timeline");
   const root = svg.append("g");
   const linkLayer = root.append("g").attr("class", "links");
   const labelLayer = root.append("g").attr("class", "link-labels");
   const nodeLayer = root.append("g").attr("class", "nodes");
-  const timelineRoot = timelineSvg.append("g");
-  const timelineDotLayer = timelineRoot.append("g").attr("class", "timeline-dots");
-  const timelineAxisLayer = timelineRoot.append("g").attr("class", "timeline-axis");
-  const timelineBrushLayer = timelineRoot.append("g").attr("class", "timeline-brush");
   const statusEl = document.getElementById("status");
   const nodeCountEl = document.getElementById("node-count");
   const relationshipCountEl = document.getElementById("relationship-count");
-  const timeRangeEl = document.getElementById("time-range");
-  const timeGravityButton = document.getElementById("time-gravity");
-  const timeResetButton = document.getElementById("time-reset");
   const inspectorEmpty = document.getElementById("inspector-empty");
   const inspectorContent = document.getElementById("inspector-content");
   const inspectorIcon = document.getElementById("inspector-icon");
@@ -55,23 +47,6 @@
   let lastTopologySignature = "";
   let detailRequestId = 0;
   let mediaObjectUrl = "";
-  let visibleTimeRange = null;
-  let timeGravityEnabled = true;
-  let suppressBrushEvent = false;
-  let timelineScale = d3.scaleTime();
-
-  const timelineBrush = d3
-    .brushX()
-    .on("end", (event) => {
-      if (suppressBrushEvent) return;
-      if (!event.selection) {
-        visibleTimeRange = null;
-      } else {
-        visibleTimeRange = event.selection.map(timelineScale.invert);
-      }
-      applyTimeFilter(true);
-      updateTimeline(false);
-    });
 
   const zoom = d3
     .zoom()
@@ -92,7 +67,6 @@
     )
     .force("charge", d3.forceManyBody().strength(-520))
     .force("center", d3.forceCenter())
-    .force("time", null)
     .force("collision", d3.forceCollide().radius((node) => nodeRadius(node) + 9))
     .on("tick", ticked);
 
