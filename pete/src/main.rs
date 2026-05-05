@@ -232,12 +232,22 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(all(feature = "eye", feature = "face"))]
     {
         let forward = psyche.input_sender();
+        let (face_image_tx, mut face_image_rx) =
+            tokio::sync::watch::channel::<Option<ImageData>>(None);
         let face_clone = face_sensor.clone();
+        tokio::spawn(async move {
+            while face_image_rx.changed().await.is_ok() {
+                let Some(img) = face_image_rx.borrow_and_update().clone() else {
+                    continue;
+                };
+                face_clone.sense(img).await;
+            }
+        });
         tokio::spawn(async move {
             while let Some(s) = eye_rx.recv().await {
                 if let Sensation::Of(any) = &s {
                     if let Some(img) = any.downcast_ref::<ImageData>() {
-                        face_clone.sense(img.clone()).await;
+                        let _ = face_image_tx.send(Some(img.clone()));
                     }
                 }
                 let _ = forward.send(s).await;

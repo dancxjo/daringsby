@@ -42,7 +42,7 @@ impl FaceDetector for DummyDetector {
 
 /// Detector backed by the `face_id` ONNX pipeline.
 pub struct FaceIdDetector {
-    analyzer: face_id::analyzer::FaceAnalyzer,
+    analyzer: Arc<Mutex<face_id::analyzer::FaceAnalyzer>>,
 }
 
 impl FaceIdDetector {
@@ -52,33 +52,42 @@ impl FaceIdDetector {
             .build()
             .await
             .context("failed to initialize face_id analyzer")?;
-        Ok(Self { analyzer })
+        Ok(Self {
+            analyzer: Arc::new(Mutex::new(analyzer)),
+        })
     }
 }
 
 #[async_trait]
 impl FaceDetector for FaceIdDetector {
     async fn detect_faces(&self, image: &ImageData) -> Result<Vec<(ImageData, Vec<f32>)>> {
-        if image.base64.trim().is_empty() {
-            return Ok(Vec::new());
-        }
+        let image = image.clone();
+        let analyzer = Arc::clone(&self.analyzer);
+        tokio::task::spawn_blocking(move || {
+            if image.base64.trim().is_empty() {
+                return Ok(Vec::new());
+            }
 
-        let bytes = BASE64_STANDARD
-            .decode(image.base64.trim().as_bytes())
-            .context("failed to decode image payload")?;
-        let img = image::load_from_memory(&bytes).context("failed to decode image")?;
-        let faces = self
-            .analyzer
-            .analyze(&img)
-            .context("face_id analysis failed")?;
+            let bytes = BASE64_STANDARD
+                .decode(image.base64.trim().as_bytes())
+                .context("failed to decode image payload")?;
+            let img = image::load_from_memory(&bytes).context("failed to decode image")?;
+            let faces = analyzer
+                .lock()
+                .map_err(|_| anyhow::anyhow!("face analyzer lock poisoned"))?
+                .analyze(&img)
+                .context("face_id analysis failed")?;
 
-        faces
-            .into_iter()
-            .map(|face| {
-                let crop = crop_face(&img, &face.detection)?;
-                Ok((crop, face.embedding))
-            })
-            .collect()
+            faces
+                .into_iter()
+                .map(|face| {
+                    let crop = crop_face(&img, &face.detection)?;
+                    Ok((crop, face.embedding))
+                })
+                .collect()
+        })
+        .await
+        .context("face detection task failed")?
     }
 }
 
