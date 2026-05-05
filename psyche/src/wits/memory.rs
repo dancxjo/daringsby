@@ -539,6 +539,8 @@ pub struct GraphAudioClip {
     pub clip: AudioClip,
     /// Graph observation timestamp, when present.
     pub occurred_at: Option<String>,
+    /// Source `Sensation` node that observed this clip, when present.
+    pub sensation_id: Option<String>,
 }
 
 /// Ordered audio clips selected for aggregate transcription.
@@ -704,6 +706,8 @@ pub struct GraphAudioSourceSpan {
     pub ended_at: Option<String>,
     /// Whether this clip was the unprocessed anchor that caused the window to run.
     pub anchor: bool,
+    /// Source `Sensation` node that observed this clip, when present.
+    pub sensation_id: Option<String>,
 }
 
 /// Graph node returned for browser-side visualization.
@@ -755,6 +759,43 @@ pub struct GraphSnapshot {
     pub relationships: Vec<GraphRelationshipSnapshot>,
 }
 
+/// One displayable graph event used as input to offline combobulation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphTimelineItem {
+    /// Stable graph node id for the origin event.
+    pub id: String,
+    /// Neo4j labels attached to the origin event.
+    pub labels: Vec<String>,
+    /// Human-readable event text for an LLM timeline.
+    pub text: String,
+    /// Best-known event timestamp.
+    pub occurred_at: String,
+}
+
+/// Ordered timeline window selected for offline combobulation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphTimelineWindow {
+    /// The newest source event that had not yet been included in a combobulation run.
+    pub anchor_id: String,
+    /// Anchor timestamp.
+    pub anchor_at: String,
+    /// Source events in chronological order.
+    pub items: Vec<GraphTimelineItem>,
+}
+
+/// LLM awareness summary ready to be linked into the graph.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphAwareness {
+    /// Stable graph node id for the awareness statement.
+    pub awareness_id: String,
+    /// Natural-language awareness summary.
+    pub text: String,
+    /// Qdrant point id for the summary embedding.
+    pub vector_id: String,
+    /// Text embedding dimension.
+    pub embedding_len: usize,
+}
+
 impl Neo4jClient {
     pub fn new(uri: String, user: String, pass: String) -> Self {
         Self {
@@ -779,8 +820,9 @@ impl Neo4jClient {
                     WHERE a.base64 IS NOT NULL
                       AND a.transcript IS NULL
                       AND NOT (a)-[:HAS_TRANSCRIPTION]->(:GraphNode:Transcription)
-                    WITH a, coalesce(a.captured_at, a.occurred_at, "") AS observed_at
-                    RETURN a.id, a.mime, a.base64, a.sample_rate, a.channels, a.captured_at, a.occurred_at
+                    OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(a)
+                    WITH a, s, coalesce(a.captured_at, a.occurred_at, s.occurred_at, "") AS observed_at
+                    RETURN a.id, a.mime, a.base64, a.sample_rate, a.channels, a.captured_at, a.occurred_at, s.id
                     ORDER BY observed_at DESC
                     LIMIT 1
                 "#
@@ -820,9 +862,10 @@ impl Neo4jClient {
                     LIMIT 1
                     MATCH (a:GraphNode:AudioClip)
                     WHERE a.base64 IS NOT NULL
-                    WITH anchor, anchor_observed_at, a, coalesce(a.captured_at, a.occurred_at, "") AS observed_at
+                    OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(a)
+                    WITH anchor, anchor_observed_at, a, s, coalesce(a.captured_at, a.occurred_at, s.occurred_at, "") AS observed_at
                     WHERE observed_at <= anchor_observed_at
-                    WITH anchor, a, observed_at
+                    WITH anchor, a, s, observed_at
                     ORDER BY observed_at DESC
                     LIMIT $limit
                     WITH anchor, collect({
@@ -833,10 +876,11 @@ impl Neo4jClient {
                         channels: a.channels,
                         captured_at: a.captured_at,
                         occurred_at: a.occurred_at,
+                        sensation_id: s.id,
                         observed_at: observed_at
                     }) AS clips
                     UNWIND reverse(clips) AS clip
-                    RETURN anchor.id, clip.id, clip.mime, clip.base64, clip.sample_rate, clip.channels, clip.captured_at, clip.occurred_at
+                    RETURN anchor.id, clip.id, clip.mime, clip.base64, clip.sample_rate, clip.channels, clip.captured_at, clip.occurred_at, clip.sensation_id
                 "#
                 .into(),
                 parameters: json!({
@@ -1012,6 +1056,7 @@ impl Neo4jClient {
             CypherStatement {
                 statement: r#"
                     MATCH (n:GraphNode)
+                    WHERE EXISTS { MATCH (n)--(:GraphNode) }
                     WITH n
                     ORDER BY coalesce(
                         n.occurred_at,
@@ -1022,7 +1067,11 @@ impl Neo4jClient {
                         ""
                     ) DESC, n.id
                     LIMIT $limit
-                    WITH collect(n) AS nodes
+                    WITH collect(n) AS anchors
+                    UNWIND anchors AS anchor
+                    MATCH (anchor)--(neighbor:GraphNode)
+                    WITH anchors, collect(DISTINCT neighbor) AS neighbors
+                    WITH anchors + [neighbor IN neighbors WHERE NOT neighbor IN anchors] AS nodes
                     UNWIND nodes AS n
                     OPTIONAL MATCH (n)-[r]-(m:GraphNode)
                     WHERE m IN nodes
@@ -1092,6 +1141,116 @@ impl Neo4jClient {
         rows.first().map(graph_node_details_from_row).transpose()
     }
 
+    /// Return a recent graph timeline for an offline combobulation pass.
+    ///
+    /// The anchor is the newest displayable graph event that has not already
+    /// been included in a combobulation run. The returned window includes that
+    /// anchor plus earlier events from the requested lookback period.
+    pub async fn latest_timeline_window_for_combobulation(
+        &self,
+        seconds: u64,
+        limit: usize,
+    ) -> Result<Option<GraphTimelineWindow>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (anchor:GraphNode)
+                    WHERE NOT anchor:Vector
+                      AND NOT anchor:Awareness
+                      AND NOT anchor:CombobulationRun
+                      AND NOT anchor:FaceRecognitionRun
+                      AND NOT anchor:SceneVectorizationRun
+                      AND NOT anchor:ImageDescriptionRun
+                      AND NOT anchor:GeolocationVectorizationRun
+                      AND NOT anchor:VoiceRecognitionRun
+                      AND NOT (anchor)-[:INCLUDED_IN_COMBOBULATION]->(:GraphNode:CombobulationRun)
+                      AND coalesce(
+                        anchor.occurred_at,
+                        anchor.observed_at,
+                        anchor.captured_at,
+                        anchor.transcribed_at,
+                        anchor.described_at,
+                        anchor.timestamp,
+                        ""
+                      ) <> ""
+                    WITH anchor, coalesce(
+                        anchor.occurred_at,
+                        anchor.observed_at,
+                        anchor.captured_at,
+                        anchor.transcribed_at,
+                        anchor.described_at,
+                        anchor.timestamp
+                    ) AS anchor_at
+                    ORDER BY datetime(anchor_at) DESC, anchor.id
+                    LIMIT 1
+                    MATCH (n:GraphNode)
+                    WHERE NOT n:Vector
+                      AND NOT n:Awareness
+                      AND NOT n:CombobulationRun
+                      AND NOT n:FaceRecognitionRun
+                      AND NOT n:SceneVectorizationRun
+                      AND NOT n:ImageDescriptionRun
+                      AND NOT n:GeolocationVectorizationRun
+                      AND NOT n:VoiceRecognitionRun
+                      AND coalesce(
+                        n.occurred_at,
+                        n.observed_at,
+                        n.captured_at,
+                        n.transcribed_at,
+                        n.described_at,
+                        n.timestamp,
+                        ""
+                      ) <> ""
+                    WITH anchor, anchor_at, n, coalesce(
+                        n.occurred_at,
+                        n.observed_at,
+                        n.captured_at,
+                        n.transcribed_at,
+                        n.described_at,
+                        n.timestamp
+                    ) AS occurred_at,
+                    CASE
+                        WHEN n:SpeechSegment THEN "speech: " + coalesce(n.text, "")
+                        WHEN n:Transcription THEN "transcription: " + coalesce(n.text, n.transcript, "")
+                        WHEN n:ImageDescription THEN "vision: " + coalesce(n.text, "")
+                        WHEN n:Impression THEN "impression: " + coalesce(n.summary, "")
+                        WHEN n:TextObservation THEN "text: " + coalesce(n.text, "")
+                        WHEN n:Geolocation THEN "geolocation: " + toString(n.latitude) + ", " + toString(n.longitude)
+                        WHEN n:Heartbeat THEN "heartbeat"
+                        WHEN n:Image THEN "image captured"
+                        WHEN n:AudioClip THEN
+                            CASE
+                                WHEN n.transcript IS NULL OR n.transcript = "" THEN "audio clip captured"
+                                ELSE "audio: " + n.transcript
+                            END
+                        WHEN n:ObjectObservation THEN "object: " + coalesce(n.object_label, "unknown")
+                        ELSE coalesce(n.summary, n.text, n.transcript, n.object_label, "")
+                    END AS text
+                    WHERE datetime(occurred_at) >= datetime(anchor_at) - duration({seconds: $seconds})
+                      AND datetime(occurred_at) <= datetime(anchor_at)
+                      AND text <> ""
+                    WITH anchor, anchor_at, n, occurred_at, text
+                    ORDER BY datetime(occurred_at) ASC, n.id
+                    LIMIT $limit
+                    RETURN anchor.id, anchor_at, n.id, labels(n), text, occurred_at
+                "#
+                .into(),
+                parameters: json!({
+                    "seconds": i64::try_from(seconds.max(1)).unwrap_or(i64::MAX),
+                    "limit": i64::try_from(limit.max(1)).unwrap_or(i64::MAX),
+                }),
+            },
+            "finding latest timeline window for combobulation",
+        )
+        .await?;
+        graph_timeline_window_from_rows(&rows)
+    }
+
     /// Attach a Whisper transcript to an existing `AudioClip` graph node.
     pub async fn attach_audio_transcription(
         &self,
@@ -1108,19 +1267,32 @@ impl Neo4jClient {
             "transcription",
             format!("{audio_clip_id}:{transcribed_at}").as_bytes(),
         );
-        let mut nodes = vec![json!({
-            "label": "Transcription",
-            "id": transcription_id,
-            "audio_clip_id": audio_clip_id,
-            "text": transcript,
-            "transcribed_at": transcribed_at,
-            "source_captured_at": source_captured_at,
-        })];
-        let mut relationships = vec![json!({
-            "from": audio_clip_id,
-            "to": transcription_id,
-            "type": "HAS_TRANSCRIPTION",
-        })];
+        let mut nodes = vec![
+            json!({
+                "label": "AudioClip",
+                "id": audio_clip_id,
+            }),
+            json!({
+                "label": "Transcription",
+                "id": transcription_id,
+                "audio_clip_id": audio_clip_id,
+                "text": transcript,
+                "transcribed_at": transcribed_at,
+                "source_captured_at": source_captured_at,
+            }),
+        ];
+        let mut relationships = vec![
+            json!({
+                "from": audio_clip_id,
+                "to": transcription_id,
+                "type": "HAS_TRANSCRIPTION",
+            }),
+            json!({
+                "from": transcription_id,
+                "to": audio_clip_id,
+                "type": "DERIVED_FROM_AUDIO",
+            }),
+        ];
         for segment in segments {
             let segment_id = format!("{transcription_id}:segment:{}", segment.index);
             nodes.push(json!({
@@ -1142,7 +1314,12 @@ impl Neo4jClient {
                 "segment_index": segment.index,
             }));
         }
-        let mut statements = vec![CypherStatement {
+        let mut statements = graph_statements(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))?;
+        statements.push(CypherStatement {
             statement: r#"
                 MATCH (a:GraphNode:AudioClip {id: $id})
                 SET a.transcript = $transcript,
@@ -1154,12 +1331,7 @@ impl Neo4jClient {
                 "transcript": transcript,
                 "transcribed_at": transcribed_at,
             }),
-        }];
-        statements.extend(graph_statements(&json!({
-            "op": "merge_graph",
-            "nodes": nodes,
-            "relationships": relationships,
-        }))?);
+        });
         commit_neo4j_statements(
             &client,
             &endpoint,
@@ -1200,16 +1372,45 @@ impl Neo4jClient {
             "audio_clip_ids": source_ids,
             "source_count": sources.len(),
             "text": transcript,
+            "transcript": transcript,
             "transcribed_at": transcribed_at,
             "source_started_at": source_started_at,
             "source_ended_at": source_ended_at,
         })];
         let mut relationships = Vec::new();
         for source in sources {
+            nodes.push(json!({
+                "label": "AudioClip",
+                "id": source.audio_clip_id,
+            }));
+            if let Some(sensation_id) = &source.sensation_id {
+                nodes.push(json!({
+                    "label": "Sensation",
+                    "id": sensation_id,
+                }));
+                relationships.push(json!({
+                    "from": sensation_id,
+                    "to": transcription_id,
+                    "type": "PRODUCED",
+                    "source_index": source.index,
+                    "anchor": source.anchor,
+                }));
+            }
             relationships.push(json!({
                 "from": source.audio_clip_id,
                 "to": transcription_id,
                 "type": "HAS_BIG_TRANSCRIPTION",
+                "source_index": source.index,
+                "start_ms": source.start_ms,
+                "end_ms": source.end_ms,
+                "occurred_at": source.occurred_at,
+                "ended_at": source.ended_at,
+                "anchor": source.anchor,
+            }));
+            relationships.push(json!({
+                "from": transcription_id,
+                "to": source.audio_clip_id,
+                "type": "DERIVED_FROM_AUDIO",
                 "source_index": source.index,
                 "start_ms": source.start_ms,
                 "end_ms": source.end_ms,
@@ -1584,6 +1785,106 @@ impl Neo4jClient {
                 "from": sensation_id,
                 "to": vector_id,
                 "type": "PRODUCED",
+            }));
+        }
+
+        self.store_data(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))
+        .await
+    }
+
+    /// Attach an offline combobulation summary and its text embedding to source events.
+    pub async fn attach_combobulation(
+        &self,
+        window: &GraphTimelineWindow,
+        llm_model: &str,
+        embedding_model: &str,
+        awareness: &GraphAwareness,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            !window.items.is_empty(),
+            "combobulation has no source timeline items"
+        );
+        let processed_at = chrono::Utc::now().to_rfc3339();
+        let run_id = stable_bytes_id(
+            "combobulation",
+            format!("{}:{processed_at}", window.anchor_id).as_bytes(),
+        );
+        let source_ids = window
+            .items
+            .iter()
+            .map(|item| item.id.clone())
+            .collect::<Vec<_>>();
+        let source_started_at = window.items.first().map(|item| item.occurred_at.clone());
+        let source_ended_at = window.items.last().map(|item| item.occurred_at.clone());
+        let vector_id = qdrant_vector_node_id(MEMORY_COLLECTION, &awareness.vector_id);
+        let nodes = vec![
+            json!({
+                "label": "CombobulationRun",
+                "id": run_id,
+                "anchor_id": window.anchor_id,
+                "anchor_at": window.anchor_at,
+                "model": llm_model,
+                "embedding_model": embedding_model,
+                "processed_at": processed_at,
+                "source_count": window.items.len(),
+                "source_ids": source_ids,
+                "source_started_at": source_started_at,
+                "source_ended_at": source_ended_at,
+                "embedding_len": awareness.embedding_len,
+            }),
+            json!({
+                "label": "Awareness",
+                "id": awareness.awareness_id,
+                "summary": awareness.text,
+                "text": awareness.text,
+                "model": llm_model,
+                "embedding_model": embedding_model,
+                "occurred_at": source_ended_at,
+                "created_at": processed_at,
+            }),
+            qdrant_vector_node(
+                MEMORY_COLLECTION,
+                &awareness.vector_id,
+                "memory",
+                Some(embedding_model),
+            ),
+        ];
+        let mut relationships = vec![
+            json!({
+                "from": run_id,
+                "to": awareness.awareness_id,
+                "type": "PRODUCED",
+            }),
+            json!({
+                "from": awareness.awareness_id,
+                "to": vector_id,
+                "type": "HAS_MEMORY_VECTOR",
+            }),
+            json!({
+                "from": run_id,
+                "to": vector_id,
+                "type": "PRODUCED",
+            }),
+        ];
+
+        for (index, item) in window.items.iter().enumerate() {
+            relationships.push(json!({
+                "from": item.id,
+                "to": run_id,
+                "type": "INCLUDED_IN_COMBOBULATION",
+                "source_index": index,
+                "occurred_at": item.occurred_at,
+            }));
+            relationships.push(json!({
+                "from": awareness.awareness_id,
+                "to": item.id,
+                "type": "DERIVED_FROM",
+                "source_index": index,
+                "occurred_at": item.occurred_at,
             }));
         }
 
@@ -2104,6 +2405,7 @@ fn graph_audio_clip_from_row(row: &Value) -> Result<GraphAudioClip> {
         id,
         clip,
         occurred_at: row_optional_string(values, 6),
+        sensation_id: row_optional_string(values, 7),
     })
 }
 
@@ -2139,6 +2441,50 @@ fn graph_audio_clip_from_window_row(row: &Value) -> Result<GraphAudioClip> {
         id,
         clip,
         occurred_at: row_optional_string(values, 7),
+        sensation_id: row_optional_string(values, 8),
+    })
+}
+
+fn graph_timeline_window_from_rows(rows: &[Value]) -> Result<Option<GraphTimelineWindow>> {
+    let Some(first) = rows.first() else {
+        return Ok(None);
+    };
+    let first_values = first
+        .as_array()
+        .context("Neo4j timeline window row was not an array")?;
+    let anchor_id = row_string(first_values, 0, "anchor_id")?;
+    let anchor_at = row_string(first_values, 1, "anchor_at")?;
+    let items = rows
+        .iter()
+        .map(graph_timeline_item_from_row)
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Some(GraphTimelineWindow {
+        anchor_id,
+        anchor_at,
+        items,
+    }))
+}
+
+fn graph_timeline_item_from_row(row: &Value) -> Result<GraphTimelineItem> {
+    let values = row
+        .as_array()
+        .context("Neo4j timeline item row was not an array")?;
+    let labels = values
+        .get(3)
+        .and_then(Value::as_array)
+        .map(|labels| {
+            labels
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Ok(GraphTimelineItem {
+        id: row_string(values, 2, "timeline item id")?,
+        labels,
+        text: row_string(values, 4, "timeline item text")?,
+        occurred_at: row_string(values, 5, "timeline item timestamp")?,
     })
 }
 

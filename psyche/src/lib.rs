@@ -60,11 +60,12 @@ pub mod wits {
     pub use heart_wit::HeartWit;
     pub use identity_wit::IdentityWit;
     pub use memory::{
-        BasicMemory, GraphAudioClip, GraphAudioClipWindow, GraphAudioSourceSpan,
+        BasicMemory, GraphAudioClip, GraphAudioClipWindow, GraphAudioSourceSpan, GraphAwareness,
         GraphFaceDetection, GraphGeolocation, GraphImageDescription, GraphImageFrame,
         GraphNodeDetails, GraphNodeSnapshot, GraphRelationshipSnapshot, GraphSceneVectorization,
-        GraphSnapshot, GraphSpeechSegment, GraphStore, GraphVoiceClip, GraphVoiceRecognition,
-        GraphVoiceSample, GraphVoiceSignature, Memory, Neo4jClient, NoopMemory, QdrantClient,
+        GraphSnapshot, GraphSpeechSegment, GraphStore, GraphTimelineItem, GraphTimelineWindow,
+        GraphVoiceClip, GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature, Memory,
+        Neo4jClient, NoopMemory, QdrantClient,
     };
     pub use memory_wit::MemoryWit;
     pub use moment_wit::MomentWit;
@@ -139,10 +140,10 @@ pub use traits::{
 pub use voice::{Voice, extract_emojis};
 pub use wits::{
     BasicMemory, Combobulator, EntityWit, EpisodeWit, FaceMemoryWit, FondDuCoeur, GraphAudioClip,
-    GraphAudioClipWindow, GraphAudioSourceSpan, GraphFaceDetection, GraphGeolocation,
-    GraphImageDescription, GraphImageFrame, GraphNodeDetails, GraphNodeSnapshot,
+    GraphAudioClipWindow, GraphAudioSourceSpan, GraphAwareness, GraphFaceDetection,
+    GraphGeolocation, GraphImageDescription, GraphImageFrame, GraphNodeDetails, GraphNodeSnapshot,
     GraphRelationshipSnapshot, GraphSceneVectorization, GraphSnapshot, GraphSpeechSegment,
-    GraphStore, GraphVoiceClip, GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature,
-    HeartWit, IdentityWit, Memory, MemoryWit, Neo4jClient, NoopMemory, QdrantClient,
-    SensationGraphObserver, VisionWit, VoiceMemoryWit, Will,
+    GraphStore, GraphTimelineItem, GraphTimelineWindow, GraphVoiceClip, GraphVoiceRecognition,
+    GraphVoiceSample, GraphVoiceSignature, HeartWit, IdentityWit, Memory, MemoryWit, Neo4jClient,
+    NoopMemory, QdrantClient, SensationGraphObserver, VisionWit, VoiceMemoryWit, Will,
 };

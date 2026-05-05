@@ -111,3 +111,7 @@ required-features = ["scene-vec"]
 [[bin]]
 name = "image_desc"
 path = "src/bin/image_desc.rs"
+
+[[bin]]
+name = "combobulate"
+path = "src/bin/combobulate.rs"

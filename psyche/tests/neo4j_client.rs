@@ -1,9 +1,10 @@
 use chrono::Utc;
 use httpmock::{Method::POST, MockServer};
 use psyche::{
-    GeoLoc, GraphAudioSourceSpan, GraphFaceDetection, GraphGeolocation, GraphImageDescription,
-    GraphImageFrame, GraphSceneVectorization, GraphSpeechSegment, GraphVoiceClip,
-    GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature, ImageData, Neo4jClient,
+    GeoLoc, GraphAudioSourceSpan, GraphAwareness, GraphFaceDetection, GraphGeolocation,
+    GraphImageDescription, GraphImageFrame, GraphSceneVectorization, GraphSpeechSegment,
+    GraphTimelineItem, GraphTimelineWindow, GraphVoiceClip, GraphVoiceRecognition,
+    GraphVoiceSample, GraphVoiceSignature, ImageData, Neo4jClient,
 };
 use serde_json::json;
 
@@ -185,6 +186,7 @@ async fn neo4j_client_loads_latest_untranscribed_audio_clip() {
                 .body_contains("MATCH (a:GraphNode:AudioClip)")
                 .body_contains("a.transcript IS NULL")
                 .body_contains("NOT (a)-[:HAS_TRANSCRIPTION]->(:GraphNode:Transcription)")
+                .body_contains("OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(a)")
                 .body_contains("ORDER BY observed_at DESC");
             then.status(200).json_body(json!({
                 "results": [{
@@ -195,7 +197,8 @@ async fn neo4j_client_loads_latest_untranscribed_audio_clip() {
                         "a.sample_rate",
                         "a.channels",
                         "a.captured_at",
-                        "a.occurred_at"
+                        "a.occurred_at",
+                        "s.id"
                     ],
                     "data": [{
                         "row": [
@@ -205,7 +208,8 @@ async fn neo4j_client_loads_latest_untranscribed_audio_clip() {
                             16000,
                             1,
                             "2026-05-05T12:34:56Z",
-                            "2026-05-05T12:34:57Z"
+                            "2026-05-05T12:34:57Z",
+                            "sensation:audio:1"
                         ]
                     }]
                 }],
@@ -230,6 +234,7 @@ async fn neo4j_client_loads_latest_untranscribed_audio_clip() {
         Some("2026-05-05T12:34:56Z")
     );
     assert_eq!(clip.occurred_at.as_deref(), Some("2026-05-05T12:34:57Z"));
+    assert_eq!(clip.sensation_id.as_deref(), Some("sensation:audio:1"));
     query.assert_async().await;
 }
 
@@ -242,6 +247,7 @@ async fn neo4j_client_loads_latest_audio_clip_window_for_big_transcription() {
                 .path("/db/neo4j/tx/commit")
                 .body_contains("MATCH (anchor:GraphNode:AudioClip)")
                 .body_contains("HAS_BIG_TRANSCRIPTION")
+                .body_contains("OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(a)")
                 .body_contains("RETURN anchor.id")
                 .body_contains("\"limit\":2");
             then.status(200).json_body(json!({
@@ -254,7 +260,8 @@ async fn neo4j_client_loads_latest_audio_clip_window_for_big_transcription() {
                         "clip.sample_rate",
                         "clip.channels",
                         "clip.captured_at",
-                        "clip.occurred_at"
+                        "clip.occurred_at",
+                        "clip.sensation_id"
                     ],
                     "data": [
                         {
@@ -266,7 +273,8 @@ async fn neo4j_client_loads_latest_audio_clip_window_for_big_transcription() {
                                 16000,
                                 1,
                                 "2026-05-05T12:34:56Z",
-                                "2026-05-05T12:34:57Z"
+                                "2026-05-05T12:34:57Z",
+                                "sensation:audio:1"
                             ]
                         },
                         {
@@ -278,7 +286,8 @@ async fn neo4j_client_loads_latest_audio_clip_window_for_big_transcription() {
                                 16000,
                                 1,
                                 "2026-05-05T12:34:58Z",
-                                "2026-05-05T12:34:59Z"
+                                "2026-05-05T12:34:59Z",
+                                "sensation:audio:2"
                             ]
                         }
                     ]
@@ -297,8 +306,16 @@ async fn neo4j_client_loads_latest_audio_clip_window_for_big_transcription() {
     assert_eq!(window.anchor_id, "audio:2");
     assert_eq!(window.clips.len(), 2);
     assert_eq!(window.clips[0].id, "audio:1");
+    assert_eq!(
+        window.clips[0].sensation_id.as_deref(),
+        Some("sensation:audio:1")
+    );
     assert_eq!(window.clips[1].id, "audio:2");
     assert_eq!(window.clips[1].clip.base64, "AQE=");
+    assert_eq!(
+        window.clips[1].sensation_id.as_deref(),
+        Some("sensation:audio:2")
+    );
     query.assert_async().await;
 }
 
@@ -591,6 +608,8 @@ async fn neo4j_client_loads_graph_snapshot() {
             when.method(POST)
                 .path("/db/neo4j/tx/commit")
                 .body_contains("MATCH (n:GraphNode)")
+                .body_contains("WHERE EXISTS { MATCH (n)--(:GraphNode) }")
+                .body_contains("MATCH (anchor)--(neighbor:GraphNode)")
                 .body_contains("LIMIT $limit")
                 .body_contains("\"limit\":25");
             then.status(200).json_body(json!({
@@ -736,9 +755,11 @@ async fn neo4j_client_attaches_audio_transcription() {
                 .body_contains("\"id\":\"audio:1\"")
                 .body_contains("\"transcript\":\"hello there\"")
                 .body_contains("transcribed_at")
+                .body_contains("AudioClip")
                 .body_contains("Transcription")
                 .body_contains("SpeechSegment")
                 .body_contains("HAS_TRANSCRIPTION")
+                .body_contains("DERIVED_FROM_AUDIO")
                 .body_contains("HAS_SEGMENT")
                 .body_contains("\"start_ms\":250")
                 .body_contains("\"end_ms\":1250")
@@ -790,13 +811,21 @@ async fn neo4j_client_attaches_big_audio_transcription() {
             when.method(POST)
                 .path("/db/neo4j/tx/commit")
                 .body_contains("\"kind\":\"big\"")
+                .body_contains("AudioClip")
+                .body_contains("\"id\":\"audio:1\"")
+                .body_contains("\"id\":\"audio:2\"")
                 .body_contains("\"audio_clip_ids\":[\"audio:1\",\"audio:2\"]")
                 .body_contains("HAS_BIG_TRANSCRIPTION")
                 .body_contains("HAS_SEGMENT")
                 .body_contains("DERIVED_FROM_AUDIO")
+                .body_contains("\"from\":\"big-transcription:")
+                .body_contains("PRODUCED")
+                .body_contains("sensation:audio:1")
+                .body_contains("sensation:audio:2")
                 .body_contains("\"anchor\":true")
                 .body_contains("\"source_index\":1")
-                .body_contains("\"text\":\"hello there\"");
+                .body_contains("\"text\":\"hello there\"")
+                .body_contains("\"transcript\":\"hello there\"");
             then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
         })
         .await;
@@ -812,6 +841,7 @@ async fn neo4j_client_attaches_big_audio_transcription() {
                     occurred_at: Some("2026-05-05T12:34:56Z".into()),
                     ended_at: Some("2026-05-05T12:34:57Z".into()),
                     anchor: false,
+                    sensation_id: Some("sensation:audio:1".into()),
                 },
                 GraphAudioSourceSpan {
                     index: 1,
@@ -821,6 +851,7 @@ async fn neo4j_client_attaches_big_audio_transcription() {
                     occurred_at: Some("2026-05-05T12:34:58Z".into()),
                     ended_at: Some("2026-05-05T12:34:59Z".into()),
                     anchor: true,
+                    sensation_id: Some("sensation:audio:2".into()),
                 },
             ],
             "hello there",
@@ -1054,6 +1085,124 @@ async fn neo4j_client_attaches_geolocation_vectorization() {
             "earth-unit-sphere/v1",
             "point-1",
             3,
+        )
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_loads_latest_timeline_window_for_combobulation() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (anchor:GraphNode)")
+                .body_contains("INCLUDED_IN_COMBOBULATION")
+                .body_contains("duration({seconds: $seconds})")
+                .body_contains("RETURN anchor.id, anchor_at, n.id, labels(n), text, occurred_at")
+                .body_contains("\"seconds\":30")
+                .body_contains("\"limit\":80");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["anchor.id", "anchor_at", "n.id", "labels(n)", "text", "occurred_at"],
+                    "data": [
+                        {"row": [
+                            "speech:2",
+                            "2026-05-05T12:35:00Z",
+                            "speech:1",
+                            ["GraphNode", "SpeechSegment"],
+                            "speech: hello",
+                            "2026-05-05T12:34:56Z"
+                        ]},
+                        {"row": [
+                            "speech:2",
+                            "2026-05-05T12:35:00Z",
+                            "speech:2",
+                            ["GraphNode", "SpeechSegment"],
+                            "speech: there",
+                            "2026-05-05T12:35:00Z"
+                        ]}
+                    ]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let window = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .latest_timeline_window_for_combobulation(30, 80)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(window.anchor_id, "speech:2");
+    assert_eq!(window.anchor_at, "2026-05-05T12:35:00Z");
+    assert_eq!(window.items.len(), 2);
+    assert_eq!(window.items[0].id, "speech:1");
+    assert_eq!(window.items[0].labels, ["GraphNode", "SpeechSegment"]);
+    assert_eq!(window.items[1].text, "speech: there");
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_combobulation() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CombobulationRun")
+                .body_contains("Awareness")
+                .body_contains("INCLUDED_IN_COMBOBULATION")
+                .body_contains("HAS_MEMORY_VECTOR")
+                .body_contains("qdrant:memories:point-1")
+                .body_contains("\"model\":\"wit-test\"")
+                .body_contains("\"embedding_model\":\"embed-test\"")
+                .body_contains("\"source_count\":2");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_combobulation(
+            &GraphTimelineWindow {
+                anchor_id: "speech:2".into(),
+                anchor_at: "2026-05-05T12:35:00Z".into(),
+                items: vec![
+                    GraphTimelineItem {
+                        id: "speech:1".into(),
+                        labels: vec!["GraphNode".into(), "SpeechSegment".into()],
+                        text: "speech: hello".into(),
+                        occurred_at: "2026-05-05T12:34:56Z".into(),
+                    },
+                    GraphTimelineItem {
+                        id: "speech:2".into(),
+                        labels: vec!["GraphNode".into(), "SpeechSegment".into()],
+                        text: "speech: there".into(),
+                        occurred_at: "2026-05-05T12:35:00Z".into(),
+                    },
+                ],
+            },
+            "wit-test",
+            "embed-test",
+            &GraphAwareness {
+                awareness_id: "awareness:speech:2".into(),
+                text: "I hear someone greeting me.".into(),
+                vector_id: "point-1".into(),
+                embedding_len: 768,
+            },
         )
         .await
         .unwrap();

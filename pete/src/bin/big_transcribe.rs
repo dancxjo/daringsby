@@ -173,6 +173,7 @@ fn graph_source_spans(
                 occurred_at: occurred_at.map(|at| at.to_rfc3339()),
                 ended_at: ended_at.map(|at| at.to_rfc3339()),
                 anchor: clip.id == window.anchor_id,
+                sensation_id: clip.sensation_id.clone(),
             })
         })
         .collect()
@@ -244,6 +245,12 @@ mod tests {
     use super::*;
     use psyche::AudioClip;
 
+    fn timestamp() -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-05-05T12:34:56Z")
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
     fn graph_clip(id: &str, captured_at: &str) -> GraphAudioClip {
         GraphAudioClip {
             id: id.into(),
@@ -256,6 +263,7 @@ mod tests {
                 captured_at: Some(captured_at.into()),
             },
             occurred_at: None,
+            sensation_id: Some(format!("sensation:{id}")),
         }
     }
 
@@ -289,6 +297,10 @@ mod tests {
 
         assert_eq!(sources.len(), 2);
         assert_eq!(sources[0].audio_clip_id, "audio:1");
+        assert_eq!(
+            sources[0].sensation_id.as_deref(),
+            Some("sensation:audio:1")
+        );
         assert!(!sources[0].anchor);
         assert_eq!(sources[0].start_ms, 0);
         assert_eq!(sources[0].end_ms, 1000);
@@ -297,6 +309,52 @@ mod tests {
             Some("2026-05-05T12:34:57+00:00")
         );
         assert_eq!(sources[1].audio_clip_id, "audio:2");
+        assert_eq!(
+            sources[1].sensation_id.as_deref(),
+            Some("sensation:audio:2")
+        );
         assert!(sources[1].anchor);
+    }
+
+    #[test]
+    fn graph_speech_segments_prefer_word_timings() {
+        let segments = graph_speech_segments(
+            &[SegmentMessage {
+                text: "hello there".into(),
+                start_ms: 0,
+                end_ms: 800,
+                words: vec![
+                    WordTiming {
+                        text: "hello".into(),
+                        start_ms: 0,
+                        end_ms: 300,
+                    },
+                    WordTiming {
+                        text: "there".into(),
+                        start_ms: 350,
+                        end_ms: 800,
+                    },
+                ],
+            }],
+            Some(timestamp()),
+        );
+
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].index, 0);
+        assert_eq!(segments[0].text, "hello");
+        assert_eq!(segments[0].start_ms, 0);
+        assert_eq!(segments[0].end_ms, 300);
+        assert_eq!(
+            segments[0].occurred_at.as_deref(),
+            Some("2026-05-05T12:34:56+00:00")
+        );
+        assert_eq!(segments[1].index, 1);
+        assert_eq!(segments[1].text, "there");
+        assert_eq!(segments[1].start_ms, 350);
+        assert_eq!(segments[1].end_ms, 800);
+        assert_eq!(
+            segments[1].occurred_at.as_deref(),
+            Some("2026-05-05T12:34:56.350+00:00")
+        );
     }
 }
