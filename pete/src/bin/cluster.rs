@@ -119,7 +119,11 @@ async fn main() -> anyhow::Result<()> {
     loop {
         ticker.tick().await;
         if let Err(err) = run_cluster_pass(&cli, &qdrant, &graph, themer.as_ref()).await {
-            error!(error = %err, "cluster discovery loop iteration failed");
+            error!(
+                error = %err,
+                error_debug = ?err,
+                "cluster discovery loop iteration failed"
+            );
         }
     }
 }

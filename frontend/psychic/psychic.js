@@ -198,7 +198,7 @@
 
     entered.append("circle");
     entered.append("text").attr("class", "node-icon").attr("dy", "0.03em");
-    entered.append("text").attr("class", "node-label").attr("dy", "2.6em");
+    entered.append("text").attr("class", "node-label");
     entered.append("title");
 
     const mergedNodes = entered.merge(nodes);
@@ -208,7 +208,10 @@
       .attr("r", nodeRadius)
       .attr("fill", (node) => styleForNode(node).color);
     mergedNodes.select(".node-icon").text((node) => styleForNode(node).icon);
-    mergedNodes.select(".node-label").text(nodeLabel);
+    mergedNodes
+      .select(".node-label")
+      .attr("dy", (node) => `${nodeRadius(node) + 10}px`)
+      .text(nodeLabel);
     mergedNodes.select("title").text((node) => `${nodeKind(node)}\n${node.id}`);
 
     linkLayer
@@ -403,6 +406,7 @@
   }
 
   function nodeRadius(node) {
+    if (nodeKind(node) === "Cluster") return 31;
     if (nodeKind(node) === "Impression") return 24;
     if (nodeKind(node) === "Sensation") return 21;
     if (nodeKind(node) === "Face") return 22;

@@ -1724,9 +1724,8 @@ impl Neo4jClient {
                         [text IN stimulus_texts WHERE text <> ""] AS stimulus_texts
                     CALL {
                         WITH owner
-                        OPTIONAL MATCH (owner)-[rel]-(neighbor:GraphNode)
-                        WHERE neighbor IS NOT NULL
-                          AND NOT neighbor:Vector
+                        MATCH (owner)-[rel]-(neighbor:GraphNode)
+                        WHERE NOT neighbor:Vector
                           AND NOT neighbor:Cluster
                           AND NOT neighbor:ClusterDiscoveryRun
                           AND NOT neighbor:ClusterThemeRun
@@ -1757,18 +1756,16 @@ impl Neo4jClient {
                                 WHEN startNode(rel) = owner THEN "-[:" + type(rel) + "]-> "
                                 ELSE "<-[:" + type(rel) + "]- "
                             END) + coalesce(neighbor.id, ""),
-                            neighbor: (CASE
-                                WHEN size([label IN labels(neighbor) WHERE label <> "GraphNode"]) = 0 THEN "Node"
-                                ELSE toString([label IN labels(neighbor) WHERE label <> "GraphNode"])
-                            END) + " " + CASE
+                            neighbor: coalesce(head([label IN labels(neighbor) WHERE label <> "GraphNode"]), "Node") + " " + CASE
                                 WHEN neighbor_text <> "" THEN neighbor_text
                                 ELSE coalesce(neighbor.id, "")
                             END
-                        })[..8] AS context
+                        }) AS context
                         RETURN
-                            [item IN context | item.edge] AS edge_texts,
-                            [item IN context | item.neighbor] AS neighbor_texts
+                            [item IN context[..8] | item.edge] AS edge_texts,
+                            [item IN context[..8] | item.neighbor] AS neighbor_texts
                     }
+                    WITH vector_id, owner, text, stimulus_texts, edge_texts, neighbor_texts
                     WHERE text IS NOT NULL AND text <> ""
                     RETURN vector_id, owner.id, labels(owner), text, stimulus_texts, edge_texts, neighbor_texts
                     ORDER BY vector_id, owner.id

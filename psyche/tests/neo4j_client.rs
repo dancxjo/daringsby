@@ -1232,7 +1232,9 @@ async fn neo4j_client_loads_vector_cluster_items() {
                 .path("/db/neo4j/tx/commit")
                 .body_contains("UNWIND $vector_ids AS vector_id")
                 .body_contains("HAS_MEMORY_VECTOR")
-                .body_contains("OPTIONAL MATCH (owner)-[rel]-(neighbor:GraphNode)")
+                .body_contains("MATCH (owner)-[rel]-(neighbor:GraphNode)")
+                .body_contains("coalesce(head([label IN labels(neighbor) WHERE label")
+                .body_contains("WITH vector_id, owner, text, stimulus_texts, edge_texts, neighbor_texts")
                 .body_contains("RETURN vector_id, owner.id, labels(owner), text, stimulus_texts, edge_texts, neighbor_texts")
                 .body_contains("qdrant:memories:point-1")
                 .body_contains("\"limit\":10");
