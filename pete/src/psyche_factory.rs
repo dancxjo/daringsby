@@ -68,6 +68,7 @@ pub fn dummy_psyche() -> Psyche {
 ///
 /// This uses [`OllamaProvider`](lingproc::OllamaProvider) for all language
 /// capabilities and the no-op ear and mouth implementations.
+#[allow(clippy::too_many_arguments)]
 pub fn ollama_psyche(
     chatter_host: &str,
     chatter_model: &str,

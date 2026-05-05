@@ -185,10 +185,10 @@ impl Memory for BasicMemory {
                 None
             }
         };
-        if let Some(v) = vector {
-            if let Err(e) = self.qdrant.store_vector(&impression.summary, &v).await {
-                tracing::error!(?e, "failed to store vector");
-            }
+        if let Some(v) = vector
+            && let Err(e) = self.qdrant.store_vector(&impression.summary, &v).await
+        {
+            tracing::error!(?e, "failed to store vector");
         }
         if let Some(stim) = impression.stimuli.first() {
             self.neo4j.store_data(&stim.what).await?;

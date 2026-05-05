@@ -135,7 +135,7 @@ impl AsrService {
 
     async fn transcribe(&self, audio: Vec<f32>) -> Result<Vec<SegmentInternal>> {
         let ctx = self.context.clone();
-        Ok(tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             let guard = ctx
                 .lock()
                 .map_err(|_| anyhow!("failed to lock whisper context"))?;
@@ -196,21 +196,18 @@ impl AsrService {
                     current.push_str(&clean);
                     let end = token_data.t1 as f32 / 100.0;
                     if end > start_s
-                        && current
-                            .trim()
-                            .ends_with(|c: char| c == ' ' || c == ',' || c == '.')
+                        && current.trim().ends_with([' ', ',', '.'])
+                        && let Some(start) = word_start.take()
                     {
-                        if let Some(start) = word_start.take() {
-                            let word = current.trim().to_string();
-                            if !word.is_empty() {
-                                words.push(WordTiming {
-                                    text: word,
-                                    start_ms: (start * 1000.0) as u32,
-                                    end_ms: (end * 1000.0) as u32,
-                                });
-                            }
-                            current.clear();
+                        let word = current.trim().to_string();
+                        if !word.is_empty() {
+                            words.push(WordTiming {
+                                text: word,
+                                start_ms: (start * 1000.0) as u32,
+                                end_ms: (end * 1000.0) as u32,
+                            });
                         }
+                        current.clear();
                     }
                 }
                 if let Some(start) = word_start {
@@ -234,7 +231,7 @@ impl AsrService {
 
             Ok::<_, anyhow::Error>(segments)
         })
-        .await??)
+        .await?
     }
 }
 
@@ -571,10 +568,10 @@ fn reconcile_segments(
 
     for (idx, seg) in latest.iter().enumerate() {
         let mut stability = 1;
-        if let Some(prev) = tracked.get(idx) {
-            if prev.text == seg.text {
-                stability = prev.stability + 1;
-            }
+        if let Some(prev) = tracked.get(idx)
+            && prev.text == seg.text
+        {
+            stability = prev.stability + 1;
         }
         let segment_age = (buffer_duration - seg.end_s).max(0.0);
         let aged_out = finality_lag_s <= 0.0 || segment_age >= finality_lag_s;
@@ -624,6 +621,81 @@ mod tests {
             end_s: end,
             words: Vec::<WordTiming>::new(),
         }
+    }
+
+    #[test]
+    fn extend_buffer_converts_le_i16_to_normalized_f32() {
+        let mut buffer = std::collections::VecDeque::new();
+        // 0x7FFF = i16::MAX → should normalize close to 1.0
+        let bytes = [0xFFu8, 0x7Fu8];
+        let (count, rms) = super::extend_buffer(&mut buffer, &bytes);
+        assert_eq!(count, 1);
+        assert!(
+            (rms - 1.0).abs() < 0.001,
+            "rms should be ~1.0 for max amplitude"
+        );
+        let sample = buffer[0];
+        assert!(
+            (sample - 1.0).abs() < 0.001,
+            "sample should normalize to ~1.0"
+        );
+    }
+
+    #[test]
+    fn extend_buffer_returns_zero_count_for_empty_input() {
+        let mut buffer = std::collections::VecDeque::new();
+        let (count, rms) = super::extend_buffer(&mut buffer, &[]);
+        assert_eq!(count, 0);
+        assert_eq!(rms, 0.0);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn extend_buffer_ignores_trailing_odd_byte() {
+        let mut buffer = std::collections::VecDeque::new();
+        // 3 bytes → only 1 complete i16 sample; trailing byte is ignored
+        let bytes = [0x00u8, 0x10u8, 0xFFu8];
+        let (count, _rms) = super::extend_buffer(&mut buffer, &bytes);
+        assert_eq!(count, 1);
+        assert_eq!(buffer.len(), 1);
+    }
+
+    #[test]
+    fn trim_silence_removes_leading_and_trailing_silence() {
+        let sample_rate = 16_000u32;
+        let silence_duration = Duration::from_millis(50);
+        // 800 samples of silence, then 800 samples of loud signal, then 800 samples of silence
+        let silence: Vec<f32> = vec![0.0; 800];
+        let signal: Vec<f32> = vec![0.9; 800];
+        let mut audio = Vec::new();
+        audio.extend_from_slice(&silence);
+        audio.extend_from_slice(&signal);
+        audio.extend_from_slice(&silence);
+
+        let (trimmed, leading) = super::trim_silence(&audio, sample_rate, 0.01, silence_duration);
+        assert!(!trimmed.is_empty(), "trimmed result should not be empty");
+        assert!(leading > 0, "should have trimmed some leading silence");
+        // Result should be shorter than the full audio (some silence was removed)
+        assert!(
+            trimmed.len() < audio.len(),
+            "trimmed audio should be shorter than original"
+        );
+    }
+
+    #[test]
+    fn trim_silence_returns_empty_for_all_silence() {
+        let sample_rate = 16_000u32;
+        let silence_duration = Duration::from_millis(20);
+        let audio: Vec<f32> = vec![0.0; 1600];
+        let (trimmed, _leading) = super::trim_silence(&audio, sample_rate, 0.01, silence_duration);
+        assert!(trimmed.is_empty(), "all-silence audio should trim to empty");
+    }
+
+    #[test]
+    fn trim_silence_returns_empty_input_unchanged() {
+        let (trimmed, leading) = super::trim_silence(&[], 16_000, 0.01, Duration::from_millis(200));
+        assert!(trimmed.is_empty());
+        assert_eq!(leading, 0);
     }
 
     #[test]

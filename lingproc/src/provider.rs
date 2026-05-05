@@ -164,13 +164,13 @@ impl Vectorizer for OllamaProvider {
                     return Ok(embedding);
                 }
                 Ok(Err(e)) => {
-                    if let ollama_rs::error::OllamaError::ReqwestError(ref re) = e {
-                        if re.is_connect() {
-                            warn!("🤖 vectorize failed: {}", re);
-                            if attempts < 2 {
-                                tokio::time::sleep(Duration::from_secs(1)).await;
-                                continue;
-                            }
+                    if let ollama_rs::error::OllamaError::ReqwestError(ref re) = e
+                        && re.is_connect()
+                    {
+                        warn!("🤖 vectorize failed: {}", re);
+                        if attempts < 2 {
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                            continue;
                         }
                     }
                     return Err(anyhow!(e));

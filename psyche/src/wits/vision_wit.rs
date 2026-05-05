@@ -105,14 +105,14 @@ impl Wit for VisionWit {
         let how = caption.trim().to_string();
         info!(elapsed=?start.elapsed(), "image captioned");
         drop(permit);
-        if let Some(tx) = &self.tx {
-            if crate::debug::debug_enabled(Self::LABEL).await {
-                let _ = tx.send(crate::WitReport {
-                    name: Self::LABEL.into(),
-                    prompt: "image caption".into(),
-                    output: how.clone(),
-                });
-            }
+        if let Some(tx) = &self.tx
+            && crate::debug::debug_enabled(Self::LABEL).await
+        {
+            let _ = tx.send(crate::WitReport {
+                name: Self::LABEL.into(),
+                prompt: "image caption".into(),
+                output: how.clone(),
+            });
         }
         vec![Impression::new(
             vec![Stimulus::new(img)],
@@ -145,12 +145,11 @@ impl VisionWit {
 #[async_trait]
 impl SensationObserver for VisionWit {
     async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
-        if let Some(sensation) = payload.downcast_ref::<crate::Sensation>() {
-            if let crate::Sensation::Of(any) = sensation {
-                if let Some(img) = any.downcast_ref::<ImageData>() {
-                    self.observe(img.clone()).await;
-                }
-            }
+        if let Some(sensation) = payload.downcast_ref::<crate::Sensation>()
+            && let crate::Sensation::Of(any) = sensation
+            && let Some(img) = any.downcast_ref::<ImageData>()
+        {
+            self.observe(img.clone()).await;
         }
     }
 }

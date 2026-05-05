@@ -56,10 +56,10 @@ impl EpisodeWit {
             let stream = bus_clone.subscribe(Topic::Instruction);
             tokio::pin!(stream);
             while let Some(payload) = stream.next().await {
-                if let Ok(i) = Arc::downcast::<HostInstruction>(payload) {
-                    if matches!(*i, HostInstruction::BreakEpisode) {
-                        break_clone.store(true, Ordering::SeqCst);
-                    }
+                if let Ok(i) = Arc::downcast::<HostInstruction>(payload)
+                    && matches!(*i, HostInstruction::BreakEpisode)
+                {
+                    break_clone.store(true, Ordering::SeqCst);
                 }
             }
         });
@@ -120,14 +120,14 @@ impl crate::wit::Wit for EpisodeWit {
         if resp.is_empty() {
             return Vec::new();
         }
-        if let Some(tx) = &self.tx {
-            if crate::debug::debug_enabled(Self::LABEL).await {
-                let _ = tx.send(WitReport {
-                    name: Self::LABEL.into(),
-                    prompt: prompt.clone(),
-                    output: resp.clone(),
-                });
-            }
+        if let Some(tx) = &self.tx
+            && crate::debug::debug_enabled(Self::LABEL).await
+        {
+            let _ = tx.send(WitReport {
+                name: Self::LABEL.into(),
+                prompt: prompt.clone(),
+                output: resp.clone(),
+            });
         }
         let imp = Impression::new(vec![Stimulus::new(resp.clone())], resp, None::<String>);
         self.bus.publish(Topic::Episode, imp.clone());

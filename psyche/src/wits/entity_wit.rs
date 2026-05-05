@@ -157,8 +157,7 @@ impl crate::traits::wit::Wit for EntityWit {
             let id = if let Some(pid) = self.face_db.search(&face.embedding, 0.92).await {
                 pid
             } else {
-                let pid = self.face_db.insert(face.embedding.clone()).await;
-                pid
+                self.face_db.insert(face.embedding.clone()).await
             };
             let name = names.pop();
             if let Some(n) = name.clone() {
@@ -185,14 +184,14 @@ impl crate::traits::wit::Wit for EntityWit {
             let imp = Impression::new(vec![stim], summary.clone(), None::<String>);
             let _ = self.memory.store_serializable(&imp).await;
             out.push(imp);
-            if let Some(tx) = &self.tx {
-                if crate::debug::debug_enabled(Self::LABEL).await {
-                    let _ = tx.send(crate::WitReport {
-                        name: Self::LABEL.into(),
-                        prompt: "link".into(),
-                        output: summary.clone(),
-                    });
-                }
+            if let Some(tx) = &self.tx
+                && crate::debug::debug_enabled(Self::LABEL).await
+            {
+                let _ = tx.send(crate::WitReport {
+                    name: Self::LABEL.into(),
+                    prompt: "link".into(),
+                    output: summary.clone(),
+                });
             }
         }
         for n in names {

@@ -161,14 +161,14 @@ impl crate::traits::wit::Wit for Quick {
             out
         );
         let imp = Impression::new(stimuli, out.clone(), None::<String>);
-        if let Some(tx) = &self.tx {
-            if crate::debug::debug_enabled(Self::LABEL).await {
-                let _ = tx.send(crate::WitReport {
-                    name: Self::LABEL.into(),
-                    prompt: "quick summary".into(),
-                    output: out.clone(),
-                });
-            }
+        if let Some(tx) = &self.tx
+            && crate::debug::debug_enabled(Self::LABEL).await
+        {
+            let _ = tx.send(crate::WitReport {
+                name: Self::LABEL.into(),
+                prompt: "quick summary".into(),
+                output: out.clone(),
+            });
         }
         self.bus.publish(Topic::Instant, imp.clone());
         vec![imp]

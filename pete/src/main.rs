@@ -221,7 +221,7 @@ async fn main() -> anyhow::Result<()> {
 
     #[cfg(feature = "face")]
     let face_sensor = Arc::new(FaceSensor::new(
-        Arc::new(psyche::DummyDetector::default()),
+        Arc::new(psyche::DummyDetector),
         psyche::QdrantClient::default(),
         psyche.topic_bus(),
     ));
@@ -235,10 +235,10 @@ async fn main() -> anyhow::Result<()> {
         let face_clone = face_sensor.clone();
         tokio::spawn(async move {
             while let Some(s) = eye_rx.recv().await {
-                if let Sensation::Of(any) = &s {
-                    if let Some(img) = any.downcast_ref::<ImageData>() {
-                        face_clone.sense(img.clone()).await;
-                    }
+                if let Sensation::Of(any) = &s
+                    && let Some(img) = any.downcast_ref::<ImageData>()
+                {
+                    face_clone.sense(img.clone()).await;
                 }
                 let _ = forward.send(s).await;
             }

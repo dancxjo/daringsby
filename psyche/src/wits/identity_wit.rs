@@ -41,14 +41,14 @@ impl BufferedWit for IdentityWit {
     async fn process_buffer(&self, inputs: Vec<Self::Input>) -> Vec<Impression<Self::Output>> {
         match self.summarizer.digest(&inputs).await {
             Ok(i) => {
-                if let Some(tx) = &self.tx {
-                    if crate::debug::debug_enabled(Self::LABEL).await {
-                        let _ = tx.send(WitReport {
-                            name: Self::LABEL.into(),
-                            prompt: "identity digest".into(),
-                            output: i.summary.clone(),
-                        });
-                    }
+                if let Some(tx) = &self.tx
+                    && crate::debug::debug_enabled(Self::LABEL).await
+                {
+                    let _ = tx.send(WitReport {
+                        name: Self::LABEL.into(),
+                        prompt: "identity digest".into(),
+                        output: i.summary.clone(),
+                    });
                 }
                 vec![i]
             }

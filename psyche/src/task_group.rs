@@ -20,6 +20,12 @@ pub struct TaskGroup {
     handles: Vec<tokio::task::JoinHandle<()>>,
 }
 
+impl Default for TaskGroup {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TaskGroup {
     pub fn new() -> Self {
         Self {

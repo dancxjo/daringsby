@@ -67,7 +67,7 @@ impl Sensor<ImageData> for FaceSensor {
                         let mut last = self.last_face.lock().unwrap();
                         let similar = last
                             .as_ref()
-                            .map_or(false, |p| cosine_similarity(p, &embed) > 0.95);
+                            .is_some_and(|p| cosine_similarity(p, &embed) > 0.95);
                         if !similar {
                             *last = Some(embed.clone());
                         }

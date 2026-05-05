@@ -66,14 +66,14 @@ impl BufferedWit for HeartWit {
         };
         let mood = resp.trim().to_string();
         self.motor.set_emotion(&mood).await;
-        if let Some(tx) = &self.tx {
-            if crate::debug::debug_enabled(Self::LABEL).await {
-                let _ = tx.send(crate::WitReport {
-                    name: Self::LABEL.into(),
-                    prompt,
-                    output: resp.clone(),
-                });
-            }
+        if let Some(tx) = &self.tx
+            && crate::debug::debug_enabled(Self::LABEL).await
+        {
+            let _ = tx.send(crate::WitReport {
+                name: Self::LABEL.into(),
+                prompt,
+                output: resp.clone(),
+            });
         }
         vec![Impression::new(
             vec![Stimulus::new(mood.clone())],

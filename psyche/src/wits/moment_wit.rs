@@ -90,14 +90,14 @@ impl crate::wit::Wit for MomentWit {
         if resp.is_empty() {
             return Vec::new();
         }
-        if let Some(tx) = &self.tx {
-            if crate::debug::debug_enabled(Self::LABEL).await {
-                let _ = tx.send(WitReport {
-                    name: Self::LABEL.into(),
-                    prompt: prompt.clone(),
-                    output: resp.clone(),
-                });
-            }
+        if let Some(tx) = &self.tx
+            && crate::debug::debug_enabled(Self::LABEL).await
+        {
+            let _ = tx.send(WitReport {
+                name: Self::LABEL.into(),
+                prompt: prompt.clone(),
+                output: resp.clone(),
+            });
         }
         let imp = Impression::new(vec![Stimulus::new(resp.clone())], resp, None::<String>);
         self.bus.publish(Topic::Moment, imp.clone());

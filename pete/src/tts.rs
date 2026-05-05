@@ -184,7 +184,7 @@ pub fn default_mouth(
         let tts = Arc::new(CoquiTts::new(tts_url, speaker_id, language_id)) as Arc<dyn Tts>;
         let mouth =
             Arc::new(TtsMouth::new(bus.event_sender(), speaking.clone(), tts)) as Arc<dyn Mouth>;
-        return Arc::new(PlainMouth::new(mouth)) as Arc<dyn Mouth>;
+        Arc::new(PlainMouth::new(mouth)) as Arc<dyn Mouth>
     }
     #[cfg(not(feature = "tts"))]
     {

@@ -69,15 +69,15 @@ impl Conversation {
     }
 
     fn append_or_new(&mut self, role: Role, content: String) {
-        if let Some(last) = self.log.last_mut() {
-            if last.message.role == role {
-                if !last.message.content.is_empty() && !content.is_empty() {
-                    last.message.content.push(' ');
-                }
-                last.message.content.push_str(&content);
-                last.message.content = last.message.content.trim().to_string();
-                return;
+        if let Some(last) = self.log.last_mut()
+            && last.message.role == role
+        {
+            if !last.message.content.is_empty() && !content.is_empty() {
+                last.message.content.push(' ');
             }
+            last.message.content.push_str(&content);
+            last.message.content = last.message.content.trim().to_string();
+            return;
         }
         self.log.push(TimedMessage::new(role, content));
     }
@@ -716,10 +716,10 @@ impl Psyche {
             }
             for imp in &imps {
                 for stim in &imp.stimuli {
-                    if let serde_json::Value::String(s) = &stim.what {
-                        if let Some(p) = extract_tag(s, "take_turn") {
-                            pending_turn.set(p);
-                        }
+                    if let serde_json::Value::String(s) = &stim.what
+                        && let Some(p) = extract_tag(s, "take_turn")
+                    {
+                        pending_turn.set(p);
                     }
                 }
             }

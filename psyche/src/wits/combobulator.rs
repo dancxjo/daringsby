@@ -131,14 +131,14 @@ impl Combobulator {
         };
         let resp = self.doer.follow(instruction.clone()).await?;
         let summary = resp.trim().to_string();
-        if let Some(tx) = &self.tx {
-            if crate::debug::debug_enabled(Self::LABEL).await {
-                let _ = tx.send(crate::WitReport {
-                    name: Self::LABEL.into(),
-                    prompt: instruction.command.clone(),
-                    output: summary.clone(),
-                });
-            }
+        if let Some(tx) = &self.tx
+            && crate::debug::debug_enabled(Self::LABEL).await
+        {
+            let _ = tx.send(crate::WitReport {
+                name: Self::LABEL.into(),
+                prompt: instruction.command.clone(),
+                output: summary.clone(),
+            });
         }
         Ok(Impression::new(
             vec![Stimulus::new(summary.clone())],

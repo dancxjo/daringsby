@@ -145,14 +145,14 @@ impl crate::wit::Wit for Will {
             }
         };
         info!(response = %resp, "will response");
-        if let Some(tx) = &self.tx {
-            if crate::debug::debug_enabled(Self::LABEL).await {
-                let _ = tx.send(WitReport {
-                    name: Self::LABEL.into(),
-                    prompt: llm_instruction.command.clone(),
-                    output: resp.trim().to_string(),
-                });
-            }
+        if let Some(tx) = &self.tx
+            && crate::debug::debug_enabled(Self::LABEL).await
+        {
+            let _ = tx.send(WitReport {
+                name: Self::LABEL.into(),
+                prompt: llm_instruction.command.clone(),
+                output: resp.trim().to_string(),
+            });
         }
         self.handle_llm_output(&resp).await;
         let instructions = parse_instructions(&resp);

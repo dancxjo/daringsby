@@ -18,6 +18,12 @@ pub struct FaceMemoryWit {
     tx: Option<broadcast::Sender<crate::WitReport>>,
 }
 
+impl Default for FaceMemoryWit {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FaceMemoryWit {
     /// Debug label.
     pub const LABEL: &'static str = "FaceMemory";
@@ -97,14 +103,14 @@ impl Wit for FaceMemoryWit {
                 *last = Some(info.embedding.clone());
             }
             info!(%summary, "face memory observation");
-            if let Some(tx) = &self.tx {
-                if crate::debug::debug_enabled(Self::LABEL).await {
-                    let _ = tx.send(crate::WitReport {
-                        name: Self::LABEL.into(),
-                        prompt: "face memory".into(),
-                        output: summary.clone(),
-                    });
-                }
+            if let Some(tx) = &self.tx
+                && crate::debug::debug_enabled(Self::LABEL).await
+            {
+                let _ = tx.send(crate::WitReport {
+                    name: Self::LABEL.into(),
+                    prompt: "face memory".into(),
+                    output: summary.clone(),
+                });
             }
             out.push(Impression::new(
                 vec![Stimulus::new(info.clone())],
@@ -123,12 +129,11 @@ impl Wit for FaceMemoryWit {
 #[async_trait]
 impl SensationObserver for FaceMemoryWit {
     async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
-        if let Some(s) = payload.downcast_ref::<Sensation>() {
-            if let Sensation::Of(any) = s {
-                if let Some(info) = any.downcast_ref::<FaceInfo>() {
-                    self.observe(info.clone()).await;
-                }
-            }
+        if let Some(s) = payload.downcast_ref::<Sensation>()
+            && let Sensation::Of(any) = s
+            && let Some(info) = any.downcast_ref::<FaceInfo>()
+        {
+            self.observe(info.clone()).await;
         }
     }
 }

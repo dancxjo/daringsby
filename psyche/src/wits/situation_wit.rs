@@ -77,10 +77,10 @@ impl crate::wit::Wit for SituationWit {
         debug!(count = items.len(), "situation wit summarizing moments");
         let previous = self.last.lock().unwrap().clone();
         let mut prompt = String::new();
-        if let Some(prev) = previous {
-            if !prev.trim().is_empty() {
-                prompt.push_str(&format!("Previous situation: {}\n", prev));
-            }
+        if let Some(prev) = previous
+            && !prev.trim().is_empty()
+        {
+            prompt.push_str(&format!("Previous situation: {}\n", prev));
         }
         prompt.push_str("Given the following recent moments, summarize the ongoing situation in one sentence:\n- ");
         prompt.push_str(&items.join("\n- "));
@@ -102,14 +102,14 @@ impl crate::wit::Wit for SituationWit {
             return Vec::new();
         }
         *self.last.lock().unwrap() = Some(resp.clone());
-        if let Some(tx) = &self.tx {
-            if crate::debug::debug_enabled(Self::LABEL).await {
-                let _ = tx.send(WitReport {
-                    name: Self::LABEL.into(),
-                    prompt: prompt.clone(),
-                    output: resp.clone(),
-                });
-            }
+        if let Some(tx) = &self.tx
+            && crate::debug::debug_enabled(Self::LABEL).await
+        {
+            let _ = tx.send(WitReport {
+                name: Self::LABEL.into(),
+                prompt: prompt.clone(),
+                output: resp.clone(),
+            });
         }
         let imp = Impression::new(vec![Stimulus::new(resp.clone())], resp, None::<String>);
         self.bus.publish(Topic::Situation, imp.clone());

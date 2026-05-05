@@ -278,10 +278,10 @@ async fn handle_hear_frame(data: &shared::AudioData, asr_pcm_tx: &Option<mpsc::S
         );
         return;
     }
-    if let Some(channels) = data.channels {
-        if channels != 1 {
-            warn!(channels, "ASR expects mono PCM; forwarding chunk anyway");
-        }
+    if let Some(channels) = data.channels
+        && channels != 1
+    {
+        warn!(channels, "ASR expects mono PCM; forwarding chunk anyway");
     }
     let bytes = match BASE64_STANDARD.decode(data.base64.trim().as_bytes()) {
         Ok(bytes) => bytes,

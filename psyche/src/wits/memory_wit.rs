@@ -89,14 +89,14 @@ impl BufferedWit for MemoryWit {
         if let Err(e) = self.memory.store_serializable(&impression).await {
             error!(?e, "failed to store memory summary");
         }
-        if let Some(tx) = &self.tx {
-            if crate::debug::debug_enabled(Self::LABEL).await {
-                let _ = tx.send(crate::WitReport {
-                    name: Self::LABEL.into(),
-                    prompt: "naive concat".into(),
-                    output: summary.clone(),
-                });
-            }
+        if let Some(tx) = &self.tx
+            && crate::debug::debug_enabled(Self::LABEL).await
+        {
+            let _ = tx.send(crate::WitReport {
+                name: Self::LABEL.into(),
+                prompt: "naive concat".into(),
+                output: summary.clone(),
+            });
         }
         debug!("memory summarized {} impressions", items.len());
         vec![impression]
