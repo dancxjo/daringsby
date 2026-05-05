@@ -93,7 +93,7 @@ mod types;
 
 pub use and_mouth::AndMouth;
 pub use debug::{DebugHandle, DebugInfo, debug_enabled, disable_debug, enable_debug};
-pub use default_prompt::DEFAULT_SYSTEM_PROMPT;
+pub use default_prompt::{DEFAULT_SYSTEM_PROMPT, with_default_system_prompt};
 pub use instruction::{HostInstruction, parse_instructions};
 pub use model::{Experience, Impression, Stimulus};
 pub use pending_turn::PendingTurn;

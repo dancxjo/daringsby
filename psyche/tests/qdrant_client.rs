@@ -1,4 +1,4 @@
-use httpmock::{Method::GET, Method::PUT, MockServer};
+use httpmock::{Method::DELETE, Method::GET, Method::PUT, MockServer};
 use psyche::QdrantClient;
 
 #[tokio::test]
@@ -49,7 +49,9 @@ async fn store_vector_uses_existing_memory_collection() {
     let get_collection = server
         .mock_async(|when, then| {
             when.method(GET).path("/collections/memories");
-            then.status(200).body(r#"{"result":{},"status":"ok"}"#);
+            then.status(200).body(
+                r#"{"result":{"config":{"params":{"vectors":{"size":1,"distance":"Cosine"}}}},"status":"ok"}"#,
+            );
         })
         .await;
     let upsert_point = server
@@ -84,4 +86,52 @@ async fn empty_vectors_are_rejected_before_network_request() {
         .unwrap_err();
 
     assert!(err.to_string().contains("empty vector"));
+}
+
+#[tokio::test]
+async fn existing_collection_dimension_mismatch_recreates_collection_before_upsert() {
+    let server = MockServer::start_async().await;
+    let get_collection = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/collections/faces");
+            then.status(200).body(
+                r#"{"result":{"config":{"params":{"vectors":{"size":2,"distance":"Cosine"}}}},"status":"ok"}"#,
+            );
+        })
+        .await;
+    let delete_collection = server
+        .mock_async(|when, then| {
+            when.method(DELETE).path("/collections/faces");
+            then.status(200).body(r#"{"result":true,"status":"ok"}"#);
+        })
+        .await;
+    let create_collection = server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path("/collections/faces")
+                .body_contains("\"size\":512")
+                .body_contains("\"distance\":\"Cosine\"");
+            then.status(200).body(r#"{"result":true,"status":"ok"}"#);
+        })
+        .await;
+    let upsert_point = server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path("/collections/faces/points")
+                .query_param("wait", "true")
+                .body_contains("\"vector\"");
+            then.status(200)
+                .body(r#"{"result":{"operation_id":1},"status":"ok"}"#);
+        })
+        .await;
+
+    QdrantClient::new(server.base_url())
+        .store_face_vector(&vec![0.0; 512])
+        .await
+        .unwrap();
+
+    get_collection.assert_async().await;
+    delete_collection.assert_async().await;
+    create_collection.assert_async().await;
+    upsert_point.assert_async().await;
 }

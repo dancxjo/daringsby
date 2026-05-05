@@ -103,10 +103,11 @@ impl crate::wit::Wit for EpisodeWit {
             "The following situations form a coherent story. Write a one-sentence summary suitable for a chapter heading.\n- {}",
             items.join("\n- ")
         );
+        let command = crate::with_default_system_prompt(&prompt);
         let resp = match self
             .doer
             .follow(LlmInstruction {
-                command: prompt.clone(),
+                command: command.clone(),
                 images: Vec::new(),
             })
             .await
@@ -124,7 +125,7 @@ impl crate::wit::Wit for EpisodeWit {
             if crate::debug::debug_enabled(Self::LABEL).await {
                 let _ = tx.send(WitReport {
                     name: Self::LABEL.into(),
-                    prompt: prompt.clone(),
+                    prompt: command,
                     output: resp.clone(),
                 });
             }

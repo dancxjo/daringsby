@@ -133,7 +133,7 @@ impl crate::wit::Wit for Will {
             .map(|s| s.what.clone())
             .unwrap_or_default();
         let llm_instruction = LlmInstruction {
-            command: self.prompt.build_prompt(&input),
+            command: crate::with_default_system_prompt(self.prompt.build_prompt(&input)),
             images: Vec::new(),
         };
         info!(prompt = %llm_instruction.command, "will prompt");

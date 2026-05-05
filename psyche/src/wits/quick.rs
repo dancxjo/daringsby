@@ -146,13 +146,14 @@ impl crate::traits::wit::Wit for Quick {
         let stimuli = items;
         let bullets: Vec<String> = stimuli.iter().map(|s| s.what.clone()).collect();
         let prompt = format!(
-            "You are Pete. Summarize these simultaneous sensations in one sentence, in the first person, using I/my/me. Do not refer to Pete, the individual, the observer, or the person. Return only the summary sentence.\n- {}",
+            "Summarize these simultaneous sensations in one sentence, in the first person, using I/my/me. Do not refer to Pete, the individual, the observer, or the person. Return only the summary sentence.\n- {}",
             bullets.join("\n- ")
         );
+        let command = crate::with_default_system_prompt(prompt);
         let out = match self
             .doer
             .follow(LlmInstruction {
-                command: prompt,
+                command: command.clone(),
                 images: Vec::new(),
             })
             .await
@@ -178,7 +179,7 @@ impl crate::traits::wit::Wit for Quick {
             if crate::debug::debug_enabled(Self::LABEL).await {
                 let _ = tx.send(crate::WitReport {
                     name: Self::LABEL.into(),
-                    prompt: "quick summary".into(),
+                    prompt: command,
                     output: out.clone(),
                 });
             }

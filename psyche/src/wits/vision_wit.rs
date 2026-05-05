@@ -87,14 +87,20 @@ impl Wit for VisionWit {
         debug!("vision wit captioning image");
         let permit = self.llm_semaphore.clone().acquire_owned().await.unwrap();
         let start = Instant::now();
+        let prompt = crate::with_default_system_prompt(
+            "Describe only what you see in this image in a single sentence, in the first person. Remember, this is what you are *seeing* in the first person, so unless you're looking into a mirror, you won't be seeing yourself.",
+        );
         let caption = if img.base64.is_empty() {
             "I can't see anything.".to_string()
         } else {
             match self
                 .doer
                 .follow(LlmInstruction {
-                    command: "Describe only what you see in this image in a single sentence, in the first person. Remember, this is what you are *seeing* in the first person, so unless you're looking into a mirror, you won't be seeing yourself.".into(),
-                    images: vec![LImageData { mime: img.mime.clone(), base64: img.base64.clone() }],
+                    command: prompt.clone(),
+                    images: vec![LImageData {
+                        mime: img.mime.clone(),
+                        base64: img.base64.clone(),
+                    }],
                 })
                 .await
             {
@@ -109,7 +115,7 @@ impl Wit for VisionWit {
             if crate::debug::debug_enabled(Self::LABEL).await {
                 let _ = tx.send(crate::WitReport {
                     name: Self::LABEL.into(),
-                    prompt: "image caption".into(),
+                    prompt: prompt.clone(),
                     output: how.clone(),
                 });
             }

@@ -73,10 +73,11 @@ impl crate::wit::Wit for MomentWit {
         };
         debug!(count = items.len(), "moment wit summarizing instants");
         let prompt = format!("Summarize these recent events:\n- {}", items.join("\n- "));
+        let command = crate::with_default_system_prompt(&prompt);
         let resp = match self
             .doer
             .follow(LlmInstruction {
-                command: prompt.clone(),
+                command: command.clone(),
                 images: Vec::new(),
             })
             .await
@@ -94,7 +95,7 @@ impl crate::wit::Wit for MomentWit {
             if crate::debug::debug_enabled(Self::LABEL).await {
                 let _ = tx.send(WitReport {
                     name: Self::LABEL.into(),
-                    prompt: prompt.clone(),
+                    prompt: command,
                     output: resp.clone(),
                 });
             }

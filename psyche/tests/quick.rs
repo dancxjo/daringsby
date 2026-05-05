@@ -35,6 +35,23 @@ async fn summarizes_heard_text() {
 }
 
 #[tokio::test]
+async fn debug_report_uses_full_prompt() {
+    let bus = TopicBus::new(8);
+    let (tx, mut rx) = tokio::sync::broadcast::channel(8);
+    psyche::enable_debug("Quick").await;
+    let quick = Quick::with_debug(bus, Arc::new(Dummy), Some(tx));
+    quick.observe(Sensation::HeardUserVoice("hi".into())).await;
+
+    let _ = quick.tick().await;
+    let report = rx.recv().await.unwrap();
+
+    assert_eq!(report.name, "Quick");
+    assert!(report.prompt.contains(psyche::DEFAULT_SYSTEM_PROMPT.trim()));
+    assert!(report.prompt.contains("using I/my/me"));
+    psyche::disable_debug("Quick").await;
+}
+
+#[tokio::test]
 async fn describes_heartbeat_before_type_erasure() {
     let bus = TopicBus::new(8);
     let quick = Quick::new(bus, Arc::new(Dummy));

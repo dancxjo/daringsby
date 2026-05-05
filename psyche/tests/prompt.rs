@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use lingproc::{Chatter, Doer, LlmInstruction, Message, TextStream, Vectorizer};
-use psyche::{DEFAULT_SYSTEM_PROMPT, Ear, Mouth, Psyche};
+use psyche::{DEFAULT_SYSTEM_PROMPT, Ear, Mouth, Psyche, with_default_system_prompt};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Clone, Default)]
@@ -63,6 +63,15 @@ fn default_prompt_present() {
         ear,
     );
     assert_eq!(psyche.system_prompt(), DEFAULT_SYSTEM_PROMPT);
+}
+
+#[test]
+fn one_shot_prompt_includes_default_prompt() {
+    let prompt = with_default_system_prompt("Summarize what I saw.");
+
+    assert!(prompt.contains(DEFAULT_SYSTEM_PROMPT.trim()));
+    assert!(prompt.contains("Task:\nSummarize what I saw."));
+    assert!(prompt.contains("write in the first person"));
 }
 
 #[test]

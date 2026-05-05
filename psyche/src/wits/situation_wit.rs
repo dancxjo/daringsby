@@ -84,10 +84,11 @@ impl crate::wit::Wit for SituationWit {
         }
         prompt.push_str("Given the following recent moments, summarize the ongoing situation in one sentence:\n- ");
         prompt.push_str(&items.join("\n- "));
+        let command = crate::with_default_system_prompt(&prompt);
         let resp = match self
             .doer
             .follow(LlmInstruction {
-                command: prompt.clone(),
+                command: command.clone(),
                 images: Vec::new(),
             })
             .await
@@ -106,7 +107,7 @@ impl crate::wit::Wit for SituationWit {
             if crate::debug::debug_enabled(Self::LABEL).await {
                 let _ = tx.send(WitReport {
                     name: Self::LABEL.into(),
-                    prompt: prompt.clone(),
+                    prompt: command,
                     output: resp.clone(),
                 });
             }

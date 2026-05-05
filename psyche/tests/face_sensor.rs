@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use futures::{StreamExt, pin_mut};
+use httpmock::{Method::GET, Method::PUT, MockServer};
 use lingproc::{Chatter, Doer, LlmInstruction, Message, Vectorizer};
 use psyche::{
     Ear, ImageData, Mouth, Psyche, Sensation, Sensor, Topic,
@@ -7,6 +8,43 @@ use psyche::{
     wits::memory::QdrantClient,
 };
 use std::sync::Arc;
+
+async fn qdrant_with_faces_collection(vector_size: usize) -> (MockServer, QdrantClient) {
+    let server = MockServer::start_async().await;
+    let collection_body = format!(
+        r#"{{
+            "result": {{
+                "config": {{
+                    "params": {{
+                        "vectors": {{
+                            "size": {vector_size},
+                            "distance": "Cosine"
+                        }}
+                    }}
+                }}
+            }},
+            "status": "ok"
+        }}"#
+    );
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/collections/faces");
+            then.status(200).body(collection_body);
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path("/collections/faces/points")
+                .query_param("wait", "true");
+            then.status(200)
+                .body(r#"{"result":{"operation_id":1},"status":"ok"}"#);
+        })
+        .await;
+
+    let client = QdrantClient::new(server.base_url());
+    (server, client)
+}
 
 #[tokio::test]
 async fn emits_face_info() {
@@ -54,11 +92,8 @@ async fn emits_face_info() {
         ear,
     );
     let bus = psyche.topic_bus();
-    let sensor = FaceSensor::new(
-        Arc::new(DummyDetector::default()),
-        QdrantClient::default(),
-        bus.clone(),
-    );
+    let (_server, qdrant) = qdrant_with_faces_collection(1).await;
+    let sensor = FaceSensor::new(Arc::new(DummyDetector::default()), qdrant, bus.clone());
     let sub = bus.subscribe(Topic::Sensation);
     pin_mut!(sub);
     sensor
@@ -98,7 +133,8 @@ async fn skips_identical_face() {
     let detector = Arc::new(SeqDetector {
         embeddings: std::sync::Mutex::new(vec![vec![0.1, 0.0], vec![0.1, 0.0]]),
     });
-    let sensor = FaceSensor::new(detector, QdrantClient::default(), bus.clone());
+    let (_server, qdrant) = qdrant_with_faces_collection(2).await;
+    let sensor = FaceSensor::new(detector, qdrant, bus.clone());
     let sub = bus.subscribe(Topic::Sensation);
     pin_mut!(sub);
     let img = ImageData {
@@ -118,7 +154,8 @@ async fn stores_distinct_faces() {
     let detector = Arc::new(SeqDetector {
         embeddings: std::sync::Mutex::new(vec![vec![0.1, 0.0], vec![0.0, 0.1]]),
     });
-    let sensor = FaceSensor::new(detector, QdrantClient::default(), bus.clone());
+    let (_server, qdrant) = qdrant_with_faces_collection(2).await;
+    let sensor = FaceSensor::new(detector, qdrant, bus.clone());
     let sub = bus.subscribe(Topic::Sensation);
     pin_mut!(sub);
     let img = ImageData {
@@ -163,7 +200,8 @@ async fn logs_skipped_detection() {
     let detector = Arc::new(SeqDetector {
         embeddings: std::sync::Mutex::new(vec![vec![0.2, 0.0], vec![0.2, 0.0]]),
     });
-    let sensor = FaceSensor::new(detector, QdrantClient::default(), bus.clone());
+    let (_server, qdrant) = qdrant_with_faces_collection(2).await;
+    let sensor = FaceSensor::new(detector, qdrant, bus.clone());
     sensor
         .sense(ImageData {
             mime: "image/png".into(),

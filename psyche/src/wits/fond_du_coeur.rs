@@ -55,7 +55,9 @@ impl FondDuCoeur {
             }
         }
         let instruction = LlmInstruction {
-            command: format!("Summarize Pete's life story in one paragraph:\n{combined}"),
+            command: crate::with_default_system_prompt(format!(
+                "Summarize Pete's life story in one paragraph:\n{combined}"
+            )),
             images: Vec::new(),
         };
         let resp = self.doer.follow(instruction.clone()).await?;

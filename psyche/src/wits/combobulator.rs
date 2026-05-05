@@ -126,7 +126,7 @@ impl Combobulator {
             }
         }
         let instruction = LlmInstruction {
-            command: self.prompt.build_prompt(&combined),
+            command: crate::with_default_system_prompt(self.prompt.build_prompt(&combined)),
             images: Vec::new(),
         };
         let resp = self.doer.follow(instruction.clone()).await?;
@@ -153,7 +153,7 @@ impl Combobulator {
         let caption = self
             .doer
             .follow(LlmInstruction {
-                command: "Describe only what you see in this image in a single sentence, in the first person. Remember, this is what you are *seeing* in the first person, so unless you're looking into a mirror, you won't be seeing yourself.".into(),
+                command: crate::with_default_system_prompt("Describe only what you see in this image in a single sentence, in the first person. Remember, this is what you are *seeing* in the first person, so unless you're looking into a mirror, you won't be seeing yourself."),
                 images: vec![LImageData { mime: image.mime.clone(), base64: image.base64.clone() }],
             })
             .await?;

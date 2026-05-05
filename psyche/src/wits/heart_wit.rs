@@ -56,7 +56,9 @@ impl BufferedWit for HeartWit {
             .collect::<Vec<_>>()
             .join(" ");
         let instruction = LlmInstruction {
-            command: format!("What emoji reflects Pete's mood? {summary}"),
+            command: crate::with_default_system_prompt(format!(
+                "What emoji reflects Pete's mood? {summary}"
+            )),
             images: Vec::new(),
         };
         let prompt = instruction.command.clone();

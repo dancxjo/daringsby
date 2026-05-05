@@ -7,7 +7,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::info;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 const MEMORY_COLLECTION: &str = "memories";
@@ -176,6 +176,23 @@ impl QdrantClient {
             .with_context(|| format!("failed to inspect Qdrant collection {collection}"))?;
 
         if response.status().is_success() {
+            let body: Value = response
+                .json()
+                .await
+                .with_context(|| format!("failed to decode Qdrant collection {collection}"))?;
+            let existing_size = qdrant_collection_vector_size(&body).with_context(|| {
+                format!("Qdrant collection {collection} did not report a vector size")
+            })?;
+            if existing_size != vector_size {
+                warn!(
+                    target: "qdrant",
+                    collection,
+                    existing_size,
+                    vector_size,
+                    "recreating Qdrant collection with incompatible vector dimension"
+                );
+                self.recreate_collection(collection, vector_size).await?;
+            }
             return Ok(());
         }
         if response.status() != StatusCode::NOT_FOUND {
@@ -186,6 +203,39 @@ impl QdrantClient {
             .await);
         }
 
+        self.create_collection(&client, url, collection, vector_size)
+            .await
+    }
+
+    async fn recreate_collection(&self, collection: &str, vector_size: usize) -> Result<()> {
+        let client = reqwest::Client::new();
+        let url = self.endpoint(&format!("collections/{collection}"))?;
+        let response = client
+            .delete(url.clone())
+            .timeout(QDRANT_REQUEST_TIMEOUT)
+            .send()
+            .await
+            .with_context(|| format!("failed to delete Qdrant collection {collection}"))?;
+
+        if !response.status().is_success() && response.status() != StatusCode::NOT_FOUND {
+            return Err(unexpected_qdrant_response(
+                response,
+                &format!("deleting collection {collection}"),
+            )
+            .await);
+        }
+
+        self.create_collection(&client, url, collection, vector_size)
+            .await
+    }
+
+    async fn create_collection(
+        &self,
+        client: &reqwest::Client,
+        url: Url,
+        collection: &str,
+        vector_size: usize,
+    ) -> Result<()> {
         let body = json!({
             "vectors": {
                 "size": vector_size,
@@ -221,6 +271,18 @@ async fn unexpected_qdrant_response(response: reqwest::Response, action: &str) -
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
     anyhow!("Qdrant returned {status} while {action}: {body}")
+}
+
+fn qdrant_collection_vector_size(collection: &Value) -> Option<usize> {
+    let vectors = collection.pointer("/result/config/params/vectors")?;
+    if let Some(size) = vectors.get("size").and_then(Value::as_u64) {
+        return usize::try_from(size).ok();
+    }
+    vectors
+        .as_object()?
+        .values()
+        .find_map(|vector| vector.get("size").and_then(Value::as_u64))
+        .and_then(|size| usize::try_from(size).ok())
 }
 
 /// Client for persisting raw data in Neo4j.
