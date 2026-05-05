@@ -18,8 +18,9 @@ use tokio::time::{MissedTickBehavior, interval};
 use tracing::{debug, error, info, warn};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
+use psyche::{AudioClip, Sensation, Topic, TopicBus};
 #[cfg(feature = "voice")]
-use psyche::{AudioClip, QdrantClient, Sensation, TopicBus, VoiceInfo, audio_clip_id};
+use psyche::{QdrantClient, VoiceInfo, audio_clip_id};
 
 pub const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-base.en.bin";
 #[cfg(feature = "voice")]
@@ -39,6 +40,7 @@ pub struct AsrService {
     silence_threshold: f32,
     silence_duration: Duration,
     pcm_queue_capacity: usize,
+    topic_bus: Option<TopicBus>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -63,7 +65,22 @@ pub struct AsrTranscript {
     pub start_ms: u32,
     pub end_ms: u32,
     pub audio_base64: String,
+    pub sample_rate: u32,
+    pub channels: u16,
     pub segments: Vec<SegmentMessage>,
+}
+
+impl AsrTranscript {
+    pub fn audio_clip(&self) -> AudioClip {
+        AudioClip {
+            mime: "audio/wav".to_string(),
+            base64: self.audio_base64.clone(),
+            sample_rate: self.sample_rate,
+            channels: self.channels,
+            transcript: Some(self.text.clone()),
+            captured_at: Some(self.occurred_at.to_rfc3339()),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -142,11 +159,16 @@ impl AsrService {
             silence_threshold,
             silence_duration: Duration::from_millis(silence_duration_ms),
             pcm_queue_capacity,
+            topic_bus: None,
         }))
     }
 
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
+    }
+
+    pub fn set_topic_bus(&mut self, bus: TopicBus) {
+        self.topic_bus = Some(bus);
     }
 
     #[cfg(feature = "voice")]
@@ -356,6 +378,7 @@ impl VoiceEmbeddingService {
             base64: BASE64_STANDARD.encode(wav_bytes),
             sample_rate: 16_000,
             channels: 1,
+            transcript: None,
             captured_at: Some(occurred_at.to_rfc3339()),
         };
         let clip_id = audio_clip_id(&clip);
@@ -535,7 +558,16 @@ async fn process_utterance(
 
     match service.transcribe(trimmed_audio).await {
         Ok(segments) => {
-            emit_transcript(segments, occurred_at, global_offset, wav_bytes, &out_tx).await;
+            emit_transcript(
+                segments,
+                occurred_at,
+                global_offset,
+                wav_bytes,
+                service.sample_rate,
+                service.topic_bus.as_ref(),
+                &out_tx,
+            )
+            .await;
         }
         Err(err) => {
             error!(error = %err, "transcription error");
@@ -680,6 +712,8 @@ async fn emit_transcript(
     occurred_at: DateTime<Utc>,
     global_offset: f32,
     wav_bytes: Vec<u8>,
+    sample_rate: u32,
+    topic_bus: Option<&TopicBus>,
     out_tx: &mpsc::Sender<AsrTranscript>,
 ) {
     let segments = segments
@@ -708,11 +742,21 @@ async fn emit_transcript(
         start_ms: ((global_offset + first.start_s) * 1000.0) as u32,
         end_ms: ((global_offset + last.end_s) * 1000.0) as u32,
         audio_base64: BASE64_STANDARD.encode(&wav_bytes),
+        sample_rate,
+        channels: 1,
         segments: segments
             .iter()
             .map(|seg| segment_to_message(seg, global_offset))
             .collect(),
     };
+    if let Some(bus) = topic_bus {
+        let mut clip = transcript.audio_clip();
+        clip.captured_at = Some(occurred_at.to_rfc3339());
+        bus.publish(
+            Topic::Sensation,
+            Sensation::of_at(clip, transcript.occurred_at),
+        );
+    }
     let _ = out_tx.send(transcript).await;
 }
 
@@ -739,6 +783,8 @@ fn encode_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
 mod tests {
     use super::{SegmentInternal, SilenceTracker, WordTiming, emit_transcript, trim_silence};
     use chrono::Utc;
+    use futures::StreamExt;
+    use psyche::{AudioClip, Sensation, Topic, TopicBus};
     use std::time::Duration;
     use tokio::sync::mpsc;
 
@@ -783,6 +829,8 @@ mod tests {
             Utc::now(),
             0.0,
             Vec::new(),
+            16_000,
+            None,
             &tx,
         )
         .await;
@@ -802,6 +850,8 @@ mod tests {
             Utc::now(),
             2.0,
             Vec::new(),
+            16_000,
+            None,
             &tx,
         )
         .await;
@@ -810,5 +860,38 @@ mod tests {
         assert_eq!(transcript.text, "hello there");
         assert_eq!(transcript.start_ms, 2000);
         assert_eq!(transcript.end_ms, 3000);
+    }
+
+    #[tokio::test]
+    async fn emit_transcript_publishes_transcribed_audio_clip() {
+        let (tx, _rx) = mpsc::channel(1);
+        let bus = TopicBus::new(4);
+        let stream = bus.subscribe(Topic::Sensation);
+        tokio::pin!(stream);
+
+        emit_transcript(
+            vec![make_segment("hello", 0.0, 0.5)],
+            Utc::now(),
+            0.0,
+            b"wav".to_vec(),
+            16_000,
+            Some(&bus),
+            &tx,
+        )
+        .await;
+
+        let payload = stream.next().await.expect("audio sensation should publish");
+        let sensation = payload
+            .downcast_ref::<Sensation>()
+            .expect("payload should be a sensation");
+        let Sensation::Of { payload, .. } = sensation else {
+            panic!("expected audio clip sensation");
+        };
+        let audio = payload
+            .downcast_ref::<AudioClip>()
+            .expect("sensation should contain an audio clip");
+        assert_eq!(audio.transcript.as_deref(), Some("hello"));
+        assert_eq!(audio.sample_rate, 16_000);
+        assert_eq!(audio.channels, 1);
     }
 }

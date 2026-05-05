@@ -82,6 +82,8 @@ pub struct AudioClip {
     pub sample_rate: u32,
     pub channels: u16,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub captured_at: Option<String>,
 }
 

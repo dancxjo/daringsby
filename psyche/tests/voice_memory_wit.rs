@@ -8,6 +8,7 @@ fn dummy_info(val: f32) -> VoiceInfo {
         base64: "".into(),
         sample_rate: 16_000,
         channels: 1,
+        transcript: None,
         captured_at: None,
     };
     VoiceInfo {

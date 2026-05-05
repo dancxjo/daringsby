@@ -33,6 +33,7 @@
 
 mod ear;
 mod event_bus;
+mod face_ipc;
 mod logging;
 mod motor;
 mod mouth;
@@ -51,6 +52,7 @@ pub use asr::{AsrService, AsrTranscript, SegmentMessage, WordTiming};
 pub use ear::ChannelEar;
 pub use ear::NoopEar;
 pub use event_bus::EventBus;
+pub use face_ipc::MediaEvent;
 pub use logging::init_logging;
 pub use motor::LoggingMotor;
 pub use mouth::{ChannelMouth, NoopMouth};

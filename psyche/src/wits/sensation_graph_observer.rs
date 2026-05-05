@@ -9,6 +9,7 @@ use crate::{
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use tracing::warn;
@@ -306,6 +307,25 @@ impl SensationObserver for SensationGraphObserver {
                     }),
                 )
                 .await;
+            } else if let Some(value) = payload.downcast_ref::<Value>() {
+                let id = json_sensation_id(value, occurred_at.to_rfc3339());
+                let sensation_id = sensation_id("json", &id, occurred_at.to_rfc3339());
+                self.store_once(
+                    id.clone(),
+                    json!({
+                        "op": "merge_graph",
+                        "nodes": [
+                            sensation_node(&sensation_id, "json", occurred_at.to_rfc3339()),
+                            json_sensation_node(value, &id, occurred_at.to_rfc3339()),
+                        ],
+                        "relationships": [{
+                            "from": sensation_id,
+                            "to": id,
+                            "type": "OBSERVED",
+                        }],
+                    }),
+                )
+                .await;
             } else {
                 store_unknown_sensation(self, payload.type_id(), occurred_at.to_rfc3339()).await;
             }
@@ -422,6 +442,24 @@ fn object_info_id(object: &ObjectInfo, occurred_at: String) -> String {
     )
 }
 
+fn json_sensation_id(value: &Value, occurred_at: String) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(value.to_string().as_bytes());
+    hasher.update([0]);
+    hasher.update(occurred_at.as_bytes());
+    format!("json-sensation:sha256:{:x}", hasher.finalize())
+}
+
+fn json_sensation_node(value: &Value, id: &str, occurred_at: String) -> Value {
+    json!({
+        "label": "JsonSensation",
+        "id": id,
+        "merge_key": "id",
+        "value": value.clone(),
+        "occurred_at": occurred_at,
+    })
+}
+
 async fn store_unknown_sensation(
     observer: &SensationGraphObserver,
     type_id: std::any::TypeId,
@@ -492,6 +530,7 @@ fn audio_node(audio: &AudioClip, id: &str, occurred_at: String) -> Value {
         "base64": audio.base64.clone(),
         "sample_rate": audio.sample_rate,
         "channels": audio.channels,
+        "transcript": audio.transcript.clone(),
         "captured_at": audio.captured_at.clone(),
         "occurred_at": occurred_at,
     })

@@ -946,6 +946,7 @@ fn audio_node(audio: &AudioClip, id: &str, occurred_at: String) -> Value {
         "base64": audio.base64.clone(),
         "sample_rate": audio.sample_rate,
         "channels": audio.channels,
+        "transcript": audio.transcript.clone(),
         "captured_at": audio.captured_at.clone(),
         "occurred_at": occurred_at,
     })

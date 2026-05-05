@@ -36,13 +36,13 @@ struct Cli {
     #[arg(long, env = "CHATTER_HOST", default_value = "http://localhost:11434")]
     chatter_host: String,
     /// Model name to use for chatter
-    #[arg(long, env = "CHATTER_MODEL", default_value = "gemma3")]
+    #[arg(long, env = "CHATTER_MODEL", default_value = "gpt-oss")]
     chatter_model: String,
     /// URL of the wits Ollama server
     #[arg(long, env = "WITS_HOST", default_value = "http://localhost:11434")]
     wits_host: String,
     /// Model name to use for wits
-    #[arg(long, env = "WITS_MODEL", default_value = "gemma3")]
+    #[arg(long, env = "WITS_MODEL", default_value = "gpt-oss")]
     wits_model: String,
     /// URL of the embeddings Ollama server
     #[arg(
@@ -318,6 +318,9 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(feature = "asr")]
     let asr = {
         let mut asr = pete::AsrService::from_env()?;
+        if let Some(service) = asr.as_mut() {
+            service.set_topic_bus(psyche.topic_bus());
+        }
         #[cfg(feature = "voice")]
         if let Some(service) = asr.as_mut() {
             service.enable_voice_embeddings_from_env(

@@ -1,6 +1,6 @@
 (function () {
   const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
-  const ws = new WebSocket(`${wsProtocol}//${location.hostname}:3000/ws`);
+  const ws = new WebSocket(`${wsProtocol}//${location.host}/ws`);
 
   function waitForWebSocketReady() {
     if (ws.readyState === WebSocket.OPEN) return Promise.resolve();

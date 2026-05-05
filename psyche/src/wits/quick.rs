@@ -86,6 +86,8 @@ impl Quick {
                     Some("I recognized where I am".to_string())
                 } else if payload.downcast_ref::<crate::VoiceInfo>().is_some() {
                     Some("I heard a voice".to_string())
+                } else if payload.downcast_ref::<crate::AudioClip>().is_some() {
+                    None
                 } else if payload.downcast_ref::<crate::ImageData>().is_some() {
                     None
                 } else if let Some(loc) = payload.downcast_ref::<crate::GeoLoc>() {

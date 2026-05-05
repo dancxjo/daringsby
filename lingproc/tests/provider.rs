@@ -35,10 +35,10 @@ async fn follow_includes_images() {
             .matches(body_contains_abcd);
         then.status(200)
             .header("content-type", "application/json")
-            .body("{\"model\":\"gemma3\",\"created_at\":\"now\",\"message\":{\"role\":\"assistant\",\"content\":\"ok\"},\"done\":true}");
+            .body("{\"model\":\"gpt-oss\",\"created_at\":\"now\",\"message\":{\"role\":\"assistant\",\"content\":\"ok\"},\"done\":true}");
     });
 
-    let provider = OllamaProvider::new(vec![server.base_url()], "gemma3").unwrap();
+    let provider = OllamaProvider::new(vec![server.base_url()], "gpt-oss").unwrap();
     let res = provider
         .follow(LlmInstruction {
             command: "look".into(),

@@ -1,10 +1,11 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use psyche::{
-    GeoEmbedding, GeoLoc, GraphStore, Heartbeat, ImageData, ObjectInfo, Sensation,
-    SensationGraphObserver, SensationObserver, geoloc_content_id, geoloc_vector, image_content_id,
+    AudioClip, GeoEmbedding, GeoLoc, GraphStore, Heartbeat, ImageData, ObjectInfo, Sensation,
+    SensationGraphObserver, SensationObserver, audio_clip_id, geoloc_content_id, geoloc_vector,
+    image_content_id,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
@@ -77,6 +78,30 @@ async fn stores_original_geolocation_sensation() {
 }
 
 #[tokio::test]
+async fn stores_audio_sensation_with_transcript() {
+    let graph = Arc::new(MockGraph::default());
+    let observer = SensationGraphObserver::new(graph.clone());
+    let audio = AudioClip {
+        mime: "audio/wav".into(),
+        base64: "UklGRg==".into(),
+        sample_rate: 16_000,
+        channels: 1,
+        transcript: Some("hello there".into()),
+        captured_at: Some("2026-05-05T12:34:56Z".into()),
+    };
+    let expected_id = audio_clip_id(&audio);
+
+    observer.observe_sensation(&Sensation::of(audio)).await;
+
+    let stored = graph.0.lock().unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0]["nodes"][1]["label"], "AudioClip");
+    assert_eq!(stored[0]["nodes"][1]["id"], expected_id);
+    assert_eq!(stored[0]["nodes"][1]["transcript"], "hello there");
+    assert_eq!(stored[0]["relationships"][0]["type"], "OBSERVED");
+}
+
+#[tokio::test]
 async fn merges_duplicate_image_sensations_once() {
     let graph = Arc::new(MockGraph::default());
     let observer = SensationGraphObserver::new(graph.clone());
@@ -137,6 +162,25 @@ async fn stores_object_sensation_without_embedding_payload() {
     assert_eq!(stored[0]["nodes"][1]["object_label"], "mug");
     assert_eq!(stored[0]["nodes"][1]["embedding_len"], 3);
     assert!(stored[0]["nodes"][1].get("embedding").is_none());
+}
+
+#[tokio::test]
+async fn stores_json_sensation_payload() {
+    let graph = Arc::new(MockGraph::default());
+    let observer = SensationGraphObserver::new(graph.clone());
+    let payload = json!({
+        "kind": "browser-event",
+        "value": 7,
+    });
+    let sensation = Sensation::of(payload.clone());
+
+    observer.observe_sensation(&sensation).await;
+
+    let stored = graph.0.lock().unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0]["nodes"][1]["label"], "JsonSensation");
+    assert_eq!(stored[0]["nodes"][1]["value"], payload);
+    assert_eq!(stored[0]["relationships"][0]["type"], "OBSERVED");
 }
 
 #[tokio::test]

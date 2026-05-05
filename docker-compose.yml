@@ -10,16 +10,9 @@ services:
       - TTS_MODEL="tts_models/en/ljspeech/tacotron2-DDC"
       - VOCODER_MODEL="vocoder_models/en/ljspeech/hifigan_v1"
     command: [ "TTS/server/server.py", "--model_name", "tts_models/en/vctk/vits" ]
-   runtime: nvidia
     volumes:
       - ./tts:/root/.local/share
       - /etc/timezone:/etc/timezone:ro
-   deploy:
-     resources:
-       reservations:
-         devices:
-           - count: all
-             capabilities: [ gpu ]
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -38,5 +31,3 @@ services:
       - NEO4J_AUTH=neo4j/password
     volumes:
       - ./neo4j_data:/data
-
-
