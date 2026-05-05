@@ -16,8 +16,6 @@ use pete::{Body, LoggingMotor, NoopEar, NoopMouth, app, init_logging, listen_use
 // helper for building Ollama providers
 use pete::default_mouth;
 use pete::ollama_provider_from_args;
-#[cfg(all(feature = "eye", feature = "face"))]
-use psyche::Sensation;
 use psyche::{Ear, GeoLoc, ImageData, Mouth, Sensor, TrimMouth};
 use std::{
     net::SocketAddr,
@@ -26,11 +24,7 @@ use std::{
         atomic::{AtomicBool, AtomicUsize},
     },
 };
-#[cfg(feature = "eye")]
-use tokio::sync::mpsc;
 use tracing::info;
-#[cfg(all(feature = "eye", feature = "face"))]
-use tracing::warn;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -147,10 +141,12 @@ async fn main() -> anyhow::Result<()> {
         .set_prompt(psyche::ContextualPrompt::new(psyche.topic_bus()));
 
     let wit_tx = psyche.wit_sender();
-    psyche.register_observing_wit(Arc::new(VisionWit::with_debug(
+    let vision = Arc::new(VisionWit::with_debug(
         Arc::new(ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?),
         wit_tx.clone(),
-    )));
+    ));
+    let latest_image = vision.latest_image_handle();
+    psyche.register_observing_wit(vision);
     psyche.register_observing_wit(Arc::new(FaceMemoryWit::with_debug(wit_tx.clone())));
     psyche.register_observing_wit(Arc::new(Quick::with_debug(
         psyche.topic_bus(),
@@ -211,10 +207,14 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "ear"))]
     let ear: Arc<dyn Ear> = Arc::new(NoopEar) as Arc<dyn Ear>;
     #[cfg(feature = "eye")]
-    let (eye_tx, mut eye_rx) = mpsc::channel(16);
+    let (latest_image_tx, mut latest_image_rx) =
+        tokio::sync::watch::channel::<Option<ImageData>>(None);
     #[cfg(feature = "eye")]
     let eye: Arc<dyn Sensor<ImageData>> = {
-        let sensor = Arc::new(EyeSensor::new(eye_tx)) as Arc<dyn Sensor<ImageData>>;
+        let sensor = Arc::new(EyeSensor::latest_only(
+            latest_image.clone(),
+            latest_image_tx,
+        )) as Arc<dyn Sensor<ImageData>>;
         psyche.add_sense(sensor.describe().into());
         sensor
     };
@@ -233,34 +233,13 @@ async fn main() -> anyhow::Result<()> {
     }
     #[cfg(all(feature = "eye", feature = "face"))]
     {
-        let forward = psyche.input_sender();
-        let (face_image_tx, mut face_image_rx) =
-            tokio::sync::watch::channel::<Option<ImageData>>(None);
         let face_clone = face_sensor.clone();
         tokio::spawn(async move {
-            while face_image_rx.changed().await.is_ok() {
-                let Some(img) = face_image_rx.borrow_and_update().clone() else {
+            while latest_image_rx.changed().await.is_ok() {
+                let Some(img) = latest_image_rx.borrow_and_update().clone() else {
                     continue;
                 };
                 face_clone.sense(img).await;
-            }
-        });
-        tokio::spawn(async move {
-            while let Some(s) = eye_rx.recv().await {
-                if let Sensation::Of(any) = &s {
-                    if let Some(img) = any.downcast_ref::<ImageData>() {
-                        let _ = face_image_tx.send(Some(img.clone()));
-                    }
-                }
-                match forward.try_send(s) {
-                    Ok(()) => {}
-                    Err(mpsc::error::TrySendError::Full(_)) => {
-                        warn!("dropping forwarded webcam sensation because psyche input is full");
-                    }
-                    Err(mpsc::error::TrySendError::Closed(_)) => {
-                        warn!("dropping forwarded webcam sensation because psyche input is closed");
-                    }
-                }
             }
         });
     }

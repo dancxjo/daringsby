@@ -1,12 +1,18 @@
 use crate::{Impression, Stimulus};
-use anyhow::Result;
+use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
 use lingproc::Vectorizer;
+use reqwest::{StatusCode, Url};
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;
+use uuid::Uuid;
+
+const MEMORY_COLLECTION: &str = "memories";
+const FACE_COLLECTION: &str = "faces";
+const QDRANT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Trait representing the memory subsystem.
 #[async_trait]
@@ -96,15 +102,125 @@ impl QdrantClient {
     }
     /// Store `vector` associated with `headline`.
     pub async fn store_vector(&self, headline: &str, vector: &[f32]) -> Result<()> {
+        self.upsert_vector(
+            MEMORY_COLLECTION,
+            vector,
+            json!({
+                "kind": "memory",
+                "headline": headline,
+            }),
+        )
+        .await?;
         info!(target: "qdrant", ?headline, len = vector.len(), url = %self.url, "stored vector");
         Ok(())
     }
 
     /// Store a face embedding in the face collection.
     pub async fn store_face_vector(&self, vector: &[f32]) -> Result<()> {
+        self.upsert_vector(
+            FACE_COLLECTION,
+            vector,
+            json!({
+                "kind": "face",
+            }),
+        )
+        .await?;
         info!(target: "qdrant", len = vector.len(), url = %self.url, "stored face vector");
         Ok(())
     }
+
+    async fn upsert_vector(&self, collection: &str, vector: &[f32], payload: Value) -> Result<()> {
+        if vector.is_empty() {
+            bail!("refusing to store empty vector in Qdrant collection {collection}");
+        }
+
+        self.ensure_collection(collection, vector.len()).await?;
+
+        let url = self.endpoint(&format!("collections/{collection}/points?wait=true"))?;
+        let body = json!({
+            "points": [{
+                "id": Uuid::new_v4().to_string(),
+                "vector": vector,
+                "payload": payload,
+            }]
+        });
+        let response = reqwest::Client::new()
+            .put(url)
+            .json(&body)
+            .timeout(QDRANT_REQUEST_TIMEOUT)
+            .send()
+            .await
+            .with_context(|| {
+                format!("failed to upsert point into Qdrant collection {collection}")
+            })?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(unexpected_qdrant_response(
+                response,
+                &format!("upserting point into collection {collection}"),
+            )
+            .await)
+        }
+    }
+
+    async fn ensure_collection(&self, collection: &str, vector_size: usize) -> Result<()> {
+        let client = reqwest::Client::new();
+        let url = self.endpoint(&format!("collections/{collection}"))?;
+        let response = client
+            .get(url.clone())
+            .timeout(QDRANT_REQUEST_TIMEOUT)
+            .send()
+            .await
+            .with_context(|| format!("failed to inspect Qdrant collection {collection}"))?;
+
+        if response.status().is_success() {
+            return Ok(());
+        }
+        if response.status() != StatusCode::NOT_FOUND {
+            return Err(unexpected_qdrant_response(
+                response,
+                &format!("inspecting collection {collection}"),
+            )
+            .await);
+        }
+
+        let body = json!({
+            "vectors": {
+                "size": vector_size,
+                "distance": "Cosine",
+            }
+        });
+        let response = client
+            .put(url)
+            .json(&body)
+            .timeout(QDRANT_REQUEST_TIMEOUT)
+            .send()
+            .await
+            .with_context(|| format!("failed to create Qdrant collection {collection}"))?;
+
+        if response.status().is_success() || response.status() == StatusCode::CONFLICT {
+            Ok(())
+        } else {
+            Err(
+                unexpected_qdrant_response(response, &format!("creating collection {collection}"))
+                    .await,
+            )
+        }
+    }
+
+    fn endpoint(&self, path: &str) -> Result<Url> {
+        let base = self.url.trim_end_matches('/');
+        Url::parse(&format!("{base}/{}", path.trim_start_matches('/')))
+            .with_context(|| format!("invalid Qdrant URL {}", self.url))
+    }
+}
+
+async fn unexpected_qdrant_response(response: reqwest::Response, action: &str) -> anyhow::Error {
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    anyhow!("Qdrant returned {status} while {action}: {body}")
 }
 
 /// Client for persisting raw data in Neo4j.

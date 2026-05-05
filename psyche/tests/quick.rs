@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use lingproc::LlmInstruction;
+use psyche::sensors::face::FaceInfo;
 use psyche::traits::Doer;
 use psyche::wits::Quick;
 use psyche::{Heartbeat, ImageData, Sensation, Topic, TopicBus, Wit};
@@ -27,6 +28,9 @@ async fn summarizes_heard_text() {
     let out = quick.tick().await;
     assert_eq!(out.len(), 1);
     assert!(out[0].summary.starts_with("SUM:"));
+    assert!(out[0].summary.contains("in the first person"));
+    assert!(out[0].summary.contains("using I/my/me"));
+    assert!(out[0].summary.contains("Do not refer to Pete"));
     assert_eq!(out[0].stimuli.len(), 1);
 }
 
@@ -43,8 +47,28 @@ async fn describes_heartbeat_before_type_erasure() {
     let out = quick.tick().await;
 
     assert_eq!(out.len(), 1);
-    assert!(out[0].stimuli[0].what.starts_with("Heartbeat at "));
+    assert!(out[0].stimuli[0].what.starts_with("I felt a heartbeat at "));
     assert!(!out[0].summary.is_empty());
+}
+
+#[tokio::test]
+async fn describes_faces_in_first_person() {
+    let bus = TopicBus::new(8);
+    let quick = Quick::new(bus, Arc::new(Dummy));
+    quick
+        .observe(Sensation::Of(Box::new(FaceInfo {
+            crop: ImageData {
+                mime: "image/png".into(),
+                base64: "zzz".into(),
+            },
+            embedding: vec![0.1],
+        })))
+        .await;
+
+    let out = quick.tick().await;
+
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].stimuli[0].what, "I saw a face");
 }
 
 #[tokio::test]

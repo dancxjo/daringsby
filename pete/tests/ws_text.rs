@@ -100,7 +100,7 @@ async fn websocket_text_is_reported_to_ear() {
 }
 
 #[tokio::test]
-async fn websocket_text_is_not_blocked_by_full_eye_queue() {
+async fn websocket_text_is_not_blocked_by_latest_eye_state() {
     let psyche = dummy_psyche();
     let conversation = psyche.conversation();
     let (heard_tx, mut heard_rx) = mpsc::unbounded_channel();
@@ -108,8 +108,9 @@ async fn websocket_text_is_not_blocked_by_full_eye_queue() {
         heard: heard_tx,
         self_heard: Arc::new(AtomicUsize::new(0)),
     });
-    let (eye_tx, _eye_rx) = mpsc::channel(1);
-    let eye = Arc::new(EyeSensor::new(eye_tx));
+    let latest = Arc::new(std::sync::Mutex::new(None));
+    let (latest_tx, _latest_rx) = tokio::sync::watch::channel(None);
+    let eye = Arc::new(EyeSensor::latest_only(latest.clone(), latest_tx));
     let geo = Arc::new(GeoSensor::new(psyche.input_sender()));
     let (bus, _user_rx) = EventBus::new();
     let bus = Arc::new(bus);
@@ -139,12 +140,12 @@ async fn websocket_text_is_not_blocked_by_full_eye_queue() {
         .unwrap();
     let _ = socket.next().await.unwrap().unwrap();
 
-    for _ in 0..2 {
+    for data in ["data:image/jpeg;base64,b25l", "data:image/jpeg;base64,dHdv"] {
         socket
             .send(tokio_tungstenite::tungstenite::Message::Text(
                 serde_json::json!({
                     "type": "See",
-                    "data": "data:image/jpeg;base64,Zm9v"
+                    "data": data
                 })
                 .to_string()
                 .into(),
@@ -166,9 +167,10 @@ async fn websocket_text_is_not_blocked_by_full_eye_queue() {
 
     let heard = tokio::time::timeout(std::time::Duration::from_secs(1), heard_rx.recv())
         .await
-        .expect("timed out waiting for websocket text after full eye queue")
+        .expect("timed out waiting for websocket text after image updates")
         .expect("ear channel closed");
     assert_eq!(heard, "still listening");
+    assert_eq!(latest.lock().unwrap().as_ref().unwrap().base64, "dHdv");
 
     let entry = tokio::time::timeout(std::time::Duration::from_secs(1), async {
         loop {
@@ -183,7 +185,7 @@ async fn websocket_text_is_not_blocked_by_full_eye_queue() {
         }
     })
     .await
-    .expect("timed out waiting for conversation entry after full eye queue");
+    .expect("timed out waiting for conversation entry after image updates");
     assert_eq!(entry.role, "user");
     assert_eq!(entry.content, "still listening");
 

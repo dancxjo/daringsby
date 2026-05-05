@@ -28,3 +28,16 @@ async fn captions_image() {
     assert!(imp.summary.starts_with("I "));
     assert_eq!(imp.stimuli[0].what.mime, "image/png");
 }
+
+#[tokio::test]
+async fn tick_does_not_consume_latest_image() {
+    let wit = Arc::new(VisionWit::new(Arc::new(Dummy)));
+    wit.observe(ImageData {
+        mime: "image/png".into(),
+        base64: "zzz".into(),
+    })
+    .await;
+
+    assert_eq!(wit.tick().await.len(), 1);
+    assert!(wit.latest_image_handle().lock().unwrap().is_some());
+}

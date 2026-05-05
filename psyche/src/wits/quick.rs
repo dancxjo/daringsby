@@ -76,19 +76,19 @@ impl Quick {
             Sensation::HeardUserVoice(t) => Some(format!("User said \"{}\"", t)),
             Sensation::Of(any) => {
                 if let Some(_f) = any.downcast_ref::<crate::sensors::face::FaceInfo>() {
-                    Some("Saw a face".to_string())
+                    Some("I saw a face".to_string())
                 } else if any.downcast_ref::<crate::ImageData>().is_some() {
                     None
                 } else if let Some(loc) = any.downcast_ref::<crate::GeoLoc>() {
                     Some(format!(
-                        "Detected location ({:.1}, {:.1})",
+                        "I detected location ({:.1}, {:.1})",
                         loc.latitude, loc.longitude
                     ))
                 } else if let Some(beat) = any.downcast_ref::<crate::Heartbeat>() {
-                    Some(format!("Heartbeat at {}", beat.timestamp))
+                    Some(format!("I felt a heartbeat at {}", beat.timestamp))
                 } else {
                     debug!("unrecognized sensation type: {:?}", any.type_id());
-                    Some("Something happened".to_string())
+                    Some("I sensed something happened".to_string())
                 }
             }
         }
@@ -146,7 +146,7 @@ impl crate::traits::wit::Wit for Quick {
         let stimuli = items;
         let bullets: Vec<String> = stimuli.iter().map(|s| s.what.clone()).collect();
         let prompt = format!(
-            "Summarize these simultaneous sensations in one sentence:\n- {}",
+            "You are Pete. Summarize these simultaneous sensations in one sentence, in the first person, using I/my/me. Do not refer to Pete, the individual, the observer, or the person. Return only the summary sentence.\n- {}",
             bullets.join("\n- ")
         );
         let out = match self

@@ -75,8 +75,8 @@ impl Wit for VisionWit {
         }
 
         let img = {
-            let mut guard = self.latest_image.lock().unwrap();
-            guard.take()
+            let guard = self.latest_image.lock().unwrap();
+            guard.clone()
         };
         let img = match img {
             Some(i) => i,
