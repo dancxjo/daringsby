@@ -1144,6 +1144,30 @@ pub struct GraphAwareness {
     pub embedding_len: usize,
 }
 
+/// Human-readable graph item related to one vector-cluster member.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphClusterItem {
+    /// Qdrant vector node id in Neo4j.
+    pub vector_id: String,
+    /// Source graph node id that owns or explains the vector.
+    pub node_id: String,
+    /// Source graph labels.
+    pub labels: Vec<String>,
+    /// Human-readable source text for theme extraction.
+    pub text: String,
+    /// Human-readable stimuli interpreted by the source node, when present.
+    pub stimuli: Vec<String>,
+}
+
+/// LLM-generated theme for one vector cluster.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphClusterTheme {
+    /// Stable graph node id for the theme.
+    pub theme_id: String,
+    /// Natural-language description of the common theme.
+    pub text: String,
+}
+
 impl Neo4jClient {
     pub fn new(uri: String, user: String, pass: String) -> Self {
         Self {
@@ -1560,6 +1584,131 @@ impl Neo4jClient {
         rows.first()
             .map(graph_speech_segment_audio_from_row)
             .transpose()
+    }
+
+    /// Return human-readable graph items represented by vector points.
+    pub async fn vector_cluster_items(
+        &self,
+        collection: &str,
+        point_ids: &[String],
+        limit: usize,
+    ) -> Result<Vec<GraphClusterItem>> {
+        if point_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let vector_ids = point_ids
+            .iter()
+            .map(|point_id| qdrant_vector_node_id(collection, point_id))
+            .collect::<Vec<_>>();
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    UNWIND $vector_ids AS vector_id
+                    MATCH (v:GraphNode:Vector {id: vector_id})
+                    OPTIONAL MATCH (owner:GraphNode)-[owner_rel]->(v)
+                    WHERE type(owner_rel) IN [
+                        "HAS_MEMORY_VECTOR",
+                        "HAS_IMAGE_DESCRIPTION_VECTOR",
+                        "HAS_SCENE_VECTOR",
+                        "HAS_FACE_VECTOR",
+                        "HAS_GEOLOCATION_VECTOR",
+                        "HAS_VOICE_VECTOR"
+                    ]
+                    WITH vector_id, v, collect(DISTINCT owner) AS direct_owners
+                    UNWIND CASE WHEN size(direct_owners) = 0 THEN [v] ELSE direct_owners END AS owner
+                    OPTIONAL MATCH (owner)-[:HAS_STIMULUS]->(:GraphNode:Stimulus)-[:REFERS_TO]->(stimulus:GraphNode)
+                    WITH vector_id, owner, collect(DISTINCT stimulus) AS stimuli,
+                    CASE
+                        WHEN owner:SpeechSegment THEN "speech: " + coalesce(owner.text, "")
+                        WHEN owner:Transcription THEN "transcription: " + coalesce(owner.text, owner.transcript, "")
+                        WHEN owner:ImageDescription THEN "vision: " + coalesce(owner.text, "")
+                        WHEN owner:Impression THEN "impression: " + coalesce(owner.summary, "")
+                        WHEN owner:Awareness THEN "awareness: " + coalesce(owner.text, owner.summary, "")
+                        WHEN owner:TextObservation THEN "text: " + coalesce(owner.text, "")
+                        WHEN owner:Geolocation THEN "geolocation: " + toString(owner.latitude) + ", " + toString(owner.longitude)
+                        WHEN owner:Heartbeat THEN "heartbeat"
+                        WHEN owner:Image THEN "image captured"
+                        WHEN owner:AudioClip THEN
+                            CASE
+                                WHEN owner.transcript IS NULL OR owner.transcript = "" THEN "audio clip captured"
+                                ELSE "audio: " + owner.transcript
+                            END
+                        WHEN owner:ObjectObservation THEN "object: " + coalesce(owner.object_label, "unknown")
+                        WHEN owner:Face THEN "face detected"
+                        WHEN owner:Voice THEN "voice detected"
+                        WHEN owner:Vector THEN "vector: " + coalesce(owner.collection, "") + "/" + coalesce(owner.point_id, "")
+                        ELSE coalesce(owner.summary, owner.text, owner.transcript, owner.object_label, "")
+                    END AS owner_text
+                    WITH vector_id, owner, owner_text,
+                    [stimulus IN stimuli WHERE stimulus IS NOT NULL |
+                        CASE
+                            WHEN stimulus:TextObservation THEN "text: " + coalesce(stimulus.text, "")
+                            WHEN stimulus:Image THEN "image captured"
+                            WHEN stimulus:AudioClip THEN
+                                CASE
+                                    WHEN stimulus.transcript IS NULL OR stimulus.transcript = "" THEN "audio clip captured"
+                                    ELSE "audio: " + stimulus.transcript
+                                END
+                            WHEN stimulus:Geolocation THEN "geolocation: " + toString(stimulus.latitude) + ", " + toString(stimulus.longitude)
+                            WHEN stimulus:ObjectObservation THEN "object: " + coalesce(stimulus.object_label, "unknown")
+                            ELSE coalesce(stimulus.summary, stimulus.text, stimulus.transcript, stimulus.object_label, "")
+                        END
+                    ] AS stimulus_texts
+                    WITH vector_id, owner,
+                        CASE
+                            WHEN owner_text <> "" THEN owner_text
+                            ELSE head([text IN stimulus_texts WHERE text <> ""])
+                        END AS text,
+                        [text IN stimulus_texts WHERE text <> ""] AS stimulus_texts
+                    WHERE text IS NOT NULL AND text <> ""
+                    RETURN vector_id, owner.id, labels(owner), text, stimulus_texts
+                    ORDER BY vector_id, owner.id
+                    LIMIT $limit
+                "#
+                .into(),
+                parameters: json!({
+                    "vector_ids": vector_ids,
+                    "limit": i64::try_from(limit.max(1)).unwrap_or(i64::MAX),
+                }),
+            },
+            "loading vector cluster items",
+        )
+        .await?;
+        rows.iter().map(graph_cluster_item_from_row).collect()
+    }
+
+    /// Return whether a cluster already has an attached LLM theme.
+    pub async fn vector_cluster_has_theme(&self, cluster_id: &str) -> Result<bool> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (c:GraphNode:Cluster {id: $cluster_id})
+                    RETURN EXISTS { MATCH (c)-[:HAS_THEME]->(:GraphNode:Theme) }
+                "#
+                .into(),
+                parameters: json!({
+                    "cluster_id": cluster_id,
+                }),
+            },
+            "checking vector cluster theme",
+        )
+        .await?;
+        Ok(rows
+            .first()
+            .and_then(Value::as_array)
+            .and_then(|values| values.first())
+            .and_then(Value::as_bool)
+            .unwrap_or(false))
     }
 
     /// Return a recent graph timeline for an offline combobulation pass.
@@ -2317,6 +2466,114 @@ impl Neo4jClient {
         .await
     }
 
+    /// Attach an LLM-generated theme to a discovered vector cluster.
+    pub async fn attach_vector_cluster_theme(
+        &self,
+        cluster: &VectorCluster,
+        llm_model: &str,
+        items: &[GraphClusterItem],
+        theme: &GraphClusterTheme,
+    ) -> Result<()> {
+        anyhow::ensure!(!items.is_empty(), "cluster theme has no source items");
+        let processed_at = chrono::Utc::now().to_rfc3339();
+        let run_id = stable_bytes_id(
+            "cluster-theme-run",
+            format!("{}:{llm_model}:{processed_at}", cluster.cluster_id).as_bytes(),
+        );
+        let source_ids = items
+            .iter()
+            .map(|item| item.node_id.clone())
+            .collect::<Vec<_>>();
+        let mut nodes = vec![
+            json!({
+                "label": "Cluster",
+                "id": cluster.cluster_id,
+                "collection": cluster.collection,
+                "threshold": cluster.threshold,
+                "member_count": cluster.members.len(),
+                "mean_similarity": cluster.mean_similarity,
+                "centroid_len": cluster.centroid.len(),
+            }),
+            json!({
+                "label": "ClusterThemeRun",
+                "id": run_id,
+                "cluster_id": cluster.cluster_id,
+                "model": llm_model,
+                "source_count": items.len(),
+                "source_ids": source_ids,
+                "processed_at": processed_at,
+            }),
+            json!({
+                "label": "Theme",
+                "id": theme.theme_id,
+                "text": theme.text,
+                "summary": theme.text,
+                "model": llm_model,
+                "source_count": items.len(),
+                "cluster_id": cluster.cluster_id,
+                "created_at": processed_at,
+            }),
+        ];
+        let mut relationships = vec![
+            json!({
+                "from": run_id,
+                "to": theme.theme_id,
+                "type": "PRODUCED",
+            }),
+            json!({
+                "from": cluster.cluster_id,
+                "to": run_id,
+                "type": "HAS_CLUSTER_THEME_RUN",
+            }),
+            json!({
+                "from": cluster.cluster_id,
+                "to": theme.theme_id,
+                "type": "HAS_THEME",
+            }),
+            json!({
+                "from": theme.theme_id,
+                "to": cluster.cluster_id,
+                "type": "THEME_OF",
+            }),
+        ];
+
+        for (index, item) in items.iter().enumerate() {
+            relationships.push(json!({
+                "from": theme.theme_id,
+                "to": item.node_id,
+                "type": "DERIVED_FROM",
+                "source_index": index,
+                "vector_id": item.vector_id,
+            }));
+            relationships.push(json!({
+                "from": item.node_id,
+                "to": run_id,
+                "type": "INCLUDED_IN_CLUSTER_THEME",
+                "source_index": index,
+                "vector_id": item.vector_id,
+            }));
+            if item.vector_id.starts_with("qdrant:") {
+                relationships.push(json!({
+                    "from": theme.theme_id,
+                    "to": item.vector_id,
+                    "type": "DERIVED_FROM_VECTOR",
+                    "source_index": index,
+                }));
+                nodes.push(json!({
+                    "label": "Vector",
+                    "id": item.vector_id,
+                }));
+            }
+        }
+
+        self.store_data(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))
+        .await
+    }
+
     /// Attach vector cluster discovery output to existing Qdrant vector nodes.
     pub async fn attach_vector_clusters(
         &self,
@@ -2972,22 +3229,24 @@ fn graph_timeline_item_from_row(row: &Value) -> Result<GraphTimelineItem> {
     let values = row
         .as_array()
         .context("Neo4j timeline item row was not an array")?;
-    let labels = values
-        .get(3)
-        .and_then(Value::as_array)
-        .map(|labels| {
-            labels
-                .iter()
-                .filter_map(Value::as_str)
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
     Ok(GraphTimelineItem {
         id: row_string(values, 2, "timeline item id")?,
-        labels,
+        labels: row_string_vec(values, 3),
         text: row_string(values, 4, "timeline item text")?,
         occurred_at: row_string(values, 5, "timeline item timestamp")?,
+    })
+}
+
+fn graph_cluster_item_from_row(row: &Value) -> Result<GraphClusterItem> {
+    let values = row
+        .as_array()
+        .context("Neo4j vector cluster item row was not an array")?;
+    Ok(GraphClusterItem {
+        vector_id: row_string(values, 0, "cluster item vector id")?,
+        node_id: row_string(values, 1, "cluster item node id")?,
+        labels: row_string_vec(values, 2),
+        text: row_string(values, 3, "cluster item text")?,
+        stimuli: row_string_vec(values, 4),
     })
 }
 
@@ -3077,6 +3336,20 @@ fn row_optional_string(values: &[Value], index: usize) -> Option<String> {
         .get(index)
         .and_then(Value::as_str)
         .map(ToString::to_string)
+}
+
+fn row_string_vec(values: &[Value], index: usize) -> Vec<String> {
+    values
+        .get(index)
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
 }
 
 fn row_u32(values: &[Value], index: usize, name: &str) -> Result<u32> {

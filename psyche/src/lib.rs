@@ -61,12 +61,13 @@ pub mod wits {
     pub use identity_wit::IdentityWit;
     pub use memory::{
         BasicMemory, GraphAudioClip, GraphAudioClipWindow, GraphAudioSourceSpan, GraphAwareness,
-        GraphFaceDetection, GraphGeolocation, GraphImageDescription, GraphImageFrame,
-        GraphNodeDetails, GraphNodeSnapshot, GraphRelationshipSnapshot, GraphSceneVectorization,
-        GraphSnapshot, GraphSpeechSegment, GraphSpeechSegmentAudio, GraphStore, GraphTimelineItem,
-        GraphTimelineWindow, GraphVoiceClip, GraphVoiceRecognition, GraphVoiceSample,
-        GraphVoiceSignature, Memory, Neo4jClient, NoopMemory, QdrantClient, QdrantVectorPoint,
-        VectorCluster, VectorClusterMember, find_vector_clusters,
+        GraphClusterItem, GraphClusterTheme, GraphFaceDetection, GraphGeolocation,
+        GraphImageDescription, GraphImageFrame, GraphNodeDetails, GraphNodeSnapshot,
+        GraphRelationshipSnapshot, GraphSceneVectorization, GraphSnapshot, GraphSpeechSegment,
+        GraphSpeechSegmentAudio, GraphStore, GraphTimelineItem, GraphTimelineWindow,
+        GraphVoiceClip, GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature, Memory,
+        Neo4jClient, NoopMemory, QdrantClient, QdrantVectorPoint, VectorCluster,
+        VectorClusterMember, find_vector_clusters,
     };
     pub use memory_wit::MemoryWit;
     pub use moment_wit::MomentWit;
@@ -141,11 +142,12 @@ pub use traits::{
 pub use voice::{Voice, extract_emojis};
 pub use wits::{
     BasicMemory, Combobulator, EntityWit, EpisodeWit, FaceMemoryWit, FondDuCoeur, GraphAudioClip,
-    GraphAudioClipWindow, GraphAudioSourceSpan, GraphAwareness, GraphFaceDetection,
-    GraphGeolocation, GraphImageDescription, GraphImageFrame, GraphNodeDetails, GraphNodeSnapshot,
-    GraphRelationshipSnapshot, GraphSceneVectorization, GraphSnapshot, GraphSpeechSegment,
-    GraphSpeechSegmentAudio, GraphStore, GraphTimelineItem, GraphTimelineWindow, GraphVoiceClip,
-    GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature, HeartWit, IdentityWit, Memory,
-    MemoryWit, Neo4jClient, NoopMemory, QdrantClient, QdrantVectorPoint, SensationGraphObserver,
-    VectorCluster, VectorClusterMember, VisionWit, VoiceMemoryWit, Will, find_vector_clusters,
+    GraphAudioClipWindow, GraphAudioSourceSpan, GraphAwareness, GraphClusterItem,
+    GraphClusterTheme, GraphFaceDetection, GraphGeolocation, GraphImageDescription,
+    GraphImageFrame, GraphNodeDetails, GraphNodeSnapshot, GraphRelationshipSnapshot,
+    GraphSceneVectorization, GraphSnapshot, GraphSpeechSegment, GraphSpeechSegmentAudio,
+    GraphStore, GraphTimelineItem, GraphTimelineWindow, GraphVoiceClip, GraphVoiceRecognition,
+    GraphVoiceSample, GraphVoiceSignature, HeartWit, IdentityWit, Memory, MemoryWit, Neo4jClient,
+    NoopMemory, QdrantClient, QdrantVectorPoint, SensationGraphObserver, VectorCluster,
+    VectorClusterMember, VisionWit, VoiceMemoryWit, Will, find_vector_clusters,
 };

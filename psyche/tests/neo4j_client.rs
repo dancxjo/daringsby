@@ -1,11 +1,11 @@
 use chrono::Utc;
 use httpmock::{Method::POST, MockServer};
 use psyche::{
-    GeoLoc, GraphAudioSourceSpan, GraphAwareness, GraphFaceDetection, GraphGeolocation,
-    GraphImageDescription, GraphImageFrame, GraphSceneVectorization, GraphSpeechSegment,
-    GraphTimelineItem, GraphTimelineWindow, GraphVoiceClip, GraphVoiceRecognition,
-    GraphVoiceSample, GraphVoiceSignature, ImageData, Neo4jClient, VectorCluster,
-    VectorClusterMember,
+    GeoLoc, GraphAudioSourceSpan, GraphAwareness, GraphClusterItem, GraphClusterTheme,
+    GraphFaceDetection, GraphGeolocation, GraphImageDescription, GraphImageFrame,
+    GraphSceneVectorization, GraphSpeechSegment, GraphTimelineItem, GraphTimelineWindow,
+    GraphVoiceClip, GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature, ImageData,
+    Neo4jClient, VectorCluster, VectorClusterMember,
 };
 use serde_json::json;
 
@@ -1210,6 +1210,140 @@ async fn neo4j_client_attaches_vector_clusters() {
                 ],
             }],
         )
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_loads_vector_cluster_items() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("UNWIND $vector_ids AS vector_id")
+                .body_contains("HAS_MEMORY_VECTOR")
+                .body_contains("RETURN vector_id, owner.id, labels(owner), text, stimulus_texts")
+                .body_contains("qdrant:memories:point-1")
+                .body_contains("\"limit\":10");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["vector_id", "owner.id", "labels(owner)", "text", "stimulus_texts"],
+                    "data": [{
+                        "row": [
+                            "qdrant:memories:point-1",
+                            "impression:1",
+                            ["GraphNode", "Impression"],
+                            "impression: coffee is brewing",
+                            ["text: coffee beans"]
+                        ]
+                    }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let items = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .vector_cluster_items("memories", &["point-1".into()], 10)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        items,
+        vec![GraphClusterItem {
+            vector_id: "qdrant:memories:point-1".into(),
+            node_id: "impression:1".into(),
+            labels: vec!["GraphNode".into(), "Impression".into()],
+            text: "impression: coffee is brewing".into(),
+            stimuli: vec!["text: coffee beans".into()],
+        }]
+    );
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_checks_vector_cluster_theme_presence() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("HAS_THEME")
+                .body_contains("cluster:1");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["EXISTS"],
+                    "data": [{"row": [true]}]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let has_theme = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .vector_cluster_has_theme("cluster:1")
+        .await
+        .unwrap();
+
+    assert!(has_theme);
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_vector_cluster_theme() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("ClusterThemeRun")
+                .body_contains("Theme")
+                .body_contains("HAS_THEME")
+                .body_contains("THEME_OF")
+                .body_contains("DERIVED_FROM_VECTOR")
+                .body_contains("coffee rituals")
+                .body_contains("qdrant:memories:point-1");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    let cluster = VectorCluster {
+        cluster_id: "cluster:1".into(),
+        collection: "memories".into(),
+        threshold: 0.9,
+        centroid: vec![0.95, 0.05],
+        mean_similarity: 0.95,
+        members: vec![VectorClusterMember {
+            point_id: "point-1".into(),
+            average_similarity: 0.95,
+        }],
+    };
+    let items = vec![GraphClusterItem {
+        vector_id: "qdrant:memories:point-1".into(),
+        node_id: "impression:1".into(),
+        labels: vec!["Impression".into()],
+        text: "impression: coffee is brewing".into(),
+        stimuli: Vec::new(),
+    }];
+    let theme = GraphClusterTheme {
+        theme_id: "theme:cluster:1".into(),
+        text: "coffee rituals".into(),
+    };
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_vector_cluster_theme(&cluster, "gpt-oss", &items, &theme)
         .await
         .unwrap();
 
