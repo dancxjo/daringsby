@@ -72,7 +72,7 @@ impl Quick {
     /// Describe a sensation for the summarization prompt.
     fn describe(s: &Sensation) -> Option<String> {
         match s {
-            Sensation::HeardOwnVoice(t) => Some(format!("Pete said \"{}\"", t)),
+            Sensation::HeardOwnVoice(t) => Some(format!("I said \"{}\"", t)),
             Sensation::HeardUserVoice(t) => Some(format!("User said \"{}\"", t)),
             Sensation::Of(any) => {
                 if let Some(_f) = any.downcast_ref::<crate::sensors::face::FaceInfo>() {

@@ -10,7 +10,7 @@ use std::sync::{
 #[cfg(feature = "ear")]
 use tokio::sync::mpsc;
 #[cfg(feature = "ear")]
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 #[cfg(feature = "ear")]
 /// [`Ear`] implementation that forwards heard text through a channel.
@@ -37,7 +37,19 @@ impl ChannelEar {
     }
 
     /// Human readable description of this sense.
-    pub const DESCRIPTION: &'static str = "Pete hears audio from the user, transcribed as text. He can respond to spoken questions and converse naturally.";
+    pub const DESCRIPTION: &'static str = "You hear audio from the user, transcribed as text. He can respond to spoken questions and converse naturally.";
+
+    fn queue_sensation(&self, sensation: Sensation, label: &'static str) {
+        let forward = self.forward.clone();
+        tokio::spawn(async move {
+            if forward.send(sensation).await.is_err() {
+                warn!(
+                    label,
+                    "failed to queue heard speech; psyche input is closed"
+                );
+            }
+        });
+    }
 }
 
 #[cfg(feature = "ear")]
@@ -48,20 +60,14 @@ impl Ear for ChannelEar {
         info!(%text, "ear heard self say");
         debug!("ear heard self say: {}", text);
         self.voice.permit(None);
-        let _ = self
-            .forward
-            .send(Sensation::HeardOwnVoice(text.to_string()))
-            .await;
+        self.queue_sensation(Sensation::HeardOwnVoice(text.to_string()), "self");
     }
 
     async fn hear_user_say(&self, text: &str) {
         info!(%text, "ear heard user say");
         debug!("ear heard user say: {}", text);
         self.voice.permit(None);
-        let _ = self
-            .forward
-            .send(Sensation::HeardUserVoice(text.to_string()))
-            .await;
+        self.queue_sensation(Sensation::HeardUserVoice(text.to_string()), "user");
     }
 }
 

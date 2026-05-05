@@ -179,7 +179,7 @@ impl Sensor<ImageData> for FaceSensor {
     }
 
     fn describe(&self) -> &'static str {
-        "Pete tries to recognize faces in the images he sees. If he sees the \
-same face often, he may remember it."
+        "You try to recognize faces in the images you see. If you see the \
+same face often, you may remember it."
     }
 }

@@ -29,6 +29,8 @@ use std::{
 #[cfg(feature = "eye")]
 use tokio::sync::mpsc;
 use tracing::info;
+#[cfg(all(feature = "eye", feature = "face"))]
+use tracing::warn;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -250,7 +252,15 @@ async fn main() -> anyhow::Result<()> {
                         let _ = face_image_tx.send(Some(img.clone()));
                     }
                 }
-                let _ = forward.send(s).await;
+                match forward.try_send(s) {
+                    Ok(()) => {}
+                    Err(mpsc::error::TrySendError::Full(_)) => {
+                        warn!("dropping forwarded webcam sensation because psyche input is full");
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_)) => {
+                        warn!("dropping forwarded webcam sensation because psyche input is closed");
+                    }
+                }
             }
         });
     }

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use psyche::{ImageData, Sensation, Sensor};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Sensor that forwards webcam images to the psyche.
 #[derive(Clone)]
@@ -40,11 +40,19 @@ impl Sensor<ImageData> for EyeSensor {
         if let Some(buf) = &self.latest {
             *buf.lock().unwrap() = Some(image.clone());
         }
-        let _ = self.forward.send(Sensation::Of(Box::new(image))).await;
+        match self.forward.try_send(Sensation::Of(Box::new(image))) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                warn!("dropping webcam frame because psyche input is full");
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                warn!("dropping webcam frame because psyche input is closed");
+            }
+        }
     }
 
     fn describe(&self) -> &'static str {
-        "Pete can see through a webcam. Every few seconds, a new image is \
-passed to his perception system. He can describe what he sees and recognize people's faces."
+        "You can see through a webcam. Every few seconds, a new image is \
+passed to your perception system. You can describe what you see and recognize people's faces."
     }
 }

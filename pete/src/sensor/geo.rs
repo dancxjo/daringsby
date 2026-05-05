@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use psyche::{GeoLoc, Sensation, Sensor};
 use tokio::sync::mpsc;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Sensor forwarding geolocation updates to the psyche.
 #[derive(Clone)]
@@ -21,11 +21,19 @@ impl Sensor<GeoLoc> for GeoSensor {
     async fn sense(&self, loc: GeoLoc) {
         info!("geo sensor received location");
         debug!("geo sensor received location");
-        let _ = self.forward.send(Sensation::Of(Box::new(loc))).await;
+        match self.forward.try_send(Sensation::Of(Box::new(loc))) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                warn!("dropping geolocation update because psyche input is full");
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                warn!("dropping geolocation update because psyche input is closed");
+            }
+        }
     }
 
     fn describe(&self) -> &'static str {
-        "Pete knows where he is in terms of latitude and longitude. This may \
-help him remember where events happened."
+        "You know where you are in terms of latitude and longitude. This may \
+help you remember where events happened."
     }
 }

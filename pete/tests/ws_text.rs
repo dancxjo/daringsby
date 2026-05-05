@@ -100,6 +100,97 @@ async fn websocket_text_is_reported_to_ear() {
 }
 
 #[tokio::test]
+async fn websocket_text_is_not_blocked_by_full_eye_queue() {
+    let psyche = dummy_psyche();
+    let conversation = psyche.conversation();
+    let (heard_tx, mut heard_rx) = mpsc::unbounded_channel();
+    let ear = Arc::new(RecordingEar {
+        heard: heard_tx,
+        self_heard: Arc::new(AtomicUsize::new(0)),
+    });
+    let (eye_tx, _eye_rx) = mpsc::channel(1);
+    let eye = Arc::new(EyeSensor::new(eye_tx));
+    let geo = Arc::new(GeoSensor::new(psyche.input_sender()));
+    let (bus, _user_rx) = EventBus::new();
+    let bus = Arc::new(bus);
+    let debug = psyche.debug_handle();
+    let state = Body {
+        asr: None,
+        bus,
+        ear,
+        eye,
+        geo,
+        conversation,
+        connections: Arc::new(AtomicUsize::new(0)),
+        system_prompt: Arc::new(Mutex::new(psyche.system_prompt())),
+        psyche_debug: debug,
+    };
+    let app = Router::new()
+        .route("/ws", get(ws_handler))
+        .with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        serve(listener, app.into_make_service()).await.unwrap();
+    });
+
+    let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{}/ws", addr))
+        .await
+        .unwrap();
+    let _ = socket.next().await.unwrap().unwrap();
+
+    for _ in 0..2 {
+        socket
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                serde_json::json!({
+                    "type": "See",
+                    "data": "data:image/jpeg;base64,Zm9v"
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+    }
+    socket
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            serde_json::json!({
+                "type": "Text",
+                "data": { "text": "still listening" }
+            })
+            .to_string()
+            .into(),
+        ))
+        .await
+        .unwrap();
+
+    let heard = tokio::time::timeout(std::time::Duration::from_secs(1), heard_rx.recv())
+        .await
+        .expect("timed out waiting for websocket text after full eye queue")
+        .expect("ear channel closed");
+    assert_eq!(heard, "still listening");
+
+    let entry = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            let msg = socket.next().await.unwrap().unwrap();
+            let tokio_tungstenite::tungstenite::Message::Text(text) = msg else {
+                continue;
+            };
+            let payload: shared::WsPayload = serde_json::from_str(&text).unwrap();
+            if let shared::WsPayload::ConversationEntry(entry) = payload {
+                break entry;
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for conversation entry after full eye queue");
+    assert_eq!(entry.role, "user");
+    assert_eq!(entry.content, "still listening");
+
+    server.abort();
+}
+
+#[tokio::test]
 async fn websocket_flat_see_is_reported_to_eye() {
     let psyche = dummy_psyche();
     let conversation = psyche.conversation();

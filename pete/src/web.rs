@@ -341,8 +341,14 @@ async fn handle_hear_frame(data: &shared::AudioData, asr_pcm_tx: &Option<mpsc::S
     if bytes.is_empty() {
         return;
     }
-    if tx.send(bytes).await.is_err() {
-        warn!("ASR processor is closed");
+    match tx.try_send(bytes) {
+        Ok(()) => {}
+        Err(mpsc::error::TrySendError::Full(_)) => {
+            warn!("dropping ASR pcm chunk because processor queue is full");
+        }
+        Err(mpsc::error::TrySendError::Closed(_)) => {
+            warn!("ASR processor is closed");
+        }
     }
 }
 

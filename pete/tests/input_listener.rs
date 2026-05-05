@@ -1,4 +1,5 @@
 use pete::{ChannelEar, dummy_psyche, listen_user_input};
+use psyche::{Sensation, traits::Ear};
 use std::sync::atomic::AtomicBool;
 use tokio::sync::mpsc;
 
@@ -25,4 +26,23 @@ async fn records_user_input() {
 
     let log_len = { conv.lock().await.all().len() };
     assert_eq!(log_len, 1);
+}
+
+#[tokio::test]
+async fn channel_ear_does_not_block_when_psyche_input_is_full() {
+    let psyche = dummy_psyche();
+    let voice = psyche.voice();
+    let speaking = std::sync::Arc::new(AtomicBool::new(false));
+    let (tx, _rx) = mpsc::channel(1);
+    tx.send(Sensation::HeardUserVoice("queued".into()))
+        .await
+        .unwrap();
+    let ear = ChannelEar::new(tx, speaking, voice);
+
+    tokio::time::timeout(
+        std::time::Duration::from_millis(100),
+        ear.hear_user_say("still listening"),
+    )
+    .await
+    .expect("ear blocked on a full psyche input queue");
 }
