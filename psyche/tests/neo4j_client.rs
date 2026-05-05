@@ -1,5 +1,5 @@
 use httpmock::{Method::POST, MockServer};
-use psyche::{GraphSpeechSegment, Neo4jClient};
+use psyche::{GraphFaceDetection, GraphImageFrame, GraphSpeechSegment, ImageData, Neo4jClient};
 use serde_json::json;
 
 #[tokio::test]
@@ -229,6 +229,64 @@ async fn neo4j_client_loads_latest_untranscribed_audio_clip() {
 }
 
 #[tokio::test]
+async fn neo4j_client_loads_latest_unprocessed_image_frame_for_face_recognition() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (i:GraphNode:Image)")
+                .body_contains("HAS_FACE_RECOGNITION_RUN")
+                .body_contains("OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(i)")
+                .body_contains("ORDER BY observed_at DESC");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": [
+                        "i.id",
+                        "i.mime",
+                        "i.base64",
+                        "i.captured_at",
+                        "i.occurred_at",
+                        "s.id"
+                    ],
+                    "data": [{
+                        "row": [
+                            "image:1",
+                            "image/jpeg",
+                            "/9j/AA==",
+                            "2026-05-05T12:34:56Z",
+                            "2026-05-05T12:34:57Z",
+                            "sensation:image:image:1:2026-05-05T12:34:56Z"
+                        ]
+                    }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let frame = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .latest_unprocessed_image_frame_for_face_recognition()
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(frame.id, "image:1");
+    assert_eq!(frame.image.mime, "image/jpeg");
+    assert_eq!(frame.image.base64, "/9j/AA==");
+    assert_eq!(
+        frame.image.captured_at.as_deref(),
+        Some("2026-05-05T12:34:56Z")
+    );
+    assert_eq!(frame.occurred_at.as_deref(), Some("2026-05-05T12:34:57Z"));
+    assert_eq!(
+        frame.sensation_id.as_deref(),
+        Some("sensation:image:image:1:2026-05-05T12:34:56Z")
+    );
+    query.assert_async().await;
+}
+
+#[tokio::test]
 async fn neo4j_client_loads_graph_snapshot() {
     let server = MockServer::start_async().await;
     let query = server
@@ -394,6 +452,67 @@ async fn neo4j_client_attaches_audio_transcription() {
                 end_ms: 1250,
                 occurred_at: Some("2026-05-05T12:34:56.250+00:00".into()),
                 ended_at: Some("2026-05-05T12:34:57.250+00:00".into()),
+            }],
+        )
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_face_recognition() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("FaceRecognitionRun")
+                .body_contains("HAS_FACE_RECOGNITION_RUN")
+                .body_contains("DETECTED_FACE")
+                .body_contains("CONTAINS_FACE")
+                .body_contains("HAS_FACE_VECTOR")
+                .body_contains("qdrant:faces:point-1")
+                .body_contains("sensation:image:1")
+                .body_contains("\"face_count\":1")
+                .body_contains("\"embedding_len\":512")
+                .body_contains("\"detector\":\"face_id\"");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_face_recognition(
+            &GraphImageFrame {
+                id: "image:1".into(),
+                image: ImageData {
+                    mime: "image/jpeg".into(),
+                    base64: "/9j/AA==".into(),
+                    captured_at: Some("2026-05-05T12:34:56Z".into()),
+                },
+                occurred_at: Some("2026-05-05T12:34:57Z".into()),
+                sensation_id: Some("sensation:image:1".into()),
+            },
+            "face_id",
+            &[GraphFaceDetection {
+                index: 0,
+                face_id: "face:1".into(),
+                crop: ImageData {
+                    mime: "image/jpeg".into(),
+                    base64: "/9j/crop==".into(),
+                    captured_at: Some("2026-05-05T12:34:56Z".into()),
+                },
+                vector_id: "point-1".into(),
+                embedding_len: 512,
             }],
         )
         .await

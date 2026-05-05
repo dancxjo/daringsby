@@ -230,6 +230,18 @@ impl QdrantClient {
         source_image_id: Option<&str>,
         vector: &[f32],
     ) -> Result<Uuid> {
+        self.store_face_vector_for_sensation(face_id, source_image_id, None, vector)
+            .await
+    }
+
+    /// Store a face embedding with graph and source sensation metadata.
+    pub async fn store_face_vector_for_sensation(
+        &self,
+        face_id: Option<&str>,
+        source_image_id: Option<&str>,
+        sensation_id: Option<&str>,
+        vector: &[f32],
+    ) -> Result<Uuid> {
         let id = self
             .upsert_vector(
                 FACE_COLLECTION,
@@ -239,6 +251,7 @@ impl QdrantClient {
                     "face_id": face_id,
                     "neo4j_node_id": face_id,
                     "source_image_id": source_image_id,
+                    "sensation_id": sensation_id,
                 }),
             )
             .await?;
@@ -465,6 +478,34 @@ pub struct GraphAudioClip {
     pub occurred_at: Option<String>,
 }
 
+/// Image frame loaded directly from the graph store for offline processing.
+#[derive(Clone, Debug)]
+pub struct GraphImageFrame {
+    /// Stable graph node id for the `Image`.
+    pub id: String,
+    /// Image payload and metadata stored on the graph node.
+    pub image: ImageData,
+    /// Graph observation timestamp, when present.
+    pub occurred_at: Option<String>,
+    /// Source `Sensation` node that observed this frame, when present.
+    pub sensation_id: Option<String>,
+}
+
+/// Face recognition result ready to be linked into the graph.
+#[derive(Clone, Debug)]
+pub struct GraphFaceDetection {
+    /// Zero-based detection order within the source frame.
+    pub index: usize,
+    /// Stable graph node id for the cropped face image.
+    pub face_id: String,
+    /// Cropped face image and capture metadata.
+    pub crop: ImageData,
+    /// Qdrant point id for the face embedding.
+    pub vector_id: String,
+    /// Face embedding dimension.
+    pub embedding_len: usize,
+}
+
 /// Speech segment produced by transcribing an `AudioClip`.
 #[derive(Clone, Debug)]
 pub struct GraphSpeechSegment {
@@ -567,6 +608,36 @@ impl Neo4jClient {
         )
         .await?;
         rows.first().map(graph_audio_clip_from_row).transpose()
+    }
+
+    /// Return the latest `Image` graph node that has no face-recognition run.
+    pub async fn latest_unprocessed_image_frame_for_face_recognition(
+        &self,
+    ) -> Result<Option<GraphImageFrame>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (i:GraphNode:Image)
+                    WHERE i.base64 IS NOT NULL
+                      AND NOT (i)-[:HAS_FACE_RECOGNITION_RUN]->(:GraphNode:FaceRecognitionRun)
+                    OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(i)
+                    WITH i, s, coalesce(i.captured_at, i.occurred_at, s.occurred_at, "") AS observed_at
+                    RETURN i.id, i.mime, i.base64, i.captured_at, i.occurred_at, s.id
+                    ORDER BY observed_at DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest unprocessed image frame for face recognition",
+        )
+        .await?;
+        rows.first().map(graph_image_frame_from_row).transpose()
     }
 
     /// Return a display-oriented snapshot of the latest graph nodes and their relationships.
@@ -741,6 +812,126 @@ impl Neo4jClient {
             &statements,
             "attaching audio transcription",
         )
+        .await
+    }
+
+    /// Attach face recognition results to an existing `Image` graph node.
+    pub async fn attach_face_recognition(
+        &self,
+        frame: &GraphImageFrame,
+        detector: &str,
+        detections: &[GraphFaceDetection],
+    ) -> Result<()> {
+        let processed_at = chrono::Utc::now().to_rfc3339();
+        let run_id = format!("face-recognition:{}", frame.id);
+        let mut nodes = vec![
+            json!({
+                "label": "Image",
+                "id": frame.id,
+            }),
+            json!({
+                "label": "FaceRecognitionRun",
+                "id": run_id,
+                "image_id": frame.id,
+                "detector": detector,
+                "processed_at": processed_at,
+                "face_count": detections.len(),
+            }),
+        ];
+        let mut relationships = vec![
+            json!({
+                "from": frame.id,
+                "to": run_id,
+                "type": "HAS_FACE_RECOGNITION_RUN",
+            }),
+            json!({
+                "from": run_id,
+                "to": frame.id,
+                "type": "PROCESSED_IMAGE",
+            }),
+        ];
+
+        if let Some(sensation_id) = &frame.sensation_id {
+            nodes.push(json!({
+                "label": "Sensation",
+                "id": sensation_id,
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": run_id,
+                "type": "PRODUCED",
+            }));
+        }
+
+        for detection in detections {
+            let vector_id = qdrant_vector_node_id(FACE_COLLECTION, &detection.vector_id);
+            nodes.push(json!({
+                "label": "Face",
+                "id": detection.face_id,
+                "source_image_id": frame.id,
+                "crop_mime": detection.crop.mime.clone(),
+                "crop_base64": detection.crop.base64.clone(),
+                "captured_at": detection.crop.captured_at.clone(),
+                "occurred_at": detection
+                    .crop
+                    .captured_at
+                    .clone()
+                    .or_else(|| frame.occurred_at.clone()),
+                "detection_index": detection.index,
+                "embedding_len": detection.embedding_len,
+                "recognized_at": processed_at,
+            }));
+            nodes.push(qdrant_vector_node(
+                FACE_COLLECTION,
+                &detection.vector_id,
+                "face",
+                Some(detector),
+            ));
+            relationships.push(json!({
+                "from": run_id,
+                "to": detection.face_id,
+                "type": "DETECTED_FACE",
+                "detection_index": detection.index,
+            }));
+            relationships.push(json!({
+                "from": frame.id,
+                "to": detection.face_id,
+                "type": "CONTAINS_FACE",
+            }));
+            relationships.push(json!({
+                "from": detection.face_id,
+                "to": frame.id,
+                "type": "DERIVED_FROM",
+            }));
+            relationships.push(json!({
+                "from": detection.face_id,
+                "to": vector_id,
+                "type": "HAS_FACE_VECTOR",
+            }));
+            relationships.push(json!({
+                "from": run_id,
+                "to": vector_id,
+                "type": "PRODUCED",
+            }));
+            if let Some(sensation_id) = &frame.sensation_id {
+                relationships.push(json!({
+                    "from": sensation_id,
+                    "to": detection.face_id,
+                    "type": "PRODUCED",
+                }));
+                relationships.push(json!({
+                    "from": sensation_id,
+                    "to": vector_id,
+                    "type": "PRODUCED",
+                }));
+            }
+        }
+
+        self.store_data(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))
         .await
     }
 
@@ -1004,6 +1195,24 @@ fn graph_audio_clip_from_row(row: &Value) -> Result<GraphAudioClip> {
         id,
         clip,
         occurred_at: row_optional_string(values, 6),
+    })
+}
+
+fn graph_image_frame_from_row(row: &Value) -> Result<GraphImageFrame> {
+    let values = row
+        .as_array()
+        .context("Neo4j image frame row was not an array")?;
+    let id = row_string(values, 0, "id")?;
+    let image = ImageData {
+        mime: row_string(values, 1, "mime")?,
+        base64: row_string(values, 2, "base64")?,
+        captured_at: row_optional_string(values, 3),
+    };
+    Ok(GraphImageFrame {
+        id,
+        image,
+        occurred_at: row_optional_string(values, 4),
+        sensation_id: row_optional_string(values, 5),
     })
 }
 

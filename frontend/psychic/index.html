@@ -29,6 +29,16 @@
         <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">-</button>
         <button id="zoom-fit" type="button" title="Fit graph" aria-label="Fit graph">⛶</button>
       </div>
+      <div class="timeline-panel" aria-label="Graph timeline">
+        <div class="timeline-meta">
+          <span id="time-range">No timestamps</span>
+          <div class="timeline-actions">
+            <button id="time-gravity" type="button" class="active" title="Toggle time gravity" aria-label="Toggle time gravity">⇄</button>
+            <button id="time-reset" type="button" title="Clear time filter" aria-label="Clear time filter">↺</button>
+          </div>
+        </div>
+        <svg id="timeline" role="img" aria-label="Timeline"></svg>
+      </div>
     </section>
 
     <aside class="inspector" aria-label="Selection inspector">

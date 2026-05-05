@@ -47,6 +47,44 @@ async fn store_face_vector_creates_collection_and_upserts_point() {
 }
 
 #[tokio::test]
+async fn store_face_vector_can_reference_source_sensation() {
+    let server = MockServer::start_async().await;
+    let get_collection = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/collections/faces");
+            then.status(200).body(
+                r#"{"result":{"config":{"params":{"vectors":{"size":2,"distance":"Cosine"}}}},"status":"ok"}"#,
+            );
+        })
+        .await;
+    let upsert_point = server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path("/collections/faces/points")
+                .query_param("wait", "true")
+                .body_contains("\"face_id\":\"face:1\"")
+                .body_contains("\"source_image_id\":\"image:1\"")
+                .body_contains("\"sensation_id\":\"sensation:image:1\"");
+            then.status(200)
+                .body(r#"{"result":{"operation_id":1},"status":"ok"}"#);
+        })
+        .await;
+
+    QdrantClient::new(server.base_url())
+        .store_face_vector_for_sensation(
+            Some("face:1"),
+            Some("image:1"),
+            Some("sensation:image:1"),
+            &[1.0, 2.0],
+        )
+        .await
+        .unwrap();
+
+    get_collection.assert_async().await;
+    upsert_point.assert_async().await;
+}
+
+#[tokio::test]
 async fn store_geolocation_vector_creates_collection_and_upserts_point() {
     let server = MockServer::start_async().await;
     let get_collection = server

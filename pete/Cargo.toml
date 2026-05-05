@@ -80,3 +80,8 @@ path = "src/bin/psychic.rs"
 name = "transcription"
 path = "src/bin/transcription.rs"
 required-features = ["asr"]
+
+[[bin]]
+name = "frecog"
+path = "src/bin/frecog.rs"
+required-features = ["face"]

@@ -5,13 +5,21 @@
   }
 
   const svg = d3.select("#graph");
+  const timelineSvg = d3.select("#timeline");
   const root = svg.append("g");
   const linkLayer = root.append("g").attr("class", "links");
   const labelLayer = root.append("g").attr("class", "link-labels");
   const nodeLayer = root.append("g").attr("class", "nodes");
+  const timelineRoot = timelineSvg.append("g");
+  const timelineDotLayer = timelineRoot.append("g").attr("class", "timeline-dots");
+  const timelineAxisLayer = timelineRoot.append("g").attr("class", "timeline-axis");
+  const timelineBrushLayer = timelineRoot.append("g").attr("class", "timeline-brush");
   const statusEl = document.getElementById("status");
   const nodeCountEl = document.getElementById("node-count");
   const relationshipCountEl = document.getElementById("relationship-count");
+  const timeRangeEl = document.getElementById("time-range");
+  const timeGravityButton = document.getElementById("time-gravity");
+  const timeResetButton = document.getElementById("time-reset");
   const inspectorEmpty = document.getElementById("inspector-empty");
   const inspectorContent = document.getElementById("inspector-content");
   const inspectorIcon = document.getElementById("inspector-icon");
@@ -31,13 +39,14 @@
     Geolocation: { color: "#a3e635", icon: "⌖" },
     Heartbeat: { color: "#ff7a90", icon: "♥" },
     ObjectObservation: { color: "#d2b48c", icon: "O" },
-    Face: { color: "#ffcf99", icon: "F" },
+    Face: { color: "#ffcf99", icon: "◐" },
     Voice: { color: "#7dd3fc", icon: "V" },
     Person: { color: "#f0abfc", icon: "P" },
     RawPayload: { color: "#b8c0cc", icon: "R" },
     default: { color: "#c9d4de", icon: "◎" },
   };
 
+  const fullGraph = { nodes: [], relationships: [] };
   const graph = { nodes: [], relationships: [] };
   const nodeState = new Map();
   let selected = null;
@@ -46,6 +55,23 @@
   let lastTopologySignature = "";
   let detailRequestId = 0;
   let mediaObjectUrl = "";
+  let visibleTimeRange = null;
+  let timeGravityEnabled = true;
+  let suppressBrushEvent = false;
+  let timelineScale = d3.scaleTime();
+
+  const timelineBrush = d3
+    .brushX()
+    .on("end", (event) => {
+      if (suppressBrushEvent) return;
+      if (!event.selection) {
+        visibleTimeRange = null;
+      } else {
+        visibleTimeRange = event.selection.map(timelineScale.invert);
+      }
+      applyTimeFilter(true);
+      updateTimeline(false);
+    });
 
   const zoom = d3
     .zoom()
@@ -66,6 +92,7 @@
     )
     .force("charge", d3.forceManyBody().strength(-520))
     .force("center", d3.forceCenter())
+    .force("time", null)
     .force("collision", d3.forceCollide().radius((node) => nodeRadius(node) + 9))
     .on("tick", ticked);
 
@@ -110,10 +137,11 @@
     const topologyChanged = topologySignature !== lastTopologySignature;
     lastTopologySignature = topologySignature;
 
-    const previous = new Map(graph.nodes.map((node) => [node.id, node]));
-    graph.nodes = (snapshot.nodes || []).map((node) => {
+    const previous = new Map(fullGraph.nodes.map((node) => [node.id, node]));
+    fullGraph.nodes = (snapshot.nodes || []).map((node) => {
       const old = previous.get(node.id) || nodeState.get(node.id);
       const next = { ...node };
+      next.time = nodeTime(next);
       if (old) {
         next.x = old.x;
         next.y = old.y;
@@ -125,14 +153,13 @@
       nodeState.set(next.id, next);
       return next;
     });
-    const nodeIds = new Set(graph.nodes.map((node) => node.id));
-    graph.relationships = (snapshot.relationships || []).filter(
+    const nodeIds = new Set(fullGraph.nodes.map((node) => node.id));
+    fullGraph.relationships = (snapshot.relationships || []).filter(
       (rel) => nodeIds.has(rel.source) && nodeIds.has(rel.target),
     );
 
-    nodeCountEl.textContent = graph.nodes.length.toString();
-    relationshipCountEl.textContent = graph.relationships.length.toString();
-    render(topologyChanged);
+    updateTimeline(true);
+    applyTimeFilter(topologyChanged);
     if (!selected && graph.nodes.length > 0) {
       selectItem({ kind: "node", value: graph.nodes[0] });
     } else if (selected?.kind === "node") {
@@ -213,9 +240,133 @@
 
     simulation.nodes(graph.nodes);
     simulation.force("link").links(graph.relationships.map((rel) => ({ ...rel })));
+    updateTimeForce();
     if (reheat) {
       simulation.alpha(Math.max(simulation.alpha(), 0.72)).restart();
     }
+  }
+
+  function applyTimeFilter(reheat = false) {
+    if (!visibleTimeRange) {
+      graph.nodes = fullGraph.nodes;
+      graph.relationships = fullGraph.relationships;
+    } else {
+      const [start, end] = visibleTimeRange;
+      const seedIds = new Set(
+        fullGraph.nodes
+          .filter((node) => node.time && node.time >= start && node.time <= end)
+          .map((node) => node.id),
+      );
+      const visibleIds = new Set(seedIds);
+      for (const rel of fullGraph.relationships) {
+        const source = relationshipEndpoint(rel.source);
+        const target = relationshipEndpoint(rel.target);
+        if (seedIds.has(source)) visibleIds.add(target);
+        if (seedIds.has(target)) visibleIds.add(source);
+      }
+      graph.nodes = fullGraph.nodes.filter((node) => visibleIds.has(node.id));
+      graph.relationships = fullGraph.relationships.filter((rel) => {
+        const source = relationshipEndpoint(rel.source);
+        const target = relationshipEndpoint(rel.target);
+        return visibleIds.has(source) && visibleIds.has(target);
+      });
+    }
+
+    nodeCountEl.textContent = graph.nodes.length.toString();
+    relationshipCountEl.textContent = graph.relationships.length.toString();
+    render(reheat);
+    updateTimeRangeText();
+  }
+
+  function updateTimeline(moveBrush = true) {
+    const rect = timelineSvg.node().getBoundingClientRect();
+    const width = Math.max(rect.width, 1);
+    const height = Math.max(rect.height, 1);
+    const margin = { top: 6, right: 18, bottom: 22, left: 18 };
+    const timedNodes = fullGraph.nodes.filter((node) => node.time);
+
+    timelineSvg.attr("viewBox", `0 0 ${width} ${height}`);
+    timelineBrush.extent([
+      [margin.left, margin.top],
+      [width - margin.right, height - margin.bottom],
+    ]);
+
+    if (!timedNodes.length) {
+      timelineDotLayer.selectAll("circle").remove();
+      timelineAxisLayer.selectAll("*").remove();
+      timelineBrushLayer.call(timelineBrush);
+      timeRangeEl.textContent = "No timestamps";
+      return;
+    }
+
+    let [minTime, maxTime] = d3.extent(timedNodes, (node) => node.time);
+    if (+minTime === +maxTime) {
+      minTime = new Date(+minTime - 60_000);
+      maxTime = new Date(+maxTime + 60_000);
+    }
+    timelineScale = d3.scaleTime().domain([minTime, maxTime]).range([margin.left, width - margin.right]);
+
+    timelineAxisLayer
+      .attr("transform", `translate(0,${height - margin.bottom})`)
+      .call(d3.axisBottom(timelineScale).ticks(Math.max(2, Math.floor(width / 150))).tickSizeOuter(0));
+
+    const dots = timelineDotLayer.selectAll("circle").data(timedNodes, (node) => node.id);
+    dots.exit().remove();
+    const enteredDots = dots
+      .enter()
+      .append("circle")
+      .attr("class", "timeline-dot")
+      .attr("r", 4);
+    enteredDots.append("title");
+
+    const merged = enteredDots.merge(dots);
+    merged
+      .attr("cx", (node) => timelineScale(node.time))
+      .attr("cy", (node) => margin.top + 8 + (hashString(node.id) % 4) * 10)
+      .attr("fill", (node) => styleForNode(node).color)
+      .classed("selected", (node) => selected?.kind === "node" && selected.value.id === node.id);
+    merged.select("title").text((node) => `${nodeLabel(node)}\n${formatDateTime(node.time)}`);
+
+    timelineBrushLayer.call(timelineBrush);
+    if (moveBrush) {
+      suppressBrushEvent = true;
+      timelineBrushLayer.call(
+        timelineBrush.move,
+        visibleTimeRange ? visibleTimeRange.map(timelineScale) : null,
+      );
+      suppressBrushEvent = false;
+    }
+    updateTimeRangeText();
+  }
+
+  function updateTimeForce() {
+    const rect = svg.node().getBoundingClientRect();
+    if (!timeGravityEnabled || !graph.nodes.some((node) => node.time)) {
+      simulation.force("time", null);
+      return;
+    }
+    const yScale = timelineScale.copy().range([48, Math.max(rect.height - 48, 49)]);
+    simulation.force(
+      "time",
+      d3
+        .forceY((node) => (node.time ? yScale(node.time) : rect.height / 2))
+        .strength((node) => (node.time ? 0.18 : 0.03)),
+    );
+  }
+
+  function updateTimeRangeText() {
+    const timedNodes = fullGraph.nodes.filter((node) => node.time);
+    if (!timedNodes.length) {
+      timeRangeEl.textContent = "No timestamps";
+      return;
+    }
+    if (visibleTimeRange) {
+      const [start, end] = visibleTimeRange;
+      timeRangeEl.textContent = `${formatDateTime(start)} - ${formatDateTime(end)}`;
+      return;
+    }
+    const [start, end] = d3.extent(timedNodes, (node) => node.time);
+    timeRangeEl.textContent = `${formatDateTime(start)} - ${formatDateTime(end)}`;
   }
 
   function ticked() {
@@ -262,6 +413,7 @@
       renderProperties({ id: rel.id, source: relationshipEndpoint(rel.source), target: relationshipEndpoint(rel.target), ...(rel.properties || {}) });
     }
     render();
+    updateTimeline(false);
   }
 
   async function loadNodeDetails(node) {
@@ -291,8 +443,9 @@
   function renderMediaPreview(node) {
     clearMediaPreview();
     const props = node.properties || {};
-    const mime = String(props.mime || "").toLowerCase();
-    const base64 = typeof props.base64 === "string" ? props.base64.trim() : "";
+    const media = mediaForNode(node);
+    const mime = media.mime;
+    const base64 = media.base64;
     const text = typeof props.text === "string" ? props.text : "";
     const transcript = typeof props.transcript === "string" ? props.transcript : "";
 
@@ -301,6 +454,7 @@
       preview = document.createElement("img");
       preview.alt = nodeLabel(node);
       preview.src = dataUrl(mime, base64);
+      if (nodeKind(node) === "Face") preview.className = "face-preview";
     } else if (base64 && mime.startsWith("audio/")) {
       preview = document.createElement("audio");
       preview.controls = true;
@@ -348,7 +502,7 @@
     inspectorProperties.replaceChildren();
     Object.entries(properties)
       .filter(([, value]) => value !== null && value !== undefined && value !== "")
-      .filter(([key]) => key !== "base64")
+      .filter(([key]) => !largeMediaProperty(key))
       .slice(0, 36)
       .forEach(([key, value]) => {
         const dt = document.createElement("dt");
@@ -363,8 +517,44 @@
     return (node.labels || []).find((label) => label !== "GraphNode") || "GraphNode";
   }
 
+  function nodeTime(node) {
+    const props = node.properties || {};
+    for (const key of [
+      "occurred_at",
+      "observed_at",
+      "captured_at",
+      "transcribed_at",
+      "timestamp",
+      "source_captured_at",
+      "ended_at",
+    ]) {
+      const parsed = parseDate(props[key]);
+      if (parsed) return parsed;
+    }
+    for (const [key, value] of Object.entries(props)) {
+      if (/(^|_)(time|timestamp|at|date)(_|$)/i.test(key)) {
+        const parsed = parseDate(value);
+        if (parsed) return parsed;
+      }
+    }
+    return null;
+  }
+
+  function parseDate(value) {
+    if (typeof value !== "string" || !value.trim()) return null;
+    const normalized = value.trim().replace(/(\.\d{3})\d+(Z|[+-]\d\d:\d\d)$/, "$1$2");
+    const timestamp = Date.parse(normalized);
+    return Number.isNaN(timestamp) ? null : new Date(timestamp);
+  }
+
   function nodeLabel(node) {
     const props = node.properties || {};
+    if (nodeKind(node) === "Face") {
+      const index = Number.isFinite(Number(props.detection_index))
+        ? ` #${Number(props.detection_index) + 1}`
+        : "";
+      return truncate(`face${index}`, 28);
+    }
     const text =
       props.summary ||
       props.text ||
@@ -384,7 +574,31 @@
   function nodeRadius(node) {
     if (nodeKind(node) === "Impression") return 24;
     if (nodeKind(node) === "Sensation") return 21;
+    if (nodeKind(node) === "Face") return 22;
     return 19;
+  }
+
+  function mediaForNode(node) {
+    const props = node.properties || {};
+    if (nodeKind(node) === "Face") {
+      return {
+        mime: String(props.crop_mime || props.mime || "").toLowerCase(),
+        base64:
+          typeof props.crop_base64 === "string"
+            ? props.crop_base64.trim()
+            : typeof props.base64 === "string"
+              ? props.base64.trim()
+              : "",
+      };
+    }
+    return {
+      mime: String(props.mime || "").toLowerCase(),
+      base64: typeof props.base64 === "string" ? props.base64.trim() : "",
+    };
+  }
+
+  function largeMediaProperty(key) {
+    return key === "base64" || key === "crop_base64";
   }
 
   function compactRelationship(type) {
@@ -403,6 +617,24 @@
     if (Array.isArray(value)) return value.join(", ");
     if (typeof value === "object") return JSON.stringify(value, null, 2);
     return String(value);
+  }
+
+  function formatDateTime(value) {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).format(value);
+  }
+
+  function hashString(value) {
+    let hash = 0;
+    for (let i = 0; i < value.length; i += 1) {
+      hash = (hash * 31 + value.charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash);
   }
 
   function dataUrl(mime, base64) {
@@ -515,6 +747,8 @@
   function resize() {
     const rect = svg.node().getBoundingClientRect();
     simulation.force("center", d3.forceCenter(rect.width / 2, rect.height / 2));
+    updateTimeline(true);
+    updateTimeForce();
     simulation.alpha(0.3).restart();
   }
 
@@ -549,6 +783,17 @@
   document.getElementById("zoom-in").addEventListener("click", () => zoomBy(1.25));
   document.getElementById("zoom-out").addEventListener("click", () => zoomBy(0.8));
   document.getElementById("zoom-fit").addEventListener("click", fitGraph);
+  timeResetButton.addEventListener("click", () => {
+    visibleTimeRange = null;
+    updateTimeline(true);
+    applyTimeFilter(true);
+  });
+  timeGravityButton.addEventListener("click", () => {
+    timeGravityEnabled = !timeGravityEnabled;
+    timeGravityButton.classList.toggle("active", timeGravityEnabled);
+    updateTimeForce();
+    simulation.alpha(0.35).restart();
+  });
   window.addEventListener("resize", resize);
 
   resize();
