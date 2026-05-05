@@ -36,13 +36,13 @@ struct Cli {
     #[arg(long, env = "CHATTER_HOST", default_value = "http://localhost:11434")]
     chatter_host: String,
     /// Model name to use for chatter
-    #[arg(long, env = "CHATTER_MODEL", default_value = "gemma3")]
+    #[arg(long, env = "CHATTER_MODEL", default_value = "gpt-oss")]
     chatter_model: String,
     /// URL of the wits Ollama server
     #[arg(long, env = "WITS_HOST", default_value = "http://localhost:11434")]
     wits_host: String,
     /// Model name to use for wits
-    #[arg(long, env = "WITS_MODEL", default_value = "gemma3")]
+    #[arg(long, env = "WITS_MODEL", default_value = "gpt-oss")]
     wits_model: String,
     /// URL of the embeddings Ollama server
     #[arg(

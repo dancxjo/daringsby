@@ -36,8 +36,8 @@ Key concepts:
 use lingproc::OllamaProvider;
 use psyche::Psyche;
 
-let narrator = OllamaProvider::new("http://localhost:11434", "gemma3").unwrap();
-let voice = OllamaProvider::new("http://localhost:11434", "gemma3").unwrap();
+let narrator = OllamaProvider::new("http://localhost:11434", "gpt-oss").unwrap();
+let voice = OllamaProvider::new("http://localhost:11434", "gpt-oss").unwrap();
 let vectorizer = OllamaProvider::new("http://localhost:11434", "embeddinggemma").unwrap();
 
 use psyche::{Ear, Mouth};
@@ -78,7 +78,7 @@ Pete uses separate Ollama models for text generation and embeddings. Pull both
 before running with the default configuration:
 
 ```sh
-ollama pull gemma3
+ollama pull gpt-oss
 ollama pull embeddinggemma
 ```
 

@@ -35,7 +35,7 @@ struct Cli {
     #[arg(long, env = "WITS_HOST", default_value = "http://localhost:11434")]
     wits_host: String,
     /// Model name to use for combobulation.
-    #[arg(long, env = "WITS_MODEL", default_value = "gemma3")]
+    #[arg(long, env = "WITS_MODEL", default_value = "gpt-oss")]
     wits_model: String,
     /// URL of the embeddings Ollama server.
     #[arg(
