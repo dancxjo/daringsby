@@ -235,7 +235,9 @@
     webcamReady = true;
     if (navigator.mediaDevices?.getUserMedia) {
       setupWebcam();
+      setupAudio();
     }
+    startSpeechRecognition();
   });
   ws.addEventListener("close", () => {
     webcamReady = false;
@@ -267,6 +269,7 @@
 
   let webcamStream = null;
   let webcamReady = false;
+  let audioStarted = false;
 
   async function setupWebcam() {
     try {
@@ -325,6 +328,10 @@
   }
 
   async function setupAudio() {
+    if (audioStarted || ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    audioStarted = true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const audioContext = new AudioContext();
@@ -363,6 +370,7 @@
       source.connect(processor);
       processor.connect(audioContext.destination);
     } catch (e) {
+      audioStarted = false;
       console.error("audio", e);
     }
   }
@@ -400,6 +408,8 @@
     return btoa(binary);
   }
 
+  let startSpeechRecognition = () => {};
+
   function setupSpeechRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -424,6 +434,7 @@
         console.warn("speech recognition start", err);
       }
     };
+    startSpeechRecognition = start;
 
     recognition.onresult = (event) => {
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
@@ -436,6 +447,7 @@
       }
     };
     recognition.onerror = (event) => {
+      active = false;
       console.warn("speech recognition", event.error || event);
     };
     recognition.onend = () => {
@@ -449,12 +461,9 @@
         start();
       }
     });
-    start();
+    startSpeechRecognition();
   }
 
-  if (navigator.mediaDevices?.getUserMedia) {
-    setupAudio();
-  }
   setupSpeechRecognition();
 
   function updateConversation() {

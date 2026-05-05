@@ -2,9 +2,12 @@ use crate::topics::TopicBus;
 use crate::traits::Sensor;
 use crate::wits::memory::QdrantClient;
 use crate::{ImageData, Sensation};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use lingproc::math::cosine_similarity;
+use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error};
 
@@ -37,6 +40,77 @@ impl FaceDetector for DummyDetector {
     }
 }
 
+/// Detector backed by the `face_id` ONNX pipeline.
+pub struct FaceIdDetector {
+    analyzer: face_id::analyzer::FaceAnalyzer,
+}
+
+impl FaceIdDetector {
+    /// Create a detector using the default Hugging Face models.
+    pub async fn from_hf() -> Result<Self> {
+        let analyzer = face_id::analyzer::FaceAnalyzer::from_hf()
+            .build()
+            .await
+            .context("failed to initialize face_id analyzer")?;
+        Ok(Self { analyzer })
+    }
+}
+
+#[async_trait]
+impl FaceDetector for FaceIdDetector {
+    async fn detect_faces(&self, image: &ImageData) -> Result<Vec<(ImageData, Vec<f32>)>> {
+        if image.base64.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let bytes = BASE64_STANDARD
+            .decode(image.base64.trim().as_bytes())
+            .context("failed to decode image payload")?;
+        let img = image::load_from_memory(&bytes).context("failed to decode image")?;
+        let faces = self
+            .analyzer
+            .analyze(&img)
+            .context("face_id analysis failed")?;
+
+        faces
+            .into_iter()
+            .map(|face| {
+                let crop = crop_face(&img, &face.detection)?;
+                Ok((crop, face.embedding))
+            })
+            .collect()
+    }
+}
+
+fn crop_face(
+    img: &image::DynamicImage,
+    detection: &face_id::detector::DetectedFace,
+) -> Result<ImageData> {
+    let width = img.width();
+    let height = img.height();
+    let bbox = detection.to_absolute(width, height).bbox;
+
+    let x1 = bbox.x1.floor().clamp(0.0, width.saturating_sub(1) as f32) as u32;
+    let y1 = bbox.y1.floor().clamp(0.0, height.saturating_sub(1) as f32) as u32;
+    let x2 = bbox.x2.ceil().clamp(1.0, width as f32) as u32;
+    let y2 = bbox.y2.ceil().clamp(1.0, height as f32) as u32;
+
+    let crop = if x2 > x1 && y2 > y1 {
+        img.crop_imm(x1, y1, x2 - x1, y2 - y1)
+    } else {
+        img.clone()
+    };
+
+    let mut bytes = Cursor::new(Vec::new());
+    crop.write_to(&mut bytes, image::ImageFormat::Jpeg)
+        .context("failed to encode face crop")?;
+
+    Ok(ImageData {
+        mime: "image/jpeg".to_string(),
+        base64: BASE64_STANDARD.encode(bytes.into_inner()),
+    })
+}
+
 /// Sensor that emits [`FaceInfo`] sensations.
 pub struct FaceSensor {
     detector: Arc<dyn FaceDetector>,
@@ -62,6 +136,7 @@ impl Sensor<ImageData> for FaceSensor {
     async fn sense(&self, input: ImageData) {
         match self.detector.detect_faces(&input).await {
             Ok(faces) => {
+                debug!(count = faces.len(), "face detector completed");
                 for (crop, embed) in faces {
                     let skip = {
                         let mut last = self.last_face.lock().unwrap();

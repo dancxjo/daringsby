@@ -1,3 +1,3 @@
 pub mod face;
 
-pub use face::{FaceDetector, DummyDetector, FaceInfo, FaceSensor};
+pub use face::{DummyDetector, FaceDetector, FaceIdDetector, FaceInfo, FaceSensor};

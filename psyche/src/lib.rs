@@ -85,7 +85,7 @@ pub mod sensors {
     #[cfg(feature = "face")]
     pub mod face;
     #[cfg(feature = "face")]
-    pub use face::{DummyDetector, FaceDetector, FaceInfo, FaceSensor};
+    pub use face::{DummyDetector, FaceDetector, FaceIdDetector, FaceInfo, FaceSensor};
 }
 mod pending_turn;
 mod trim_mouth;
@@ -108,7 +108,7 @@ pub use psyche::extract_tag as test_extract_tag;
 pub use psyche::{Conversation, Psyche};
 pub use sensation::{Event, Sensation, WitReport};
 #[cfg(feature = "face")]
-pub use sensors::{DummyDetector, FaceDetector, FaceInfo, FaceSensor};
+pub use sensors::{DummyDetector, FaceDetector, FaceIdDetector, FaceInfo, FaceSensor};
 pub use traits::{
     BufferedWit, Doer, Ear, ErasedWit, Motor, Mouth, NoopMotor, SensationObserver, Sensor, Tts,
     TtsStream, Wit, WitAdapter,

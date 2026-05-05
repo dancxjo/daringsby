@@ -221,7 +221,7 @@ async fn main() -> anyhow::Result<()> {
 
     #[cfg(feature = "face")]
     let face_sensor = Arc::new(FaceSensor::new(
-        Arc::new(psyche::DummyDetector::default()),
+        Arc::new(psyche::FaceIdDetector::from_hf().await?),
         psyche::QdrantClient::default(),
         psyche.topic_bus(),
     ));
