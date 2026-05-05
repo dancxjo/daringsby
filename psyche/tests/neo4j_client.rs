@@ -1358,7 +1358,7 @@ async fn neo4j_client_attaches_vector_cluster_theme() {
     };
 
     Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
-        .attach_vector_cluster_theme(&cluster, "gpt-oss", &items, &theme)
+        .attach_vector_cluster_theme(&cluster, "gemma3", &items, &theme)
         .await
         .unwrap();
 

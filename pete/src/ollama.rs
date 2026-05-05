@@ -10,7 +10,7 @@ use lingproc::OllamaProvider;
 /// ```
 /// use pete::ollama_provider_from_args;
 ///
-/// let provider = ollama_provider_from_args("http://localhost:11434", "gpt-oss")
+/// let provider = ollama_provider_from_args("http://localhost:11434", "gemma3")
 ///     .expect("valid provider");
 /// ```
 ///

@@ -4,10 +4,10 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-const DEFAULT_MODEL: &str = "base.en";
+const DEFAULT_MODEL: &str = "large-v3";
 const DEFAULT_MODEL_URL: &str =
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin";
-const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-base.en.bin";
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin";
+const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-large-v3.bin";
 const DEFAULT_VOICE_EMBEDDING_MODEL_URL: &str =
     "https://github.com/mzdk100/voxudio/releases/download/model/speaker_embedding_extractor.onnx";
 const DEFAULT_VOICE_EMBEDDING_MODEL_PATH: &str = "models/voice/speaker_embedding_extractor.onnx";
@@ -26,8 +26,10 @@ fn main() -> Result<()> {
 
 fn print_help() {
     println!("xtask commands:");
-    println!("  fetch [tiny.en|base.en|small.en|URL]            # fetches local models");
-    println!("  fetch-asr-model [tiny.en|base.en|small.en|URL]  # also fetches voice embeddings");
+    println!("  fetch [tiny.en|base.en|small.en|large-v3|URL]            # fetches local models");
+    println!(
+        "  fetch-asr-model [tiny.en|base.en|small.en|large-v3|URL]  # also fetches voice embeddings"
+    );
     println!("  fetch-voice-embedding-model [URL]");
 }
 
@@ -106,14 +108,15 @@ fn model_choice(choice: &str) -> (String, PathBuf) {
         "tiny.en" => "ggml-tiny.en.bin",
         "base.en" => "ggml-base.en.bin",
         "small.en" => "ggml-small.en.bin",
+        "large-v3" => "ggml-large-v3.bin",
         other => other,
     };
-    let url = if choice == "base.en" {
+    let url = if choice == DEFAULT_MODEL {
         DEFAULT_MODEL_URL.to_string()
     } else {
         format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{file}")
     };
-    let path = if choice == "base.en" {
+    let path = if choice == DEFAULT_MODEL {
         PathBuf::from(DEFAULT_MODEL_PATH)
     } else {
         Path::new("models").join("whisper").join(file)
@@ -163,5 +166,27 @@ mod tests {
 
         assert_eq!(url, "https://example.com/custom-speaker.onnx");
         assert_eq!(path, PathBuf::from("models/voice/custom-speaker.onnx"));
+    }
+
+    #[test]
+    fn default_model_is_large_multilingual_whisper() {
+        let (url, path) = model_choice(DEFAULT_MODEL);
+
+        assert_eq!(
+            url,
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"
+        );
+        assert_eq!(path, PathBuf::from("models/whisper/ggml-large-v3.bin"));
+    }
+
+    #[test]
+    fn model_choice_keeps_existing_english_aliases() {
+        let (url, path) = model_choice("base.en");
+
+        assert_eq!(
+            url,
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
+        );
+        assert_eq!(path, PathBuf::from("models/whisper/ggml-base.en.bin"));
     }
 }

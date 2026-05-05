@@ -36,12 +36,12 @@ run:
 debug *args:
     RUST_LOG="${RUST_LOG:-debug}" cargo run -p pete --bin pete -- {{args}}
 
-# Fetch all local models, or pass tiny.en/base.en/small.en/URL for Whisper.
-fetch model="base.en":
+# Fetch all local models, or pass tiny.en/base.en/small.en/large-v3/URL for Whisper.
+fetch model="large-v3":
     cargo run -p xtask -- fetch {{model}}
 
 # Compatibility alias for fetching the audio models.
-fetch-asr-model model="base.en":
+fetch-asr-model model="large-v3":
     just fetch {{model}}
 
 # Fetch the default voice embedding model, or pass a custom ONNX URL/filename.

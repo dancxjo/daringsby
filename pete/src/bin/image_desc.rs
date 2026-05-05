@@ -241,6 +241,11 @@ fn ensure_vision_model(model: &str) -> anyhow::Result<()> {
             "IMAGE_DESCRIPTION_MODEL={model} is text-only in Ollama; use a vision-capable model like {DEFAULT_IMAGE_DESCRIPTION_MODEL}"
         );
     }
+    if matches!(normalized.as_str(), "gemma3:270m" | "gemma3:1b") {
+        bail!(
+            "IMAGE_DESCRIPTION_MODEL={model} is text-only in Ollama; use a vision-capable Gemma 3 variant like {DEFAULT_IMAGE_DESCRIPTION_MODEL}, gemma3:4b, gemma3:12b, or gemma3:27b"
+        );
+    }
     if normalized.contains("llama3") || normalized.contains("qwen3") {
         warn!(
             %model,
@@ -267,5 +272,20 @@ mod tests {
         let err = ensure_vision_model("gpt-oss").unwrap_err();
 
         assert!(err.to_string().contains("text-only"));
+    }
+
+    #[test]
+    fn ensure_vision_model_allows_default_gemma3() {
+        ensure_vision_model(DEFAULT_IMAGE_DESCRIPTION_MODEL).unwrap();
+    }
+
+    #[test]
+    fn ensure_vision_model_rejects_text_only_gemma3_variants() {
+        for model in ["gemma3:270m", "gemma3:1b"] {
+            let err = ensure_vision_model(model).unwrap_err();
+
+            assert!(err.to_string().contains("text-only"));
+            assert!(err.to_string().contains("gemma3:4b"));
+        }
     }
 }

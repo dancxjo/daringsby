@@ -36,8 +36,8 @@ Key concepts:
 use lingproc::OllamaProvider;
 use psyche::Psyche;
 
-let narrator = OllamaProvider::new("http://localhost:11434", "gpt-oss").unwrap();
-let voice = OllamaProvider::new("http://localhost:11434", "gpt-oss").unwrap();
+let narrator = OllamaProvider::new("http://localhost:11434", "gemma3").unwrap();
+let voice = OllamaProvider::new("http://localhost:11434", "gemma3").unwrap();
 let vectorizer = OllamaProvider::new("http://localhost:11434", "embeddinggemma").unwrap();
 
 use psyche::{Ear, Mouth};
@@ -78,7 +78,7 @@ Pete uses separate Ollama models for text generation and embeddings. Pull both
 before running with the default configuration:
 
 ```sh
-ollama pull gpt-oss
+ollama pull gemma3
 ollama pull embeddinggemma
 ```
 
@@ -103,23 +103,27 @@ cargo run -p pete --bin pete
 ### ASR Model
 
 Server-side ASR is enabled by default when a Whisper model is available. Fetch
-the default `base.en` model and voice embedding model with:
+the default high-quality multilingual `large-v3` model and voice embedding
+model with:
 
 ```sh
 just fetch
 ```
 
-That writes `models/whisper/ggml-base.en.bin` and
+That writes `models/whisper/ggml-large-v3.bin` and
 `models/voice/speaker_embedding_extractor.onnx`, which Pete discovers
 automatically. To fetch a different Whisper model:
 
 ```sh
 just fetch tiny.en
+just fetch base.en
 just fetch small.en
 ```
 
+The `big_transcribe` binary uses `models/whisper/ggml-large-v3.bin` by default;
+set `BIG_TRANSCRIPTION_WHISPER_MODEL` or pass `--whisper-model` to override it.
 You can also set `WHISPER_MODEL` or `VOICE_EMBEDDING_MODEL` in `.env` to point
-at custom model paths.
+at custom model paths for the live ASR service.
 
 ---
 

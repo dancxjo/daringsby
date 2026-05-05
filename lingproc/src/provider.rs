@@ -53,10 +53,10 @@ impl OllamaProvider {
     ///
     /// The host parameter can be a single URL or a comma-separated list of URLs.
     /// The default host is `http://localhost:11434` and the default model is
-    /// `gpt-oss`.
+    /// `gemma3`.
     pub fn new_with_defaults(host: Option<&str>, model: Option<&str>) -> Result<Self> {
         let host_str = host.unwrap_or("http://localhost:11434");
-        let model = model.unwrap_or("gpt-oss");
+        let model = model.unwrap_or("gemma3");
         let hosts: Vec<&str> = host_str.split(',').map(|s| s.trim()).collect();
         Self::new(hosts, model)
     }

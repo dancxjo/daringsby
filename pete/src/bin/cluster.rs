@@ -57,7 +57,7 @@ struct Cli {
     #[arg(long, env = "WITS_HOST", default_value = "http://localhost:11434")]
     wits_host: String,
     /// Model name to use for cluster theme extraction.
-    #[arg(long, env = "WITS_MODEL", default_value = "gpt-oss")]
+    #[arg(long, env = "WITS_MODEL", default_value = "gemma3")]
     wits_model: String,
     /// Maximum graph items to present to the LLM for each cluster theme.
     #[arg(long, env = "CLUSTER_THEME_ITEM_LIMIT", default_value_t = 24)]

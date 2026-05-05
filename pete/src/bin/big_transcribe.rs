@@ -1,10 +1,14 @@
+use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use dotenvy::dotenv;
-use pete::{AsrService, EventBus, SegmentMessage, SourceClipSpan, WordTiming, init_logging};
+use pete::{
+    AsrService, EventBus, HIGH_QUALITY_MULTILINGUAL_MODEL_PATH, SegmentMessage, SourceClipSpan,
+    WordTiming, init_logging,
+};
 use psyche::{
     GraphAudioClip, GraphAudioClipWindow, GraphAudioSourceSpan, GraphSpeechSegment, Neo4jClient,
     parse_observed_at,
@@ -37,6 +41,9 @@ struct Cli {
     /// Minimum number of clips required before an aggregate transcription runs.
     #[arg(long, env = "BIG_TRANSCRIPTION_MIN_CLIPS", default_value_t = 2)]
     min_clips: usize,
+    /// Whisper model for aggregate transcription.
+    #[arg(long, env = "BIG_TRANSCRIPTION_WHISPER_MODEL")]
+    whisper_model: Option<PathBuf>,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -46,12 +53,15 @@ async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
     let cli = Cli::parse();
-    let Some(asr) = AsrService::from_env()? else {
-        anyhow::bail!("Whisper model not configured; set WHISPER_MODEL or run `just fetch`");
-    };
-    if !asr.has_whisper_model() {
-        anyhow::bail!("Whisper model not configured; set WHISPER_MODEL or run `just fetch`");
+    let whisper_model = resolve_whisper_model_path(cli.whisper_model);
+    if !whisper_model.exists() {
+        anyhow::bail!(
+            "Whisper model not found at {}; run `just fetch` or set BIG_TRANSCRIPTION_WHISPER_MODEL",
+            whisper_model.display()
+        );
     }
+    let asr = AsrService::from_whisper_model_path(whisper_model.clone())
+        .with_context(|| format!("failed to load Whisper model {}", whisper_model.display()))?;
     let graph = Neo4jClient::new(cli.neo4j_uri, cli.neo4j_user, cli.neo4j_pass);
     let mut ticker = interval(Duration::from_millis(cli.poll_ms.max(100)));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -65,6 +75,10 @@ async fn main() -> anyhow::Result<()> {
             error!(error = %err, "big transcription loop iteration failed");
         }
     }
+}
+
+fn resolve_whisper_model_path(cli_model: Option<PathBuf>) -> PathBuf {
+    cli_model.unwrap_or_else(|| PathBuf::from(HIGH_QUALITY_MULTILINGUAL_MODEL_PATH))
 }
 
 async fn transcribe_next_window(
@@ -265,6 +279,20 @@ mod tests {
             occurred_at: None,
             sensation_id: Some(format!("sensation:{id}")),
         }
+    }
+
+    #[test]
+    fn resolves_big_transcription_model_to_large_multilingual_default() {
+        let model = resolve_whisper_model_path(None);
+
+        assert_eq!(model, PathBuf::from(HIGH_QUALITY_MULTILINGUAL_MODEL_PATH));
+    }
+
+    #[test]
+    fn resolves_big_transcription_model_from_specific_override() {
+        let model = resolve_whisper_model_path(Some(PathBuf::from("models/whisper/custom.bin")));
+
+        assert_eq!(model, PathBuf::from("models/whisper/custom.bin"));
     }
 
     #[test]

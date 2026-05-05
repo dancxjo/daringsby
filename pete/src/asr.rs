@@ -23,6 +23,7 @@ use psyche::{AudioClip, Sensation, Topic, TopicBus};
 use psyche::{QdrantClient, VoiceInfo, audio_clip_id};
 
 pub const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-base.en.bin";
+pub const HIGH_QUALITY_MULTILINGUAL_MODEL_PATH: &str = "models/whisper/ggml-large-v3.bin";
 #[cfg(feature = "voice")]
 pub const DEFAULT_VOICE_EMBEDDING_MODEL_PATH: &str =
     "models/voice/speaker_embedding_extractor.onnx";
@@ -126,7 +127,20 @@ impl AsrService {
             .or_else(|| {
                 let default = PathBuf::from(DEFAULT_MODEL_PATH);
                 default.exists().then_some(default)
+            })
+            .or_else(|| {
+                let high_quality = PathBuf::from(HIGH_QUALITY_MULTILINGUAL_MODEL_PATH);
+                high_quality.exists().then_some(high_quality)
             });
+        Self::from_optional_whisper_model_path(model_path)
+    }
+
+    pub fn from_whisper_model_path(model_path: PathBuf) -> Result<Self> {
+        Self::from_optional_whisper_model_path(Some(model_path))?
+            .ok_or_else(|| anyhow!("Whisper model not configured"))
+    }
+
+    fn from_optional_whisper_model_path(model_path: Option<PathBuf>) -> Result<Option<Self>> {
         #[cfg(feature = "voice")]
         let voice_model_requested = voice_embedding_model_path().is_some();
         #[cfg(not(feature = "voice"))]
@@ -135,6 +149,7 @@ impl AsrService {
         if model_path.is_none() && !voice_model_requested {
             info!(
                 default_model_path = DEFAULT_MODEL_PATH,
+                high_quality_model_path = HIGH_QUALITY_MULTILINGUAL_MODEL_PATH,
                 "Whisper model not found and voice embeddings are not configured; run `just fetch` to enable audio analysis"
             );
             return Ok(None);
