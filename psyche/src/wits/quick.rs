@@ -12,7 +12,7 @@
 //! impression and publishes it on [`Topic::Instant`].
 
 use crate::topics::{Topic, TopicBus};
-use crate::traits::{Doer, wit::Wit};
+use crate::traits::Doer;
 use crate::{Impression, Sensation, Stimulus};
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 use tracing::{debug, info};
 pub struct Quick {
-    buffer: Arc<Mutex<VecDeque<Stimulus<Arc<Sensation>>>>>,
+    buffer: Arc<Mutex<VecDeque<Stimulus<String>>>>,
     bus: TopicBus,
     doer: Arc<dyn Doer>,
     window: Duration,
@@ -54,7 +54,7 @@ impl Quick {
             while let Some(payload) = stream.next().await {
                 if let Ok(s) = Arc::downcast::<Sensation>(payload) {
                     let mut buf = buf_clone.lock().unwrap();
-                    buf.push_back(Stimulus::new(s));
+                    buf.push_back(Stimulus::new(Quick::describe(&s)));
                 }
             }
         });
@@ -80,6 +80,8 @@ impl Quick {
                         "Detected location ({:.1}, {:.1})",
                         loc.latitude, loc.longitude
                     )
+                } else if let Some(beat) = any.downcast_ref::<crate::Heartbeat>() {
+                    format!("Heartbeat at {}", beat.timestamp)
                 } else {
                     debug!("unrecognized sensation type: {:?}", any.type_id());
                     "Something happened".to_string()
@@ -89,7 +91,7 @@ impl Quick {
     }
 
     /// Remove sensations older than the window from `buf`.
-    fn trim_old(buf: &mut VecDeque<Stimulus<Arc<Sensation>>>, window: Duration) {
+    fn trim_old(buf: &mut VecDeque<Stimulus<String>>, window: Duration) {
         let cutoff = Utc::now() - window;
         while let Some(stimulus) = buf.front() {
             if stimulus.timestamp < cutoff {
@@ -105,7 +107,9 @@ impl Quick {
 impl crate::traits::observer::SensationObserver for Quick {
     async fn observe_sensation(&self, payload: &(dyn std::any::Any + Send + Sync)) {
         if let Some(s) = payload.downcast_ref::<Sensation>() {
-            self.observe(s.clone()).await;
+            let mut buf = self.buffer.lock().unwrap();
+            buf.push_back(Stimulus::new(Self::describe(s)));
+            Self::trim_old(&mut buf, self.window);
         }
     }
 }
@@ -117,7 +121,7 @@ impl crate::traits::wit::Wit for Quick {
 
     async fn observe(&self, input: Self::Input) {
         let mut buf = self.buffer.lock().unwrap();
-        buf.push_back(Stimulus::new(Arc::new(input)));
+        buf.push_back(Stimulus::new(Self::describe(&input)));
         Self::trim_old(&mut buf, self.window);
     }
 
@@ -131,13 +135,7 @@ impl crate::traits::wit::Wit for Quick {
             buf.drain(..).collect::<Vec<_>>()
         };
         debug!(count = items.len(), "quick summarizing sensations");
-        let stimuli = items
-            .into_iter()
-            .map(|stimulus| Stimulus {
-                what: Self::describe(&stimulus.what),
-                timestamp: stimulus.timestamp,
-            })
-            .collect::<Vec<_>>();
+        let stimuli = items;
         let bullets: Vec<String> = stimuli.iter().map(|s| s.what.clone()).collect();
         let prompt = format!(
             "Summarize these simultaneous sensations in one sentence:\n- {}",
@@ -151,8 +149,15 @@ impl crate::traits::wit::Wit for Quick {
             })
             .await
         {
-            Ok(s) => s.trim().to_string(),
-            Err(_) => String::new(),
+            Ok(s) => {
+                let summary = s.trim();
+                if summary.is_empty() {
+                    bullets.join("; ")
+                } else {
+                    summary.to_string()
+                }
+            }
+            Err(_) => bullets.join("; "),
         };
         info!(count = stimuli.len(), out = %out, "quick emitting instant impression");
         debug!(

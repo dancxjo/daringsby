@@ -57,6 +57,7 @@ impl Ear for ChannelEar {
     async fn hear_user_say(&self, text: &str) {
         info!(%text, "ear heard user say");
         debug!("ear heard user say: {}", text);
+        self.voice.permit(None);
         let _ = self
             .forward
             .send(Sensation::HeardUserVoice(text.to_string()))

@@ -174,7 +174,7 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                 match transcript {
                     Some(text) => {
                         info!(%text, "asr finalized transcript");
-                        let _ = state.bus.user_input_sender().send(text.clone());
+                        state.ear.hear_user_say(&text).await;
                         let entry = ConvEntry {
                             role: "user".into(),
                             content: text,
@@ -201,11 +201,11 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
             msg = socket.recv() => {
                 match msg {
                     Some(Ok(WsMessage::Text(text))) => {
-                        if let Ok(req) = serde_json::from_str::<WsRequest>(&text) {
+                        if let Some(req) = parse_ws_request(&text) {
                             match req {
                                 WsRequest::Text { text: message } => {
                                     debug!("user message: {}", message);
-                                    let _ = state.bus.user_input_sender().send(message.clone());
+                                    state.ear.hear_user_say(&message).await;
                                     let entry = ConvEntry {
                                         role: "user".into(),
                                         content: message,
@@ -258,6 +258,21 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
     }
     state.connections.fetch_sub(1, Ordering::SeqCst);
     info!("websocket disconnected");
+}
+
+fn parse_ws_request(text: &str) -> Option<WsRequest> {
+    serde_json::from_str::<WsRequest>(text)
+        .ok()
+        .or_else(|| parse_legacy_text_request(text))
+}
+
+fn parse_legacy_text_request(text: &str) -> Option<WsRequest> {
+    let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    if value.get("type")?.as_str()? != "Text" {
+        return None;
+    }
+    let text = value.get("text")?.as_str()?.to_string();
+    Some(WsRequest::Text { text })
 }
 
 #[cfg(feature = "asr")]

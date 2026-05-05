@@ -1,8 +1,8 @@
-//! Lightweight atomic buffer for a pending user turn.
+//! Lightweight synchronized buffer for a pending user turn.
 //!
-//! `PendingTurn` avoids mutex contention by using an [`AtomicCell`]
-//! to store an optional prompt string. It provides simple `set` and
-//! `take` operations for producers and consumers.
+//! `PendingTurn` stores an optional prompt string and notifies waiters when a
+//! producer queues a turn. It provides simple `set` and `take` operations for
+//! producers and consumers.
 //!
 //! ```
 //! use psyche::PendingTurn;
@@ -12,16 +12,22 @@
 //! assert_eq!(buf.take(), None);
 //! assert!(buf.is_empty());
 //! ```
-//!
-//! The cell is lock-free on supported platforms and falls back to a
-//! global lock otherwise.
+use std::sync::Mutex;
+use tokio::sync::Notify;
 
-use crossbeam_utils::atomic::AtomicCell;
-
-/// Atomically shared pending turn buffer.
-#[derive(Default)]
+/// Shared pending turn buffer.
 pub struct PendingTurn {
-    inner: AtomicCell<Option<String>>,
+    inner: Mutex<Option<String>>,
+    notify: Notify,
+}
+
+impl Default for PendingTurn {
+    fn default() -> Self {
+        Self {
+            inner: Mutex::new(None),
+            notify: Notify::new(),
+        }
+    }
 }
 
 impl PendingTurn {
@@ -32,21 +38,22 @@ impl PendingTurn {
 
     /// Store `prompt` for later retrieval, replacing any existing value.
     pub fn set(&self, prompt: String) {
-        self.inner.store(Some(prompt));
+        *self.inner.lock().unwrap() = Some(prompt);
+        self.notify.notify_one();
     }
 
     /// Take the pending prompt if present.
     pub fn take(&self) -> Option<String> {
-        self.inner.take()
+        self.inner.lock().unwrap().take()
     }
 
     /// Return `true` when no turn is pending.
     pub fn is_empty(&self) -> bool {
-        let cur = self.inner.take();
-        let empty = cur.is_none();
-        if let Some(val) = cur {
-            self.inner.store(Some(val));
-        }
-        empty
+        self.inner.lock().unwrap().is_none()
+    }
+
+    /// Wait until a producer queues a turn.
+    pub async fn notified(&self) {
+        self.notify.notified().await;
     }
 }

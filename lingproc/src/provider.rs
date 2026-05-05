@@ -73,7 +73,7 @@ impl Doer for OllamaProvider {
     async fn follow(&self, instruction: LlmInstruction) -> Result<String> {
         use ollama_rs::generation::images::Image;
         let LlmInstruction { command, images } = instruction;
-        info!(%command, image_count = images.len(), "ollama follow");
+        info!(model = %self.model, %command, image_count = images.len(), "ollama follow");
         debug!(%command, image_count = images.len(), "ollama follow request");
 
         let mut msg = ChatMessage::user(command);
@@ -109,7 +109,7 @@ impl Chatter for OllamaProvider {
             };
             msgs.push(m);
         }
-        info!(history_len = history.len(), "ollama chat");
+        info!(model = %self.model, history_len = history.len(), "ollama chat");
         debug!(%prompt, ?history, "ollama chat request");
         let req = ChatMessageRequest::new(self.model.clone(), msgs);
         let stream = self
@@ -135,7 +135,7 @@ impl Chatter for OllamaProvider {
 impl Vectorizer for OllamaProvider {
     /// Request text embeddings from Ollama.
     async fn vectorize(&self, text: &str) -> Result<Vec<f32>> {
-        info!(len = text.len(), "ollama vectorize");
+        info!(model = %self.model, len = text.len(), "ollama vectorize");
         debug!(?text, "ollama vectorize request");
         let mut attempts = 0;
         loop {

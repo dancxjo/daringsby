@@ -13,7 +13,7 @@ async fn vectorize_returns_floats() {
             .body("{\"embeddings\": [[1.0,2.0,3.0]]}");
     });
 
-    let provider = OllamaProvider::new(vec![server.base_url()], "gemma3").unwrap();
+    let provider = OllamaProvider::new(vec![server.base_url()], "embeddinggemma").unwrap();
     let vec = provider.vectorize("hello").await.unwrap();
     mock.assert();
     assert_eq!(vec, vec![1.0, 2.0, 3.0]);
@@ -79,7 +79,7 @@ async fn vectorize_errors_on_empty_embeddings() {
             .body("{\"embeddings\": []}");
     });
 
-    let provider = OllamaProvider::new(vec![server.base_url()], "gemma3").unwrap();
+    let provider = OllamaProvider::new(vec![server.base_url()], "embeddinggemma").unwrap();
     let result = provider.vectorize("hi").await;
     assert!(result.is_err());
 }

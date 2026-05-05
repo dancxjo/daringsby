@@ -8,7 +8,7 @@ async fn creates_psyche() {
         "http://localhost:11434",
         "gemma3",
         "http://localhost:11434",
-        "gemma3",
+        "embeddinggemma",
         "http://localhost:6333",
         "bolt://localhost:7687",
         "neo4j",

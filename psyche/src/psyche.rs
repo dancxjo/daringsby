@@ -32,7 +32,7 @@ use rand::Rng;
 use std::any::Any;
 use std::panic::AssertUnwindSafe;
 use tokio::sync::{Mutex, broadcast, mpsc};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 /// A minimal history of exchanged messages.
 ///
@@ -597,6 +597,7 @@ impl Psyche {
                         if self.pending_turn.is_empty() && self.fallback_turn {
                             self.pending_turn.set("I'm listening.".to_string());
                         }
+                        self.speak_policy.received_user_message();
                     }
                     Sensation::Of(_) => {
                         self.sensation_buffer.lock().await.push_back(arc.clone());
@@ -659,8 +660,37 @@ impl Psyche {
                 turns += 1;
                 debug!("turn {} complete", turns);
             } else {
-                debug!("no pending_turn available this tick");
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                trace!("no pending_turn available this tick");
+                let pending_turn = Arc::clone(&self.pending_turn);
+                tokio::select! {
+                    _ = pending_turn.notified() => {}
+                    input = self.input_rx.recv() => {
+                        let Some(s) = input else {
+                            break;
+                        };
+                        let arc = Arc::new(s);
+                        match &*arc {
+                            Sensation::HeardOwnVoice(msg) => {
+                                let mut conv = self.conversation.lock().await;
+                                conv.add_message_from_ai(msg.clone());
+                                self.buffer_self_speech(msg).await;
+                            }
+                            Sensation::HeardUserVoice(msg) => {
+                                let mut conv = self.conversation.lock().await;
+                                conv.add_message_from_user(msg.clone());
+                                self.buffer_user_speech(msg).await;
+                                if self.pending_turn.is_empty() && self.fallback_turn {
+                                    self.pending_turn.set("I'm listening.".to_string());
+                                }
+                                self.speak_policy.received_user_message();
+                            }
+                            Sensation::Of(_) => {
+                                self.sensation_buffer.lock().await.push_back(arc.clone());
+                            }
+                        }
+                        self.notify_observers(arc.as_ref()).await;
+                    }
+                }
             }
         }
         info!("psyche conversation ended");

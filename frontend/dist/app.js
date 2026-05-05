@@ -246,7 +246,7 @@
     const input = document.getElementById("text-input");
     const text = input.value.trim();
     if (text) {
-      safeSend(JSON.stringify({ type: "Text", text }));
+      safeSend(JSON.stringify({ type: "Text", data: { text } }));
       input.value = "";
     }
   });
@@ -431,7 +431,7 @@
         if (!result.isFinal) continue;
         const transcript = result[0]?.transcript?.trim();
         if (transcript) {
-          safeSend(JSON.stringify({ type: "Text", text: transcript }));
+          safeSend(JSON.stringify({ type: "Text", data: { text: transcript } }));
         }
       }
     };

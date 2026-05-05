@@ -56,7 +56,7 @@ struct Cli {
     )]
     embeddings_host: String,
     /// Model name to use for embeddings
-    #[arg(long, env = "EMBEDDINGS_MODEL", default_value = "gemma3")]
+    #[arg(long, env = "EMBEDDINGS_MODEL", default_value = "embeddinggemma")]
     embeddings_model: String,
     /// URL of the Coqui TTS server
     #[arg(
