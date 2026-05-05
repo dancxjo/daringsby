@@ -1,6 +1,6 @@
 use crate::{
-    AudioClip, GeoLoc, ImageData, Impression, Stimulus, audio_clip_id, geoloc_content_id,
-    image_content_id,
+    AudioClip, GeoLoc, Heartbeat, ImageData, Impression, ObjectInfo, Stimulus, audio_clip_id,
+    geoloc_content_id, image_content_id,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
@@ -9,7 +9,10 @@ use reqwest::{StatusCode, Url};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::Duration;
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -437,6 +440,7 @@ pub struct Neo4jClient {
     pub uri: String,
     pub user: String,
     pub pass: String,
+    constraint_ensured: Arc<AtomicBool>,
 }
 
 impl Default for Neo4jClient {
@@ -445,13 +449,19 @@ impl Default for Neo4jClient {
             uri: "bolt://localhost:7687".into(),
             user: "neo4j".into(),
             pass: "password".into(),
+            constraint_ensured: Arc::new(AtomicBool::new(false)),
         }
     }
 }
 
 impl Neo4jClient {
     pub fn new(uri: String, user: String, pass: String) -> Self {
-        Self { uri, user, pass }
+        Self {
+            uri,
+            user,
+            pass,
+            constraint_ensured: Arc::new(AtomicBool::new(false)),
+        }
     }
 
     /// Store `data` in the graph database.
@@ -461,34 +471,17 @@ impl Neo4jClient {
             return Ok(());
         }
         let endpoint = self.http_endpoint()?;
-        let body = json!({
-            "statements": statements.iter().map(|statement| {
-                json!({
-                    "statement": statement.statement,
-                    "parameters": statement.parameters,
-                })
-            }).collect::<Vec<_>>()
-        });
-        let response = reqwest::Client::new()
-            .post(endpoint.clone())
-            .basic_auth(&self.user, Some(&self.pass))
-            .json(&body)
-            .timeout(NEO4J_REQUEST_TIMEOUT)
-            .send()
-            .await
-            .with_context(|| format!("failed to write graph records to Neo4j at {endpoint}"))?;
-        if !response.status().is_success() {
-            return Err(unexpected_neo4j_response(response, "committing graph records").await);
-        }
-        let body: Value = response
-            .json()
-            .await
-            .context("failed to decode Neo4j transaction response")?;
-        if let Some(errors) = body.get("errors").and_then(Value::as_array) {
-            if !errors.is_empty() {
-                bail!("Neo4j returned errors while committing graph records: {errors:?}");
-            }
-        }
+        let client = reqwest::Client::new();
+        self.ensure_constraint(&client, &endpoint).await?;
+        commit_neo4j_statements(
+            &client,
+            &endpoint,
+            &self.user,
+            &self.pass,
+            &statements,
+            "committing graph records",
+        )
+        .await?;
         info!(
             target: "neo4j",
             uri = %self.uri,
@@ -496,6 +489,27 @@ impl Neo4jClient {
             count = statements.len(),
             "stored graph data"
         );
+        Ok(())
+    }
+
+    async fn ensure_constraint(&self, client: &reqwest::Client, endpoint: &Url) -> Result<()> {
+        if self.constraint_ensured.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        let statements = [CypherStatement {
+            statement: "CREATE CONSTRAINT pete_graph_node_id IF NOT EXISTS FOR (n:GraphNode) REQUIRE n.id IS UNIQUE".into(),
+            parameters: json!({}),
+        }];
+        commit_neo4j_statements(
+            client,
+            endpoint,
+            &self.user,
+            &self.pass,
+            &statements,
+            "ensuring graph node constraint",
+        )
+        .await?;
+        self.constraint_ensured.store(true, Ordering::SeqCst);
         Ok(())
     }
 
@@ -513,6 +527,45 @@ impl Neo4jClient {
         url.set_fragment(None);
         Ok(url)
     }
+}
+
+async fn commit_neo4j_statements(
+    client: &reqwest::Client,
+    endpoint: &Url,
+    user: &str,
+    pass: &str,
+    statements: &[CypherStatement],
+    action: &str,
+) -> Result<()> {
+    let body = json!({
+        "statements": statements.iter().map(|statement| {
+            json!({
+                "statement": statement.statement,
+                "parameters": statement.parameters,
+            })
+        }).collect::<Vec<_>>()
+    });
+    let response = client
+        .post(endpoint.clone())
+        .basic_auth(user, Some(pass))
+        .json(&body)
+        .timeout(NEO4J_REQUEST_TIMEOUT)
+        .send()
+        .await
+        .with_context(|| format!("failed while {action} at {endpoint}"))?;
+    if !response.status().is_success() {
+        return Err(unexpected_neo4j_response(response, action).await);
+    }
+    let body: Value = response
+        .json()
+        .await
+        .with_context(|| format!("failed to decode Neo4j response while {action}"))?;
+    if let Some(errors) = body.get("errors").and_then(Value::as_array) {
+        if !errors.is_empty() {
+            bail!("Neo4j returned errors while {action}: {errors:?}");
+        }
+    }
+    Ok(())
 }
 
 fn neo4j_http_url(source: &Url, scheme: &str, default_port: u16) -> Result<Url> {
@@ -540,10 +593,7 @@ struct CypherStatement {
 }
 
 fn graph_statements(data: &Value) -> Result<Vec<CypherStatement>> {
-    let mut statements = vec![CypherStatement {
-        statement: "CREATE CONSTRAINT pete_graph_node_id IF NOT EXISTS FOR (n:GraphNode) REQUIRE n.id IS UNIQUE".into(),
-        parameters: json!({}),
-    }];
+    let mut statements = Vec::new();
 
     if data.get("op").and_then(Value::as_str) == Some("merge_graph") {
         let nodes = data
@@ -754,7 +804,7 @@ fn stimulus_target(stimulus: &Stimulus<Value>) -> Result<GraphStimulusTarget> {
             "what": stimulus.what,
         }),
     );
-    let raw_json = serde_json::to_string(&redacted_json(&stimulus.what))?;
+    let raw_json = serde_json::to_string(&stored_payload_json(&stimulus.what))?;
     let mut nodes = vec![json!({
         "label": "Stimulus",
         "id": stimulus_id,
@@ -803,6 +853,20 @@ fn payload_target_node(
             audio_node(&audio, &id, occurred_at.to_rfc3339()),
         ));
     }
+    if let Ok(heartbeat) = serde_json::from_value::<Heartbeat>(value.clone()) {
+        let id = format!("heartbeat:{}", heartbeat.timestamp.to_rfc3339());
+        return Ok((
+            id.clone(),
+            heartbeat_node(&heartbeat, &id, occurred_at.to_rfc3339()),
+        ));
+    }
+    if let Ok(object) = serde_json::from_value::<ObjectInfo>(value.clone()) {
+        let id = object_info_id(&object, occurred_at.to_rfc3339());
+        return Ok((
+            id.clone(),
+            object_info_node(&object, &id, occurred_at.to_rfc3339()),
+        ));
+    }
     if let Some(text) = value.as_str() {
         let node = json!({
             "label": "TextObservation",
@@ -819,7 +883,7 @@ fn payload_target_node(
         json!({
             "label": "RawPayload",
             "id": id,
-            "raw_json": serde_json::to_string(&redacted_json(value))?,
+            "raw_json": serde_json::to_string(&stored_payload_json(value))?,
             "occurred_at": occurred_at.to_rfc3339(),
         }),
     ))
@@ -868,6 +932,7 @@ fn image_node(image: &ImageData, id: &str, occurred_at: String) -> Value {
         "label": "Image",
         "id": id,
         "mime": image.mime.clone(),
+        "base64": image.base64.clone(),
         "captured_at": image.captured_at.clone(),
         "occurred_at": occurred_at,
     })
@@ -878,6 +943,7 @@ fn audio_node(audio: &AudioClip, id: &str, occurred_at: String) -> Value {
         "label": "AudioClip",
         "id": id,
         "mime": audio.mime.clone(),
+        "base64": audio.base64.clone(),
         "sample_rate": audio.sample_rate,
         "channels": audio.channels,
         "captured_at": audio.captured_at.clone(),
@@ -896,27 +962,53 @@ fn geolocation_node(loc: &GeoLoc, id: &str, occurred_at: String) -> Value {
     })
 }
 
-fn redacted_json(value: &Value) -> Value {
+fn heartbeat_node(heartbeat: &Heartbeat, id: &str, occurred_at: String) -> Value {
+    json!({
+        "label": "Heartbeat",
+        "id": id,
+        "timestamp": heartbeat.timestamp.to_rfc3339(),
+        "occurred_at": occurred_at,
+    })
+}
+
+fn object_info_node(object: &ObjectInfo, id: &str, occurred_at: String) -> Value {
+    json!({
+        "label": "ObjectObservation",
+        "id": id,
+        "object_label": object.label.clone(),
+        "embedding_len": object.embedding.len(),
+        "occurred_at": occurred_at,
+    })
+}
+
+fn object_info_id(object: &ObjectInfo, occurred_at: String) -> String {
+    format!(
+        "object:{}:{}:{}",
+        object.label.clone().unwrap_or_else(|| "unknown".into()),
+        object.embedding.len(),
+        occurred_at
+    )
+}
+
+fn stored_payload_json(value: &Value) -> Value {
     match value {
         Value::Object(object) => Value::Object(
             object
                 .iter()
                 .map(|(key, value)| {
-                    let redacted = if key == "base64" {
-                        json!("<omitted>")
-                    } else if key == "embedding" {
+                    let stored = if key == "embedding" {
                         json!({
                             "omitted": true,
                             "len": value.as_array().map_or(0, Vec::len),
                         })
                     } else {
-                        redacted_json(value)
+                        stored_payload_json(value)
                     };
-                    (key.clone(), redacted)
+                    (key.clone(), stored)
                 })
                 .collect(),
         ),
-        Value::Array(items) => Value::Array(items.iter().map(redacted_json).collect()),
+        Value::Array(items) => Value::Array(items.iter().map(stored_payload_json).collect()),
         _ => value.clone(),
     }
 }

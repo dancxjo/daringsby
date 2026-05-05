@@ -3,8 +3,8 @@ use crate::sensors::face::FaceInfo;
 use crate::traits::observer::SensationObserver;
 use crate::wits::memory::{GraphStore, qdrant_vector_node};
 use crate::{
-    AudioClip, GeoEmbedding, GeoLoc, ImageData, ImageEmbedding, Sensation, Topic, TopicBus,
-    VoiceInfo, audio_clip_id, geoloc_content_id, image_content_id,
+    AudioClip, GeoEmbedding, GeoLoc, Heartbeat, ImageData, ImageEmbedding, ObjectInfo, Sensation,
+    Topic, TopicBus, VoiceInfo, audio_clip_id, geoloc_content_id, image_content_id,
 };
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -268,6 +268,46 @@ impl SensationObserver for SensationGraphObserver {
                     }),
                 )
                 .await;
+            } else if let Some(heartbeat) = payload.downcast_ref::<Heartbeat>() {
+                let id = format!("heartbeat:{}", heartbeat.timestamp.to_rfc3339());
+                let sensation_id = sensation_id("heartbeat", &id, occurred_at.to_rfc3339());
+                self.store_once(
+                    id.clone(),
+                    json!({
+                        "op": "merge_graph",
+                        "nodes": [
+                            sensation_node(&sensation_id, "heartbeat", occurred_at.to_rfc3339()),
+                            heartbeat_node(heartbeat, &id, occurred_at.to_rfc3339()),
+                        ],
+                        "relationships": [{
+                            "from": sensation_id,
+                            "to": id,
+                            "type": "OBSERVED",
+                        }],
+                    }),
+                )
+                .await;
+            } else if let Some(object) = payload.downcast_ref::<ObjectInfo>() {
+                let id = object_info_id(object, occurred_at.to_rfc3339());
+                let sensation_id = sensation_id("object", &id, occurred_at.to_rfc3339());
+                self.store_once(
+                    id.clone(),
+                    json!({
+                        "op": "merge_graph",
+                        "nodes": [
+                            sensation_node(&sensation_id, "object", occurred_at.to_rfc3339()),
+                            object_info_node(object, &id, occurred_at.to_rfc3339()),
+                        ],
+                        "relationships": [{
+                            "from": sensation_id,
+                            "to": id,
+                            "type": "OBSERVED",
+                        }],
+                    }),
+                )
+                .await;
+            } else {
+                store_unknown_sensation(self, payload.type_id(), occurred_at.to_rfc3339()).await;
             }
         }
     }
@@ -354,6 +394,66 @@ fn sensation_node(id: &str, kind: &str, occurred_at: String) -> Value {
     })
 }
 
+fn heartbeat_node(heartbeat: &Heartbeat, id: &str, occurred_at: String) -> Value {
+    json!({
+        "label": "Heartbeat",
+        "id": id,
+        "timestamp": heartbeat.timestamp.to_rfc3339(),
+        "occurred_at": occurred_at,
+    })
+}
+
+fn object_info_node(object: &ObjectInfo, id: &str, occurred_at: String) -> Value {
+    json!({
+        "label": "ObjectObservation",
+        "id": id,
+        "object_label": object.label.clone(),
+        "embedding_len": object.embedding.len(),
+        "occurred_at": occurred_at,
+    })
+}
+
+fn object_info_id(object: &ObjectInfo, occurred_at: String) -> String {
+    format!(
+        "object:{}:{}:{}",
+        object.label.clone().unwrap_or_else(|| "unknown".into()),
+        object.embedding.len(),
+        occurred_at
+    )
+}
+
+async fn store_unknown_sensation(
+    observer: &SensationGraphObserver,
+    type_id: std::any::TypeId,
+    occurred_at: String,
+) {
+    let type_id = format!("{type_id:?}");
+    let id = format!("unknown-sensation:{type_id}:{occurred_at}");
+    let sensation_id = sensation_id("unknown", &id, occurred_at.clone());
+    observer
+        .store_once(
+            id.clone(),
+            json!({
+                "op": "merge_graph",
+                "nodes": [
+                    sensation_node(&sensation_id, "unknown", occurred_at.clone()),
+                    {
+                        "label": "UnknownSensation",
+                        "id": id,
+                        "type_id": type_id,
+                        "occurred_at": occurred_at,
+                    }
+                ],
+                "relationships": [{
+                    "from": sensation_id,
+                    "to": id,
+                    "type": "OBSERVED",
+                }],
+            }),
+        )
+        .await;
+}
+
 #[cfg(feature = "face")]
 fn face_node(face: &FaceInfo, occurred_at: String) -> Value {
     json!({
@@ -361,6 +461,7 @@ fn face_node(face: &FaceInfo, occurred_at: String) -> Value {
         "id": face.face_id,
         "source_image_id": face.source_image_id,
         "crop_mime": face.crop.mime.clone(),
+        "crop_base64": face.crop.base64.clone(),
         "captured_at": face.crop.captured_at.clone(),
         "occurred_at": occurred_at,
     })
@@ -376,6 +477,7 @@ fn image_node(image: &ImageData, id: &str, occurred_at: String) -> Value {
         "id": id,
         "merge_key": "id",
         "mime": image.mime.clone(),
+        "base64": image.base64.clone(),
         "captured_at": image.captured_at.clone(),
         "occurred_at": occurred_at,
     })
@@ -387,6 +489,7 @@ fn audio_node(audio: &AudioClip, id: &str, occurred_at: String) -> Value {
         "id": id,
         "merge_key": "id",
         "mime": audio.mime.clone(),
+        "base64": audio.base64.clone(),
         "sample_rate": audio.sample_rate,
         "channels": audio.channels,
         "captured_at": audio.captured_at.clone(),

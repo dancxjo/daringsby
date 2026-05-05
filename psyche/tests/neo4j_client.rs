@@ -8,9 +8,19 @@ async fn neo4j_client_converts_bolt_uri_to_http_commit_endpoint() {
     let host = server.address().ip();
     let http_port = server.address().port();
     let bolt_port = if http_port == 7687 { 7688 } else { http_port };
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
     let commit = server
         .mock_async(|when, then| {
-            when.method(POST).path("/db/neo4j/tx/commit");
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MERGE (n:GraphNode");
             then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
         })
         .await;
@@ -31,17 +41,25 @@ async fn neo4j_client_converts_bolt_uri_to_http_commit_endpoint() {
     .await
     .unwrap();
 
+    constraint.assert_async().await;
     commit.assert_async().await;
 }
 
 #[tokio::test]
 async fn neo4j_client_commits_merge_graph_records() {
     let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
     let commit = server
         .mock_async(|when, then| {
             when.method(POST)
                 .path("/db/neo4j/tx/commit")
-                .body_contains("CREATE CONSTRAINT pete_graph_node_id")
                 .body_contains("MERGE (n:GraphNode")
                 .body_contains("HAS_IMAGE_VECTOR")
                 .body_contains("qdrant:images:point-1");
@@ -76,6 +94,7 @@ async fn neo4j_client_commits_merge_graph_records() {
         .await
         .unwrap();
 
+    constraint.assert_async().await;
     commit.assert_async().await;
 }
 
@@ -84,7 +103,17 @@ async fn neo4j_client_reports_transaction_errors() {
     let server = MockServer::start_async().await;
     server
         .mock_async(|when, then| {
-            when.method(POST).path("/db/neo4j/tx/commit");
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MERGE (n:GraphNode");
             then.status(200)
                 .body(r#"{"results":[],"errors":[{"code":"Neo.ClientError","message":"bad"}]}"#);
         })
@@ -103,4 +132,40 @@ async fn neo4j_client_reports_transaction_errors() {
         .unwrap_err();
 
     assert!(err.to_string().contains("Neo4j returned errors"));
+}
+
+#[tokio::test]
+async fn neo4j_client_ensures_constraint_once_per_client() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let commit = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MERGE (n:GraphNode");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let client = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into());
+    let record = json!({
+        "op": "merge_graph",
+        "nodes": [{
+            "label": "Image",
+            "id": "image:1",
+        }],
+        "relationships": [],
+    });
+
+    client.store_data(&record).await.unwrap();
+    client.store_data(&record).await.unwrap();
+
+    constraint.assert_hits_async(1).await;
+    commit.assert_hits_async(2).await;
 }
