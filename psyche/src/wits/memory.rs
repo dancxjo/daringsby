@@ -26,8 +26,22 @@ const SCENE_VECTOR_COLLECTION: &str = "scene_vectors";
 const FACE_COLLECTION: &str = "faces";
 const GEOLOCATION_COLLECTION: &str = "geolocations";
 const VOICE_COLLECTION: &str = "voices";
+const QDRANT_VECTOR_COLLECTIONS: &[&str] = &[
+    MEMORY_COLLECTION,
+    IMAGE_COLLECTION,
+    IMAGE_DESCRIPTION_COLLECTION,
+    SCENE_VECTOR_COLLECTION,
+    FACE_COLLECTION,
+    GEOLOCATION_COLLECTION,
+    VOICE_COLLECTION,
+];
 const QDRANT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const NEO4J_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Return the Qdrant collections Pete writes vector embeddings into.
+pub fn qdrant_vector_collections() -> &'static [&'static str] {
+    QDRANT_VECTOR_COLLECTIONS
+}
 
 /// One vector point loaded from Qdrant for offline analysis.
 #[derive(Clone, Debug, PartialEq)]
@@ -394,8 +408,31 @@ impl QdrantClient {
         max_points: usize,
         page_size: usize,
     ) -> Result<Vec<QdrantVectorPoint>> {
+        self.scroll_vectors_with_missing_policy(collection, max_points, page_size, false)
+            .await
+            .map(|points| points.unwrap_or_default())
+    }
+
+    /// Load vector points when a collection exists, returning `None` for absent collections.
+    pub async fn scroll_vectors_if_collection_exists(
+        &self,
+        collection: &str,
+        max_points: usize,
+        page_size: usize,
+    ) -> Result<Option<Vec<QdrantVectorPoint>>> {
+        self.scroll_vectors_with_missing_policy(collection, max_points, page_size, true)
+            .await
+    }
+
+    async fn scroll_vectors_with_missing_policy(
+        &self,
+        collection: &str,
+        max_points: usize,
+        page_size: usize,
+        allow_missing_collection: bool,
+    ) -> Result<Option<Vec<QdrantVectorPoint>>> {
         if max_points == 0 {
-            return Ok(Vec::new());
+            return Ok(Some(Vec::new()));
         }
         let page_size = page_size.max(1).min(max_points);
         let client = reqwest::Client::new();
@@ -421,6 +458,9 @@ impl QdrantClient {
                 .await
                 .with_context(|| format!("failed to scroll Qdrant collection {collection}"))?;
             if !response.status().is_success() {
+                if allow_missing_collection && response.status() == StatusCode::NOT_FOUND {
+                    return Ok(None);
+                }
                 return Err(unexpected_qdrant_response(
                     response,
                     &format!("scrolling collection {collection}"),
@@ -443,7 +483,7 @@ impl QdrantClient {
             }
         }
 
-        Ok(points)
+        Ok(Some(points))
     }
 
     async fn upsert_vector(
@@ -1157,6 +1197,10 @@ pub struct GraphClusterItem {
     pub text: String,
     /// Human-readable stimuli interpreted by the source node, when present.
     pub stimuli: Vec<String>,
+    /// Human-readable graph relationships near the source node.
+    pub edges: Vec<String>,
+    /// Human-readable neighboring graph nodes near the source node.
+    pub neighbors: Vec<String>,
 }
 
 /// LLM-generated theme for one vector cluster.
@@ -1539,25 +1583,38 @@ impl Neo4jClient {
 
                         WITH s
                         MATCH (s)<-[:HAS_SEGMENT]-(t:GraphNode:Transcription)
-                        MATCH (s)-[:DERIVED_FROM_AUDIO]->(a:GraphNode:AudioClip)
+                        MATCH (s)-[source_rel:DERIVED_FROM_AUDIO]->(a:GraphNode:AudioClip)
                         OPTIONAL MATCH (t)-[out:DERIVED_FROM_AUDIO]->(a)
                         OPTIONAL MATCH (a)-[source_in:HAS_BIG_TRANSCRIPTION]->(t)
                         WITH s, a,
+                            source_rel.clip_start_ms AS stored_clip_start_ms,
+                            source_rel.clip_end_ms AS stored_clip_end_ms,
                             toInteger(coalesce(s.start_ms, 0)) AS segment_start_ms,
                             toInteger(coalesce(s.end_ms, s.start_ms, 0)) AS segment_end_ms,
-                            toInteger(coalesce(out.start_ms, source_in.start_ms, 0)) AS source_start_ms,
-                            toInteger(coalesce(out.end_ms, source_in.end_ms, s.end_ms, s.start_ms, 0)) AS source_end_ms
+                            toInteger(coalesce(source_rel.source_start_ms, out.start_ms, source_in.start_ms, 0)) AS source_start_ms,
+                            toInteger(coalesce(source_rel.source_end_ms, out.end_ms, source_in.end_ms, s.end_ms, s.start_ms, 0)) AS source_end_ms
                         WHERE segment_start_ms < source_end_ms
                           AND segment_end_ms > source_start_ms
                         WITH s, a, source_start_ms, source_end_ms,
                             CASE
+                                WHEN stored_clip_start_ms IS NOT NULL THEN toInteger(stored_clip_start_ms)
+                                ELSE NULL
+                            END AS stored_clip_start_ms,
+                            CASE
+                                WHEN stored_clip_end_ms IS NOT NULL THEN toInteger(stored_clip_end_ms)
+                                ELSE NULL
+                            END AS stored_clip_end_ms,
+                            CASE
                                 WHEN segment_start_ms > source_start_ms THEN segment_start_ms - source_start_ms
                                 ELSE 0
-                            END AS clip_start_ms,
+                            END AS derived_clip_start_ms,
                             CASE
                                 WHEN segment_end_ms < source_end_ms THEN segment_end_ms - source_start_ms
                                 ELSE source_end_ms - source_start_ms
-                            END AS clip_end_ms
+                            END AS derived_clip_end_ms
+                        WITH s, a,
+                            coalesce(stored_clip_start_ms, derived_clip_start_ms) AS clip_start_ms,
+                            coalesce(stored_clip_end_ms, derived_clip_end_ms) AS clip_end_ms
                         RETURN a, clip_start_ms, clip_end_ms
                     }
                     RETURN
@@ -1665,8 +1722,55 @@ impl Neo4jClient {
                             ELSE head([text IN stimulus_texts WHERE text <> ""])
                         END AS text,
                         [text IN stimulus_texts WHERE text <> ""] AS stimulus_texts
+                    CALL {
+                        WITH owner
+                        OPTIONAL MATCH (owner)-[rel]-(neighbor:GraphNode)
+                        WHERE neighbor IS NOT NULL
+                          AND NOT neighbor:Vector
+                          AND NOT neighbor:Cluster
+                          AND NOT neighbor:ClusterDiscoveryRun
+                          AND NOT neighbor:ClusterThemeRun
+                        WITH owner, rel, neighbor,
+                            CASE
+                                WHEN neighbor:SpeechSegment THEN "speech: " + coalesce(neighbor.text, "")
+                                WHEN neighbor:Transcription THEN "transcription: " + coalesce(neighbor.text, neighbor.transcript, "")
+                                WHEN neighbor:ImageDescription THEN "vision: " + coalesce(neighbor.text, "")
+                                WHEN neighbor:Impression THEN "impression: " + coalesce(neighbor.summary, "")
+                                WHEN neighbor:Awareness THEN "awareness: " + coalesce(neighbor.text, neighbor.summary, "")
+                                WHEN neighbor:TextObservation THEN "text: " + coalesce(neighbor.text, "")
+                                WHEN neighbor:Geolocation THEN "geolocation: " + toString(neighbor.latitude) + ", " + toString(neighbor.longitude)
+                                WHEN neighbor:Heartbeat THEN "heartbeat"
+                                WHEN neighbor:Image THEN "image captured"
+                                WHEN neighbor:AudioClip THEN
+                                    CASE
+                                        WHEN neighbor.transcript IS NULL OR neighbor.transcript = "" THEN "audio clip captured"
+                                        ELSE "audio: " + neighbor.transcript
+                                    END
+                                WHEN neighbor:ObjectObservation THEN "object: " + coalesce(neighbor.object_label, "unknown")
+                                WHEN neighbor:Face THEN "face detected"
+                                WHEN neighbor:Voice THEN "voice detected"
+                                ELSE coalesce(neighbor.summary, neighbor.text, neighbor.transcript, neighbor.object_label, "")
+                            END AS neighbor_text
+                        ORDER BY type(rel), neighbor.id
+                        WITH collect({
+                            edge: (CASE
+                                WHEN startNode(rel) = owner THEN "-[:" + type(rel) + "]-> "
+                                ELSE "<-[:" + type(rel) + "]- "
+                            END) + coalesce(neighbor.id, ""),
+                            neighbor: (CASE
+                                WHEN size([label IN labels(neighbor) WHERE label <> "GraphNode"]) = 0 THEN "Node"
+                                ELSE toString([label IN labels(neighbor) WHERE label <> "GraphNode"])
+                            END) + " " + CASE
+                                WHEN neighbor_text <> "" THEN neighbor_text
+                                ELSE coalesce(neighbor.id, "")
+                            END
+                        })[..8] AS context
+                        RETURN
+                            [item IN context | item.edge] AS edge_texts,
+                            [item IN context | item.neighbor] AS neighbor_texts
+                    }
                     WHERE text IS NOT NULL AND text <> ""
-                    RETURN vector_id, owner.id, labels(owner), text, stimulus_texts
+                    RETURN vector_id, owner.id, labels(owner), text, stimulus_texts, edge_texts, neighbor_texts
                     ORDER BY vector_id, owner.id
                     LIMIT $limit
                 "#
@@ -2016,11 +2120,23 @@ impl Neo4jClient {
                     source.end_ms,
                 )
             }) {
+                let (clip_start_ms, clip_end_ms) = clip_local_overlap(
+                    segment.start_ms,
+                    segment.end_ms,
+                    source.start_ms,
+                    source.end_ms,
+                );
                 relationships.push(json!({
                     "from": segment_id,
                     "to": source.audio_clip_id,
                     "type": "DERIVED_FROM_AUDIO",
                     "source_index": source.index,
+                    "segment_start_ms": segment.start_ms,
+                    "segment_end_ms": segment.end_ms,
+                    "source_start_ms": source.start_ms,
+                    "source_end_ms": source.end_ms,
+                    "clip_start_ms": clip_start_ms,
+                    "clip_end_ms": clip_end_ms,
                 }));
             }
         }
@@ -3247,6 +3363,8 @@ fn graph_cluster_item_from_row(row: &Value) -> Result<GraphClusterItem> {
         labels: row_string_vec(values, 2),
         text: row_string(values, 3, "cluster item text")?,
         stimuli: row_string_vec(values, 4),
+        edges: row_string_vec(values, 5),
+        neighbors: row_string_vec(values, 6),
     })
 }
 
@@ -3958,6 +4076,20 @@ fn stable_bytes_id(prefix: &str, bytes: &[u8]) -> String {
 
 fn spans_overlap(a_start_ms: u32, a_end_ms: u32, b_start_ms: u32, b_end_ms: u32) -> bool {
     a_start_ms < b_end_ms && b_start_ms < a_end_ms
+}
+
+fn clip_local_overlap(
+    segment_start_ms: u32,
+    segment_end_ms: u32,
+    source_start_ms: u32,
+    source_end_ms: u32,
+) -> (u32, u32) {
+    let overlap_start = segment_start_ms.max(source_start_ms);
+    let overlap_end = segment_end_ms.min(source_end_ms);
+    (
+        overlap_start.saturating_sub(source_start_ms),
+        overlap_end.saturating_sub(source_start_ms),
+    )
 }
 
 #[async_trait]

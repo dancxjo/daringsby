@@ -7,7 +7,7 @@ use lingproc::{Doer, LlmInstruction};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
     GraphClusterItem, GraphClusterTheme, Neo4jClient, QdrantClient, VectorCluster,
-    find_vector_clusters, with_default_system_prompt,
+    find_vector_clusters, qdrant_vector_collections,
 };
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{debug, error, info, warn};
@@ -33,9 +33,14 @@ struct Cli {
     /// Qdrant HTTP endpoint.
     #[arg(long, env = "QDRANT_URL", default_value = "http://localhost:6333")]
     qdrant_url: String,
-    /// Qdrant collection to cluster.
-    #[arg(long, env = "CLUSTER_COLLECTION", default_value = "memories")]
-    collection: String,
+    /// Qdrant collection to cluster. Repeat or use commas; omitted means every known vector collection.
+    #[arg(
+        long = "collection",
+        env = "CLUSTER_COLLECTION",
+        value_name = "COLLECTION",
+        value_delimiter = ','
+    )]
+    collection: Vec<String>,
     /// Minimum cosine similarity for an edge between two vectors.
     #[arg(long, env = "CLUSTER_THRESHOLD", default_value_t = 0.86)]
     threshold: f32,
@@ -103,8 +108,9 @@ async fn main() -> anyhow::Result<()> {
     let mut ticker = interval(Duration::from_millis(cli.poll_ms.max(250)));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
+    let collections = selected_collections(&cli.collection);
     info!(
-        collection = %cli.collection,
+        collections = ?collections,
         threshold = cli.threshold,
         min_size = cli.min_size,
         poll_ms = cli.poll_ms,
@@ -124,14 +130,47 @@ async fn run_cluster_pass(
     graph: &Neo4jClient,
     themer: Option<&ClusterThemeProcessor>,
 ) -> anyhow::Result<()> {
+    let collections = selected_collections(&cli.collection);
+    let skip_missing_collections = cli.collection.is_empty();
+
+    for collection in collections {
+        run_cluster_collection(
+            cli,
+            qdrant,
+            graph,
+            themer,
+            &collection,
+            skip_missing_collections,
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+async fn run_cluster_collection(
+    cli: &Cli,
+    qdrant: &QdrantClient,
+    graph: &Neo4jClient,
+    themer: Option<&ClusterThemeProcessor>,
+    collection: &str,
+    skip_missing_collection: bool,
+) -> anyhow::Result<()> {
     let points = qdrant
-        .scroll_vectors(&cli.collection, cli.max_points, cli.page_size)
+        .scroll_vectors_if_collection_exists(collection, cli.max_points, cli.page_size)
         .await
-        .with_context(|| format!("failed to load vectors from {}", cli.collection))?;
-    let clusters = find_vector_clusters(&cli.collection, &points, cli.threshold, cli.min_size);
+        .with_context(|| format!("failed to load vectors from {collection}"))?;
+    let Some(points) = points else {
+        if skip_missing_collection {
+            debug!(collection, "skipping missing Qdrant collection");
+            return Ok(());
+        }
+        anyhow::bail!("Qdrant collection {collection} does not exist");
+    };
+    let clusters = find_vector_clusters(collection, &points, cli.threshold, cli.min_size);
 
     info!(
-        collection = %cli.collection,
+        collection = %collection,
         point_count = points.len(),
         cluster_count = clusters.len(),
         threshold = cli.threshold,
@@ -152,7 +191,7 @@ async fn run_cluster_pass(
             "found {} clusters from {} {} points",
             clusters.len(),
             points.len(),
-            cli.collection
+            collection
         );
         for cluster in &clusters {
             println!(
@@ -167,7 +206,7 @@ async fn run_cluster_pass(
 
     graph
         .attach_vector_clusters(
-            &cli.collection,
+            collection,
             ALGORITHM,
             cli.threshold,
             cli.min_size,
@@ -181,6 +220,31 @@ async fn run_cluster_pass(
         theme_new_clusters(cli, graph, themer, &clusters).await?;
     }
     Ok(())
+}
+
+fn selected_collections(requested: &[String]) -> Vec<String> {
+    let collections = if requested.is_empty() {
+        qdrant_vector_collections()
+            .iter()
+            .map(|collection| (*collection).to_string())
+            .collect::<Vec<_>>()
+    } else {
+        requested
+            .iter()
+            .flat_map(|value| value.split(','))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>()
+    };
+
+    let mut deduped = Vec::new();
+    for collection in collections {
+        if !deduped.contains(&collection) {
+            deduped.push(collection);
+        }
+    }
+    deduped
 }
 
 async fn theme_new_clusters(
@@ -205,7 +269,7 @@ async fn theme_new_clusters(
             .map(|member| member.point_id.clone())
             .collect::<Vec<_>>();
         let items = graph
-            .vector_cluster_items(&cli.collection, &point_ids, cli.theme_item_limit)
+            .vector_cluster_items(&cluster.collection, &point_ids, cli.theme_item_limit)
             .await
             .with_context(|| format!("failed loading source items for {}", cluster.cluster_id))?;
         if items.is_empty() {
@@ -246,16 +310,15 @@ impl ClusterThemeProcessor {
         cluster: &VectorCluster,
         items: &[GraphClusterItem],
     ) -> anyhow::Result<GraphClusterTheme> {
-        let text = self
+        let raw_text = self
             .doer
             .follow(LlmInstruction {
                 command: cluster_theme_prompt(cluster, items),
                 images: Vec::new(),
             })
             .await?
-            .trim()
-            .trim_matches('"')
             .to_string();
+        let text = normalize_cluster_theme(&raw_text);
         anyhow::ensure!(!text.is_empty(), "cluster theme model returned empty text");
         Ok(GraphClusterTheme {
             theme_id: format!("theme:{}", cluster.cluster_id),
@@ -270,16 +333,87 @@ fn cluster_theme_prompt(cluster: &VectorCluster, items: &[GraphClusterItem]) -> 
         .map(cluster_prompt_item)
         .collect::<Vec<_>>()
         .join("\n");
-    with_default_system_prompt(format!(
-        "The following entries are memories or perceptions whose embeddings are near each other. \
+    format!(
+        "You extract terse real-world theme labels from related memories and perceptions.\n\n\
+         The following entries are memories or perceptions whose embeddings are near each other. \
+         Each entry may include supporting stimuli, graph edges, and nearby graph nodes for context. \
          Treat labels like Vector, Cluster, Impression, SpeechSegment, AudioClip, and ImageDescription as implementation details, not as the topic.\n\
-         What is the common real-world theme among these items? Answer with one concise phrase or one short sentence. \
-         Do not mention vectors, embeddings, clusters, graph ids, or implementation details.\n\n\
+         What is the common real-world theme among these items? Answer with only the theme itself as a concise noun phrase. \
+         Do not write a complete sentence. Do not add commentary, emotion, sentence-ending punctuation, vectors, embeddings, clusters, graph ids, or implementation details.\n\n\
          Collection: {}\n\
          Cluster mean similarity: {:.3}\n\
          Entries:\n{}",
         cluster.collection, cluster.mean_similarity, entries
-    ))
+    )
+}
+
+fn normalize_cluster_theme(raw_text: &str) -> String {
+    let trimmed = raw_text.trim().trim_matches('"').trim();
+    let (without_emojis, _) = psyche::extract_emojis(trimmed);
+    let without_wrappers =
+        strip_cluster_theme_sentence(trim_theme_punctuation(without_emojis.trim()));
+    trim_theme_punctuation(without_wrappers).to_string()
+}
+
+fn strip_cluster_theme_sentence(text: &str) -> &str {
+    let mut theme = text.trim();
+    for prefix in [
+        "the common theme is ",
+        "the shared theme is ",
+        "the theme is ",
+        "the consistent topic is ",
+        "the topic is ",
+        "common theme: ",
+        "shared theme: ",
+        "theme: ",
+        "topic: ",
+    ] {
+        if let Some(rest) = strip_prefix_ignore_ascii_case(theme, prefix) {
+            theme = rest.trim();
+            break;
+        }
+    }
+
+    for suffix in [
+        " is the consistent topic of these transcriptions",
+        " is the consistent topic of these entries",
+        " is the consistent topic of these items",
+        " is the common topic of these transcriptions",
+        " is the common topic of these entries",
+        " is the common topic of these items",
+        " is the common theme",
+        " is the shared theme",
+        " is the topic",
+    ] {
+        if let Some(rest) = strip_suffix_ignore_ascii_case(theme, suffix) {
+            theme = rest.trim();
+            break;
+        }
+    }
+
+    theme
+}
+
+fn strip_prefix_ignore_ascii_case<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
+    let possible_prefix = text.get(..prefix.len())?;
+    possible_prefix
+        .eq_ignore_ascii_case(prefix)
+        .then(|| &text[prefix.len()..])
+}
+
+fn strip_suffix_ignore_ascii_case<'a>(text: &'a str, suffix: &str) -> Option<&'a str> {
+    let suffix_start = text.len().checked_sub(suffix.len())?;
+    let possible_suffix = text.get(suffix_start..)?;
+    possible_suffix
+        .eq_ignore_ascii_case(suffix)
+        .then(|| &text[..suffix_start])
+}
+
+fn trim_theme_punctuation(text: &str) -> &str {
+    text.trim()
+        .trim_matches('"')
+        .trim_end_matches(['.', '!', '?', ':', ';'])
+        .trim()
 }
 
 fn cluster_prompt_item(item: &GraphClusterItem) -> String {
@@ -302,6 +436,30 @@ fn cluster_prompt_item(item: &GraphClusterItem) -> String {
                 .stimuli
                 .iter()
                 .map(|stimulus| truncate_for_prompt(stimulus, 180))
+                .collect::<Vec<_>>()
+                .join("; "),
+        );
+        line.push(')');
+    }
+    if !item.edges.is_empty() {
+        line.push_str(" (edges: ");
+        line.push_str(
+            &item
+                .edges
+                .iter()
+                .map(|edge| truncate_for_prompt(edge, 180))
+                .collect::<Vec<_>>()
+                .join("; "),
+        );
+        line.push(')');
+    }
+    if !item.neighbors.is_empty() {
+        line.push_str(" (neighbors: ");
+        line.push_str(
+            &item
+                .neighbors
+                .iter()
+                .map(|neighbor| truncate_for_prompt(neighbor, 180))
                 .collect::<Vec<_>>()
                 .join("; "),
         );
@@ -334,11 +492,36 @@ mod tests {
             labels: vec!["GraphNode".into(), "Impression".into()],
             text: "impression: someone is talking about coffee".into(),
             stimuli: vec!["text: coffee is ready".into()],
+            edges: vec!["-[:HAS_STIMULUS]-> stimulus:1".into()],
+            neighbors: vec!["TextObservation text: coffee is ready".into()],
         };
 
         assert_eq!(
             cluster_prompt_item(&item),
-            "- Impression impression: someone is talking about coffee (stimuli: text: coffee is ready)"
+            "- Impression impression: someone is talking about coffee (stimuli: text: coffee is ready) (edges: -[:HAS_STIMULUS]-> stimulus:1) (neighbors: TextObservation text: coffee is ready)"
+        );
+    }
+
+    #[test]
+    fn selected_collections_defaults_to_known_vector_collections() {
+        assert_eq!(
+            selected_collections(&[]),
+            qdrant_vector_collections()
+                .iter()
+                .map(|collection| (*collection).to_string())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn selected_collections_accepts_csv_values_and_deduplicates() {
+        assert_eq!(
+            selected_collections(&[
+                "memories,image_descriptions".into(),
+                "memories".into(),
+                " voices ".into(),
+            ]),
+            vec!["memories", "image_descriptions", "voices"]
         );
     }
 
@@ -361,13 +544,38 @@ mod tests {
             labels: vec!["Impression".into()],
             text: "impression: coffee is brewing".into(),
             stimuli: Vec::new(),
+            edges: Vec::new(),
+            neighbors: Vec::new(),
         };
 
         let prompt = cluster_theme_prompt(&cluster, &[item]);
 
-        assert!(prompt.contains("You are PETE"));
+        assert!(prompt.contains("terse real-world theme labels"));
         assert!(prompt.contains("common real-world theme"));
-        assert!(prompt.contains("Do not mention vectors"));
+        assert!(prompt.contains("Answer with only the theme itself as a concise noun phrase"));
+        assert!(prompt.contains("Do not write a complete sentence"));
+        assert!(!prompt.contains("You intersperse emojis"));
+        assert!(!prompt.contains("emoji"));
+        assert!(!prompt.contains("one short sentence"));
+        assert!(prompt.contains("vectors, embeddings, clusters"));
         assert!(prompt.contains("coffee is brewing"));
+    }
+
+    #[test]
+    fn normalize_cluster_theme_removes_sentence_wrapper_and_emoji() {
+        assert_eq!(
+            normalize_cluster_theme(
+                "A virus outbreak on a boat is the consistent topic of these transcriptions. 😟"
+            ),
+            "A virus outbreak on a boat"
+        );
+    }
+
+    #[test]
+    fn normalize_cluster_theme_removes_theme_prefix_and_punctuation() {
+        assert_eq!(
+            normalize_cluster_theme("\"The common theme is coffee brewing.\""),
+            "coffee brewing"
+        );
     }
 }

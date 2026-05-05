@@ -1,5 +1,21 @@
 use httpmock::{Method::DELETE, Method::GET, Method::POST, Method::PUT, MockServer};
-use psyche::QdrantClient;
+use psyche::{QdrantClient, qdrant_vector_collections};
+
+#[test]
+fn qdrant_vector_collections_lists_all_written_vector_collections() {
+    assert_eq!(
+        qdrant_vector_collections(),
+        &[
+            "memories",
+            "images",
+            "image_descriptions",
+            "scene_vectors",
+            "faces",
+            "geolocations",
+            "voices",
+        ]
+    );
+}
 
 #[tokio::test]
 async fn store_face_vector_creates_collection_and_upserts_point() {
@@ -475,5 +491,27 @@ async fn scroll_vectors_reads_points_with_payloads_and_vectors() {
     assert_eq!(points[0].point_id, "point-1");
     assert_eq!(points[0].vector, vec![1.0, 0.0]);
     assert_eq!(points[0].payload["neo4j_node_id"], "memory:1");
+    scroll.assert_async().await;
+}
+
+#[tokio::test]
+async fn scroll_vectors_if_collection_exists_returns_none_for_missing_collection() {
+    let server = MockServer::start_async().await;
+    let scroll = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/collections/voices/points/scroll")
+                .body_contains("\"with_payload\":true")
+                .body_contains("\"with_vector\":true");
+            then.status(404).body("{}");
+        })
+        .await;
+
+    let points = QdrantClient::new(server.base_url())
+        .scroll_vectors_if_collection_exists("voices", 10, 2)
+        .await
+        .unwrap();
+
+    assert_eq!(points, None);
     scroll.assert_async().await;
 }

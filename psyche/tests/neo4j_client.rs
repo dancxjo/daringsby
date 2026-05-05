@@ -747,6 +747,7 @@ async fn neo4j_client_loads_speech_segment_audio_source() {
                 .body_contains("MATCH (s:GraphNode:SpeechSegment {id: $id})")
                 .body_contains("HAS_BIG_TRANSCRIPTION")
                 .body_contains("DERIVED_FROM_AUDIO")
+                .body_contains("source_rel.clip_start_ms")
                 .body_contains("\"id\":\"speech:1\"");
             then.status(200).json_body(json!({
                 "results": [{
@@ -886,6 +887,11 @@ async fn neo4j_client_attaches_big_audio_transcription() {
                 .body_contains("sensation:audio:2")
                 .body_contains("\"anchor\":true")
                 .body_contains("\"source_index\":1")
+                .body_contains("\"clip_start_ms\":900")
+                .body_contains("\"clip_end_ms\":1000")
+                .body_contains("\"clip_start_ms\":0")
+                .body_contains("\"clip_end_ms\":300")
+                .body_contains("\"source_start_ms\":1000")
                 .body_contains("\"text\":\"hello there\"")
                 .body_contains("\"transcript\":\"hello there\"");
             then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
@@ -1226,19 +1232,22 @@ async fn neo4j_client_loads_vector_cluster_items() {
                 .path("/db/neo4j/tx/commit")
                 .body_contains("UNWIND $vector_ids AS vector_id")
                 .body_contains("HAS_MEMORY_VECTOR")
-                .body_contains("RETURN vector_id, owner.id, labels(owner), text, stimulus_texts")
+                .body_contains("OPTIONAL MATCH (owner)-[rel]-(neighbor:GraphNode)")
+                .body_contains("RETURN vector_id, owner.id, labels(owner), text, stimulus_texts, edge_texts, neighbor_texts")
                 .body_contains("qdrant:memories:point-1")
                 .body_contains("\"limit\":10");
             then.status(200).json_body(json!({
                 "results": [{
-                    "columns": ["vector_id", "owner.id", "labels(owner)", "text", "stimulus_texts"],
+                    "columns": ["vector_id", "owner.id", "labels(owner)", "text", "stimulus_texts", "edge_texts", "neighbor_texts"],
                     "data": [{
                         "row": [
                             "qdrant:memories:point-1",
                             "impression:1",
                             ["GraphNode", "Impression"],
                             "impression: coffee is brewing",
-                            ["text: coffee beans"]
+                            ["text: coffee beans"],
+                            ["-[:HAS_STIMULUS]-> stimulus:1"],
+                            ["TextObservation text: coffee beans"]
                         ]
                     }]
                 }],
@@ -1260,6 +1269,8 @@ async fn neo4j_client_loads_vector_cluster_items() {
             labels: vec!["GraphNode".into(), "Impression".into()],
             text: "impression: coffee is brewing".into(),
             stimuli: vec!["text: coffee beans".into()],
+            edges: vec!["-[:HAS_STIMULUS]-> stimulus:1".into()],
+            neighbors: vec!["TextObservation text: coffee beans".into()],
         }]
     );
     query.assert_async().await;
@@ -1336,6 +1347,8 @@ async fn neo4j_client_attaches_vector_cluster_theme() {
         labels: vec!["Impression".into()],
         text: "impression: coffee is brewing".into(),
         stimuli: Vec::new(),
+        edges: Vec::new(),
+        neighbors: Vec::new(),
     }];
     let theme = GraphClusterTheme {
         theme_id: "theme:cluster:1".into(),
