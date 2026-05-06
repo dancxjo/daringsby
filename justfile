@@ -14,7 +14,7 @@ run:
         bin="${path##*/}"
         bin="${bin%.rs}"
         # simulate is an ad hoc client utility that requires a subcommand.
-        if [[ "$bin" == "pete" || "$bin" == "simulate" ]]; then
+        if [[ "$bin" == "pete" || "$bin" == "simulate" || "$bin" == "raw_retention" ]]; then
             continue
         fi
         bins+=("$bin")
@@ -55,6 +55,10 @@ run:
     done
 
     wait -n "${pids[@]}"
+
+# Forget derived graph/vector data while retaining raw sensations and media.
+forget *args:
+    cargo run -p pete --bin raw_retention -- --confirm {{args}}
 
 # Start Pete with debug logging unless RUST_LOG is already set.
 debug *args:
