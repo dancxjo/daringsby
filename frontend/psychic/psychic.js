@@ -45,6 +45,7 @@
   const fullGraph = { nodes: [], relationships: [] };
   const graph = { nodes: [], relationships: [] };
   const nodeState = new Map();
+  const maxEmbeddingLinksPerCluster = 80;
   let selected = null;
   let socket = null;
   let lastSnapshotSignature = "";
@@ -66,11 +67,13 @@
       d3
         .forceLink()
         .id((node) => node.id)
-        .distance((link) => 90 + Math.min(link.type.length * 2, 70))
-        .strength(0.45),
+        .distance(linkDistance)
+        .strength(linkStrength),
     )
-    .force("charge", d3.forceManyBody().strength(-520))
+    .force("charge", d3.forceManyBody().strength(chargeStrength))
     .force("center", d3.forceCenter())
+    .force("theme-x", d3.forceX().strength(themeCenterStrength))
+    .force("theme-y", d3.forceY().strength(themeCenterStrength))
     .force("collision", d3.forceCollide().radius((node) => nodeRadius(node) + 9))
     .on("tick", ticked);
 
@@ -135,7 +138,7 @@
       (rel) => nodeIds.has(rel.source) && nodeIds.has(rel.target),
     );
     graph.nodes = fullGraph.nodes;
-    graph.relationships = fullGraph.relationships;
+    graph.relationships = graphRelationships();
     nodeCountEl.textContent = graph.nodes.length.toString();
     relationshipCountEl.textContent = graph.relationships.length.toString();
 
@@ -157,14 +160,18 @@
       .data(graph.relationships, (rel) => rel.id || `${rel.source}:${rel.type}:${rel.target}`);
 
     links.exit().remove();
-    links
+    const enteredLinks = links
       .enter()
       .append("line")
-      .attr("class", "link")
       .on("click", (event, rel) => {
         event.stopPropagation();
         selectItem({ kind: "relationship", value: rel });
       });
+    enteredLinks
+      .merge(links)
+      .attr("class", linkClass)
+      .attr("stroke-width", linkStrokeWidth)
+      .attr("opacity", linkOpacity);
 
     const linkLabels = labelLayer
       .selectAll("text")
@@ -175,7 +182,8 @@
       .enter()
       .append("text")
       .attr("class", "link-label")
-      .text((rel) => compactRelationship(rel.type));
+      .merge(linkLabels)
+      .text(linkLabel);
 
     const nodes = nodeLayer.selectAll("g").data(graph.nodes, (node) => node.id);
     nodes.exit().remove();
@@ -247,6 +255,78 @@
   function endpoint(value) {
     if (value && typeof value === "object") return value;
     return nodeState.get(value) || graph.nodes.find((node) => node.id === value) || { x: 0, y: 0 };
+  }
+
+  function graphRelationships() {
+    return [...fullGraph.relationships, ...embeddingNeighborRelationships()];
+  }
+
+  function embeddingNeighborRelationships() {
+    const nodesById = new Map(fullGraph.nodes.map((node) => [node.id, node]));
+    const clusters = new Map();
+
+    fullGraph.relationships.forEach((rel) => {
+      if (rel.type !== "HAS_CLUSTER_MEMBER" && rel.type !== "MEMBER_OF_CLUSTER") return;
+      const source = relationshipEndpoint(rel.source);
+      const target = relationshipEndpoint(rel.target);
+      const sourceNode = nodesById.get(source);
+      const targetNode = nodesById.get(target);
+      const clusterId = isClusterNode(sourceNode) ? source : isClusterNode(targetNode) ? target : "";
+      const vectorId = isEmbeddingNode(sourceNode) ? source : isEmbeddingNode(targetNode) ? target : "";
+      if (!clusterId || !vectorId) return;
+
+      const clusterNode = nodesById.get(clusterId);
+      const cluster = clusters.get(clusterId) || {
+        id: clusterId,
+        strength: numericProperty(clusterNode?.properties, "mean_similarity") ?? 0.65,
+        members: new Map(),
+      };
+      const memberStrength = numericProperty(rel.properties, "average_similarity") ?? cluster.strength;
+      const existing = cluster.members.get(vectorId);
+      if (!existing || memberStrength > existing.strength) {
+        cluster.members.set(vectorId, { id: vectorId, strength: memberStrength });
+      }
+      clusters.set(clusterId, cluster);
+    });
+
+    const byPair = new Map();
+    clusters.forEach((cluster) => {
+      const members = [...cluster.members.values()];
+      const pairs = [];
+      for (let left = 0; left < members.length; left += 1) {
+        for (let right = left + 1; right < members.length; right += 1) {
+          const source = members[left];
+          const target = members[right];
+          const strength = clamp01((source.strength + target.strength + cluster.strength) / 3);
+          pairs.push({ source: source.id, target: target.id, strength, clusterId: cluster.id });
+        }
+      }
+      pairs
+        .sort((left, right) => right.strength - left.strength)
+        .slice(0, maxEmbeddingLinksPerCluster)
+        .forEach((pair) => {
+          const key = [pair.source, pair.target].sort().join("|");
+          const existing = byPair.get(key);
+          if (!existing || pair.strength > existing.strength) {
+            byPair.set(key, pair);
+          }
+        });
+    });
+
+    return [...byPair.values()]
+      .sort((left, right) => left.source.localeCompare(right.source) || left.target.localeCompare(right.target))
+      .map((pair) => ({
+        id: `synthetic:embedding-neighbor:${pair.source}:${pair.target}`,
+        source: pair.source,
+        target: pair.target,
+        type: "SIMILAR_EMBEDDING",
+        synthetic: true,
+        properties: {
+          display_only: true,
+          inferred_from_cluster: pair.clusterId,
+          strength: Number(pair.strength.toFixed(3)),
+        },
+      }));
   }
 
   function selectItem(item) {
@@ -406,11 +486,58 @@
   }
 
   function nodeRadius(node) {
+    if (nodeKind(node) === "Theme") return 35;
     if (nodeKind(node) === "Cluster") return 31;
     if (nodeKind(node) === "Impression") return 24;
     if (nodeKind(node) === "Sensation") return 21;
     if (nodeKind(node) === "Face") return 22;
     return 19;
+  }
+
+  function linkStrength(link) {
+    if (link.synthetic) return 0.25 + similarityStrength(link) * 1.15;
+    return isThemeEndpoint(link) ? 0.95 : 0.45;
+  }
+
+  function chargeStrength(node) {
+    return nodeKind(node) === "Theme" ? -210 : -520;
+  }
+
+  function themeCenterStrength(node) {
+    return nodeKind(node) === "Theme" ? 0.18 : 0.015;
+  }
+
+  function isThemeEndpoint(link) {
+    return nodeKind(endpoint(link.source)) === "Theme" || nodeKind(endpoint(link.target)) === "Theme";
+  }
+
+  function isEmbeddingNode(node) {
+    if (!node) return false;
+    const props = node.properties || {};
+    return nodeKind(node) === "Vector" || node.id?.startsWith("qdrant:") || props.database === "qdrant";
+  }
+
+  function isClusterNode(node) {
+    return !!node && (nodeKind(node) === "Cluster" || node.id?.startsWith("cluster:"));
+  }
+
+  function similarityStrength(link) {
+    return clamp01(numericProperty(link.properties, "strength") ?? 0.65);
+  }
+
+  function numericProperty(properties, key) {
+    const value = properties?.[key];
+    if (value === null || value === undefined || value === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function clamp01(value) {
+    return Math.max(0, Math.min(1, value));
+  }
+
+  function formatStrength(value) {
+    return value.toFixed(2);
   }
 
   function mediaForNode(node) {
@@ -442,6 +569,34 @@
 
   function compactRelationship(type) {
     return String(type || "").replace(/^HAS_/, "").replace(/_/g, " ").toLowerCase();
+  }
+
+  function linkLabel(rel) {
+    if (rel.synthetic && rel.type === "SIMILAR_EMBEDDING") {
+      return formatStrength(similarityStrength(rel));
+    }
+    return compactRelationship(rel.type);
+  }
+
+  function linkClass(rel) {
+    return rel.synthetic ? "link embedding-link" : "link";
+  }
+
+  function linkDistance(link) {
+    if (link.synthetic) {
+      return 32 + (1 - similarityStrength(link)) * 118;
+    }
+    return 90 + Math.min(link.type.length * 2, 70);
+  }
+
+  function linkStrokeWidth(link) {
+    if (!link.synthetic) return null;
+    return 1.1 + similarityStrength(link) * 3.6;
+  }
+
+  function linkOpacity(link) {
+    if (!link.synthetic) return null;
+    return 0.24 + similarityStrength(link) * 0.62;
   }
 
   function relationshipEndpoint(value) {
@@ -578,6 +733,8 @@
   function resize() {
     const rect = svg.node().getBoundingClientRect();
     simulation.force("center", d3.forceCenter(rect.width / 2, rect.height / 2));
+    simulation.force("theme-x").x(rect.width / 2);
+    simulation.force("theme-y").y(rect.height / 2);
     simulation.alpha(0.3).restart();
   }
 

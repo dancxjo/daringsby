@@ -1558,17 +1558,18 @@ async fn neo4j_client_loads_latest_timeline_window_for_combobulation() {
                 .body_contains("MATCH (anchor:GraphNode)")
                 .body_contains("INCLUDED_IN_COMBOBULATION")
                 .body_contains("duration({seconds: $seconds})")
-                .body_contains("RETURN anchor.id, anchor_at, n.id, labels(n), text, occurred_at")
+                .body_contains("RETURN anchor.id, anchor_at, n.id, event_id, labels(n), text, occurred_at")
                 .body_contains("\"seconds\":30")
                 .body_contains("\"limit\":80");
             then.status(200).json_body(json!({
                 "results": [{
-                    "columns": ["anchor.id", "anchor_at", "n.id", "labels(n)", "text", "occurred_at"],
+                    "columns": ["anchor.id", "anchor_at", "n.id", "event_id", "labels(n)", "text", "occurred_at"],
                     "data": [
                         {"row": [
                             "speech:2",
                             "2026-05-05T12:35:00Z",
                             "speech:1",
+                            "audio:1",
                             ["GraphNode", "SpeechSegment"],
                             "speech: hello",
                             "2026-05-05T12:34:56Z"
@@ -1577,6 +1578,7 @@ async fn neo4j_client_loads_latest_timeline_window_for_combobulation() {
                             "speech:2",
                             "2026-05-05T12:35:00Z",
                             "speech:2",
+                            "audio:1",
                             ["GraphNode", "SpeechSegment"],
                             "speech: there",
                             "2026-05-05T12:35:00Z"
@@ -1598,6 +1600,7 @@ async fn neo4j_client_loads_latest_timeline_window_for_combobulation() {
     assert_eq!(window.anchor_at, "2026-05-05T12:35:00Z");
     assert_eq!(window.items.len(), 2);
     assert_eq!(window.items[0].id, "speech:1");
+    assert_eq!(window.items[0].event_id, "audio:1");
     assert_eq!(window.items[0].labels, ["GraphNode", "SpeechSegment"]);
     assert_eq!(window.items[1].text, "speech: there");
     query.assert_async().await;
@@ -1638,12 +1641,14 @@ async fn neo4j_client_attaches_combobulation() {
                 items: vec![
                     GraphTimelineItem {
                         id: "speech:1".into(),
+                        event_id: "audio:1".into(),
                         labels: vec!["GraphNode".into(), "SpeechSegment".into()],
                         text: "speech: hello".into(),
                         occurred_at: "2026-05-05T12:34:56Z".into(),
                     },
                     GraphTimelineItem {
                         id: "speech:2".into(),
+                        event_id: "audio:1".into(),
                         labels: vec!["GraphNode".into(), "SpeechSegment".into()],
                         text: "speech: there".into(),
                         occurred_at: "2026-05-05T12:35:00Z".into(),

@@ -90,5 +90,6 @@ async fn caption_prompt_explains_own_vision() {
 
     let prompt = doer.0.lock().await.clone().unwrap();
     assert!(prompt.contains("This is your own vision looking out"));
-    assert!(prompt.contains("Anyone you see is probably someone else"));
+    assert!(prompt.contains("Anyone you see is most likely someone you're looking at"));
+    assert!(prompt.contains("not yourself"));
 }

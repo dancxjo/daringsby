@@ -1195,6 +1195,8 @@ pub struct GraphSnapshot {
 pub struct GraphTimelineItem {
     /// Stable graph node id for the origin event.
     pub id: String,
+    /// Stable grouping key for the real-world event this graph node represents.
+    pub event_id: String,
     /// Neo4j labels attached to the origin event.
     pub labels: Vec<String>,
     /// Human-readable event text for an LLM timeline.
@@ -1954,14 +1956,25 @@ impl Neo4jClient {
                         anchor.timestamp,
                         ""
                       ) <> ""
-                    WITH anchor, coalesce(
-                        anchor.occurred_at,
-                        anchor.observed_at,
-                        anchor.captured_at,
-                        anchor.transcribed_at,
-                        anchor.described_at,
-                        anchor.timestamp
-                    ) AS anchor_at
+                    WITH anchor,
+                    CASE
+                        WHEN anchor:Transcription THEN coalesce(
+                            anchor.source_captured_at,
+                            anchor.source_started_at,
+                            head([(anchor)-[:DERIVED_FROM_AUDIO]->(source_audio:GraphNode:AudioClip) |
+                                coalesce(source_audio.occurred_at, source_audio.captured_at)
+                            ]),
+                            anchor.transcribed_at
+                        )
+                        ELSE coalesce(
+                            anchor.occurred_at,
+                            anchor.observed_at,
+                            anchor.captured_at,
+                            anchor.transcribed_at,
+                            anchor.described_at,
+                            anchor.timestamp
+                        )
+                    END AS anchor_at
                     ORDER BY datetime(anchor_at) DESC, anchor.id
                     LIMIT 1
                     MATCH (n:GraphNode)
@@ -1982,17 +1995,53 @@ impl Neo4jClient {
                         n.timestamp,
                         ""
                       ) <> ""
-                    WITH anchor, anchor_at, n, coalesce(
-                        n.occurred_at,
-                        n.observed_at,
-                        n.captured_at,
-                        n.transcribed_at,
-                        n.described_at,
-                        n.timestamp
-                    ) AS occurred_at,
+                    WITH anchor, anchor_at, n,
+                    CASE
+                        WHEN n:Transcription THEN coalesce(
+                            n.source_captured_at,
+                            n.source_started_at,
+                            head([(n)-[:DERIVED_FROM_AUDIO]->(source_audio:GraphNode:AudioClip) |
+                                coalesce(source_audio.occurred_at, source_audio.captured_at)
+                            ]),
+                            n.transcribed_at
+                        )
+                        ELSE coalesce(
+                            n.occurred_at,
+                            n.observed_at,
+                            n.captured_at,
+                            n.transcribed_at,
+                            n.described_at,
+                            n.timestamp
+                        )
+                    END AS occurred_at,
+                    CASE
+                        WHEN n:SpeechSegment THEN coalesce(
+                            n.audio_clip_id,
+                            head([(n)-[:DERIVED_FROM_AUDIO]->(segment_audio:GraphNode:AudioClip) | segment_audio.id]),
+                            n.transcription_id,
+                            n.id
+                        )
+                        WHEN n:Transcription THEN coalesce(
+                            n.audio_clip_id,
+                            head([(n)-[:DERIVED_FROM_AUDIO]->(transcription_audio:GraphNode:AudioClip) | transcription_audio.id]),
+                            head(coalesce(n.audio_clip_ids, [])),
+                            n.id
+                        )
+                        ELSE n.id
+                    END AS event_id
+                    OPTIONAL MATCH (n)-[:HAS_TRANSCRIPTION|HAS_BIG_TRANSCRIPTION]->(attached_transcription:GraphNode:Transcription)
+                    WITH anchor, anchor_at, n, occurred_at, event_id,
+                        head([text IN collect(DISTINCT coalesce(attached_transcription.text, attached_transcription.transcript, "")) WHERE text <> ""]) AS attached_transcript
+                    WITH anchor, anchor_at, n, occurred_at, event_id,
                     CASE
                         WHEN n:SpeechSegment THEN "speech: " + coalesce(n.text, "")
-                        WHEN n:Transcription THEN "transcription: " + coalesce(n.text, n.transcript, "")
+                        WHEN n:Transcription THEN
+                            CASE
+                                WHEN coalesce(n.source_count, size(coalesce(n.audio_clip_ids, [])), 1) > 1 THEN
+                                    "audio recording window transcript: " + coalesce(n.text, n.transcript, "")
+                                ELSE
+                                    "audio recording transcript: " + coalesce(n.text, n.transcript, "")
+                            END
                         WHEN n:ImageDescription THEN "vision: " + coalesce(n.text, "")
                         WHEN n:Impression THEN "impression: " + coalesce(n.summary, "")
                         WHEN n:TextObservation THEN "text: " + coalesce(n.text, "")
@@ -2001,8 +2050,10 @@ impl Neo4jClient {
                         WHEN n:Image THEN "image captured"
                         WHEN n:AudioClip THEN
                             CASE
-                                WHEN n.transcript IS NULL OR n.transcript = "" THEN "audio clip captured"
-                                ELSE "audio: " + n.transcript
+                                WHEN attached_transcript IS NOT NULL AND attached_transcript <> "" THEN
+                                    "audio recording captured; transcript: " + attached_transcript
+                                WHEN n.transcript IS NULL OR n.transcript = "" THEN "audio recording captured; transcript pending"
+                                ELSE "audio recording captured; transcript: " + n.transcript
                             END
                         WHEN n:ObjectObservation THEN "object: " + coalesce(n.object_label, "unknown")
                         ELSE coalesce(n.summary, n.text, n.transcript, n.object_label, "")
@@ -2010,10 +2061,10 @@ impl Neo4jClient {
                     WHERE datetime(occurred_at) >= datetime(anchor_at) - duration({seconds: $seconds})
                       AND datetime(occurred_at) <= datetime(anchor_at)
                       AND text <> ""
-                    WITH anchor, anchor_at, n, occurred_at, text
+                    WITH anchor, anchor_at, n, occurred_at, event_id, text
                     ORDER BY datetime(occurred_at) ASC, n.id
                     LIMIT $limit
-                    RETURN anchor.id, anchor_at, n.id, labels(n), text, occurred_at
+                    RETURN anchor.id, anchor_at, n.id, event_id, labels(n), text, occurred_at
                 "#
                 .into(),
                 parameters: json!({
@@ -3680,9 +3731,10 @@ fn graph_timeline_item_from_row(row: &Value) -> Result<GraphTimelineItem> {
         .context("Neo4j timeline item row was not an array")?;
     Ok(GraphTimelineItem {
         id: row_string(values, 2, "timeline item id")?,
-        labels: row_string_vec(values, 3),
-        text: row_string(values, 4, "timeline item text")?,
-        occurred_at: row_string(values, 5, "timeline item timestamp")?,
+        event_id: row_string(values, 3, "timeline item event id")?,
+        labels: row_string_vec(values, 4),
+        text: row_string(values, 5, "timeline item text")?,
+        occurred_at: row_string(values, 6, "timeline item timestamp")?,
     })
 }
 

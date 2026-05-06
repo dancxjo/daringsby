@@ -10,7 +10,7 @@ pub trait PromptFragment {
     fn build_prompt(&self, input: &str) -> String;
 }
 
-pub const IMAGE_CAPTION_PROMPT: &str = "Describe only what you see in this image in a single sentence, in the first person. This is your own vision looking out: Anyone you see is probably someone else, unless you're looking in a mirror.";
+pub const IMAGE_CAPTION_PROMPT: &str = "Describe only what you see in this image in a single sentence, in the first person. This is your own vision looking out: Anyone you see is most likely someone you're looking at, not yourself, unless you're looking in a mirror.";
 
 /// Prompt builder for the `Voice` subagent.
 #[derive(Clone, Default)]
@@ -39,7 +39,7 @@ pub struct CombobulatorPrompt;
 impl PromptFragment for CombobulatorPrompt {
     fn build_prompt(&self, input: &str) -> String {
         format!(
-            "The following entries are a timeline of Pete's internal representations of real-world events happening around or to him. Treat them as evidence about the actual situation, not as the topic to describe. Do not say that you are observing a timeline, recordings, entries, or a shift in conversation. Compress repeated or low-level records into the real-world gist; do not enumerate ids, hashes, timestamps, edges, or detections unless they are the point.\n\n\
+            "The following entries are a timestamped timeline of Pete's internal representations of real-world events happening around or to him. Treat them as evidence about the actual situation, not as the topic to describe. When related entries describe an audio recording and the transcription derived from it, treat them as one real-world event. Do not say that you are observing a timeline, recordings, entries, or a shift in conversation. Compress repeated or low-level records into the real-world gist; do not enumerate ids, hashes, timestamps, edges, or detections unless they are the point.\n\n\
              What is going on right now? Summarize Pete's current awareness in one or two grounded first-person sentences:\n{input}"
         )
     }

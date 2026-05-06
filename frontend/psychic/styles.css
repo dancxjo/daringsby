@@ -122,6 +122,11 @@ h1 {
   stroke-width: 2.4;
 }
 
+.embedding-link {
+  stroke: var(--accent);
+  stroke-linecap: round;
+}
+
 .link-label {
   fill: #c9d4de;
   font-size: 0.68rem;
