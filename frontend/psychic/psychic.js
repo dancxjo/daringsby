@@ -55,13 +55,23 @@
   };
   const filterStorageKey = "psychic.graph.filters.v1";
   const maxEmbeddingLinksPerCluster = 80;
+  const temporalMarginRatio = 0.12;
+  const temporalLayoutPropertyKeys = [
+    "occurred_at",
+    "observed_at",
+    "captured_at",
+    "transcribed_at",
+    "timestamp",
+  ];
   let selected = null;
   let socket = null;
   let lastSnapshotSignature = "";
   let lastTopologySignature = "";
+  let lastTemporalSignature = "";
   let lastFilterOptionsSignature = "";
   let detailRequestId = 0;
   let mediaObjectUrl = "";
+  let temporalExtent = null;
 
   const zoom = d3
     .zoom()
@@ -84,6 +94,7 @@
     .force("center", d3.forceCenter())
     .force("theme-x", d3.forceX().strength(themeCenterStrength))
     .force("theme-y", d3.forceY().strength(themeCenterStrength))
+    .force("time-x", d3.forceX(temporalX).strength(temporalXStrength))
     .force("collision", d3.forceCollide().radius((node) => nodeRadius(node) + 9))
     .on("tick", ticked);
 
@@ -127,6 +138,9 @@
     const topologySignature = signatureForTopology(snapshot);
     const topologyChanged = topologySignature !== lastTopologySignature;
     lastTopologySignature = topologySignature;
+    const temporalSignature = signatureForTemporalLayout(snapshot);
+    const temporalChanged = temporalSignature !== lastTemporalSignature;
+    lastTemporalSignature = temporalSignature;
 
     const previous = new Map(fullGraph.nodes.map((node) => [node.id, node]));
     fullGraph.nodes = (snapshot.nodes || []).map((node) => {
@@ -148,7 +162,7 @@
       (rel) => nodeIds.has(relationshipEndpoint(rel.source)) && nodeIds.has(relationshipEndpoint(rel.target)),
     );
     syncFilterControls();
-    applyGraphFilters(topologyChanged);
+    applyGraphFilters(topologyChanged || temporalChanged);
   }
 
   loadStoredFilters();
@@ -249,6 +263,7 @@
   }
 
   function render(reheat = false) {
+    updateTemporalExtent();
     const links = linkLayer
       .selectAll("line")
       .data(graph.relationships, (rel) => rel.id || `${rel.source}:${rel.type}:${rel.target}`);
@@ -325,6 +340,7 @@
 
     simulation.nodes(graph.nodes);
     simulation.force("link").links(graph.relationships.map((rel) => ({ ...rel })));
+    simulation.force("time-x").x(temporalX);
     if (reheat) {
       simulation.alpha(Math.max(simulation.alpha(), 0.72)).restart();
     }
@@ -691,6 +707,54 @@
     return nodeKind(node) === "Theme" ? 0.18 : 0.015;
   }
 
+  function temporalXStrength(node) {
+    return nodeTimestamp(node) === null ? 0.01 : 0.12;
+  }
+
+  function updateTemporalExtent() {
+    const timestamps = graph.nodes
+      .map(nodeTimestamp)
+      .filter((value) => value !== null)
+      .sort((left, right) => left - right);
+    temporalExtent = timestamps.length > 1
+      ? { min: timestamps[0], max: timestamps[timestamps.length - 1] }
+      : null;
+  }
+
+  function temporalX(node) {
+    const rect = svg.node().getBoundingClientRect();
+    const center = rect.width / 2;
+    const timestamp = nodeTimestamp(node);
+    if (timestamp === null || !temporalExtent || temporalExtent.max === temporalExtent.min) {
+      return center;
+    }
+    const margin = Math.max(48, rect.width * temporalMarginRatio);
+    const left = margin;
+    const right = Math.max(left, rect.width - margin);
+    const ratio = (timestamp - temporalExtent.min) / (temporalExtent.max - temporalExtent.min);
+    return left + clamp01(ratio) * (right - left);
+  }
+
+  function nodeTimestamp(node) {
+    const props = node.properties || {};
+    for (const key of temporalLayoutKeys(node)) {
+      const value = props[key];
+      if (value === null || value === undefined || value === "") continue;
+      if (typeof value === "number" && Number.isFinite(value)) return value;
+      const timestamp = Date.parse(value);
+      if (Number.isFinite(timestamp)) return timestamp;
+    }
+    return null;
+  }
+
+  function temporalLayoutKeys(node) {
+    if (nodeKind(node) === "Sensation") return ["observed_at", "occurred_at", "captured_at", "timestamp"];
+    if (nodeKind(node) === "AudioClip") return ["captured_at", "occurred_at", "observed_at", "timestamp"];
+    if (nodeKind(node) === "Image") return ["captured_at", "occurred_at", "observed_at", "timestamp"];
+    if (nodeKind(node) === "Transcription") return ["transcribed_at", "occurred_at", "captured_at", "timestamp"];
+    return temporalLayoutPropertyKeys;
+  }
+
   function isThemeEndpoint(link) {
     return nodeKind(endpoint(link.source)) === "Theme" || nodeKind(endpoint(link.target)) === "Theme";
   }
@@ -876,8 +940,20 @@
 
   function structuralProperties(properties) {
     return Object.fromEntries(
-      Object.entries(properties).filter(([key]) => !temporalProperty(key)),
+      Object.entries(properties).filter(([key]) => !temporalProperty(key) || temporalLayoutKey(key)),
     );
+  }
+
+  function temporalLayoutKey(key) {
+    return temporalLayoutPropertyKeys.includes(key);
+  }
+
+  function signatureForTemporalLayout(snapshot) {
+    const nodes = (snapshot.nodes || [])
+      .map((node) => [node.id, nodeTimestamp(node)])
+      .filter(([, timestamp]) => timestamp !== null)
+      .sort((left, right) => left[0].localeCompare(right[0]));
+    return stableStringify(nodes);
   }
 
   function signatureForTopology(snapshot) {
@@ -919,6 +995,7 @@
     simulation.force("center", d3.forceCenter(rect.width / 2, rect.height / 2));
     simulation.force("theme-x").x(rect.width / 2);
     simulation.force("theme-y").y(rect.height / 2);
+    simulation.force("time-x").x(temporalX);
     simulation.alpha(0.3).restart();
   }
 
