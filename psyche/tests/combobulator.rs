@@ -1,7 +1,10 @@
 use async_trait::async_trait;
+use futures::StreamExt;
 use lingproc::LlmInstruction;
 use psyche::traits::Doer;
-use psyche::{Impression, Stimulus, wits::Combobulator};
+use psyche::{
+    CombobulationSummary, Impression, Sensation, Stimulus, Topic, TopicBus, wits::Combobulator,
+};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -60,10 +63,36 @@ async fn prompt_frames_inputs_as_real_world_events() {
         .unwrap();
 
     let prompt = captured.lock().unwrap().clone().unwrap();
-    assert!(prompt.contains("internal representations of real-world events"));
+    assert!(prompt.contains("internal representations of sensations and real-world events"));
+    assert!(prompt.contains("fragmentary, possibly contradictory, fleeting evidence"));
+    assert!(prompt.contains("prior combobulation summaries looping back in as sensations"));
     assert!(prompt.contains("not as the topic to describe"));
     assert!(prompt.contains("audio recording and the transcription derived from it"));
     assert!(prompt.contains("Do not say that you are observing a timeline"));
     assert!(prompt.contains("Compress repeated or low-level records"));
     assert!(prompt.contains("do not enumerate ids"));
+}
+
+#[tokio::test]
+async fn bus_backed_digest_loops_summary_back_as_sensation() {
+    let bus = TopicBus::new(8);
+    let mut sensations = bus.subscribe(Topic::Sensation);
+    let combo = Combobulator::with_bus(bus, Arc::new(Dummy));
+
+    combo
+        .digest(&[Impression::new(
+            vec![Stimulus::new("I heard a voice nearby.".to_string())],
+            "",
+            None::<String>,
+        )])
+        .await
+        .unwrap();
+
+    let payload = sensations.next().await.unwrap();
+    let sensation = payload.downcast_ref::<Sensation>().unwrap();
+    let Sensation::Of { payload, .. } = sensation else {
+        panic!("expected combobulation sensation");
+    };
+    let summary = payload.downcast_ref::<CombobulationSummary>().unwrap();
+    assert_eq!(summary.text, "All clear.");
 }

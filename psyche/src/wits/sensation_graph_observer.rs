@@ -3,8 +3,9 @@ use crate::sensors::face::FaceInfo;
 use crate::traits::observer::SensationObserver;
 use crate::wits::memory::{GraphStore, qdrant_vector_node};
 use crate::{
-    AudioClip, GeoEmbedding, GeoLoc, Heartbeat, ImageData, ImageEmbedding, ObjectInfo, Sensation,
-    Topic, TopicBus, VoiceInfo, audio_clip_id, geoloc_content_id, image_content_id,
+    AudioClip, CombobulationSummary, GeoEmbedding, GeoLoc, Heartbeat, ImageData, ImageEmbedding,
+    ObjectInfo, Sensation, Topic, TopicBus, VoiceInfo, audio_clip_id, geoloc_content_id,
+    image_content_id,
 };
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -326,6 +327,38 @@ impl SensationObserver for SensationGraphObserver {
                     }),
                 )
                 .await;
+            } else if let Some(summary) = payload.downcast_ref::<CombobulationSummary>() {
+                let id = combobulation_summary_id(summary, occurred_at.to_rfc3339());
+                let sensation_id =
+                    sensation_id("combobulation_summary", &id, occurred_at.to_rfc3339());
+                let mut relationships = vec![json!({
+                    "from": sensation_id,
+                    "to": id,
+                    "type": "OBSERVED",
+                })];
+                for source_id in &summary.source_sensation_ids {
+                    relationships.push(json!({
+                        "from": id,
+                        "to": source_id,
+                        "type": "DERIVED_FROM",
+                    }));
+                }
+                self.store_once(
+                    id.clone(),
+                    json!({
+                        "op": "merge_graph",
+                        "nodes": [
+                            sensation_node(
+                                &sensation_id,
+                                "combobulation_summary",
+                                occurred_at.to_rfc3339(),
+                            ),
+                            combobulation_summary_node(summary, &id, occurred_at.to_rfc3339()),
+                        ],
+                        "relationships": relationships,
+                    }),
+                )
+                .await;
             } else {
                 store_unknown_sensation(self, payload.type_id(), occurred_at.to_rfc3339()).await;
             }
@@ -457,6 +490,30 @@ fn json_sensation_node(value: &Value, id: &str, occurred_at: String) -> Value {
         "merge_key": "id",
         "value": value.clone(),
         "occurred_at": occurred_at,
+    })
+}
+
+fn combobulation_summary_id(summary: &CombobulationSummary, occurred_at: String) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(summary.text.as_bytes());
+    hasher.update([0]);
+    hasher.update(occurred_at.as_bytes());
+    format!("combobulation-summary:sha256:{:x}", hasher.finalize())
+}
+
+fn combobulation_summary_node(
+    summary: &CombobulationSummary,
+    id: &str,
+    occurred_at: String,
+) -> Value {
+    json!({
+        "label": "CombobulationSummary",
+        "id": id,
+        "text": summary.text,
+        "summary": summary.text,
+        "created_at": summary.created_at,
+        "occurred_at": occurred_at,
+        "source_sensation_ids": summary.source_sensation_ids,
     })
 }
 

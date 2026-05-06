@@ -1937,130 +1937,78 @@ impl Neo4jClient {
             &self.pass,
             CypherStatement {
                 statement: r#"
-                    MATCH (anchor:GraphNode)
-                    WHERE NOT anchor:Vector
-                      AND NOT anchor:Awareness
-                      AND NOT anchor:CombobulationRun
-                      AND NOT anchor:FaceRecognitionRun
-                      AND NOT anchor:SceneVectorizationRun
-                      AND NOT anchor:ImageDescriptionRun
-                      AND NOT anchor:GeolocationVectorizationRun
-                      AND NOT anchor:VoiceRecognitionRun
+                    MATCH (anchor:GraphNode:Sensation)
+                    WHERE coalesce(anchor.occurred_at, "") <> ""
                       AND NOT (anchor)-[:INCLUDED_IN_COMBOBULATION]->(:GraphNode:CombobulationRun)
-                      AND coalesce(
-                        anchor.occurred_at,
-                        anchor.observed_at,
-                        anchor.captured_at,
-                        anchor.transcribed_at,
-                        anchor.described_at,
-                        anchor.timestamp,
-                        ""
-                      ) <> ""
-                    WITH anchor,
-                    CASE
-                        WHEN anchor:Transcription THEN coalesce(
-                            anchor.source_captured_at,
-                            anchor.source_started_at,
-                            head([(anchor)-[:DERIVED_FROM_AUDIO]->(source_audio:GraphNode:AudioClip) |
-                                coalesce(source_audio.occurred_at, source_audio.captured_at)
-                            ]),
-                            anchor.transcribed_at
-                        )
-                        ELSE coalesce(
-                            anchor.occurred_at,
-                            anchor.observed_at,
-                            anchor.captured_at,
-                            anchor.transcribed_at,
-                            anchor.described_at,
-                            anchor.timestamp
-                        )
-                    END AS anchor_at
+                    WITH anchor, anchor.occurred_at AS anchor_at
                     ORDER BY datetime(anchor_at) DESC, anchor.id
                     LIMIT 1
-                    MATCH (n:GraphNode)
-                    WHERE NOT n:Vector
-                      AND NOT n:Awareness
-                      AND NOT n:CombobulationRun
-                      AND NOT n:FaceRecognitionRun
-                      AND NOT n:SceneVectorizationRun
-                      AND NOT n:ImageDescriptionRun
-                      AND NOT n:GeolocationVectorizationRun
-                      AND NOT n:VoiceRecognitionRun
-                      AND coalesce(
-                        n.occurred_at,
-                        n.observed_at,
-                        n.captured_at,
-                        n.transcribed_at,
-                        n.described_at,
-                        n.timestamp,
-                        ""
-                      ) <> ""
-                    WITH anchor, anchor_at, n,
-                    CASE
-                        WHEN n:Transcription THEN coalesce(
-                            n.source_captured_at,
-                            n.source_started_at,
-                            head([(n)-[:DERIVED_FROM_AUDIO]->(source_audio:GraphNode:AudioClip) |
-                                coalesce(source_audio.occurred_at, source_audio.captured_at)
-                            ]),
-                            n.transcribed_at
-                        )
-                        ELSE coalesce(
-                            n.occurred_at,
-                            n.observed_at,
-                            n.captured_at,
-                            n.transcribed_at,
-                            n.described_at,
-                            n.timestamp
-                        )
-                    END AS occurred_at,
-                    CASE
-                        WHEN n:SpeechSegment THEN coalesce(
-                            n.audio_clip_id,
-                            head([(n)-[:DERIVED_FROM_AUDIO]->(segment_audio:GraphNode:AudioClip) | segment_audio.id]),
-                            n.transcription_id,
-                            n.id
-                        )
-                        WHEN n:Transcription THEN coalesce(
-                            n.audio_clip_id,
-                            head([(n)-[:DERIVED_FROM_AUDIO]->(transcription_audio:GraphNode:AudioClip) | transcription_audio.id]),
-                            head(coalesce(n.audio_clip_ids, [])),
-                            n.id
-                        )
-                        ELSE n.id
-                    END AS event_id
-                    OPTIONAL MATCH (n)-[:HAS_TRANSCRIPTION|HAS_BIG_TRANSCRIPTION]->(attached_transcription:GraphNode:Transcription)
-                    WITH anchor, anchor_at, n, occurred_at, event_id,
-                        head([text IN collect(DISTINCT coalesce(attached_transcription.text, attached_transcription.transcript, "")) WHERE text <> ""]) AS attached_transcript
-                    WITH anchor, anchor_at, n, occurred_at, event_id,
-                    CASE
-                        WHEN n:SpeechSegment THEN "speech: " + coalesce(n.text, "")
-                        WHEN n:Transcription THEN
-                            CASE
-                                WHEN coalesce(n.source_count, size(coalesce(n.audio_clip_ids, [])), 1) > 1 THEN
-                                    "audio recording window transcript: " + coalesce(n.text, n.transcript, "")
-                                ELSE
-                                    "audio recording transcript: " + coalesce(n.text, n.transcript, "")
-                            END
-                        WHEN n:ImageDescription THEN "vision: " + coalesce(n.text, "")
-                        WHEN n:Impression THEN "impression: " + coalesce(n.summary, "")
-                        WHEN n:TextObservation THEN "text: " + coalesce(n.text, "")
-                        WHEN n:Geolocation THEN "geolocation: " + toString(n.latitude) + ", " + toString(n.longitude)
-                        WHEN n:Heartbeat THEN "heartbeat"
-                        WHEN n:Image THEN "image captured"
-                        WHEN n:AudioClip THEN
-                            CASE
-                                WHEN attached_transcript IS NOT NULL AND attached_transcript <> "" THEN
-                                    "audio recording captured; transcript: " + attached_transcript
-                                WHEN n.transcript IS NULL OR n.transcript = "" THEN "audio recording captured; transcript pending"
-                                ELSE "audio recording captured; transcript: " + n.transcript
-                            END
-                        WHEN n:ObjectObservation THEN "object: " + coalesce(n.object_label, "unknown")
-                        ELSE coalesce(n.summary, n.text, n.transcript, n.object_label, "")
-                    END AS text
+                    MATCH (n:GraphNode:Sensation)
+                    WHERE coalesce(n.occurred_at, "") <> ""
+                    WITH anchor, anchor_at, n, n.occurred_at AS occurred_at
                     WHERE datetime(occurred_at) >= datetime(anchor_at) - duration({seconds: $seconds})
                       AND datetime(occurred_at) <= datetime(anchor_at)
-                      AND text <> ""
+                    OPTIONAL MATCH (n)-[:OBSERVED|PRODUCED]->(artifact:GraphNode)
+                    OPTIONAL MATCH (artifact)-[:HAS_TRANSCRIPTION|HAS_BIG_TRANSCRIPTION]->(attached_transcription:GraphNode:Transcription)
+                    OPTIONAL MATCH (artifact)-[:HAS_IMAGE_DESCRIPTION]->(attached_description:GraphNode:ImageDescription)
+                    WITH anchor, anchor_at, n, occurred_at,
+                        collect(DISTINCT artifact) AS artifacts,
+                        head([t IN collect(DISTINCT attached_transcription)
+                            WHERE coalesce(t.text, t.transcript, "") <> "" |
+                            coalesce(t.text, t.transcript, "")
+                        ]) AS attached_transcript,
+                        head([d IN collect(DISTINCT attached_description)
+                            WHERE coalesce(d.text, "") <> "" |
+                            d.text
+                        ]) AS image_description
+                    WITH anchor, anchor_at, n, occurred_at,
+                        head([a IN artifacts WHERE a:AudioClip | a]) AS audio,
+                        head([a IN artifacts WHERE a:Image | a]) AS image,
+                        head([a IN artifacts WHERE a:Geolocation | a]) AS geolocation,
+                        head([a IN artifacts WHERE a:Heartbeat | a]) AS heartbeat,
+                        head([a IN artifacts WHERE a:ObjectObservation | a]) AS object,
+                        head([a IN artifacts WHERE a:Utterance | a]) AS utterance,
+                        head([a IN artifacts WHERE a:CombobulationSummary | a]) AS combobulation,
+                        head([a IN artifacts WHERE a:JsonSensation | a]) AS json_sensation,
+                        attached_transcript,
+                        image_description
+                    WITH anchor, anchor_at, n, occurred_at,
+                    coalesce(
+                        audio.id,
+                        image.id,
+                        geolocation.id,
+                        heartbeat.id,
+                        object.id,
+                        utterance.id,
+                        combobulation.id,
+                        json_sensation.id,
+                        n.id
+                    ) AS event_id,
+                    CASE
+                        WHEN audio IS NOT NULL THEN
+                            CASE
+                                WHEN attached_transcript IS NOT NULL AND attached_transcript <> "" THEN
+                                    "audio sensation; transcript: " + attached_transcript
+                                WHEN audio.transcript IS NULL OR audio.transcript = "" THEN
+                                    "audio sensation; transcript pending"
+                                ELSE "audio sensation; transcript: " + audio.transcript
+                            END
+                        WHEN image_description IS NOT NULL AND image_description <> "" THEN
+                            "visual sensation; " + image_description
+                        WHEN image IS NOT NULL THEN "visual sensation; image captured"
+                        WHEN geolocation IS NOT NULL THEN
+                            "geolocation sensation; " + toString(geolocation.latitude) + ", " + toString(geolocation.longitude)
+                        WHEN heartbeat IS NOT NULL THEN "heartbeat sensation"
+                        WHEN object IS NOT NULL THEN
+                            "object sensation; " + coalesce(object.object_label, "unknown")
+                        WHEN utterance IS NOT NULL THEN
+                            "speech sensation; " + coalesce(utterance.speaker, "someone") + " said: " + coalesce(utterance.text, "")
+                        WHEN combobulation IS NOT NULL THEN
+                            "combobulation sensation; " + coalesce(combobulation.text, combobulation.summary, "")
+                        WHEN json_sensation IS NOT NULL THEN "structured sensation"
+                        ELSE coalesce(n.kind, "sensation")
+                    END AS text
+                    WHERE text <> ""
                     WITH anchor, anchor_at, n, occurred_at, event_id, text
                     ORDER BY datetime(occurred_at) ASC, n.id
                     LIMIT $limit

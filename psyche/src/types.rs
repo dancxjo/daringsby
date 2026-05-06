@@ -20,6 +20,51 @@ pub struct GeoLoc {
     pub observed_at: Option<String>,
 }
 
+/// Three-axis browser motion vector, usually reported by device sensors.
+#[cfg_attr(feature = "ts", derive(TS))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MotionVector {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub y: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub z: Option<f64>,
+}
+
+/// Browser device orientation in degrees.
+#[cfg_attr(feature = "ts", derive(TS))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DeviceOrientation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alpha: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beta: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gamma: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub absolute: Option<bool>,
+}
+
+/// Motion data reported by browser DeviceMotion/DeviceOrientation APIs.
+#[cfg_attr(feature = "ts", derive(TS))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BrowserMotion {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acceleration: Option<MotionVector>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acceleration_including_gravity: Option<MotionVector>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rotation_rate: Option<DeviceOrientation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orientation: Option<DeviceOrientation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval: Option<f64>,
+    /// RFC3339 time when this motion reading was observed by the device.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_at: Option<String>,
+}
+
 pub fn parse_observed_at(at: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(at)
         .ok()
@@ -38,11 +83,20 @@ pub fn geoloc_observed_at(loc: &GeoLoc) -> Option<DateTime<Utc>> {
     loc.observed_at.as_deref().and_then(parse_observed_at)
 }
 
+pub fn browser_motion_observed_at(motion: &BrowserMotion) -> Option<DateTime<Utc>> {
+    motion.observed_at.as_deref().and_then(parse_observed_at)
+}
+
 pub fn geoloc_content_id(loc: &GeoLoc) -> String {
     let longitude = format!("{:.7}", loc.longitude);
     let latitude = format!("{:.7}", loc.latitude);
     let observed_at = loc.observed_at.clone().unwrap_or_default();
     stable_content_id("geolocation", [&longitude, &latitude, &observed_at])
+}
+
+pub fn browser_motion_content_id(motion: &BrowserMotion) -> String {
+    let json = serde_json::to_string(motion).unwrap_or_default();
+    stable_content_id("browser-motion", [&json])
 }
 
 /// Unit-sphere vector for geospatial similarity.
@@ -85,6 +139,15 @@ pub struct AudioClip {
     pub transcript: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub captured_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CombobulationSummary {
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_sensation_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

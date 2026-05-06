@@ -228,112 +228,20 @@ impl CombobulationProcessor {
 fn combobulation_prompt(window: &GraphTimelineWindow, window_seconds: u64) -> String {
     let timeline = timeline_prompt(window);
     with_default_system_prompt(format!(
-        "The following entries are a chronological timeline of your internal representations of real-world events happening around or to you during the last {window_seconds} seconds.\n\
-         Treat labels like SpeechSegment, AudioClip, Transcription, Impression, memory, and perception as evidence about the actual situation, not as the topic to describe. Sub-bullets under the same timestamp describe the same real-world event, such as an audio recording and the transcript derived from it.\n\
-         What is going on right now? Summarize your current awareness in one or two grounded first-person sentences. Keep it compact: compress repeated low-level records into the real-world gist. Do not say that you are observing a timeline, recordings, entries, or a shift in conversation. Do not mention graph ids, hashes, timestamps, edges, or per-detection details unless they are directly relevant.\n\n\
-         Timeline:\n{timeline}"
+        "The following entries are a chronological timeline of your sensations during the last {window_seconds} seconds. Each entry is already a compact summary of one source sensation, such as hearing, seeing, feeling, locating, or thinking a combobulation thought.\n\
+         Treat these sensations as fragmentary, possibly contradictory, fleeting evidence about the actual situation, not as the topic to describe. Try to infer what is going on in the real world from those fragments. Some entries may be your own prior combobulation summaries looping back in as sensations; treat those as provisional, possibly stale self-context, not as fresh external evidence.\n\
+         What is going on right now? Summarize your current awareness in one or two grounded first-person sentences. Keep it compact: compress repeated low-level records into the real-world gist. Do not say that you are observing a timeline, sensations, recordings, entries, a previous summary, or a shift in conversation. Do not mention graph ids, hashes, timestamps, edges, or per-detection details unless they are directly relevant.\n\n\
+         Sensation timeline:\n{timeline}"
     ))
 }
 
 fn timeline_prompt(window: &GraphTimelineWindow) -> String {
-    let mut groups: Vec<TimelinePromptGroup> = Vec::new();
-    for item in &window.items {
-        let key = if item.event_id.is_empty() {
-            &item.id
-        } else {
-            &item.event_id
-        };
-        if let Some(group) = groups.iter_mut().find(|group| group.event_id == *key) {
-            group.items.push(item);
-        } else {
-            groups.push(TimelinePromptGroup {
-                event_id: key.to_string(),
-                items: vec![item],
-            });
-        }
-    }
-    groups
-        .iter()
-        .map(timeline_prompt_group)
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-struct TimelinePromptGroup<'a> {
-    event_id: String,
-    items: Vec<&'a GraphTimelineItem>,
-}
-
-fn timeline_prompt_group(group: &TimelinePromptGroup<'_>) -> String {
-    let primary = group
+    window
         .items
         .iter()
-        .find(|item| item.labels.iter().any(|label| label == "AudioClip"))
-        .copied()
-        .unwrap_or(group.items[0]);
-    let mut output = format!(
-        "- [{}] {}",
-        primary.occurred_at,
-        timeline_prompt_label(&group.items)
-    );
-    for text in unique_timeline_texts(group) {
-        output.push_str("\n  - ");
-        output.push_str(&truncate_for_prompt(&text, 500));
-    }
-    output
-}
-
-fn timeline_prompt_label(items: &[&GraphTimelineItem]) -> String {
-    if items.iter().any(|item| {
-        item.labels.iter().any(|label| {
-            matches!(
-                label.as_str(),
-                "AudioClip" | "Transcription" | "SpeechSegment"
-            )
-        })
-    }) {
-        return "Audio".to_string();
-    }
-    let labels = items[0]
-        .labels
-        .iter()
-        .filter(|label| label.as_str() != "GraphNode")
-        .cloned()
+        .map(timeline_prompt_item)
         .collect::<Vec<_>>()
-        .join(",");
-    if labels.is_empty() {
-        "Event".to_string()
-    } else {
-        labels
-    }
-}
-
-fn unique_timeline_texts(group: &TimelinePromptGroup<'_>) -> Vec<String> {
-    let mut texts = Vec::new();
-    for item in &group.items {
-        for text in normalized_timeline_texts(item.text.trim()) {
-            if !text.is_empty() && !texts.iter().any(|existing| existing == &text) {
-                texts.push(text);
-            }
-        }
-    }
-    texts
-}
-
-fn normalized_timeline_texts(text: &str) -> Vec<String> {
-    if let Some(transcript) = text.strip_prefix("audio recording captured; transcript: ") {
-        return vec![
-            "audio recording captured".to_string(),
-            format!("transcript: {transcript}"),
-        ];
-    }
-    if let Some(transcript) = text.strip_prefix("audio recording transcript: ") {
-        return vec![format!("transcript: {transcript}")];
-    }
-    if let Some(transcript) = text.strip_prefix("audio recording window transcript: ") {
-        return vec![format!("transcript: {transcript}")];
-    }
-    vec![text.to_string()]
+        .join("\n")
 }
 
 fn timeline_prompt_item(item: &GraphTimelineItem) -> String {
@@ -379,16 +287,16 @@ mod tests {
     #[test]
     fn timeline_prompt_item_omits_graphnode_label() {
         let item = GraphTimelineItem {
-            id: "speech:1".into(),
+            id: "sensation:audio:1".into(),
             event_id: "audio:1".into(),
-            labels: vec!["GraphNode".into(), "SpeechSegment".into()],
-            text: "speech: hello".into(),
+            labels: vec!["GraphNode".into(), "Sensation".into()],
+            text: "audio sensation; transcript: hello".into(),
             occurred_at: "2026-05-05T12:34:56Z".into(),
         };
 
         assert_eq!(
             timeline_prompt_item(&item),
-            "- [2026-05-05T12:34:56Z] SpeechSegment speech: hello"
+            "- [2026-05-05T12:34:56Z] Sensation audio sensation; transcript: hello"
         );
     }
 
@@ -398,10 +306,10 @@ mod tests {
             anchor_id: "speech:1".into(),
             anchor_at: "2026-05-05T12:34:56Z".into(),
             items: vec![GraphTimelineItem {
-                id: "speech:1".into(),
+                id: "sensation:audio:1".into(),
                 event_id: "audio:1".into(),
-                labels: vec!["SpeechSegment".into()],
-                text: "speech: hello".into(),
+                labels: vec!["Sensation".into()],
+                text: "audio sensation; transcript: hello".into(),
                 occurred_at: "2026-05-05T12:34:56Z".into(),
             }],
         };
@@ -410,41 +318,42 @@ mod tests {
 
         assert!(prompt.contains("You are PETE"));
         assert!(prompt.contains("last 30 seconds"));
-        assert!(prompt.contains("internal representations of real-world events"));
+        assert!(prompt.contains("chronological timeline of your sensations"));
+        assert!(prompt.contains("fragmentary, possibly contradictory, fleeting evidence"));
+        assert!(prompt.contains("prior combobulation summaries looping back in as sensations"));
         assert!(prompt.contains("not as the topic to describe"));
-        assert!(prompt.contains("same real-world event"));
         assert!(prompt.contains("Do not say that you are observing a timeline"));
         assert!(prompt.contains("Keep it compact"));
         assert!(prompt.contains("per-detection details"));
-        assert!(prompt.contains("Audio\n  - speech: hello"));
+        assert!(prompt.contains("Sensation audio sensation; transcript: hello"));
     }
 
     #[test]
-    fn timeline_prompt_groups_audio_with_derived_transcript() {
+    fn timeline_prompt_keeps_one_line_per_sensation() {
         let window = GraphTimelineWindow {
-            anchor_id: "transcription:1".into(),
+            anchor_id: "sensation:audio:2".into(),
             anchor_at: "2026-05-05T12:34:56Z".into(),
             items: vec![
                 GraphTimelineItem {
-                    id: "audio:1".into(),
+                    id: "sensation:audio:1".into(),
                     event_id: "audio:1".into(),
-                    labels: vec!["GraphNode".into(), "AudioClip".into()],
-                    text: "audio recording captured; transcript: hello".into(),
+                    labels: vec!["GraphNode".into(), "Sensation".into()],
+                    text: "audio sensation; transcript: hello".into(),
                     occurred_at: "2026-05-05T12:34:56Z".into(),
                 },
                 GraphTimelineItem {
-                    id: "transcription:1".into(),
-                    event_id: "audio:1".into(),
-                    labels: vec!["GraphNode".into(), "Transcription".into()],
-                    text: "audio recording transcript: hello".into(),
-                    occurred_at: "2026-05-05T12:34:56Z".into(),
+                    id: "sensation:thought:1".into(),
+                    event_id: "combobulation-summary:1".into(),
+                    labels: vec!["GraphNode".into(), "Sensation".into()],
+                    text: "combobulation sensation; I may be hearing a greeting.".into(),
+                    occurred_at: "2026-05-05T12:34:57Z".into(),
                 },
             ],
         };
 
         assert_eq!(
             timeline_prompt(&window),
-            "- [2026-05-05T12:34:56Z] Audio\n  - audio recording captured\n  - transcript: hello"
+            "- [2026-05-05T12:34:56Z] Sensation audio sensation; transcript: hello\n- [2026-05-05T12:34:57Z] Sensation combobulation sensation; I may be hearing a greeting."
         );
     }
 }

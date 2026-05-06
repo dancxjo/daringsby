@@ -71,6 +71,8 @@ pub use sensor::eye::EyeSensor;
 #[cfg(feature = "geo")]
 pub use sensor::geo::GeoSensor;
 pub use sensor::heartbeat::HeartbeatSensor;
+#[cfg(feature = "motion")]
+pub use sensor::motion::MotionSensor;
 pub use simulator::Simulator;
 pub use tts::default_mouth;
 #[cfg(feature = "tts")]

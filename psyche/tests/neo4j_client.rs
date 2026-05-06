@@ -1555,7 +1555,7 @@ async fn neo4j_client_loads_latest_timeline_window_for_combobulation() {
         .mock_async(|when, then| {
             when.method(POST)
                 .path("/db/neo4j/tx/commit")
-                .body_contains("MATCH (anchor:GraphNode)")
+                .body_contains("MATCH (anchor:GraphNode:Sensation)")
                 .body_contains("INCLUDED_IN_COMBOBULATION")
                 .body_contains("duration({seconds: $seconds})")
                 .body_contains("RETURN anchor.id, anchor_at, n.id, event_id, labels(n), text, occurred_at")
@@ -1566,21 +1566,21 @@ async fn neo4j_client_loads_latest_timeline_window_for_combobulation() {
                     "columns": ["anchor.id", "anchor_at", "n.id", "event_id", "labels(n)", "text", "occurred_at"],
                     "data": [
                         {"row": [
-                            "speech:2",
+                            "sensation:audio:2",
                             "2026-05-05T12:35:00Z",
-                            "speech:1",
+                            "sensation:audio:1",
                             "audio:1",
-                            ["GraphNode", "SpeechSegment"],
-                            "speech: hello",
+                            ["GraphNode", "Sensation"],
+                            "audio sensation; transcript: hello",
                             "2026-05-05T12:34:56Z"
                         ]},
                         {"row": [
-                            "speech:2",
+                            "sensation:audio:2",
                             "2026-05-05T12:35:00Z",
-                            "speech:2",
+                            "sensation:audio:2",
                             "audio:1",
-                            ["GraphNode", "SpeechSegment"],
-                            "speech: there",
+                            ["GraphNode", "Sensation"],
+                            "audio sensation; transcript: there",
                             "2026-05-05T12:35:00Z"
                         ]}
                     ]
@@ -1596,13 +1596,13 @@ async fn neo4j_client_loads_latest_timeline_window_for_combobulation() {
         .unwrap()
         .unwrap();
 
-    assert_eq!(window.anchor_id, "speech:2");
+    assert_eq!(window.anchor_id, "sensation:audio:2");
     assert_eq!(window.anchor_at, "2026-05-05T12:35:00Z");
     assert_eq!(window.items.len(), 2);
-    assert_eq!(window.items[0].id, "speech:1");
+    assert_eq!(window.items[0].id, "sensation:audio:1");
     assert_eq!(window.items[0].event_id, "audio:1");
-    assert_eq!(window.items[0].labels, ["GraphNode", "SpeechSegment"]);
-    assert_eq!(window.items[1].text, "speech: there");
+    assert_eq!(window.items[0].labels, ["GraphNode", "Sensation"]);
+    assert_eq!(window.items[1].text, "audio sensation; transcript: there");
     query.assert_async().await;
 }
 

@@ -1,7 +1,10 @@
 use crate::prompt::PromptFragment;
+use crate::topics::{Topic, TopicBus};
 use crate::traits::Doer;
-use crate::{ImageData, Impression, Stimulus, wit::Wit};
+use crate::{CombobulationSummary, ImageData, Impression, Sensation, Stimulus, wit::Wit};
 use async_trait::async_trait;
+use chrono::Utc;
+use futures::StreamExt;
 use lingproc::LlmInstruction;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -17,8 +20,9 @@ const CAPTION_COOLDOWN: Duration = Duration::from_secs(1);
 pub struct Combobulator {
     doer: Arc<dyn Doer>,
     prompt: crate::prompt::CombobulatorPrompt,
+    bus: Option<TopicBus>,
     tx: Option<broadcast::Sender<crate::WitReport>>,
-    buffer: Mutex<Vec<Impression<String>>>,
+    buffer: Arc<Mutex<Vec<Impression<String>>>>,
     last_caption_time: Mutex<Instant>,
     latest_image: Arc<Mutex<Option<ImageData>>>,
     llm_semaphore: Arc<Semaphore>,
@@ -37,11 +41,48 @@ impl Combobulator {
         doer: Arc<dyn Doer>,
         tx: Option<broadcast::Sender<crate::WitReport>>,
     ) -> Self {
+        Self::build(None, doer, tx)
+    }
+
+    /// Create a `Combobulator` subscribed to immediate impressions on `bus`.
+    pub fn with_bus(bus: TopicBus, doer: Arc<dyn Doer>) -> Self {
+        Self::with_bus_and_debug(bus, doer, None)
+    }
+
+    /// Create a bus-backed `Combobulator` that emits [`WitReport`]s using `tx`.
+    pub fn with_bus_and_debug(
+        bus: TopicBus,
+        doer: Arc<dyn Doer>,
+        tx: Option<broadcast::Sender<crate::WitReport>>,
+    ) -> Self {
+        Self::build(Some(bus), doer, tx)
+    }
+
+    fn build(
+        bus: Option<TopicBus>,
+        doer: Arc<dyn Doer>,
+        tx: Option<broadcast::Sender<crate::WitReport>>,
+    ) -> Self {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        if let Some(bus) = &bus {
+            let buf_clone = buffer.clone();
+            let bus_clone = bus.clone();
+            tokio::spawn(async move {
+                let stream = bus_clone.subscribe(Topic::Instant);
+                tokio::pin!(stream);
+                while let Some(payload) = stream.next().await {
+                    if let Ok(i) = Arc::downcast::<Impression<String>>(payload) {
+                        buf_clone.lock().unwrap().push((*i).clone());
+                    }
+                }
+            });
+        }
         Self {
             doer,
             prompt: crate::prompt::CombobulatorPrompt,
+            bus,
             tx,
-            buffer: Mutex::new(Vec::new()),
+            buffer,
             last_caption_time: Mutex::new(Instant::now() - Duration::from_secs(30)),
             latest_image: Arc::new(Mutex::new(None)),
             llm_semaphore: Arc::new(Semaphore::new(2)),
@@ -138,11 +179,27 @@ impl Combobulator {
                 });
             }
         }
-        Ok(Impression::new(
+        let imp = Impression::new(
             vec![Stimulus::new(summary.clone())],
-            summary,
+            summary.clone(),
             None::<String>,
-        ))
+        );
+        if let Some(bus) = &self.bus {
+            bus.publish(Topic::Moment, imp.clone());
+            let now = Utc::now();
+            bus.publish(
+                Topic::Sensation,
+                Sensation::of_at(
+                    CombobulationSummary {
+                        text: summary,
+                        created_at: Some(now.to_rfc3339()),
+                        source_sensation_ids: Vec::new(),
+                    },
+                    now,
+                ),
+            );
+        }
+        Ok(imp)
     }
 
     /// Describe an image using the underlying [`Doer`].

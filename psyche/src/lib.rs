@@ -123,9 +123,11 @@ pub use prompt::{
 pub use topics::{Topic, TopicBus, TopicMessage};
 pub use trim_mouth::TrimMouth;
 pub use types::{
-    AudioClip, Decision, GeoEmbedding, GeoLoc, Heartbeat, ImageData, ImageEmbedding, ObjectInfo,
-    VoiceInfo, audio_captured_at, audio_clip_id, geoloc_content_id, geoloc_observed_at,
-    geoloc_vector, image_captured_at, image_content_id, parse_observed_at,
+    AudioClip, BrowserMotion, CombobulationSummary, Decision, DeviceOrientation, GeoEmbedding,
+    GeoLoc, Heartbeat, ImageData, ImageEmbedding, MotionVector, ObjectInfo, VoiceInfo,
+    audio_captured_at, audio_clip_id, browser_motion_content_id, browser_motion_observed_at,
+    geoloc_content_id, geoloc_observed_at, geoloc_vector, image_captured_at, image_content_id,
+    parse_observed_at,
 };
 
 pub use ling::{Feeling, PromptBuilder};

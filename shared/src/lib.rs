@@ -1,4 +1,4 @@
-use psyche::{GeoLoc, WitReport};
+use psyche::{BrowserMotion, GeoLoc, WitReport};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "ts")]
 use ts_rs::TS;
@@ -51,6 +51,10 @@ pub enum WsPayload {
     },
     Geolocate {
         data: GeoLoc,
+        at: Option<String>,
+    },
+    Motion {
+        data: BrowserMotion,
         at: Option<String>,
     },
     Sense {
