@@ -67,6 +67,8 @@ async fn debug_report_contains_prompt_and_summary() {
     let report = rx.recv().await.unwrap();
     assert_eq!(report.name, "SituationWit");
     assert!(report.prompt.contains("recent moments"));
+    assert!(report.prompt.contains("one short sentence"));
+    assert!(report.prompt.contains("do not enumerate ids"));
     assert!(report.output.contains("SUM:"));
     psyche::disable_debug("SituationWit").await;
 }

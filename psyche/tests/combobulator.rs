@@ -63,4 +63,6 @@ async fn prompt_frames_inputs_as_real_world_events() {
     assert!(prompt.contains("internal representations of real-world events"));
     assert!(prompt.contains("not as the topic to describe"));
     assert!(prompt.contains("Do not say that you are observing a timeline"));
+    assert!(prompt.contains("Compress repeated or low-level records"));
+    assert!(prompt.contains("do not enumerate ids"));
 }

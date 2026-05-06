@@ -86,7 +86,7 @@ impl crate::wit::Wit for SituationWit {
             .iter()
             .map(Impression::prompt_list_item)
             .collect::<Vec<_>>();
-        prompt.push_str("Given the following recent moments, summarize the ongoing situation in one sentence:\n- ");
+        prompt.push_str("Given the following recent moments, summarize the ongoing situation in one short sentence. Compress repeated low-level records into the real-world gist; do not enumerate ids, hashes, timestamps, or each detection unless asked.\n- ");
         prompt.push_str(&bullets.join("\n- "));
         let command = crate::with_default_system_prompt(&prompt);
         let resp = match self

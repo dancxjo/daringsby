@@ -235,7 +235,7 @@ fn combobulation_prompt(window: &GraphTimelineWindow, window_seconds: u64) -> St
     with_default_system_prompt(format!(
         "The following entries are a chronological timeline of your internal representations of real-world events happening around or to you during the last {window_seconds} seconds.\n\
          Treat labels like SpeechSegment, AudioClip, Impression, memory, and perception as evidence about the actual situation, not as the topic to describe.\n\
-         What is going on right now? Summarize your current awareness in one or two grounded first-person sentences. Do not say that you are observing a timeline, recordings, entries, or a shift in conversation. Do not mention graph ids unless they are directly relevant.\n\n\
+         What is going on right now? Summarize your current awareness in one or two grounded first-person sentences. Keep it compact: compress repeated low-level records into the real-world gist. Do not say that you are observing a timeline, recordings, entries, or a shift in conversation. Do not mention graph ids, hashes, timestamps, edges, or per-detection details unless they are directly relevant.\n\n\
          Timeline:\n{timeline}"
     ))
 }
@@ -315,6 +315,8 @@ mod tests {
         assert!(prompt.contains("internal representations of real-world events"));
         assert!(prompt.contains("not as the topic to describe"));
         assert!(prompt.contains("Do not say that you are observing a timeline"));
+        assert!(prompt.contains("Keep it compact"));
+        assert!(prompt.contains("per-detection details"));
         assert!(prompt.contains("SpeechSegment speech: hello"));
     }
 }

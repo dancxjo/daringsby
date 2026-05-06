@@ -9,7 +9,39 @@ run:
     #!/usr/bin/env bash
     set -euo pipefail
 
+    bins=()
+    for path in pete/src/bin/*.rs; do
+        bin="${path##*/}"
+        bin="${bin%.rs}"
+        # simulate is an ad hoc client utility that requires a subcommand.
+        if [[ "$bin" == "pete" || "$bin" == "simulate" ]]; then
+            continue
+        fi
+        bins+=("$bin")
+    done
     pids=()
+
+    kill_matches() {
+        local pattern="$1"
+        local pids
+        pids="$(pgrep -f "$pattern" || true)"
+        if [[ -n "$pids" ]]; then
+            kill $pids 2>/dev/null || true
+        fi
+    }
+
+    for bin in "${bins[@]}"; do
+        kill_matches "cargo run -p pete .*--bin ${bin}([[:space:]]|$)"
+        kill_matches "(^|[[:space:]])(.*/)?target/.*/${bin}([[:space:]]|$)"
+    done
+
+    sleep 1
+
+    for bin in "${bins[@]}"; do
+        pkill -KILL -f "cargo run -p pete .*--bin ${bin}([[:space:]]|$)" 2>/dev/null || true
+        pkill -KILL -f "(^|[[:space:]])(.*/)?target/.*/${bin}([[:space:]]|$)" 2>/dev/null || true
+    done
+
     cleanup() {
         if ((${#pids[@]})); then
             kill "${pids[@]}" 2>/dev/null || true
@@ -17,18 +49,10 @@ run:
     }
     trap cleanup INT TERM EXIT
 
-    cargo run -p pete --bin face &
-    pids+=("$!")
-    cargo run -p pete --bin frecog &
-    pids+=("$!")
-    cargo run -p pete --bin locate &
-    pids+=("$!")
-    cargo run -p pete --features scene-vec --bin scene_vec &
-    pids+=("$!")
-    cargo run -p pete --bin transcription &
-    pids+=("$!")
-    cargo run -p pete --bin vrecog &
-    pids+=("$!")
+    for bin in "${bins[@]}"; do
+        cargo run -p pete --features scene-vec --bin "$bin" &
+        pids+=("$!")
+    done
 
     wait -n "${pids[@]}"
 

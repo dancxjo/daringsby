@@ -152,6 +152,12 @@ async fn repeated_faces_are_framed_as_stream_frames() {
             .summary
             .contains("repeated similar camera or face observations")
     );
+    assert!(
+        out[0]
+            .summary
+            .contains("Compress repeated low-level detections")
+    );
+    assert!(out[0].summary.contains("do not list ids"));
     assert_eq!(out[0].stimuli.len(), 2);
 }
 

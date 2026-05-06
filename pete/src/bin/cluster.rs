@@ -343,10 +343,10 @@ fn cluster_theme_prompt(cluster: &VectorCluster, items: &[GraphClusterItem]) -> 
          Each entry may include supporting stimuli, graph edges, and nearby graph nodes for context. \
          Treat labels like Vector, Cluster, Impression, SpeechSegment, AudioClip, and ImageDescription as implementation details, not as the topic.\n\
          What is the common real-world theme among these items? Answer with only the theme itself as a concise noun phrase. \
-         Do not write a complete sentence. Do not add commentary, emotion, sentence-ending punctuation, vectors, embeddings, clusters, graph ids, or implementation details.\n\n\
+         Do not summarize each item. Do not write a complete sentence. Do not add commentary, emotion, sentence-ending punctuation, vectors, embeddings, clusters, graph ids, timestamps, hashes, edges, per-detection details, or implementation details.\n\n\
          Collection: {}\n\
          Cluster mean similarity: {:.3}\n\
-         Entries:\n{}",
+         Entries:\n{}\n\n\n\nJust complete this sentence: The common theme is ",
         cluster.collection, cluster.mean_similarity, entries
     )
 }
@@ -557,11 +557,13 @@ mod tests {
         assert!(prompt.contains("terse real-world theme labels"));
         assert!(prompt.contains("common real-world theme"));
         assert!(prompt.contains("Answer with only the theme itself as a concise noun phrase"));
+        assert!(prompt.contains("Do not summarize each item"));
         assert!(prompt.contains("Do not write a complete sentence"));
         assert!(!prompt.contains("You intersperse emojis"));
         assert!(!prompt.contains("emoji"));
         assert!(!prompt.contains("one short sentence"));
         assert!(prompt.contains("vectors, embeddings, clusters"));
+        assert!(prompt.contains("per-detection details"));
         assert!(prompt.contains("coffee is brewing"));
     }
 
