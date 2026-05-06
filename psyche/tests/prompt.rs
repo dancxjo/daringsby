@@ -76,6 +76,8 @@ fn one_shot_prompt_includes_default_prompt() {
     assert!(prompt.contains("Task:\nSummarize what I saw."));
     assert!(prompt.contains("write in the first person"));
     assert!(prompt.contains("multiple frames from the same continuous stream"));
+    assert!(prompt.contains("your own vision, hearing, body sense, position sense"));
+    assert!(prompt.contains("not as media files or external sensor artifacts"));
     assert!(prompt.contains("not the amount or density of sensor input"));
     assert!(prompt.contains("Do not infer an emotional tone from sensor volume alone"));
     assert!(prompt.contains("Prefer compact summaries over exhaustive breakdowns"));

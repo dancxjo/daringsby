@@ -72,6 +72,16 @@ async fn debug_report_contains_prompt_and_summary() {
     assert!(
         report
             .prompt
+            .contains("Pete's own vision, hearing, body sense, position sense")
+    );
+    assert!(
+        report
+            .prompt
+            .contains("not as media files or external sensor artifacts")
+    );
+    assert!(
+        report
+            .prompt
             .contains("I cannot tell what is happening yet")
     );
     assert!(report.prompt.contains("do not enumerate ids"));

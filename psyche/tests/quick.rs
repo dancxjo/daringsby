@@ -197,6 +197,16 @@ async fn repeated_faces_are_framed_as_stream_frames() {
     assert!(
         out[0]
             .summary
+            .contains("Pete's own vision, hearing, body sense, position sense")
+    );
+    assert!(
+        out[0]
+            .summary
+            .contains("not as media files or external sensor artifacts")
+    );
+    assert!(
+        out[0]
+            .summary
             .contains("amount, density, cadence, or mix of input modalities")
     );
     assert!(

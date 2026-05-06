@@ -69,6 +69,8 @@ async fn prompt_frames_inputs_as_real_world_events() {
     assert!(prompt.contains("not as the topic to describe"));
     assert!(prompt.contains("audio recording and the transcription derived from it"));
     assert!(prompt.contains("not the sensor stream"));
+    assert!(prompt.contains("Pete's own vision, hearing, body sense, position sense"));
+    assert!(prompt.contains("not as media files or external sensor artifacts"));
     assert!(prompt.contains("amount, density, cadence, or mix of input modalities"));
     assert!(prompt.contains("I cannot tell what is happening yet"));
     assert!(prompt.contains("sensor volume alone"));
