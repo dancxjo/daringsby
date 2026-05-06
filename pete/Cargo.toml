@@ -49,8 +49,9 @@ eye = []
 face = []
 image-vector = []
 geo = []
+motion = []
 ear = []
-all-sensors = ["eye", "image-vector", "face", "geo", "ear"]
+all-sensors = ["eye", "image-vector", "face", "geo", "motion", "ear"]
 
 [build-dependencies]
 dioxus = { version = "0.4.3", default-features = false, features = ["html", "macro"] }

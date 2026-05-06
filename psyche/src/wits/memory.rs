@@ -1,6 +1,6 @@
 use crate::{
-    AudioClip, GeoLoc, Heartbeat, ImageData, Impression, ObjectInfo, Stimulus, audio_clip_id,
-    geoloc_content_id, image_content_id,
+    AudioClip, BrowserMotion, GeoLoc, Heartbeat, ImageData, Impression, ObjectInfo, Stimulus,
+    audio_clip_id, browser_motion_content_id, geoloc_content_id, image_content_id,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
@@ -4236,6 +4236,20 @@ fn payload_target_node(
             geolocation_node(&loc, &id, occurred_at.to_rfc3339()),
         ));
     }
+    if value.get("acceleration").is_some()
+        || value.get("acceleration_including_gravity").is_some()
+        || value.get("rotation_rate").is_some()
+        || value.get("orientation").is_some()
+        || value.get("interval").is_some()
+    {
+        if let Ok(motion) = serde_json::from_value::<BrowserMotion>(value.clone()) {
+            let id = browser_motion_content_id(&motion);
+            return Ok((
+                id.clone(),
+                browser_motion_node(&motion, &id, occurred_at.to_rfc3339()),
+            ));
+        }
+    }
     if let Ok(audio) = serde_json::from_value::<AudioClip>(value.clone()) {
         let id = audio_clip_id(&audio);
         return Ok((
@@ -4387,6 +4401,20 @@ fn geolocation_node(loc: &GeoLoc, id: &str, occurred_at: String) -> Value {
         "latitude": loc.latitude,
         "longitude": loc.longitude,
         "observed_at": loc.observed_at.clone(),
+        "occurred_at": occurred_at,
+    })
+}
+
+fn browser_motion_node(motion: &BrowserMotion, id: &str, occurred_at: String) -> Value {
+    json!({
+        "label": "BrowserMotion",
+        "id": id,
+        "acceleration": motion.acceleration.clone(),
+        "acceleration_including_gravity": motion.acceleration_including_gravity.clone(),
+        "rotation_rate": motion.rotation_rate.clone(),
+        "orientation": motion.orientation.clone(),
+        "interval": motion.interval,
+        "observed_at": motion.observed_at.clone(),
         "occurred_at": occurred_at,
     })
 }

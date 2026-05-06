@@ -76,7 +76,9 @@ async fn prompt_frames_inputs_as_real_world_events() {
 #[tokio::test]
 async fn bus_backed_digest_loops_summary_back_as_sensation() {
     let bus = TopicBus::new(8);
-    let mut sensations = bus.subscribe(Topic::Sensation);
+    let sensation_bus = bus.clone();
+    let sensations = sensation_bus.subscribe(Topic::Sensation);
+    futures::pin_mut!(sensations);
     let combo = Combobulator::with_bus(bus, Arc::new(Dummy));
 
     combo

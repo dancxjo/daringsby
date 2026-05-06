@@ -1,8 +1,6 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use psyche::{
-    BrowserMotion, Sensation, Sensor, browser_motion_observed_at,
-};
+use psyche::{BrowserMotion, Sensation, Sensor, browser_motion_observed_at};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
@@ -28,10 +26,7 @@ impl Sensor<BrowserMotion> for MotionSensor {
         if motion.observed_at.is_none() {
             motion.observed_at = Some(occurred_at.to_rfc3339());
         }
-        match self
-            .forward
-            .try_send(Sensation::of_at(motion, occurred_at))
-        {
+        match self.forward.try_send(Sensation::of_at(motion, occurred_at)) {
             Ok(()) => {}
             Err(mpsc::error::TrySendError::Full(_)) => {
                 warn!("dropping browser motion update because psyche input is full");

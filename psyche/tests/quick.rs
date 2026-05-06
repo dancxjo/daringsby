@@ -3,7 +3,10 @@ use lingproc::LlmInstruction;
 use psyche::sensors::face::FaceInfo;
 use psyche::traits::Doer;
 use psyche::wits::Quick;
-use psyche::{Heartbeat, ImageData, Sensation, Topic, TopicBus, Wit, image_content_id};
+use psyche::{
+    BrowserMotion, DeviceOrientation, Heartbeat, ImageData, MotionVector, Sensation, Topic,
+    TopicBus, Wit, image_content_id,
+};
 use std::sync::Arc;
 use tokio::time::{Duration, sleep};
 
@@ -95,6 +98,39 @@ async fn describes_heartbeat_before_type_erasure() {
     assert_eq!(out.len(), 1);
     assert!(out[0].stimuli[0].what.starts_with("I felt a heartbeat at "));
     assert!(!out[0].summary.is_empty());
+}
+
+#[tokio::test]
+async fn describes_browser_motion_before_type_erasure() {
+    let bus = TopicBus::new(8);
+    let quick = Quick::new(bus, Arc::new(Dummy));
+    quick
+        .observe(Sensation::of(BrowserMotion {
+            acceleration: Some(MotionVector {
+                x: Some(1.0),
+                y: Some(2.0),
+                z: Some(3.0),
+            }),
+            acceleration_including_gravity: None,
+            rotation_rate: Some(DeviceOrientation {
+                alpha: Some(4.0),
+                beta: Some(5.0),
+                gamma: Some(6.0),
+                absolute: None,
+            }),
+            orientation: None,
+            interval: Some(16.7),
+            observed_at: None,
+        }))
+        .await;
+
+    let out = quick.tick().await;
+
+    assert_eq!(out.len(), 1);
+    assert_eq!(
+        out[0].stimuli[0].what,
+        "I felt device motion acceleration (1.00, 2.00, 3.00)"
+    );
 }
 
 #[tokio::test]

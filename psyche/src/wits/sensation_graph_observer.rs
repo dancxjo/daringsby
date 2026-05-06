@@ -3,9 +3,9 @@ use crate::sensors::face::FaceInfo;
 use crate::traits::observer::SensationObserver;
 use crate::wits::memory::{GraphStore, qdrant_vector_node};
 use crate::{
-    AudioClip, CombobulationSummary, GeoEmbedding, GeoLoc, Heartbeat, ImageData, ImageEmbedding,
-    ObjectInfo, Sensation, Topic, TopicBus, VoiceInfo, audio_clip_id, geoloc_content_id,
-    image_content_id,
+    AudioClip, BrowserMotion, CombobulationSummary, GeoEmbedding, GeoLoc, Heartbeat, ImageData,
+    ImageEmbedding, ObjectInfo, Sensation, Topic, TopicBus, VoiceInfo, audio_clip_id,
+    browser_motion_content_id, geoloc_content_id, image_content_id,
 };
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -102,6 +102,25 @@ impl SensationObserver for SensationGraphObserver {
                     "nodes": [
                         sensation_node(&sensation_id, "geolocation", occurred_at.to_rfc3339()),
                         geolocation_node(loc, &id, occurred_at.to_rfc3339()),
+                    ],
+                    "relationships": [{
+                        "from": sensation_id,
+                        "to": id,
+                        "type": "OBSERVED",
+                    }],
+                }),
+            )
+            .await;
+        } else if let Some(motion) = payload.downcast_ref::<BrowserMotion>() {
+            let id = browser_motion_content_id(motion);
+            let sensation_id = sensation_id("browser_motion", &id, occurred_at.to_rfc3339());
+            self.store_once(
+                format!("browser-motion:{id}"),
+                json!({
+                    "op": "merge_graph",
+                    "nodes": [
+                        sensation_node(&sensation_id, "browser_motion", occurred_at.to_rfc3339()),
+                        browser_motion_node(motion, &id, occurred_at.to_rfc3339()),
                     ],
                     "relationships": [{
                         "from": sensation_id,
@@ -601,6 +620,21 @@ fn geolocation_node(loc: &GeoLoc, id: &str, occurred_at: String) -> Value {
         "latitude": loc.latitude,
         "longitude": loc.longitude,
         "observed_at": loc.observed_at.clone(),
+        "occurred_at": occurred_at,
+    })
+}
+
+fn browser_motion_node(motion: &BrowserMotion, id: &str, occurred_at: String) -> Value {
+    json!({
+        "label": "BrowserMotion",
+        "id": id,
+        "merge_key": "id",
+        "acceleration": motion.acceleration.clone(),
+        "acceleration_including_gravity": motion.acceleration_including_gravity.clone(),
+        "rotation_rate": motion.rotation_rate.clone(),
+        "orientation": motion.orientation.clone(),
+        "interval": motion.interval,
+        "observed_at": motion.observed_at.clone(),
         "occurred_at": occurred_at,
     })
 }

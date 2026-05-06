@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use psyche::{
-    AudioClip, GeoEmbedding, GeoLoc, GraphStore, Heartbeat, ImageData, ObjectInfo, Sensation,
-    SensationGraphObserver, SensationObserver, audio_clip_id, geoloc_content_id, geoloc_vector,
-    image_content_id,
+    AudioClip, BrowserMotion, CombobulationSummary, DeviceOrientation, GeoEmbedding, GeoLoc,
+    GraphStore, Heartbeat, ImageData, MotionVector, ObjectInfo, Sensation, SensationGraphObserver,
+    SensationObserver, audio_clip_id, geoloc_content_id, geoloc_vector, image_content_id,
 };
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -78,6 +78,53 @@ async fn stores_original_geolocation_sensation() {
 }
 
 #[tokio::test]
+async fn stores_browser_motion_sensation() {
+    let graph = Arc::new(MockGraph::default());
+    let observer = SensationGraphObserver::new(graph.clone());
+    let motion = BrowserMotion {
+        acceleration: Some(MotionVector {
+            x: Some(1.0),
+            y: Some(2.0),
+            z: Some(3.0),
+        }),
+        acceleration_including_gravity: Some(MotionVector {
+            x: Some(1.1),
+            y: Some(2.1),
+            z: Some(12.8),
+        }),
+        rotation_rate: Some(DeviceOrientation {
+            alpha: Some(4.0),
+            beta: Some(5.0),
+            gamma: Some(6.0),
+            absolute: None,
+        }),
+        orientation: Some(DeviceOrientation {
+            alpha: Some(7.0),
+            beta: Some(8.0),
+            gamma: Some(9.0),
+            absolute: Some(true),
+        }),
+        interval: Some(16.7),
+        observed_at: Some("2026-05-06T12:00:00Z".into()),
+    };
+
+    observer.observe_sensation(&Sensation::of(motion)).await;
+
+    let stored = graph.0.lock().unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0]["nodes"][1]["label"], "BrowserMotion");
+    assert_eq!(stored[0]["nodes"][1]["acceleration"]["x"], 1.0);
+    assert_eq!(
+        stored[0]["nodes"][1]["acceleration_including_gravity"]["z"],
+        12.8
+    );
+    assert_eq!(stored[0]["nodes"][1]["rotation_rate"]["gamma"], 6.0);
+    assert_eq!(stored[0]["nodes"][1]["orientation"]["absolute"], true);
+    assert_eq!(stored[0]["nodes"][1]["interval"], 16.7);
+    assert_eq!(stored[0]["relationships"][0]["type"], "OBSERVED");
+}
+
+#[tokio::test]
 async fn stores_audio_sensation_with_transcript() {
     let graph = Arc::new(MockGraph::default());
     let observer = SensationGraphObserver::new(graph.clone());
@@ -99,6 +146,36 @@ async fn stores_audio_sensation_with_transcript() {
     assert_eq!(stored[0]["nodes"][1]["id"], expected_id);
     assert_eq!(stored[0]["nodes"][1]["transcript"], "hello there");
     assert_eq!(stored[0]["relationships"][0]["type"], "OBSERVED");
+}
+
+#[tokio::test]
+async fn stores_combobulation_summary_as_sensation() {
+    let graph = Arc::new(MockGraph::default());
+    let observer = SensationGraphObserver::new(graph.clone());
+    let occurred_at = Utc::now();
+
+    observer
+        .observe_sensation(&Sensation::of_at(
+            CombobulationSummary {
+                text: "I may be hearing someone nearby.".into(),
+                created_at: Some(occurred_at.to_rfc3339()),
+                source_sensation_ids: vec!["sensation:audio:1".into()],
+            },
+            occurred_at,
+        ))
+        .await;
+
+    let stored = graph.0.lock().unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0]["nodes"][0]["kind"], "combobulation_summary");
+    assert_eq!(stored[0]["nodes"][1]["label"], "CombobulationSummary");
+    assert_eq!(
+        stored[0]["nodes"][1]["text"],
+        "I may be hearing someone nearby."
+    );
+    assert_eq!(stored[0]["relationships"][0]["type"], "OBSERVED");
+    assert_eq!(stored[0]["relationships"][1]["type"], "DERIVED_FROM");
+    assert_eq!(stored[0]["relationships"][1]["to"], "sensation:audio:1");
 }
 
 #[tokio::test]

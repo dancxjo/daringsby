@@ -11,7 +11,7 @@ ts-rs = { version = "7", optional = true }
 psyche = { path = "../psyche" }
 
 [features]
-ts = ["ts-rs"]
+ts = ["ts-rs", "psyche/ts"]
 
 [build-dependencies]
 ts-rs = { version = "7", optional = true }

@@ -101,6 +101,28 @@ impl Quick {
                         "I detected location ({:.1}, {:.1})",
                         loc.latitude, loc.longitude
                     ))
+                } else if let Some(motion) = payload.downcast_ref::<crate::BrowserMotion>() {
+                    if let Some(accel) = motion
+                        .acceleration
+                        .as_ref()
+                        .or(motion.acceleration_including_gravity.as_ref())
+                    {
+                        Some(format!(
+                            "I felt device motion acceleration ({:.2}, {:.2}, {:.2})",
+                            accel.x.unwrap_or_default(),
+                            accel.y.unwrap_or_default(),
+                            accel.z.unwrap_or_default()
+                        ))
+                    } else if let Some(orientation) = &motion.orientation {
+                        Some(format!(
+                            "I felt the device orientation shift ({:.1}, {:.1}, {:.1})",
+                            orientation.alpha.unwrap_or_default(),
+                            orientation.beta.unwrap_or_default(),
+                            orientation.gamma.unwrap_or_default()
+                        ))
+                    } else {
+                        Some("I felt browser device motion".to_string())
+                    }
                 } else if let Some(beat) = payload.downcast_ref::<crate::Heartbeat>() {
                     Some(format!("I felt a heartbeat at {}", beat.timestamp))
                 } else {

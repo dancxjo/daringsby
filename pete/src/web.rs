@@ -27,7 +27,7 @@ use tracing::{debug, error, info};
 
 use crate::EventBus;
 use lingproc::Role;
-use psyche::{Ear, Event, GeoLoc, ImageData, Sensor};
+use psyche::{BrowserMotion, Ear, Event, GeoLoc, ImageData, Sensor};
 
 /// PETE's interface to the world — his `Body`.
 ///
@@ -39,6 +39,7 @@ use psyche::{Ear, Event, GeoLoc, ImageData, Sensor};
 /// - 🧠 Connects the web server to the running [`Psyche`] instance
 /// - 👁 Streams image input via [`Sensor<ImageData>`]
 /// - 📍 Receives geolocation input via [`Sensor<GeoLoc>`]
+/// - 📱 Receives browser motion input via [`Sensor<BrowserMotion>`]
 /// - 👂 Lets Pete “hear” the user via the [`Ear`] trait
 /// - 🗣 Shares and modifies the current [`Conversation`] log
 /// - 🪞 Exposes introspection via [`DebugHandle`]
@@ -54,6 +55,7 @@ pub struct Body {
     pub ear: Arc<dyn Ear>,
     pub eye: Arc<dyn Sensor<ImageData>>,
     pub geo: Arc<dyn Sensor<GeoLoc>>,
+    pub motion: Arc<dyn Sensor<BrowserMotion>>,
     pub conversation: Arc<tokio::sync::Mutex<psyche::Conversation>>,
     pub connections: Arc<AtomicUsize>,
     pub system_prompt: Arc<tokio::sync::Mutex<String>>,
@@ -246,6 +248,11 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                                     data.observed_at = at;
                                     state.geo.sense(data).await;
                                 }
+                                WsRequest::Motion { mut data, at } => {
+                                    debug!("browser motion received");
+                                    data.observed_at = at;
+                                    state.motion.sense(data).await;
+                                }
                                 WsRequest::Sense { .. } => {
                                     debug!("sense event received");
                                 }
@@ -316,6 +323,14 @@ fn parse_flat_ws_request(text: &str) -> Option<WsRequest> {
                 .and_then(|at| at.as_str())
                 .map(ToString::to_string);
             Some(WsRequest::Geolocate { data, at })
+        }
+        "Motion" => {
+            let data = serde_json::from_value(value.get("data")?.clone()).ok()?;
+            let at = value
+                .get("at")
+                .and_then(|at| at.as_str())
+                .map(ToString::to_string);
+            Some(WsRequest::Motion { data, at })
         }
         "Sense" => Some(WsRequest::Sense {
             data: value.get("data")?.clone(),

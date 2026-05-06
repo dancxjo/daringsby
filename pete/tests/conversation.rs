@@ -1,5 +1,7 @@
 use axum::{body, extract::State, response::IntoResponse};
-use pete::{Body, ChannelEar, EventBus, EyeSensor, GeoSensor, conversation_log, dummy_psyche};
+use pete::{
+    Body, ChannelEar, EventBus, EyeSensor, GeoSensor, MotionSensor, conversation_log, dummy_psyche,
+};
 use psyche::traits::Sensor;
 use std::sync::{
     Arc,
@@ -20,8 +22,10 @@ async fn returns_log_json() {
     let bus = Arc::new(bus);
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
     let geo = Arc::new(GeoSensor::new(psyche.input_sender()));
+    let motion = Arc::new(MotionSensor::new(psyche.input_sender()));
     psyche.add_sense(eye.description());
     psyche.add_sense(geo.description());
+    psyche.add_sense(motion.description());
     let debug = psyche.debug_handle();
     let state = Body {
         asr: None,
@@ -29,6 +33,7 @@ async fn returns_log_json() {
         ear,
         eye,
         geo,
+        motion,
         conversation,
         connections: Arc::new(AtomicUsize::new(1)),
         system_prompt: Arc::new(tokio::sync::Mutex::new(psyche.system_prompt())),
@@ -60,8 +65,10 @@ async fn debug_mode_includes_timestamps() {
     let bus = Arc::new(bus);
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
     let geo = Arc::new(GeoSensor::new(psyche.input_sender()));
+    let motion = Arc::new(MotionSensor::new(psyche.input_sender()));
     psyche.add_sense(eye.description());
     psyche.add_sense(geo.description());
+    psyche.add_sense(motion.description());
     let debug = psyche.debug_handle();
     let state = Body {
         asr: None,
@@ -69,6 +76,7 @@ async fn debug_mode_includes_timestamps() {
         ear,
         eye,
         geo,
+        motion,
         conversation,
         connections: Arc::new(AtomicUsize::new(1)),
         system_prompt: Arc::new(tokio::sync::Mutex::new(psyche.system_prompt())),

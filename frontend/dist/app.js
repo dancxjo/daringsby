@@ -239,6 +239,7 @@
       setupWebcam();
       setupAudio();
     }
+    setupBrowserMotion();
     startSpeechRecognition();
   });
   ws.addEventListener("close", () => {
@@ -268,6 +269,123 @@
         })
       );
     });
+  }
+
+  let motionStarted = false;
+  let motionPermissionRequested = false;
+  let latestDeviceOrientation = null;
+  let lastMotionSentAt = 0;
+  const motionSendIntervalMs = 500;
+
+  function setFiniteNumber(target, key, value) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      target[key] = value;
+    }
+  }
+
+  function motionVector(reading) {
+    if (!reading) return null;
+    const out = {};
+    setFiniteNumber(out, "x", reading.x);
+    setFiniteNumber(out, "y", reading.y);
+    setFiniteNumber(out, "z", reading.z);
+    return Object.keys(out).length ? out : null;
+  }
+
+  function orientationVector(reading) {
+    if (!reading) return null;
+    const out = {};
+    setFiniteNumber(out, "alpha", reading.alpha);
+    setFiniteNumber(out, "beta", reading.beta);
+    setFiniteNumber(out, "gamma", reading.gamma);
+    if (typeof reading.absolute === "boolean") {
+      out.absolute = reading.absolute;
+    }
+    return Object.keys(out).length ? out : null;
+  }
+
+  function sendBrowserMotion(data, at) {
+    if (!data.acceleration &&
+        !data.acceleration_including_gravity &&
+        !data.rotation_rate &&
+        !data.orientation) {
+      return;
+    }
+    safeSend(
+      JSON.stringify({
+        type: "Motion",
+        data,
+        at,
+      })
+    );
+  }
+
+  function addBrowserMotionListeners() {
+    if (motionStarted) return;
+    motionStarted = true;
+    if ("DeviceOrientationEvent" in window) {
+      window.addEventListener("deviceorientation", (event) => {
+        latestDeviceOrientation = orientationVector(event);
+        const now = Date.now();
+        if (!latestDeviceOrientation || now - lastMotionSentAt < motionSendIntervalMs) return;
+        lastMotionSentAt = now;
+        sendBrowserMotion(
+          { orientation: latestDeviceOrientation },
+          new Date(event.timeStamp ? performance.timeOrigin + event.timeStamp : now).toISOString()
+        );
+      });
+    }
+    if ("DeviceMotionEvent" in window) {
+      window.addEventListener("devicemotion", (event) => {
+        const now = Date.now();
+        if (now - lastMotionSentAt < motionSendIntervalMs) return;
+        lastMotionSentAt = now;
+        const data = {
+          acceleration: motionVector(event.acceleration),
+          acceleration_including_gravity: motionVector(event.accelerationIncludingGravity),
+          rotation_rate: orientationVector(event.rotationRate),
+          orientation: latestDeviceOrientation,
+        };
+        setFiniteNumber(data, "interval", event.interval);
+        sendBrowserMotion(
+          data,
+          new Date(event.timeStamp ? performance.timeOrigin + event.timeStamp : now).toISOString()
+        );
+      });
+    }
+  }
+
+  function setupBrowserMotion() {
+    if (!("DeviceMotionEvent" in window) && !("DeviceOrientationEvent" in window)) return;
+    const needsMotionPermission =
+      typeof DeviceMotionEvent !== "undefined" &&
+      typeof DeviceMotionEvent.requestPermission === "function";
+    const needsOrientationPermission =
+      typeof DeviceOrientationEvent !== "undefined" &&
+      typeof DeviceOrientationEvent.requestPermission === "function";
+    if (!needsMotionPermission && !needsOrientationPermission) {
+      addBrowserMotionListeners();
+      return;
+    }
+    if (motionPermissionRequested) return;
+    motionPermissionRequested = true;
+    window.addEventListener(
+      "pointerdown",
+      async () => {
+        try {
+          const results = await Promise.all([
+            needsMotionPermission ? DeviceMotionEvent.requestPermission() : Promise.resolve("granted"),
+            needsOrientationPermission ? DeviceOrientationEvent.requestPermission() : Promise.resolve("granted"),
+          ]);
+          if (results.every((result) => result === "granted")) {
+            addBrowserMotionListeners();
+          }
+        } catch (e) {
+          console.warn("browser motion permission denied", e);
+        }
+      },
+      { once: true }
+    );
   }
 
   let webcamStream = null;

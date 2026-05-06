@@ -1,6 +1,8 @@
 use axum::{Router, routing::get, serve};
 use futures::SinkExt;
-use pete::{Body, ChannelEar, EventBus, EyeSensor, GeoSensor, dummy_psyche, ws_handler};
+use pete::{
+    Body, ChannelEar, EventBus, EyeSensor, GeoSensor, MotionSensor, dummy_psyche, ws_handler,
+};
 use psyche::Sensor;
 use std::sync::{
     Arc,
@@ -22,8 +24,10 @@ async fn websocket_forwards_geolocation() {
     let (tx, mut rx) = mpsc::channel(16);
     let eye = Arc::new(EyeSensor::new(psyche.input_sender()));
     let geo = Arc::new(GeoSensor::new(tx));
+    let motion = Arc::new(MotionSensor::new(psyche.input_sender()));
     psyche.add_sense(eye.description());
     psyche.add_sense(geo.description());
+    psyche.add_sense(motion.description());
     let (bus, _user_rx) = EventBus::new();
     let bus = Arc::new(bus);
     let debug = psyche.debug_handle();
@@ -33,6 +37,7 @@ async fn websocket_forwards_geolocation() {
         ear,
         eye,
         geo,
+        motion,
         conversation,
         connections: Arc::new(AtomicUsize::new(0)),
         system_prompt: Arc::new(tokio::sync::Mutex::new(psyche.system_prompt())),

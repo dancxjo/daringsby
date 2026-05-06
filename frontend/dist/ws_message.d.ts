@@ -4,6 +4,28 @@ export interface GeoLoc {
   observed_at?: string;
 }
 
+export interface MotionVector {
+  x?: number;
+  y?: number;
+  z?: number;
+}
+
+export interface DeviceOrientation {
+  alpha?: number;
+  beta?: number;
+  gamma?: number;
+  absolute?: boolean;
+}
+
+export interface BrowserMotion {
+  acceleration?: MotionVector;
+  acceleration_including_gravity?: MotionVector;
+  rotation_rate?: DeviceOrientation;
+  orientation?: DeviceOrientation;
+  interval?: number;
+  observed_at?: string;
+}
+
 export interface AudioData {
   base64: string;
   mime: string;
@@ -26,4 +48,5 @@ export type WsMessage =
   | { type: "See"; data: string; at?: string }
   | { type: "Hear"; data: AudioData; at?: string }
   | { type: "Geolocate"; data: GeoLoc; at?: string }
+  | { type: "Motion"; data: BrowserMotion; at?: string }
   | { type: "Sense"; data: Record<string, any> };

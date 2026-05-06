@@ -10,13 +10,15 @@ use pete::FaceSensor;
 #[cfg(feature = "geo")]
 use pete::GeoSensor;
 use pete::HeartbeatSensor;
-#[cfg(any(not(feature = "eye"), not(feature = "geo")))]
+#[cfg(feature = "motion")]
+use pete::MotionSensor;
+#[cfg(any(not(feature = "eye"), not(feature = "geo"), not(feature = "motion")))]
 use pete::NoopSensor;
 use pete::{Body, LoggingMotor, NoopEar, NoopMouth, app, init_logging, listen_user_input};
 // helper for building Ollama providers
 use pete::default_mouth;
 use pete::ollama_provider_from_args;
-use psyche::{Ear, GeoLoc, ImageData, Mouth, Sensor, TrimMouth};
+use psyche::{BrowserMotion, Ear, GeoLoc, ImageData, Mouth, Sensor, TrimMouth};
 use std::{
     net::SocketAddr,
     sync::{
@@ -277,6 +279,17 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "geo"))]
     let geo: Arc<dyn Sensor<GeoLoc>> = Arc::new(NoopSensor) as Arc<dyn Sensor<GeoLoc>>;
 
+    #[cfg(feature = "motion")]
+    let motion: Arc<dyn Sensor<BrowserMotion>> = {
+        let m =
+            Arc::new(MotionSensor::new(psyche.input_sender())) as Arc<dyn Sensor<BrowserMotion>>;
+        psyche.add_sense(m.describe().into());
+        m
+    };
+    #[cfg(not(feature = "motion"))]
+    let motion: Arc<dyn Sensor<BrowserMotion>> =
+        Arc::new(NoopSensor) as Arc<dyn Sensor<BrowserMotion>>;
+
     let _heartbeat = HeartbeatSensor::new(psyche.input_sender());
     psyche.add_sense(
         "Heartbeat. This triggers a pulse every minute, like a ticking internal clock.".into(),
@@ -337,6 +350,7 @@ async fn main() -> anyhow::Result<()> {
         ear: ear.clone(),
         eye: eye.clone(),
         geo: geo.clone(),
+        motion: motion.clone(),
         conversation,
         connections,
         system_prompt: Arc::new(tokio::sync::Mutex::new(system_prompt)),
