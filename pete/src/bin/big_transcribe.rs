@@ -1,20 +1,25 @@
+use std::io::Cursor;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use anyhow::Context;
+use anyhow::{Context, Result, anyhow};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use dotenvy::dotenv;
+use hound::{SampleFormat, WavReader, WavSpec, WavWriter};
 use pete::{
     AsrService, EventBus, HIGH_QUALITY_MULTILINGUAL_MODEL_PATH, SegmentMessage, SourceClipSpan,
     WordTiming, init_logging,
 };
 use psyche::{
-    GraphAudioClip, GraphAudioClipWindow, GraphAudioSourceSpan, GraphSpeechSegment, Neo4jClient,
-    parse_observed_at,
+    AudioClip, GraphAudioClip, GraphAudioClipWindow, GraphAudioSourceSpan,
+    GraphConsolidatedSpeechCandidate, GraphConsolidatedSpeechSource, GraphSpeechSegment,
+    Neo4jClient, audio_clip_id, parse_observed_at,
 };
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 #[derive(Parser)]
 #[command(
@@ -44,6 +49,9 @@ struct Cli {
     /// Whisper model for aggregate transcription.
     #[arg(long, env = "BIG_TRANSCRIPTION_WHISPER_MODEL")]
     whisper_model: Option<PathBuf>,
+    /// Keep original audio clips and first-order transcriptions after consolidation.
+    #[arg(long)]
+    keep_speech_subnodes: bool,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -67,12 +75,21 @@ async fn main() -> anyhow::Result<()> {
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let window_size = cli.window_size.max(cli.min_clips).max(1);
     let min_clips = cli.min_clips.max(1);
+    let delete_subnodes = !cli.keep_speech_subnodes;
 
-    info!(window_size, min_clips, "big transcription loop started");
+    info!(
+        window_size,
+        min_clips, delete_subnodes, "big transcription loop started"
+    );
     loop {
         ticker.tick().await;
         if let Err(err) = transcribe_next_window(&graph, &asr, window_size, min_clips).await {
             error!(error = %err, "big transcription loop iteration failed");
+        }
+        if let Err(err) =
+            consolidate_next_big_transcription(&graph, min_clips, delete_subnodes).await
+        {
+            error!(error = %err, "speech consolidation loop iteration failed");
         }
     }
 }
@@ -154,6 +171,53 @@ async fn transcribe_next_window(
         segment_count = transcription.segments.len(),
         source_count = sources.len(),
         "attached big audio transcription"
+    );
+    Ok(())
+}
+
+async fn consolidate_next_big_transcription(
+    graph: &Neo4jClient,
+    min_sources: usize,
+    delete_subnodes: bool,
+) -> Result<()> {
+    let Some(candidate) = graph
+        .latest_big_transcription_for_speech_consolidation(min_sources)
+        .await
+        .context("failed to load speech consolidation candidate")?
+    else {
+        debug!("no big transcriptions found for speech consolidation");
+        return Ok(());
+    };
+
+    let fused = fuse_candidate_audio(&candidate).with_context(|| {
+        format!(
+            "failed to fuse speech transcription {}",
+            candidate.transcription_id
+        )
+    })?;
+    let clip_id = audio_clip_id(&fused.clip);
+    let report = graph
+        .consolidate_big_audio_transcription(
+            &candidate,
+            &clip_id,
+            &fused.clip,
+            fused.duration_ms,
+            delete_subnodes,
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "failed to consolidate speech transcription {}",
+                candidate.transcription_id
+            )
+        })?;
+    info!(
+        transcription_id = %report.transcription_id,
+        consolidated_audio_clip_id = %report.consolidated_audio_clip_id,
+        source_count = report.source_audio_clip_ids.len(),
+        deleted_transcription_count = report.deleted_transcription_ids.len(),
+        delete_subnodes,
+        "speech transcription consolidated"
     );
     Ok(())
 }
@@ -254,10 +318,188 @@ fn graph_speech_segment(
     }
 }
 
+#[derive(Clone, Debug)]
+struct FusedAudio {
+    clip: AudioClip,
+    duration_ms: u32,
+}
+
+fn fuse_candidate_audio(candidate: &GraphConsolidatedSpeechCandidate) -> Result<FusedAudio> {
+    anyhow::ensure!(
+        !candidate.sources.is_empty(),
+        "candidate has no source audio clips"
+    );
+    let sample_rate = candidate.sources[0].clip.clip.sample_rate;
+    anyhow::ensure!(sample_rate > 0, "source audio sample rate must be non-zero");
+
+    let mut samples = Vec::new();
+    for source in &candidate.sources {
+        append_source_audio(&mut samples, sample_rate, source)?;
+    }
+
+    let wav = encode_wav(&samples, sample_rate)?;
+    let duration_ms = samples_to_ms(samples.len(), sample_rate);
+    Ok(FusedAudio {
+        clip: AudioClip {
+            mime: "audio/wav".into(),
+            base64: BASE64_STANDARD.encode(wav),
+            sample_rate,
+            channels: 1,
+            transcript: Some(candidate.transcript.clone()),
+            captured_at: candidate.source_started_at.clone(),
+        },
+        duration_ms,
+    })
+}
+
+fn append_source_audio(
+    output: &mut Vec<f32>,
+    sample_rate: u32,
+    source: &GraphConsolidatedSpeechSource,
+) -> Result<()> {
+    let source_samples = decode_audio_clip_samples(&source.clip.clip, sample_rate)
+        .with_context(|| format!("failed to decode source audio clip {}", source.clip.id))?;
+    let expected_start = ms_to_samples(source.start_ms, sample_rate);
+    if output.len() < expected_start {
+        output.resize(expected_start, 0.0);
+    } else if output.len() > expected_start {
+        warn!(
+            source_id = %source.clip.id,
+            source_index = source.index,
+            expected_start,
+            actual_start = output.len(),
+            "source span overlaps fused audio; appending at current end"
+        );
+    }
+    output.extend(source_samples);
+    let expected_end = ms_to_samples(source.end_ms, sample_rate);
+    if output.len() < expected_end {
+        output.resize(expected_end, 0.0);
+    }
+    Ok(())
+}
+
+fn decode_audio_clip_samples(clip: &AudioClip, target_sample_rate: u32) -> Result<Vec<f32>> {
+    let bytes = BASE64_STANDARD
+        .decode(clip.base64.trim().as_bytes())
+        .context("failed to decode audio clip base64")?;
+    if bytes.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mime = clip.mime.to_ascii_lowercase();
+    let (sample_rate, channels, samples) = if mime.starts_with("audio/wav")
+        || mime.starts_with("audio/x-wav")
+        || bytes.starts_with(b"RIFF")
+    {
+        decode_wav_samples(&bytes)?
+    } else if is_pcm_s16_mime(&mime) {
+        (
+            clip.sample_rate,
+            clip.channels,
+            decode_pcm_s16le_samples(&bytes),
+        )
+    } else {
+        return Err(anyhow!("unsupported audio clip MIME type {}", clip.mime));
+    };
+    anyhow::ensure!(
+        sample_rate == target_sample_rate,
+        "audio clip sample rate {sample_rate} does not match fused sample rate {target_sample_rate}"
+    );
+    Ok(downmix_to_mono(samples, channels))
+}
+
+fn decode_wav_samples(bytes: &[u8]) -> Result<(u32, u16, Vec<f32>)> {
+    let mut reader =
+        WavReader::new(Cursor::new(bytes)).context("failed to read audio clip WAV data")?;
+    let spec = reader.spec();
+    let samples = match spec.sample_format {
+        SampleFormat::Float => reader
+            .samples::<f32>()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .context("failed to decode float WAV samples")?,
+        SampleFormat::Int if spec.bits_per_sample <= 16 => reader
+            .samples::<i16>()
+            .map(|sample| sample.map(|sample| sample as f32 / i16::MAX as f32))
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .context("failed to decode 16-bit WAV samples")?,
+        SampleFormat::Int if spec.bits_per_sample <= 32 => reader
+            .samples::<i32>()
+            .map(|sample| sample.map(|sample| sample as f32 / i32::MAX as f32))
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .context("failed to decode 32-bit WAV samples")?,
+        _ => {
+            return Err(anyhow!(
+                "unsupported WAV bit depth {}",
+                spec.bits_per_sample
+            ));
+        }
+    };
+    Ok((spec.sample_rate, spec.channels, samples))
+}
+
+fn decode_pcm_s16le_samples(bytes: &[u8]) -> Vec<f32> {
+    bytes
+        .chunks_exact(2)
+        .map(|chunk| {
+            let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
+            sample as f32 / i16::MAX as f32
+        })
+        .collect()
+}
+
+fn downmix_to_mono(samples: Vec<f32>, channels: u16) -> Vec<f32> {
+    if channels <= 1 {
+        return samples;
+    }
+    let channels = usize::from(channels);
+    samples
+        .chunks_exact(channels)
+        .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+        .collect()
+}
+
+fn is_pcm_s16_mime(mime: &str) -> bool {
+    mime.starts_with("audio/pcm") || mime.starts_with("audio/l16") || mime.contains("format=s16")
+}
+
+fn encode_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
+    let mut cursor = Cursor::new(Vec::new());
+    {
+        let spec = WavSpec {
+            channels: 1,
+            sample_rate,
+            bits_per_sample: 16,
+            sample_format: SampleFormat::Int,
+        };
+        let mut writer = WavWriter::new(&mut cursor, spec)?;
+        for &sample in samples {
+            let clamped = sample.clamp(-1.0, 1.0);
+            writer.write_sample((clamped * i16::MAX as f32) as i16)?;
+        }
+        writer.finalize()?;
+    }
+    Ok(cursor.into_inner())
+}
+
+fn ms_to_samples(ms: u32, sample_rate: u32) -> usize {
+    if sample_rate == 0 {
+        return 0;
+    }
+    ((u128::from(ms) * u128::from(sample_rate)) / 1000).min(usize::MAX as u128) as usize
+}
+
+fn samples_to_ms(samples: usize, sample_rate: u32) -> u32 {
+    if sample_rate == 0 {
+        return 0;
+    }
+    let ms = (samples as u128).saturating_mul(1000) / u128::from(sample_rate);
+    ms.min(u128::from(u32::MAX)) as u32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use psyche::AudioClip;
 
     fn timestamp() -> DateTime<Utc> {
         DateTime::parse_from_rfc3339("2026-05-05T12:34:56Z")
@@ -278,6 +520,38 @@ mod tests {
             },
             occurred_at: None,
             sensation_id: Some(format!("sensation:{id}")),
+        }
+    }
+
+    fn pcm_source(
+        id: &str,
+        index: usize,
+        samples: &[i16],
+        start_ms: u32,
+        end_ms: u32,
+    ) -> GraphConsolidatedSpeechSource {
+        let bytes = samples
+            .iter()
+            .flat_map(|sample| sample.to_le_bytes())
+            .collect::<Vec<_>>();
+        GraphConsolidatedSpeechSource {
+            index,
+            clip: GraphAudioClip {
+                id: id.into(),
+                clip: AudioClip {
+                    mime: "audio/pcm;format=s16le;rate=16000".into(),
+                    base64: BASE64_STANDARD.encode(bytes),
+                    sample_rate: 16_000,
+                    channels: 1,
+                    transcript: None,
+                    captured_at: Some("2026-05-05T12:34:56Z".into()),
+                },
+                occurred_at: None,
+                sensation_id: None,
+            },
+            start_ms,
+            end_ms,
+            transcription_ids: Vec::new(),
         }
     }
 
@@ -384,5 +658,54 @@ mod tests {
             segments[1].occurred_at.as_deref(),
             Some("2026-05-05T12:34:56.350+00:00")
         );
+    }
+
+    #[test]
+    fn fuse_candidate_audio_stitches_sources_with_span_gaps() {
+        let candidate = GraphConsolidatedSpeechCandidate {
+            transcription_id: "big:1".into(),
+            transcript: "hello there".into(),
+            source_started_at: Some("2026-05-05T12:34:56Z".into()),
+            source_ended_at: None,
+            sources: vec![
+                pcm_source("audio:1", 0, &[1000, -1000], 0, 2),
+                pcm_source("audio:2", 1, &[2000, -2000], 4, 6),
+            ],
+        };
+
+        let fused = fuse_candidate_audio(&candidate).unwrap();
+        let wav = BASE64_STANDARD
+            .decode(fused.clip.base64.as_bytes())
+            .unwrap();
+        let (sample_rate, channels, samples) = decode_wav_samples(&wav).unwrap();
+
+        assert_eq!(sample_rate, 16_000);
+        assert_eq!(channels, 1);
+        assert_eq!(fused.clip.mime, "audio/wav");
+        assert_eq!(fused.clip.transcript.as_deref(), Some("hello there"));
+        assert!(samples.len() >= ms_to_samples(6, 16_000));
+    }
+
+    #[test]
+    fn decode_audio_clip_samples_downmixes_stereo_pcm() {
+        let samples = [1000i16, 3000, -1000, -3000];
+        let bytes = samples
+            .iter()
+            .flat_map(|sample| sample.to_le_bytes())
+            .collect::<Vec<_>>();
+        let clip = AudioClip {
+            mime: "audio/pcm;format=s16le;rate=16000".into(),
+            base64: BASE64_STANDARD.encode(bytes),
+            sample_rate: 16_000,
+            channels: 2,
+            transcript: None,
+            captured_at: None,
+        };
+
+        let decoded = decode_audio_clip_samples(&clip, 16_000).unwrap();
+
+        assert_eq!(decoded.len(), 2);
+        assert!(decoded[0] > 0.0);
+        assert!(decoded[1] < 0.0);
     }
 }

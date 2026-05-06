@@ -1,7 +1,8 @@
 use chrono::Utc;
 use httpmock::{Method::POST, MockServer};
 use psyche::{
-    GeoLoc, GraphAudioSourceSpan, GraphAwareness, GraphClusterItem, GraphClusterTheme,
+    AudioClip, GeoLoc, GraphAudioClip, GraphAudioSourceSpan, GraphAwareness, GraphClusterItem,
+    GraphClusterTheme, GraphConsolidatedSpeechCandidate, GraphConsolidatedSpeechSource,
     GraphFaceDetection, GraphGeolocation, GraphImageDescription, GraphImageFrame,
     GraphSceneVectorization, GraphSpeechSegment, GraphTimelineItem, GraphTimelineWindow,
     GraphVoiceClip, GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature, ImageData,
@@ -316,6 +317,89 @@ async fn neo4j_client_loads_latest_audio_clip_window_for_big_transcription() {
     assert_eq!(
         window.clips[1].sensation_id.as_deref(),
         Some("sensation:audio:2")
+    );
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_loads_latest_big_transcription_for_speech_consolidation() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (t:GraphNode:Transcription)")
+                .body_contains("HAS_CONSOLIDATED_AUDIO")
+                .body_contains("HAS_BIG_TRANSCRIPTION")
+                .body_contains("HAS_TRANSCRIPTION")
+                .body_contains("min_source_count");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": [
+                        "t.id",
+                        "transcript",
+                        "t.source_started_at",
+                        "t.source_ended_at",
+                        "sources"
+                    ],
+                    "data": [{
+                        "row": [
+                            "big:1",
+                            "hello there",
+                            "2026-05-05T12:34:56Z",
+                            "2026-05-05T12:34:58Z",
+                            [
+                                {
+                                    "index": 0,
+                                    "id": "audio:1",
+                                    "mime": "audio/pcm;format=s16le;rate=16000",
+                                    "base64": "AAA=",
+                                    "sample_rate": 16000,
+                                    "channels": 1,
+                                    "transcript": "hello",
+                                    "captured_at": "2026-05-05T12:34:56Z",
+                                    "occurred_at": "2026-05-05T12:34:56Z",
+                                    "sensation_id": "sensation:audio:1",
+                                    "start_ms": 0,
+                                    "end_ms": 1000,
+                                    "transcription_ids": ["old:1"]
+                                },
+                                {
+                                    "index": 1,
+                                    "id": "audio:2",
+                                    "mime": "audio/pcm;format=s16le;rate=16000",
+                                    "base64": "AQE=",
+                                    "sample_rate": 16000,
+                                    "channels": 1,
+                                    "captured_at": "2026-05-05T12:34:57Z",
+                                    "start_ms": 1000,
+                                    "end_ms": 2000,
+                                    "transcription_ids": ["old:2"]
+                                }
+                            ]
+                        ]
+                    }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let candidate = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .latest_big_transcription_for_speech_consolidation(2)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(candidate.transcription_id, "big:1");
+    assert_eq!(candidate.transcript, "hello there");
+    assert_eq!(candidate.sources.len(), 2);
+    assert_eq!(candidate.sources[0].clip.id, "audio:1");
+    assert_eq!(candidate.sources[0].transcription_ids, ["old:1"]);
+    assert_eq!(candidate.sources[1].start_ms, 1000);
+    assert_eq!(
+        candidate.sources[0].clip.sensation_id.as_deref(),
+        Some("sensation:audio:1")
     );
     query.assert_async().await;
 }
@@ -937,6 +1021,104 @@ async fn neo4j_client_attaches_big_audio_transcription() {
         .await
         .unwrap();
 
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_consolidates_big_audio_transcription() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("\"id\":\"audio:fused\"")
+                .body_contains("\"transcript\":\"hello there\"")
+                .body_contains("HAS_CONSOLIDATED_AUDIO")
+                .body_contains("HAS_BIG_TRANSCRIPTION")
+                .body_contains("DERIVED_FROM_AUDIO")
+                .body_contains("clip_start_ms = start_ms")
+                .body_contains("old:1")
+                .body_contains("old:2")
+                .body_contains("DETACH DELETE segment")
+                .body_contains("DETACH DELETE old")
+                .body_contains("DETACH DELETE a")
+                .body_contains("DETACH DELETE s");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let candidate = GraphConsolidatedSpeechCandidate {
+        transcription_id: "big:1".into(),
+        transcript: "hello there".into(),
+        source_started_at: Some("2026-05-05T12:34:56Z".into()),
+        source_ended_at: Some("2026-05-05T12:34:58Z".into()),
+        sources: vec![
+            GraphConsolidatedSpeechSource {
+                index: 0,
+                clip: GraphAudioClip {
+                    id: "audio:1".into(),
+                    clip: AudioClip {
+                        mime: "audio/pcm;format=s16le;rate=16000".into(),
+                        base64: "AAA=".into(),
+                        sample_rate: 16_000,
+                        channels: 1,
+                        transcript: Some("hello".into()),
+                        captured_at: Some("2026-05-05T12:34:56Z".into()),
+                    },
+                    occurred_at: None,
+                    sensation_id: Some("sensation:audio:1".into()),
+                },
+                start_ms: 0,
+                end_ms: 1000,
+                transcription_ids: vec!["old:1".into()],
+            },
+            GraphConsolidatedSpeechSource {
+                index: 1,
+                clip: GraphAudioClip {
+                    id: "audio:2".into(),
+                    clip: AudioClip {
+                        mime: "audio/pcm;format=s16le;rate=16000".into(),
+                        base64: "AQE=".into(),
+                        sample_rate: 16_000,
+                        channels: 1,
+                        transcript: Some("there".into()),
+                        captured_at: Some("2026-05-05T12:34:57Z".into()),
+                    },
+                    occurred_at: None,
+                    sensation_id: Some("sensation:audio:2".into()),
+                },
+                start_ms: 1000,
+                end_ms: 2000,
+                transcription_ids: vec!["old:2".into(), "old:1".into()],
+            },
+        ],
+    };
+    let fused = AudioClip {
+        mime: "audio/wav".into(),
+        base64: "UklGRg==".into(),
+        sample_rate: 16_000,
+        channels: 1,
+        transcript: Some("hello there".into()),
+        captured_at: Some("2026-05-05T12:34:56Z".into()),
+    };
+
+    let report = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .consolidate_big_audio_transcription(&candidate, "audio:fused", &fused, 2000, true)
+        .await
+        .unwrap();
+
+    assert_eq!(report.transcription_id, "big:1");
+    assert_eq!(report.consolidated_audio_clip_id, "audio:fused");
+    assert_eq!(report.source_audio_clip_ids, ["audio:1", "audio:2"]);
+    assert_eq!(report.deleted_transcription_ids, ["old:1", "old:2"]);
     constraint.assert_async().await;
     update.assert_async().await;
 }

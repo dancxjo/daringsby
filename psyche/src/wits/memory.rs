@@ -10,7 +10,7 @@ use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -917,6 +917,49 @@ pub struct GraphAudioClipWindow {
     pub clips: Vec<GraphAudioClip>,
 }
 
+/// Source audio clip participating in a big transcription consolidation.
+#[derive(Clone, Debug)]
+pub struct GraphConsolidatedSpeechSource {
+    /// Source order within the aggregate transcription.
+    pub index: usize,
+    /// Source clip and graph metadata.
+    pub clip: GraphAudioClip,
+    /// Start offset from the beginning of the aggregate audio.
+    pub start_ms: u32,
+    /// End offset from the beginning of the aggregate audio.
+    pub end_ms: u32,
+    /// First-order transcription nodes attached directly to this clip.
+    pub transcription_ids: Vec<String>,
+}
+
+/// Big transcription and source clips ready to be collapsed into one audio node.
+#[derive(Clone, Debug)]
+pub struct GraphConsolidatedSpeechCandidate {
+    /// Existing big transcription node id.
+    pub transcription_id: String,
+    /// Big transcript text.
+    pub transcript: String,
+    /// Aggregate source start timestamp, when known.
+    pub source_started_at: Option<String>,
+    /// Aggregate source end timestamp, when known.
+    pub source_ended_at: Option<String>,
+    /// Source clips in playback order.
+    pub sources: Vec<GraphConsolidatedSpeechSource>,
+}
+
+/// Result of consolidating a big transcription into one audio clip.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphSpeechConsolidationReport {
+    /// Existing big transcription that was consolidated.
+    pub transcription_id: String,
+    /// New fused `AudioClip` node id.
+    pub consolidated_audio_clip_id: String,
+    /// Original clips represented by the fused audio.
+    pub source_audio_clip_ids: Vec<String>,
+    /// First-order transcription ids removed during cleanup.
+    pub deleted_transcription_ids: Vec<String>,
+}
+
 /// Audio clip loaded directly from the graph store for offline voice recognition.
 #[derive(Clone, Debug)]
 pub struct GraphVoiceClip {
@@ -1307,6 +1350,68 @@ impl Neo4jClient {
         )
         .await?;
         graph_audio_clip_window_from_rows(&rows)
+    }
+
+    /// Return the latest big transcription whose source audio has not been consolidated.
+    pub async fn latest_big_transcription_for_speech_consolidation(
+        &self,
+        min_source_count: usize,
+    ) -> Result<Option<GraphConsolidatedSpeechCandidate>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (t:GraphNode:Transcription)
+                    WHERE coalesce(t.kind, "") = "big"
+                      AND NOT (t)-[:HAS_CONSOLIDATED_AUDIO]->(:GraphNode:AudioClip)
+                      AND toInteger(coalesce(t.source_count, 0)) >= $min_source_count
+                    MATCH (a:GraphNode:AudioClip)-[source:HAS_BIG_TRANSCRIPTION]->(t)
+                    WHERE a.base64 IS NOT NULL
+                    OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(a)
+                    OPTIONAL MATCH (a)-[:HAS_TRANSCRIPTION]->(old:GraphNode:Transcription)
+                    WITH t, a, source, s, collect(DISTINCT old.id) AS old_transcription_ids,
+                        coalesce(t.transcribed_at, t.source_ended_at, t.source_started_at, "") AS candidate_at
+                    ORDER BY toInteger(coalesce(source.source_index, 0)) ASC, a.id
+                    WITH t, candidate_at, collect({
+                        index: toInteger(coalesce(source.source_index, 0)),
+                        id: a.id,
+                        mime: a.mime,
+                        base64: a.base64,
+                        sample_rate: a.sample_rate,
+                        channels: a.channels,
+                        transcript: a.transcript,
+                        captured_at: a.captured_at,
+                        occurred_at: a.occurred_at,
+                        sensation_id: s.id,
+                        start_ms: toInteger(coalesce(source.start_ms, 0)),
+                        end_ms: toInteger(coalesce(source.end_ms, 0)),
+                        transcription_ids: old_transcription_ids
+                    }) AS sources
+                    WHERE size(sources) >= $min_source_count
+                    RETURN
+                        t.id,
+                        coalesce(t.text, t.transcript, ""),
+                        t.source_started_at,
+                        t.source_ended_at,
+                        sources
+                    ORDER BY candidate_at DESC, t.id
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({
+                    "min_source_count": i64::try_from(min_source_count.max(1)).unwrap_or(i64::MAX),
+                }),
+            },
+            "finding latest big transcription for speech consolidation",
+        )
+        .await?;
+        rows.first()
+            .map(graph_consolidated_speech_candidate_from_row)
+            .transpose()
     }
 
     /// Return the latest `AudioClip` graph node that has no voice-recognition run.
@@ -2151,6 +2256,186 @@ impl Neo4jClient {
             "attaching big audio transcription",
         )
         .await
+    }
+
+    /// Attach one fused audio clip to an existing big transcription and optionally remove its source subgraph.
+    pub async fn consolidate_big_audio_transcription(
+        &self,
+        candidate: &GraphConsolidatedSpeechCandidate,
+        consolidated_clip_id: &str,
+        consolidated_clip: &AudioClip,
+        duration_ms: u32,
+        delete_subnodes: bool,
+    ) -> Result<GraphSpeechConsolidationReport> {
+        anyhow::ensure!(
+            !candidate.sources.is_empty(),
+            "speech consolidation has no source clips"
+        );
+        let endpoint = self.http_endpoint()?;
+        let client = reqwest::Client::new();
+        self.ensure_constraint(&client, &endpoint).await?;
+        let consolidated_at = chrono::Utc::now().to_rfc3339();
+        let source_audio_ids = candidate
+            .sources
+            .iter()
+            .map(|source| source.clip.id.clone())
+            .collect::<Vec<_>>();
+        let source_sensation_ids = candidate
+            .sources
+            .iter()
+            .filter_map(|source| source.clip.sensation_id.clone())
+            .collect::<Vec<_>>();
+        let old_transcription_ids = candidate
+            .sources
+            .iter()
+            .flat_map(|source| source.transcription_ids.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        let graph = json!({
+            "op": "merge_graph",
+            "nodes": [
+                {
+                    "label": "AudioClip",
+                    "id": consolidated_clip_id,
+                    "mime": consolidated_clip.mime,
+                    "base64": consolidated_clip.base64,
+                    "sample_rate": consolidated_clip.sample_rate,
+                    "channels": consolidated_clip.channels,
+                    "transcript": consolidated_clip.transcript,
+                    "captured_at": consolidated_clip.captured_at,
+                    "occurred_at": consolidated_clip.captured_at,
+                    "source_count": candidate.sources.len(),
+                    "source_audio_clip_ids": source_audio_ids,
+                    "consolidated_at": consolidated_at,
+                },
+                {
+                    "label": "Transcription",
+                    "id": candidate.transcription_id,
+                    "consolidated_audio_clip_id": consolidated_clip_id,
+                    "consolidated_at": consolidated_at,
+                }
+            ],
+            "relationships": [
+                {
+                    "from": candidate.transcription_id,
+                    "to": consolidated_clip_id,
+                    "type": "HAS_CONSOLIDATED_AUDIO",
+                    "duration_ms": duration_ms,
+                    "source_count": candidate.sources.len(),
+                },
+                {
+                    "from": consolidated_clip_id,
+                    "to": candidate.transcription_id,
+                    "type": "HAS_BIG_TRANSCRIPTION",
+                    "source_index": 0,
+                    "start_ms": 0,
+                    "end_ms": duration_ms,
+                    "anchor": true,
+                },
+                {
+                    "from": candidate.transcription_id,
+                    "to": consolidated_clip_id,
+                    "type": "DERIVED_FROM_AUDIO",
+                    "source_index": 0,
+                    "start_ms": 0,
+                    "end_ms": duration_ms,
+                    "anchor": true,
+                }
+            ],
+        });
+        let mut statements = graph_statements(&graph)?;
+        statements.push(CypherStatement {
+            statement: r#"
+                MATCH (t:GraphNode:Transcription {id: $transcription_id})-[:HAS_SEGMENT]->(segment:GraphNode:SpeechSegment)
+                MATCH (a:GraphNode:AudioClip {id: $consolidated_audio_clip_id})
+                WITH segment, a,
+                    toInteger(coalesce(segment.start_ms, 0)) AS start_ms,
+                    toInteger(coalesce(segment.end_ms, segment.start_ms, 0)) AS end_ms
+                MERGE (segment)-[rel:DERIVED_FROM_AUDIO]->(a)
+                SET rel.source_index = 0,
+                    rel.segment_start_ms = start_ms,
+                    rel.segment_end_ms = end_ms,
+                    rel.source_start_ms = 0,
+                    rel.source_end_ms = $duration_ms,
+                    rel.clip_start_ms = start_ms,
+                    rel.clip_end_ms = end_ms
+            "#
+            .into(),
+            parameters: json!({
+                "transcription_id": candidate.transcription_id,
+                "consolidated_audio_clip_id": consolidated_clip_id,
+                "duration_ms": i64::from(duration_ms),
+            }),
+        });
+        if delete_subnodes {
+            statements.push(CypherStatement {
+                statement: r#"
+                    MATCH (old:GraphNode:Transcription)
+                    WHERE old.id IN $old_transcription_ids
+                    MATCH (old)-[:HAS_SEGMENT]->(segment:GraphNode:SpeechSegment)
+                    DETACH DELETE segment
+                "#
+                .into(),
+                parameters: json!({
+                    "old_transcription_ids": old_transcription_ids,
+                }),
+            });
+            statements.push(CypherStatement {
+                statement: r#"
+                    MATCH (old:GraphNode:Transcription)
+                    WHERE old.id IN $old_transcription_ids
+                    DETACH DELETE old
+                "#
+                .into(),
+                parameters: json!({
+                    "old_transcription_ids": old_transcription_ids,
+                }),
+            });
+            statements.push(CypherStatement {
+                statement: r#"
+                    MATCH (a:GraphNode:AudioClip)
+                    WHERE a.id IN $source_audio_ids
+                    DETACH DELETE a
+                "#
+                .into(),
+                parameters: json!({
+                    "source_audio_ids": source_audio_ids,
+                }),
+            });
+            statements.push(CypherStatement {
+                statement: r#"
+                    MATCH (s:GraphNode:Sensation)
+                    WHERE s.id IN $source_sensation_ids
+                      AND NOT EXISTS { MATCH (s)--(:GraphNode) }
+                    DETACH DELETE s
+                "#
+                .into(),
+                parameters: json!({
+                    "source_sensation_ids": source_sensation_ids,
+                }),
+            });
+        }
+        commit_neo4j_statements(
+            &client,
+            &endpoint,
+            &self.user,
+            &self.pass,
+            &statements,
+            "consolidating big audio transcription",
+        )
+        .await?;
+        Ok(GraphSpeechConsolidationReport {
+            transcription_id: candidate.transcription_id.clone(),
+            consolidated_audio_clip_id: consolidated_clip_id.to_string(),
+            source_audio_clip_ids: source_audio_ids,
+            deleted_transcription_ids: if delete_subnodes {
+                old_transcription_ids
+            } else {
+                Vec::new()
+            },
+        })
     }
 
     /// Attach face recognition results to an existing `Image` graph node.
@@ -3318,6 +3603,57 @@ fn graph_audio_clip_from_window_row(row: &Value) -> Result<GraphAudioClip> {
     })
 }
 
+fn graph_consolidated_speech_candidate_from_row(
+    row: &Value,
+) -> Result<GraphConsolidatedSpeechCandidate> {
+    let values = row
+        .as_array()
+        .context("Neo4j speech consolidation row was not an array")?;
+    let sources = values
+        .get(4)
+        .and_then(Value::as_array)
+        .context("Neo4j speech consolidation row is missing sources")?
+        .iter()
+        .map(graph_consolidated_speech_source_from_value)
+        .collect::<Result<Vec<_>>>()?;
+    Ok(GraphConsolidatedSpeechCandidate {
+        transcription_id: row_string(values, 0, "transcription_id")?,
+        transcript: row_string(values, 1, "transcript")?,
+        source_started_at: row_optional_string(values, 2),
+        source_ended_at: row_optional_string(values, 3),
+        sources,
+    })
+}
+
+fn graph_consolidated_speech_source_from_value(
+    value: &Value,
+) -> Result<GraphConsolidatedSpeechSource> {
+    let object = value
+        .as_object()
+        .context("Neo4j speech consolidation source was not an object")?;
+    let id = object_string(object, "id")?;
+    let clip = GraphAudioClip {
+        id,
+        clip: AudioClip {
+            mime: object_string(object, "mime")?,
+            base64: object_string(object, "base64")?,
+            sample_rate: object_u32(object, "sample_rate")?,
+            channels: object_u16(object, "channels")?,
+            transcript: object_optional_string(object, "transcript"),
+            captured_at: object_optional_string(object, "captured_at"),
+        },
+        occurred_at: object_optional_string(object, "occurred_at"),
+        sensation_id: object_optional_string(object, "sensation_id"),
+    };
+    Ok(GraphConsolidatedSpeechSource {
+        index: object_usize(object, "index")?,
+        clip,
+        start_ms: object_u32(object, "start_ms")?,
+        end_ms: object_u32(object, "end_ms")?,
+        transcription_ids: object_string_vec(object, "transcription_ids"),
+    })
+}
+
 fn graph_timeline_window_from_rows(rows: &[Value]) -> Result<Option<GraphTimelineWindow>> {
     let Some(first) = rows.first() else {
         return Ok(None);
@@ -3465,6 +3801,56 @@ fn row_string_vec(values: &[Value], index: usize) -> Vec<String> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default()
+}
+
+fn object_string(object: &Map<String, Value>, key: &str) -> Result<String> {
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .with_context(|| format!("Neo4j object is missing {key}"))
+}
+
+fn object_optional_string(object: &Map<String, Value>, key: &str) -> Option<String> {
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+}
+
+fn object_string_vec(object: &Map<String, Value>, key: &str) -> Vec<String> {
+    object
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn object_u32(object: &Map<String, Value>, key: &str) -> Result<u32> {
+    let value = object
+        .get(key)
+        .and_then(Value::as_u64)
+        .with_context(|| format!("Neo4j object is missing numeric {key}"))?;
+    u32::try_from(value).with_context(|| format!("Neo4j object {key} is out of range"))
+}
+
+fn object_u16(object: &Map<String, Value>, key: &str) -> Result<u16> {
+    let value = object_u32(object, key)?;
+    u16::try_from(value).with_context(|| format!("Neo4j object {key} is out of range"))
+}
+
+fn object_usize(object: &Map<String, Value>, key: &str) -> Result<usize> {
+    let value = object
+        .get(key)
+        .and_then(Value::as_u64)
+        .with_context(|| format!("Neo4j object is missing numeric {key}"))?;
+    usize::try_from(value).with_context(|| format!("Neo4j object {key} is out of range"))
 }
 
 fn row_u32(values: &[Value], index: usize, name: &str) -> Result<u32> {
