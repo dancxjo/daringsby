@@ -338,15 +338,15 @@ fn cluster_theme_prompt(cluster: &VectorCluster, items: &[GraphClusterItem]) -> 
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "You extract terse real-world theme labels from related memories and perceptions.\n\n\
+        "You extract terse real-world labels for the person, object, place, or idea that unites related memories and perceptions.\n\n\
          The following entries are memories or perceptions whose embeddings are near each other. \
          Each entry may include supporting stimuli, graph edges, and nearby graph nodes for context. \
          Treat labels like Vector, Cluster, Impression, SpeechSegment, AudioClip, and ImageDescription as implementation details, not as the topic.\n\
-         What is the common real-world theme among these items? Answer with only the theme itself as a concise noun phrase. \
+         What person, object, place, or idea unites these items? Answer with only that uniting person, object, place, or idea as a concise noun phrase. \
          Do not summarize each item. Do not write a complete sentence. Do not add commentary, emotion, sentence-ending punctuation, vectors, embeddings, clusters, graph ids, timestamps, hashes, edges, per-detection details, or implementation details.\n\n\
          Collection: {}\n\
          Cluster mean similarity: {:.3}\n\
-         Entries:\n{}\n\n\n\nJust complete this sentence: The common theme is ",
+         Entries:\n{}\n\n\n\nJust complete this sentence: These items are united by ",
         cluster.collection, cluster.mean_similarity, entries
     )
 }
@@ -365,11 +365,23 @@ fn strip_cluster_theme_sentence(text: &str) -> &str {
         "the common theme is ",
         "the shared theme is ",
         "the theme is ",
+        "these items are united by ",
+        "they are united by ",
+        "the uniting person, object, place, or idea is ",
+        "the unifying person, object, place, or idea is ",
+        "the uniting idea is ",
+        "the unifying idea is ",
+        "the common person, object, place, or idea is ",
         "the consistent topic is ",
         "the topic is ",
         "common theme: ",
         "shared theme: ",
         "theme: ",
+        "united by: ",
+        "uniting person, object, place, or idea: ",
+        "unifying person, object, place, or idea: ",
+        "uniting idea: ",
+        "unifying idea: ",
         "topic: ",
     ] {
         if let Some(rest) = strip_prefix_ignore_ascii_case(theme, prefix) {
@@ -387,6 +399,12 @@ fn strip_cluster_theme_sentence(text: &str) -> &str {
         " is the common topic of these items",
         " is the common theme",
         " is the shared theme",
+        " is what unites these items",
+        " unites these items",
+        " is the uniting person, object, place, or idea",
+        " is the unifying person, object, place, or idea",
+        " is the uniting idea",
+        " is the unifying idea",
         " is the topic",
     ] {
         if let Some(rest) = strip_suffix_ignore_ascii_case(theme, suffix) {
@@ -530,7 +548,7 @@ mod tests {
     }
 
     #[test]
-    fn cluster_theme_prompt_requests_common_theme() {
+    fn cluster_theme_prompt_requests_uniting_label() {
         let cluster = VectorCluster {
             cluster_id: "cluster:1".into(),
             collection: "memories".into(),
@@ -554,9 +572,14 @@ mod tests {
 
         let prompt = cluster_theme_prompt(&cluster, &[item]);
 
-        assert!(prompt.contains("terse real-world theme labels"));
-        assert!(prompt.contains("common real-world theme"));
-        assert!(prompt.contains("Answer with only the theme itself as a concise noun phrase"));
+        assert!(prompt.contains("person, object, place, or idea that unites"));
+        assert!(prompt.contains("What person, object, place, or idea unites these items?"));
+        assert!(prompt.contains(
+            "Answer with only that uniting person, object, place, or idea as a concise noun phrase"
+        ));
+        assert!(prompt.contains("These items are united by"));
+        assert!(!prompt.contains("common real-world theme"));
+        assert!(!prompt.contains("The common theme is"));
         assert!(prompt.contains("Do not summarize each item"));
         assert!(prompt.contains("Do not write a complete sentence"));
         assert!(!prompt.contains("You intersperse emojis"));
@@ -581,6 +604,18 @@ mod tests {
     fn normalize_cluster_theme_removes_theme_prefix_and_punctuation() {
         assert_eq!(
             normalize_cluster_theme("\"The common theme is coffee brewing.\""),
+            "coffee brewing"
+        );
+    }
+
+    #[test]
+    fn normalize_cluster_theme_removes_uniting_sentence_wrapper() {
+        assert_eq!(
+            normalize_cluster_theme("These items are united by coffee brewing."),
+            "coffee brewing"
+        );
+        assert_eq!(
+            normalize_cluster_theme("coffee brewing is what unites these items."),
             "coffee brewing"
         );
     }

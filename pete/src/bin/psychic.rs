@@ -40,7 +40,7 @@ struct Cli {
     #[arg(long, env = "NEO4J_PASS", default_value = "password")]
     neo4j_pass: String,
     /// Maximum graph nodes to include in each snapshot.
-    #[arg(long, env = "PSYCHIC_GRAPH_LIMIT", default_value_t = 500)]
+    #[arg(long, env = "PSYCHIC_GRAPH_LIMIT", default_value_t = 1500)]
     graph_limit: usize,
     /// Snapshot refresh interval for WebSocket clients.
     #[arg(long, env = "PSYCHIC_REFRESH_MS", default_value_t = 1000)]
