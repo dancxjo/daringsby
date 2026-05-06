@@ -12,6 +12,8 @@
   const statusEl = document.getElementById("status");
   const nodeCountEl = document.getElementById("node-count");
   const relationshipCountEl = document.getElementById("relationship-count");
+  const allLabelFiltersEl = document.getElementById("all-label-filters");
+  const allPredicateFiltersEl = document.getElementById("all-predicate-filters");
   const labelFiltersEl = document.getElementById("label-filters");
   const predicateFiltersEl = document.getElementById("predicate-filters");
   const inspectorEmpty = document.getElementById("inspector-empty");
@@ -166,14 +168,17 @@
     predicates.forEach((predicate) => ensureFilterOption(filters.predicates, predicate));
 
     const signature = stableStringify({ labels, predicates });
-    if (signature === lastFilterOptionsSignature) return;
-    lastFilterOptionsSignature = signature;
-    renderFilterGroup(labelFiltersEl, "labels", labels);
-    renderFilterGroup(predicateFiltersEl, "predicates", predicates);
+    if (signature !== lastFilterOptionsSignature) {
+      lastFilterOptionsSignature = signature;
+      renderFilterGroup(labelFiltersEl, "labels", labels);
+      renderFilterGroup(predicateFiltersEl, "predicates", predicates);
+    }
+    syncFilterGroupControl("labels");
+    syncFilterGroupControl("predicates");
   }
 
   function ensureFilterOption(group, value) {
-    if (!group.has(value)) group.set(value, true);
+    if (!group.has(value)) group.set(value, false);
   }
 
   function renderFilterGroup(container, kind, values) {
@@ -192,6 +197,7 @@
         input.addEventListener("change", () => {
           filterGroup(kind).set(value, input.checked);
           saveStoredFilters();
+          syncFilterGroupControl(kind);
           applyGraphFilters(true);
         });
         text.textContent = value;
@@ -359,6 +365,32 @@
 
   function filterGroup(kind) {
     return kind === "labels" ? filters.labels : filters.predicates;
+  }
+
+  function syncFilterGroupControl(kind) {
+    const control = allFilterControl(kind);
+    if (!control) return;
+    const values = [...filterGroup(kind).values()];
+    const checkedCount = values.filter(Boolean).length;
+    control.checked = values.length > 0 && checkedCount === values.length;
+    control.indeterminate = checkedCount > 0 && checkedCount < values.length;
+  }
+
+  function setFilterGroup(kind, checked) {
+    const group = filterGroup(kind);
+    group.forEach((_value, key) => group.set(key, checked));
+    saveStoredFilters();
+    renderFilterGroup(filterContainer(kind), kind, sortedUnique([...group.keys()]));
+    syncFilterGroupControl(kind);
+    applyGraphFilters(true);
+  }
+
+  function allFilterControl(kind) {
+    return kind === "labels" ? allLabelFiltersEl : allPredicateFiltersEl;
+  }
+
+  function filterContainer(kind) {
+    return kind === "labels" ? labelFiltersEl : predicateFiltersEl;
   }
 
   function loadStoredFilters() {
@@ -916,6 +948,10 @@
   document.getElementById("zoom-in").addEventListener("click", () => zoomBy(1.25));
   document.getElementById("zoom-out").addEventListener("click", () => zoomBy(0.8));
   document.getElementById("zoom-fit").addEventListener("click", fitGraph);
+  allLabelFiltersEl?.addEventListener("change", () => setFilterGroup("labels", allLabelFiltersEl.checked));
+  allPredicateFiltersEl?.addEventListener("change", () =>
+    setFilterGroup("predicates", allPredicateFiltersEl.checked),
+  );
   window.addEventListener("resize", resize);
 
   resize();
