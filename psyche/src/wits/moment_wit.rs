@@ -76,8 +76,9 @@ impl crate::wit::Wit for MomentWit {
             .iter()
             .map(Impression::prompt_list_item)
             .collect::<Vec<_>>();
+        let grounding = crate::prompt::SENSOR_GROUNDING_RULES;
         let prompt = format!(
-            "Summarize these recent events in one short sentence. Compress repeated low-level records into the real-world gist; do not enumerate ids, hashes, timestamps, or each detection unless asked.\n- {}",
+            "Summarize these recent events in one short first-person sentence. {grounding} Compress repeated low-level records into the real-world gist; do not enumerate ids, hashes, timestamps, or each detection unless asked.\n- {}",
             bullets.join("\n- ")
         );
         let command = crate::with_default_system_prompt(&prompt);

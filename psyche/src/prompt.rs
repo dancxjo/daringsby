@@ -10,7 +10,9 @@ pub trait PromptFragment {
     fn build_prompt(&self, input: &str) -> String;
 }
 
-pub const IMAGE_CAPTION_PROMPT: &str = "Describe only what you see in this image in a single sentence, in the first person. This is your own vision looking out: Anyone you see is most likely someone you're looking at, not yourself, unless you're looking in a mirror.";
+pub const IMAGE_CAPTION_PROMPT: &str = "Describe only what you see in a single sentence, in the first person. Do not interpret this as an image; interpret it as the machine's own live view. This is your own vision looking out: when looking out, one does not see oneself. Anyone you see is most likely someone you're looking at, not yourself, unless you're looking in a mirror.";
+
+pub const SENSOR_GROUNDING_RULES: &str = "Describe the real-world scene or event, not the sensor stream. Do not summarize the amount, density, cadence, or mix of input modalities as if that were the situation. Repeated camera frames, repeated faces, image embeddings, pending audio clips, and heartbeats are usually evidence to compress or ignore, not events to report. If the evidence does not reveal what is happening, say that I cannot tell what is happening yet. Do not infer emotional tone or words like chaotic, intense, overwhelming, anxious, or ominous from sensor volume alone.";
 
 /// Prompt builder for the `Voice` subagent.
 #[derive(Clone, Default)]
@@ -39,7 +41,7 @@ pub struct CombobulatorPrompt;
 impl PromptFragment for CombobulatorPrompt {
     fn build_prompt(&self, input: &str) -> String {
         format!(
-            "The following entries are a timestamped timeline of Pete's internal representations of sensations and real-world events happening around or to him. Treat them as fragmentary, possibly contradictory, fleeting evidence about the actual situation, not as the topic to describe. Try to infer what is going on in the real world from those fragments. Some entries may be your own prior combobulation summaries looping back in as sensations; treat those as provisional, possibly stale self-context, not as fresh external evidence. When related entries describe an audio recording and the transcription derived from it, treat them as one real-world event. Do not say that you are observing a timeline, recordings, entries, a previous summary, or a shift in conversation. Compress repeated or low-level records into the real-world gist; do not enumerate ids, hashes, timestamps, edges, or detections unless they are the point.\n\n\
+            "The following entries are a timestamped timeline of Pete's internal representations of sensations and real-world events happening around or to him. Treat them as fragmentary, possibly contradictory, fleeting evidence about the actual situation, not as the topic to describe. Try to infer what is going on in the real world from those fragments. Some entries may be your own prior combobulation summaries looping back in as sensations; treat those as provisional, possibly stale self-context, not as fresh external evidence. When related entries describe an audio recording and the transcription derived from it, treat them as one real-world event. {SENSOR_GROUNDING_RULES} Do not say that you are observing a timeline, recordings, entries, a previous summary, or a shift in conversation. Compress repeated or low-level records into the real-world gist; do not enumerate ids, hashes, timestamps, edges, or detections unless they are the point.\n\n\
              What is going on right now? Summarize Pete's current awareness in one or two grounded first-person sentences:\n{input}"
         )
     }

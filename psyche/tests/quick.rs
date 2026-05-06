@@ -193,6 +193,17 @@ async fn repeated_faces_are_framed_as_stream_frames() {
             .summary
             .contains("repeated similar camera or face observations")
     );
+    assert!(out[0].summary.contains("not the sensor stream"));
+    assert!(
+        out[0]
+            .summary
+            .contains("amount, density, cadence, or mix of input modalities")
+    );
+    assert!(
+        out[0]
+            .summary
+            .contains("I cannot tell what is happening yet")
+    );
     assert!(
         out[0]
             .summary

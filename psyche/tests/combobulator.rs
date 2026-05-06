@@ -68,6 +68,10 @@ async fn prompt_frames_inputs_as_real_world_events() {
     assert!(prompt.contains("prior combobulation summaries looping back in as sensations"));
     assert!(prompt.contains("not as the topic to describe"));
     assert!(prompt.contains("audio recording and the transcription derived from it"));
+    assert!(prompt.contains("not the sensor stream"));
+    assert!(prompt.contains("amount, density, cadence, or mix of input modalities"));
+    assert!(prompt.contains("I cannot tell what is happening yet"));
+    assert!(prompt.contains("sensor volume alone"));
     assert!(prompt.contains("Do not say that you are observing a timeline"));
     assert!(prompt.contains("Compress repeated or low-level records"));
     assert!(prompt.contains("do not enumerate ids"));

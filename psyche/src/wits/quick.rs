@@ -194,8 +194,9 @@ impl crate::traits::wit::Wit for Quick {
         let stimuli = items;
         let prompt_bullets: Vec<String> = stimuli.iter().map(Stimulus::prompt_list_item).collect();
         let fallback_bullets: Vec<String> = stimuli.iter().map(|s| s.what.clone()).collect();
+        let grounding = crate::prompt::SENSOR_GROUNDING_RULES;
         let prompt = format!(
-            "Summarize these recent sensations in one short sentence, in the first person, using I/my/me. Try to infer what is happening in the real world from fragmentary, possibly contradictory, fleeting sensory data. Some sensations may be consecutive frames from the same sensor stream; repeated similar camera or face observations usually mean one thing persisted across frames, not multiple simultaneous things. Compress repeated low-level detections into the real-world gist; do not list ids, hashes, timestamps, or detection-by-detection details. Do not refer to Pete, the individual, the observer, or the person. Return only the summary sentence.\n- {}",
+            "Summarize these recent sensations in one short sentence, in the first person, using I/my/me. Try to infer what is happening in the real world from fragmentary, possibly contradictory, fleeting sensory data. Some sensations may be consecutive frames from the same sensor stream; repeated similar camera or face observations usually mean one thing persisted across frames, not multiple simultaneous things. {grounding} Compress repeated low-level detections into the real-world gist; do not list ids, hashes, timestamps, or detection-by-detection details. Do not refer to Pete, the individual, the observer, or the person. Return only the summary sentence.\n- {}",
             prompt_bullets.join("\n- ")
         );
         let command = crate::with_default_system_prompt(prompt);

@@ -7,7 +7,7 @@ use lingproc::{Doer, LlmInstruction, Vectorizer};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
     GraphAwareness, GraphTimelineItem, GraphTimelineWindow, Neo4jClient, QdrantClient,
-    with_default_system_prompt,
+    SENSOR_GROUNDING_RULES, with_default_system_prompt,
 };
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{debug, error, info};
@@ -230,7 +230,7 @@ fn combobulation_prompt(window: &GraphTimelineWindow, window_seconds: u64) -> St
     with_default_system_prompt(format!(
         "The following entries are a chronological timeline of your sensations during the last {window_seconds} seconds. Each entry is already a compact summary of one source sensation, such as hearing, seeing, feeling, locating, or thinking a combobulation thought.\n\
          Treat these sensations as fragmentary, possibly contradictory, fleeting evidence about the actual situation, not as the topic to describe. Try to infer what is going on in the real world from those fragments. Some entries may be your own prior combobulation summaries looping back in as sensations; treat those as provisional, possibly stale self-context, not as fresh external evidence.\n\
-         What is going on right now? Summarize your current awareness in one or two grounded first-person sentences. Keep it compact: compress repeated low-level records into the real-world gist. Do not say that you are observing a timeline, sensations, recordings, entries, a previous summary, or a shift in conversation. Do not mention graph ids, hashes, timestamps, edges, or per-detection details unless they are directly relevant.\n\n\
+         {SENSOR_GROUNDING_RULES} What is going on right now? Summarize your current awareness in one or two grounded first-person sentences. Keep it compact: compress repeated low-level records into the real-world gist. Do not say that you are observing a timeline, sensations, recordings, entries, a previous summary, or a shift in conversation. Do not mention graph ids, hashes, timestamps, edges, or per-detection details unless they are directly relevant.\n\n\
          Sensation timeline:\n{timeline}"
     ))
 }
@@ -322,6 +322,9 @@ mod tests {
         assert!(prompt.contains("fragmentary, possibly contradictory, fleeting evidence"));
         assert!(prompt.contains("prior combobulation summaries looping back in as sensations"));
         assert!(prompt.contains("not as the topic to describe"));
+        assert!(prompt.contains("not the sensor stream"));
+        assert!(prompt.contains("amount, density, cadence, or mix of input modalities"));
+        assert!(prompt.contains("I cannot tell what is happening yet"));
         assert!(prompt.contains("Do not say that you are observing a timeline"));
         assert!(prompt.contains("Keep it compact"));
         assert!(prompt.contains("per-detection details"));

@@ -89,7 +89,10 @@ async fn caption_prompt_explains_own_vision() {
     let _ = wit.tick().await;
 
     let prompt = doer.0.lock().await.clone().unwrap();
+    assert!(prompt.contains("Do not interpret this as an image"));
+    assert!(prompt.contains("the machine's own live view"));
     assert!(prompt.contains("This is your own vision looking out"));
+    assert!(prompt.contains("when looking out, one does not see oneself"));
     assert!(prompt.contains("Anyone you see is most likely someone you're looking at"));
     assert!(prompt.contains("not yourself"));
 }
