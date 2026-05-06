@@ -377,7 +377,7 @@
             needsMotionPermission ? DeviceMotionEvent.requestPermission() : Promise.resolve("granted"),
             needsOrientationPermission ? DeviceOrientationEvent.requestPermission() : Promise.resolve("granted"),
           ]);
-          if (results.every((result) => result === "granted")) {
+          if (results.some((result) => result === "granted")) {
             addBrowserMotionListeners();
           }
         } catch (e) {

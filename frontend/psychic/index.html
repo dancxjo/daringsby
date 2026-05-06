@@ -24,6 +24,16 @@
   <main class="workspace">
     <section class="graph-shell" aria-label="Graph browser">
       <svg id="graph" role="img" aria-label="Pete memory graph"></svg>
+      <div class="filter-panel" id="graph-filters" aria-label="Graph filters">
+        <details open>
+          <summary>Labels</summary>
+          <div class="filter-list" id="label-filters" aria-label="Node label filters"></div>
+        </details>
+        <details open>
+          <summary>Predicates</summary>
+          <div class="filter-list" id="predicate-filters" aria-label="Relationship predicate filters"></div>
+        </details>
+      </div>
       <div class="toolbar" aria-label="Graph controls">
         <button id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
         <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">-</button>

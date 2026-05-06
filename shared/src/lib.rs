@@ -1,7 +1,5 @@
 use psyche::{BrowserMotion, GeoLoc, WitReport};
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "ts")]
-use ts_rs::TS;
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -67,6 +65,7 @@ pub enum WsPayload {
         /// Command verb.
         command: String,
         /// Additional arguments.
+        #[cfg_attr(feature = "ts", ts(type = "Record<string, any>"))]
         args: serde_json::Value,
     },
     /// Raw streaming text from the language model.

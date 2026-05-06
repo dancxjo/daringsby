@@ -12,6 +12,8 @@
   const statusEl = document.getElementById("status");
   const nodeCountEl = document.getElementById("node-count");
   const relationshipCountEl = document.getElementById("relationship-count");
+  const labelFiltersEl = document.getElementById("label-filters");
+  const predicateFiltersEl = document.getElementById("predicate-filters");
   const inspectorEmpty = document.getElementById("inspector-empty");
   const inspectorContent = document.getElementById("inspector-content");
   const inspectorIcon = document.getElementById("inspector-icon");
@@ -45,11 +47,17 @@
   const fullGraph = { nodes: [], relationships: [] };
   const graph = { nodes: [], relationships: [] };
   const nodeState = new Map();
+  const filters = {
+    labels: new Map(),
+    predicates: new Map(),
+  };
+  const filterStorageKey = "psychic.graph.filters.v1";
   const maxEmbeddingLinksPerCluster = 80;
   let selected = null;
   let socket = null;
   let lastSnapshotSignature = "";
   let lastTopologySignature = "";
+  let lastFilterOptionsSignature = "";
   let detailRequestId = 0;
   let mediaObjectUrl = "";
 
@@ -135,23 +143,103 @@
     });
     const nodeIds = new Set(fullGraph.nodes.map((node) => node.id));
     fullGraph.relationships = (snapshot.relationships || []).filter(
-      (rel) => nodeIds.has(rel.source) && nodeIds.has(rel.target),
+      (rel) => nodeIds.has(relationshipEndpoint(rel.source)) && nodeIds.has(relationshipEndpoint(rel.target)),
     );
-    graph.nodes = fullGraph.nodes;
-    graph.relationships = graphRelationships();
+    syncFilterControls();
+    applyGraphFilters(topologyChanged);
+  }
+
+  loadStoredFilters();
+
+  function syncFilterControls() {
+    const labels = sortedUnique(
+      fullGraph.nodes.flatMap((node) => node.labels || []),
+    );
+    const predicates = sortedUnique([
+      ...fullGraph.relationships.map((rel) => rel.type).filter(Boolean),
+      ...(embeddingNeighborRelationships(fullGraph.nodes, fullGraph.relationships).length
+        ? ["SIMILAR_EMBEDDING"]
+        : []),
+    ]);
+
+    labels.forEach((label) => ensureFilterOption(filters.labels, label));
+    predicates.forEach((predicate) => ensureFilterOption(filters.predicates, predicate));
+
+    const signature = stableStringify({ labels, predicates });
+    if (signature === lastFilterOptionsSignature) return;
+    lastFilterOptionsSignature = signature;
+    renderFilterGroup(labelFiltersEl, "labels", labels);
+    renderFilterGroup(predicateFiltersEl, "predicates", predicates);
+  }
+
+  function ensureFilterOption(group, value) {
+    if (!group.has(value)) group.set(value, true);
+  }
+
+  function renderFilterGroup(container, kind, values) {
+    if (!container) return;
+    container.replaceChildren(
+      ...values.map((value) => {
+        const id = filterControlId(kind, value);
+        const wrapper = document.createElement("label");
+        const input = document.createElement("input");
+        const text = document.createElement("span");
+        wrapper.className = "filter-option";
+        wrapper.htmlFor = id;
+        input.id = id;
+        input.type = "checkbox";
+        input.checked = filterChecked(kind, value);
+        input.addEventListener("change", () => {
+          filterGroup(kind).set(value, input.checked);
+          saveStoredFilters();
+          applyGraphFilters(true);
+        });
+        text.textContent = value;
+        text.title = value;
+        wrapper.append(input, text);
+        return wrapper;
+      }),
+    );
+  }
+
+  function applyGraphFilters(reheat = false) {
+    graph.nodes = fullGraph.nodes.filter(nodeMatchesLabelFilters);
+    const visibleNodeIds = new Set(graph.nodes.map((node) => node.id));
+    const realRelationships = fullGraph.relationships.filter((rel) => {
+      const source = relationshipEndpoint(rel.source);
+      const target = relationshipEndpoint(rel.target);
+      return visibleNodeIds.has(source) && visibleNodeIds.has(target) && predicateAllowed(rel.type);
+    });
+    const syntheticRelationships = embeddingNeighborRelationships(graph.nodes, fullGraph.relationships)
+      .filter((rel) => predicateAllowed(rel.type));
+    graph.relationships = [...realRelationships, ...syntheticRelationships];
     nodeCountEl.textContent = graph.nodes.length.toString();
     relationshipCountEl.textContent = graph.relationships.length.toString();
 
-    render(topologyChanged);
+    syncSelectionWithFilteredGraph();
+    render(reheat);
     if (!selected && graph.nodes.length > 0) {
       selectItem({ kind: "node", value: graph.nodes[0] });
-    } else if (selected?.kind === "node") {
+    }
+  }
+
+  function syncSelectionWithFilteredGraph() {
+    if (selected?.kind === "node") {
       const node = graph.nodes.find((item) => item.id === selected.value.id);
-      if (node) selected.value = node;
+      if (node) {
+        selected.value = node;
+        return;
+      }
     } else if (selected?.kind === "relationship") {
       const relationship = graph.relationships.find((item) => item.id === selected.value.id);
-      if (relationship) selected.value = relationship;
+      if (relationship) {
+        selected.value = relationship;
+        return;
+      }
+    } else {
+      return;
     }
+    clearSelection();
   }
 
   function render(reheat = false) {
@@ -257,15 +345,70 @@
     return nodeState.get(value) || graph.nodes.find((node) => node.id === value) || { x: 0, y: 0 };
   }
 
-  function graphRelationships() {
-    return [...fullGraph.relationships, ...embeddingNeighborRelationships()];
+  function nodeMatchesLabelFilters(node) {
+    return (node.labels || []).every((label) => filterChecked("labels", label));
   }
 
-  function embeddingNeighborRelationships() {
-    const nodesById = new Map(fullGraph.nodes.map((node) => [node.id, node]));
+  function predicateAllowed(type) {
+    return filterChecked("predicates", type);
+  }
+
+  function filterChecked(kind, value) {
+    return filterGroup(kind).get(value) !== false;
+  }
+
+  function filterGroup(kind) {
+    return kind === "labels" ? filters.labels : filters.predicates;
+  }
+
+  function loadStoredFilters() {
+    let stored;
+    try {
+      stored = JSON.parse(window.localStorage.getItem(filterStorageKey) || "{}");
+    } catch (_err) {
+      return;
+    }
+    restoreFilterGroup(filters.labels, stored.labels);
+    restoreFilterGroup(filters.predicates, stored.predicates);
+  }
+
+  function restoreFilterGroup(group, values) {
+    if (!values || typeof values !== "object" || Array.isArray(values)) return;
+    Object.entries(values).forEach(([value, checked]) => {
+      group.set(value, checked !== false);
+    });
+  }
+
+  function saveStoredFilters() {
+    try {
+      window.localStorage.setItem(
+        filterStorageKey,
+        JSON.stringify({
+          labels: Object.fromEntries(filters.labels),
+          predicates: Object.fromEntries(filters.predicates),
+        }),
+      );
+    } catch (_err) {
+      // Ignore storage failures so filtering still works for this session.
+    }
+  }
+
+  function sortedUnique(values) {
+    return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+  }
+
+  function filterControlId(kind, value) {
+    const encoded = Array.from(String(value || "")).map((char) =>
+      char.charCodeAt(0).toString(16).padStart(2, "0"),
+    ).join("");
+    return `filter-${kind}-${encoded || "empty"}`;
+  }
+
+  function embeddingNeighborRelationships(nodes, relationships) {
+    const nodesById = new Map(nodes.map((node) => [node.id, node]));
     const clusters = new Map();
 
-    fullGraph.relationships.forEach((rel) => {
+    relationships.forEach((rel) => {
       if (rel.type !== "HAS_CLUSTER_MEMBER" && rel.type !== "MEMBER_OF_CLUSTER") return;
       const source = relationshipEndpoint(rel.source);
       const target = relationshipEndpoint(rel.target);
@@ -351,6 +494,15 @@
       inspectorKind.textContent = `${relationshipEndpoint(rel.source)} → ${relationshipEndpoint(rel.target)}`;
       renderProperties({ id: rel.id, source: relationshipEndpoint(rel.source), target: relationshipEndpoint(rel.target), ...(rel.properties || {}) });
     }
+    render();
+  }
+
+  function clearSelection() {
+    selected = null;
+    inspectorEmpty.hidden = false;
+    inspectorContent.hidden = true;
+    inspectorMedia.hidden = true;
+    clearMediaPreview();
     render();
   }
 
@@ -759,12 +911,7 @@
     svg.transition().duration(220).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
   }
 
-  svg.on("click", () => {
-    selected = null;
-    inspectorEmpty.hidden = false;
-    inspectorContent.hidden = true;
-    render();
-  });
+  svg.on("click", clearSelection);
 
   document.getElementById("zoom-in").addEventListener("click", () => zoomBy(1.25));
   document.getElementById("zoom-out").addEventListener("click", () => zoomBy(0.8));

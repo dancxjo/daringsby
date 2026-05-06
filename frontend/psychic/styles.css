@@ -174,6 +174,64 @@ h1 {
   gap: 0.5rem;
 }
 
+.filter-panel {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  width: min(18rem, calc(100% - 2rem));
+  max-height: calc(100% - 5.5rem);
+  overflow: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(21, 26, 31, 0.9);
+  backdrop-filter: blur(12px);
+}
+
+.filter-panel details + details {
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(157, 171, 186, 0.2);
+}
+
+.filter-panel summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.filter-list {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.filter-option {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  gap: 0.45rem;
+  align-items: center;
+  color: var(--text);
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.filter-option input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.filter-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 button {
   width: 2.5rem;
   height: 2.5rem;
@@ -330,6 +388,10 @@ button.active {
     height: calc(100vh - 124px);
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr) minmax(220px, 34vh);
+  }
+
+  .filter-panel {
+    max-height: min(45vh, calc(100% - 5.5rem));
   }
 
   .inspector {
