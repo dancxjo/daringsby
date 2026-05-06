@@ -179,8 +179,9 @@ impl Combobulator {
                 });
             }
         }
+        let source_sensation_ids = crate::model::source_sensation_ids_from(inputs);
         let imp = Impression::new(
-            vec![Stimulus::new(summary.clone())],
+            vec![Stimulus::from_impressions(summary.clone(), inputs)],
             summary.clone(),
             None::<String>,
         );
@@ -193,7 +194,7 @@ impl Combobulator {
                     CombobulationSummary {
                         text: summary,
                         created_at: Some(now.to_rfc3339()),
-                        source_sensation_ids: Vec::new(),
+                        source_sensation_ids,
                     },
                     now,
                 ),

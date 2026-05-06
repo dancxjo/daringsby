@@ -82,7 +82,7 @@ impl BufferedWit for MemoryWit {
             .collect::<Vec<_>>()
             .join(" ");
         let impression = Impression::new(
-            vec![Stimulus::new(summary.clone())],
+            vec![Stimulus::from_impressions(summary.clone(), &items)],
             summary.clone(),
             None::<String>,
         );

@@ -73,14 +73,19 @@ async fn preserves_sensation_occurrence_time() {
     let bus = TopicBus::new(8);
     let quick = Quick::new(bus, Arc::new(Dummy));
     let occurred_at = chrono::Utc::now() - chrono::Duration::seconds(1);
-    quick
-        .observe(Sensation::heard_user_voice_at("hi", occurred_at))
-        .await;
+    let sensation = Sensation::heard_user_voice_at("hi", occurred_at);
+    let source_id = sensation.id();
+    quick.observe(sensation).await;
 
     let out = quick.tick().await;
 
     assert_eq!(out.len(), 1);
     assert_eq!(out[0].stimuli[0].timestamp, occurred_at);
+    assert_eq!(out[0].stimuli[0].source_sensation_ids, vec![source_id]);
+    assert_eq!(
+        out[0].source_sensation_ids,
+        out[0].stimuli[0].source_sensation_ids
+    );
 }
 
 #[tokio::test]

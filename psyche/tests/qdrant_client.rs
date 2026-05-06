@@ -515,3 +515,56 @@ async fn scroll_vectors_if_collection_exists_returns_none_for_missing_collection
     assert_eq!(points, None);
     scroll.assert_async().await;
 }
+
+#[tokio::test]
+async fn collection_exists_reports_present_and_missing_collections() {
+    let server = MockServer::start_async().await;
+    let present = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/collections/memories");
+            then.status(200).body("{}");
+        })
+        .await;
+    let missing = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/collections/voices");
+            then.status(404).body("{}");
+        })
+        .await;
+
+    let qdrant = QdrantClient::new(server.base_url());
+
+    assert!(qdrant.collection_exists("memories").await.unwrap());
+    assert!(!qdrant.collection_exists("voices").await.unwrap());
+    present.assert_async().await;
+    missing.assert_async().await;
+}
+
+#[tokio::test]
+async fn delete_collection_if_exists_deletes_present_and_ignores_missing_collection() {
+    let server = MockServer::start_async().await;
+    let present = server
+        .mock_async(|when, then| {
+            when.method(DELETE).path("/collections/memories");
+            then.status(200).body("{}");
+        })
+        .await;
+    let missing = server
+        .mock_async(|when, then| {
+            when.method(DELETE).path("/collections/voices");
+            then.status(404).body("{}");
+        })
+        .await;
+
+    let qdrant = QdrantClient::new(server.base_url());
+
+    assert!(
+        qdrant
+            .delete_collection_if_exists("memories")
+            .await
+            .unwrap()
+    );
+    assert!(!qdrant.delete_collection_if_exists("voices").await.unwrap());
+    present.assert_async().await;
+    missing.assert_async().await;
+}

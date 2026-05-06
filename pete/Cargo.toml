@@ -120,3 +120,7 @@ path = "src/bin/combobulate.rs"
 [[bin]]
 name = "cluster"
 path = "src/bin/cluster.rs"
+
+[[bin]]
+name = "raw_retention"
+path = "src/bin/raw_retention.rs"

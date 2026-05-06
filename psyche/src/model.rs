@@ -1,5 +1,6 @@
 use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fmt::Display;
 use uuid::Uuid;
 
@@ -10,6 +11,9 @@ pub struct Stimulus<T = ()> {
     pub what: T,
     /// When the observation occurred.
     pub timestamp: DateTime<Utc>,
+    /// Raw sensations this stimulus was derived from.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_sensation_ids: Vec<String>,
 }
 
 impl<T> Stimulus<T> {
@@ -18,6 +22,42 @@ impl<T> Stimulus<T> {
         Self {
             what,
             timestamp: Utc::now(),
+            source_sensation_ids: Vec::new(),
+        }
+    }
+
+    /// Create a stimulus at a specific timestamp.
+    pub fn at(what: T, timestamp: DateTime<Utc>) -> Self {
+        Self {
+            what,
+            timestamp,
+            source_sensation_ids: Vec::new(),
+        }
+    }
+
+    /// Create a stimulus linked to the raw sensations it was derived from.
+    pub fn with_source_sensation_ids<I, S>(
+        what: T,
+        timestamp: DateTime<Utc>,
+        source_sensation_ids: I,
+    ) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        Self {
+            what,
+            timestamp,
+            source_sensation_ids: dedupe_ids(source_sensation_ids.into_iter().map(Into::into)),
+        }
+    }
+
+    /// Create a stimulus linked to the source sensations of prior impressions.
+    pub fn from_impressions<U>(what: T, impressions: &[Impression<U>]) -> Self {
+        Self {
+            what,
+            timestamp: Utc::now(),
+            source_sensation_ids: source_sensation_ids_from(impressions),
         }
     }
 
@@ -39,6 +79,9 @@ impl<T: Display> Stimulus<T> {
 pub struct Impression<T = ()> {
     /// Stimuli referenced by this impression.
     pub stimuli: Vec<Stimulus<T>>,
+    /// Raw sensations this impression was ultimately derived from.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_sensation_ids: Vec<String>,
     /// Natural language summary of the impression.
     pub summary: String,
     /// Optional emotional tag.
@@ -63,8 +106,11 @@ impl<T> Impression<T> {
         summary: impl Into<String>,
         emoji: Option<impl Into<String>>,
     ) -> Self {
+        let source_sensation_ids =
+            dedupe_ids(stimuli.iter().flat_map(|s| s.source_sensation_ids.clone()));
         Self {
             stimuli,
+            source_sensation_ids,
             summary: summary.into(),
             emoji: emoji.map(|e| e.into()),
             timestamp: Utc::now(),
@@ -75,6 +121,15 @@ impl<T> Impression<T> {
     pub fn localized_timestamp(&self) -> String {
         localized_timestamp(self.timestamp)
     }
+}
+
+/// Return the unique source sensation IDs referenced by `impressions`.
+pub fn source_sensation_ids_from<T>(impressions: &[Impression<T>]) -> Vec<String> {
+    dedupe_ids(
+        impressions
+            .iter()
+            .flat_map(|imp| imp.source_sensation_ids.iter().cloned()),
+    )
 }
 
 impl<T> Impression<T> {
@@ -128,4 +183,15 @@ pub fn localized_timestamp(timestamp: DateTime<Utc>) -> String {
         .with_timezone(&Local)
         .format("%Y-%m-%d %H:%M:%S %Z")
         .to_string()
+}
+
+fn dedupe_ids(ids: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for id in ids {
+        if seen.insert(id.clone()) {
+            out.push(id);
+        }
+    }
+    out
 }

@@ -55,10 +55,11 @@ impl Quick {
                 if let Ok(s) = Arc::downcast::<Sensation>(payload) {
                     if let Some(description) = Quick::describe(&s) {
                         let mut buf = buf_clone.lock().unwrap();
-                        buf.push_back(Stimulus {
-                            what: description,
-                            timestamp: s.occurred_at(),
-                        });
+                        buf.push_back(Stimulus::with_source_sensation_ids(
+                            description,
+                            s.occurred_at(),
+                            [s.id()],
+                        ));
                     }
                 }
             }
@@ -152,10 +153,11 @@ impl crate::traits::observer::SensationObserver for Quick {
         if let Some(s) = payload.downcast_ref::<Sensation>() {
             if let Some(description) = Self::describe(s) {
                 let mut buf = self.buffer.lock().unwrap();
-                buf.push_back(Stimulus {
-                    what: description,
-                    timestamp: s.occurred_at(),
-                });
+                buf.push_back(Stimulus::with_source_sensation_ids(
+                    description,
+                    s.occurred_at(),
+                    [s.id()],
+                ));
                 Self::trim_old(&mut buf, self.window);
             }
         }
@@ -170,10 +172,11 @@ impl crate::traits::wit::Wit for Quick {
     async fn observe(&self, input: Self::Input) {
         if let Some(description) = Self::describe(&input) {
             let mut buf = self.buffer.lock().unwrap();
-            buf.push_back(Stimulus {
-                what: description,
-                timestamp: input.occurred_at(),
-            });
+            buf.push_back(Stimulus::with_source_sensation_ids(
+                description,
+                input.occurred_at(),
+                [input.id()],
+            ));
             Self::trim_old(&mut buf, self.window);
         }
     }

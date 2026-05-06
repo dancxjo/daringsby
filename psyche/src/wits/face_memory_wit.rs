@@ -61,6 +61,7 @@ impl Wit for FaceMemoryWit {
         self.buffer.lock().unwrap().push(Stimulus {
             what: info,
             timestamp,
+            source_sensation_ids: Vec::new(),
         });
     }
 
@@ -115,6 +116,7 @@ impl Wit for FaceMemoryWit {
                 vec![Stimulus {
                     what: info.clone(),
                     timestamp: item.timestamp,
+                    source_sensation_ids: item.source_sensation_ids,
                 }],
                 summary,
                 None::<String>,
@@ -141,6 +143,7 @@ impl SensationObserver for FaceMemoryWit {
                     self.buffer.lock().unwrap().push(Stimulus {
                         what: info.clone(),
                         timestamp: *occurred_at,
+                        source_sensation_ids: vec![s.id()],
                     });
                 }
             }

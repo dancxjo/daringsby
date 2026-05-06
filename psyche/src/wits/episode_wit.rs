@@ -134,7 +134,11 @@ impl crate::wit::Wit for EpisodeWit {
                 });
             }
         }
-        let imp = Impression::new(vec![Stimulus::new(resp.clone())], resp, None::<String>);
+        let imp = Impression::new(
+            vec![Stimulus::from_impressions(resp.clone(), &items)],
+            resp,
+            None::<String>,
+        );
         self.bus.publish(Topic::Episode, imp.clone());
         vec![imp]
     }

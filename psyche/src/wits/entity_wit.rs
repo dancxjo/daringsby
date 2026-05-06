@@ -133,11 +133,13 @@ impl crate::traits::wit::Wit for EntityWit {
     type Output = String;
 
     async fn observe(&self, sensation: Self::Input) {
+        let source_id = sensation.id();
         match sensation {
             Sensation::HeardUserVoice { text, occurred_at } => {
                 self.names.lock().unwrap().push(Stimulus {
                     what: text,
                     timestamp: occurred_at,
+                    source_sensation_ids: vec![source_id],
                 });
             }
             Sensation::HeardOwnVoice { .. } => {}
@@ -149,11 +151,13 @@ impl crate::traits::wit::Wit for EntityWit {
                     self.faces.lock().unwrap().push(Stimulus {
                         what: face.clone(),
                         timestamp: occurred_at,
+                        source_sensation_ids: vec![source_id],
                     });
                 } else if let Some(obj) = payload.downcast_ref::<ObjectInfo>() {
                     self.objects.lock().unwrap().push(Stimulus {
                         what: obj.clone(),
                         timestamp: occurred_at,
+                        source_sensation_ids: vec![source_id],
                     });
                 }
             }
@@ -173,8 +177,8 @@ impl crate::traits::wit::Wit for EntityWit {
                 let pid = self.face_db.insert(face.embedding.clone()).await;
                 pid
             };
-            let name = names.pop().map(|stimulus| stimulus.what);
-            if let Some(n) = name.clone() {
+            let name = names.pop();
+            if let Some(n) = name.as_ref().map(|stimulus| stimulus.what.clone()) {
                 self.people
                     .lock()
                     .unwrap()
@@ -191,9 +195,14 @@ impl crate::traits::wit::Wit for EntityWit {
             } else {
                 format!("Saw person #{id}")
             };
+            let mut source_sensation_ids = face_stimulus.source_sensation_ids;
+            if let Some(name) = &name {
+                source_sensation_ids.extend(name.source_sensation_ids.clone());
+            }
             let stim = Stimulus {
                 what: summary.clone(),
                 timestamp: face_stimulus.timestamp,
+                source_sensation_ids,
             };
             let imp = Impression::new(vec![stim], summary.clone(), None::<String>);
             let _ = self.memory.store_serializable(&imp).await;
@@ -226,6 +235,7 @@ impl crate::traits::wit::Wit for EntityWit {
             let stim = Stimulus {
                 what: summary.clone(),
                 timestamp: name_stimulus.timestamp,
+                source_sensation_ids: name_stimulus.source_sensation_ids,
             };
             let imp = Impression::new(vec![stim], summary.clone(), None::<String>);
             let _ = self.memory.store_serializable(&imp).await;
@@ -255,6 +265,7 @@ impl crate::traits::wit::Wit for EntityWit {
             let stim = Stimulus {
                 what: summary.clone(),
                 timestamp: obj_stimulus.timestamp,
+                source_sensation_ids: obj_stimulus.source_sensation_ids,
             };
             let imp = Impression::new(vec![stim], summary.clone(), None::<String>);
             let _ = self.memory.store_serializable(&imp).await;

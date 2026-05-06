@@ -88,7 +88,9 @@ async fn prompt_timestamps_recent_moments() {
                 stimuli: vec![Stimulus {
                     what: format!("m{i}"),
                     timestamp,
+                    source_sensation_ids: Vec::new(),
                 }],
+                source_sensation_ids: Vec::new(),
                 summary: format!("m{i}"),
                 emoji: None,
                 timestamp,

@@ -77,11 +77,13 @@ where
                         serde_json::to_value(&s.what).ok().map(|what| Stimulus {
                             what,
                             timestamp: s.timestamp,
+                            source_sensation_ids: s.source_sensation_ids,
                         })
                     })
                     .collect();
                 Impression {
                     stimuli,
+                    source_sensation_ids: imp.source_sensation_ids,
                     summary: imp.summary,
                     emoji: imp.emoji,
                     timestamp: imp.timestamp,

@@ -108,11 +108,13 @@ impl dyn Memory {
                 Ok(Stimulus {
                     what: serde_json::to_value(&s.what)?,
                     timestamp: s.timestamp,
+                    source_sensation_ids: s.source_sensation_ids.clone(),
                 })
             })
             .collect::<Result<_, serde_json::Error>>()?;
         let erased = Impression {
             stimuli,
+            source_sensation_ids: impression.source_sensation_ids.clone(),
             summary: impression.summary.clone(),
             emoji: impression.emoji.clone(),
             timestamp: impression.timestamp,
@@ -134,11 +136,13 @@ impl dyn Memory {
                     Ok(Stimulus {
                         what: serde_json::to_value(&s.what)?,
                         timestamp: s.timestamp,
+                        source_sensation_ids: s.source_sensation_ids.clone(),
                     })
                 })
                 .collect::<Result<_, serde_json::Error>>()?;
             erased.push(Impression {
                 stimuli,
+                source_sensation_ids: imp.source_sensation_ids.clone(),
                 summary: imp.summary.clone(),
                 emoji: imp.emoji.clone(),
                 timestamp: imp.timestamp,
@@ -166,6 +170,50 @@ impl QdrantClient {
     pub fn new(url: String) -> Self {
         Self { url }
     }
+
+    /// Return whether a Qdrant collection currently exists.
+    pub async fn collection_exists(&self, collection: &str) -> Result<bool> {
+        let response = reqwest::Client::new()
+            .get(self.endpoint(&format!("collections/{collection}"))?)
+            .timeout(QDRANT_REQUEST_TIMEOUT)
+            .send()
+            .await
+            .with_context(|| format!("failed to inspect Qdrant collection {collection}"))?;
+
+        if response.status().is_success() {
+            Ok(true)
+        } else if response.status() == StatusCode::NOT_FOUND {
+            Ok(false)
+        } else {
+            Err(unexpected_qdrant_response(
+                response,
+                &format!("inspecting collection {collection}"),
+            )
+            .await)
+        }
+    }
+
+    /// Delete a Qdrant collection, returning `false` when it was already absent.
+    pub async fn delete_collection_if_exists(&self, collection: &str) -> Result<bool> {
+        let response = reqwest::Client::new()
+            .delete(self.endpoint(&format!("collections/{collection}"))?)
+            .timeout(QDRANT_REQUEST_TIMEOUT)
+            .send()
+            .await
+            .with_context(|| format!("failed to delete Qdrant collection {collection}"))?;
+
+        if response.status().is_success() {
+            Ok(true)
+        } else if response.status() == StatusCode::NOT_FOUND {
+            Ok(false)
+        } else {
+            Err(
+                unexpected_qdrant_response(response, &format!("deleting collection {collection}"))
+                    .await,
+            )
+        }
+    }
+
     /// Store `vector` associated with `headline`.
     pub async fn store_vector(&self, headline: &str, vector: &[f32]) -> Result<Uuid> {
         self.store_vector_for_node(headline, None, vector).await
@@ -1265,6 +1313,74 @@ impl Neo4jClient {
             pass,
             constraint_ensured: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Count graph nodes that are not raw sensations, audio clips, or image frames.
+    pub async fn count_non_raw_graph_nodes(&self) -> Result<u64> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: raw_retention_match("RETURN count(n)").into(),
+                parameters: json!({}),
+            },
+            "counting non-raw graph nodes",
+        )
+        .await?;
+        rows.first()
+            .and_then(Value::as_array)
+            .and_then(|values| values.first())
+            .and_then(Value::as_u64)
+            .context("Neo4j non-raw graph node count was missing")
+    }
+
+    /// Detach and delete graph nodes that are not raw sensations, audio clips, or image frames.
+    pub async fn detach_delete_non_raw_graph_nodes(&self, batch_size: usize) -> Result<u64> {
+        let batch_size = batch_size.max(1);
+        let endpoint = self.http_endpoint()?;
+        let client = reqwest::Client::new();
+        let mut deleted = 0u64;
+
+        loop {
+            let rows = query_neo4j_rows(
+                &client,
+                &endpoint,
+                &self.user,
+                &self.pass,
+                CypherStatement {
+                    statement: raw_retention_match(
+                        r#"
+                        WITH n
+                        LIMIT $limit
+                        WITH collect(n) AS doomed, count(n) AS deleted_count
+                        FOREACH (node IN doomed | DETACH DELETE node)
+                        RETURN deleted_count
+                    "#,
+                    )
+                    .into(),
+                    parameters: json!({
+                        "limit": i64::try_from(batch_size).unwrap_or(i64::MAX),
+                    }),
+                },
+                "deleting non-raw graph nodes",
+            )
+            .await?;
+            let batch_deleted = rows
+                .first()
+                .and_then(Value::as_array)
+                .and_then(|values| values.first())
+                .and_then(Value::as_u64)
+                .context("Neo4j deleted graph node count was missing")?;
+            if batch_deleted == 0 {
+                break;
+            }
+            deleted += batch_deleted;
+        }
+
+        Ok(deleted)
     }
 
     /// Return the latest `AudioClip` graph node that has no transcript property.
@@ -3367,6 +3483,18 @@ impl Neo4jClient {
     }
 }
 
+fn raw_retention_match(suffix: &str) -> String {
+    format!(
+        r#"
+            MATCH (n:GraphNode)
+            WHERE NOT n:Sensation
+              AND NOT n:AudioClip
+              AND NOT n:Image
+            {suffix}
+        "#
+    )
+}
+
 fn graph_snapshot_from_row(row: &Value) -> Result<GraphSnapshot> {
     let values = row
         .as_array()
@@ -4146,8 +4274,18 @@ fn impression_graph_record(
         "summary": impression.summary,
         "emoji": impression.emoji,
         "timestamp": impression.timestamp.to_rfc3339(),
+        "source_sensation_ids": impression.source_sensation_ids.clone(),
     })];
     let mut relationships = Vec::new();
+
+    for source_id in &impression.source_sensation_ids {
+        nodes.push(source_sensation_ref_node(source_id));
+        relationships.push(json!({
+            "from": impression_id,
+            "to": source_id,
+            "type": "DERIVED_FROM",
+        }));
+    }
 
     for target in stimulus_targets {
         nodes.extend(target.nodes.clone());
@@ -4199,16 +4337,25 @@ fn stimulus_target(stimulus: &Stimulus<Value>) -> Result<GraphStimulusTarget> {
         "label": "Stimulus",
         "id": stimulus_id,
         "timestamp": stimulus.timestamp.to_rfc3339(),
+        "source_sensation_ids": stimulus.source_sensation_ids.clone(),
         "raw_json": raw_json,
     })];
 
     let (target_id, target_node) = payload_target_node(&stimulus.what, stimulus.timestamp)?;
     nodes.push(target_node);
-    let relationships = vec![json!({
+    let mut relationships = vec![json!({
         "from": stimulus_id,
         "to": target_id,
         "type": "REFERS_TO",
     })];
+    for source_id in &stimulus.source_sensation_ids {
+        nodes.push(source_sensation_ref_node(source_id));
+        relationships.push(json!({
+            "from": stimulus_id,
+            "to": source_id,
+            "type": "DERIVED_FROM",
+        }));
+    }
 
     Ok(GraphStimulusTarget {
         stimulus_id,
@@ -4293,6 +4440,13 @@ fn payload_target_node(
     ))
 }
 
+fn source_sensation_ref_node(source_id: &str) -> Value {
+    json!({
+        "label": "Sensation",
+        "id": source_id,
+    })
+}
+
 fn impression_id(impression: &Impression<Value>) -> Result<String> {
     Ok(stable_json_id(
         "impression",
@@ -4300,10 +4454,12 @@ fn impression_id(impression: &Impression<Value>) -> Result<String> {
             "summary": impression.summary,
             "emoji": impression.emoji,
             "timestamp": impression.timestamp.to_rfc3339(),
+            "source_sensation_ids": impression.source_sensation_ids.clone(),
             "stimuli": impression.stimuli.iter().map(|stimulus| {
                 json!({
                     "timestamp": stimulus.timestamp.to_rfc3339(),
                     "what": stimulus.what,
+                    "source_sensation_ids": stimulus.source_sensation_ids.clone(),
                 })
             }).collect::<Vec<_>>(),
         }),

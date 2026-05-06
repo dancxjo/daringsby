@@ -24,6 +24,18 @@ fn experience_wraps_impression() {
 }
 
 #[test]
+fn impression_collects_source_sensation_ids_from_stimuli() {
+    let stim = Stimulus::with_source_sensation_ids(
+        "hi",
+        Utc::now(),
+        ["sensation:utterance:1", "sensation:utterance:1"],
+    );
+    let imp = Impression::new(vec![stim], "greeting", None::<String>);
+
+    assert_eq!(imp.source_sensation_ids, vec!["sensation:utterance:1"]);
+}
+
+#[test]
 fn prompt_list_items_include_localized_timestamps() {
     let timestamp = DateTime::parse_from_rfc3339("2026-05-05T12:34:56Z")
         .unwrap()
@@ -35,9 +47,11 @@ fn prompt_list_items_include_localized_timestamps() {
     let stim = Stimulus {
         what: "hi",
         timestamp,
+        source_sensation_ids: Vec::new(),
     };
     let imp = Impression {
         stimuli: vec![stim.clone()],
+        source_sensation_ids: Vec::new(),
         summary: "greeting".into(),
         emoji: None,
         timestamp,

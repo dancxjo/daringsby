@@ -108,7 +108,9 @@ async fn prompt_builder_timestamps_impression_notes() {
         stimuli: vec![Stimulus {
             what: "heard hi".to_string(),
             timestamp,
+            source_sensation_ids: Vec::new(),
         }],
+        source_sensation_ids: Vec::new(),
         summary: "greeting".into(),
         emoji: None,
         timestamp,

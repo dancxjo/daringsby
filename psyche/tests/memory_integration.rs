@@ -92,3 +92,34 @@ async fn memory_graph_stores_reconstructable_image_payload() {
     assert!(logs[0].contains("\"base64\":\"abc123\""));
     assert!(logs[0].contains("\\\"base64\\\":\\\"abc123\\\""));
 }
+
+#[tokio::test]
+async fn memory_graph_links_impression_and_stimulus_to_source_sensation() {
+    let store = Arc::new(MockNeo4j::default());
+    let mem = BasicMemory {
+        vectorizer: Arc::new(FailingVec),
+        qdrant: QdrantClient::default(),
+        neo4j: store.clone(),
+    };
+
+    <dyn Memory>::store_serializable(
+        &mem,
+        &Impression::new(
+            vec![Stimulus::with_source_sensation_ids(
+                "heard hi",
+                chrono::Utc::now(),
+                ["sensation:utterance:1"],
+            )],
+            "greeting",
+            None::<String>,
+        ),
+    )
+    .await
+    .unwrap();
+
+    let logs = store.0.lock().unwrap().clone();
+    assert_eq!(logs.len(), 1);
+    assert!(logs[0].contains("\"source_sensation_ids\":[\"sensation:utterance:1\"]"));
+    assert!(logs[0].contains("\"label\":\"Sensation\",\"id\":\"sensation:utterance:1\""));
+    assert!(logs[0].contains("\"type\":\"DERIVED_FROM\""));
+}

@@ -167,7 +167,7 @@ impl crate::wit::Wit for Will {
             instructions,
         };
         vec![Impression::new(
-            vec![Stimulus::new(decision.clone())],
+            vec![Stimulus::from_impressions(decision.clone(), &inputs)],
             decision.text.clone(),
             None::<String>,
         )]

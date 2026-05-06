@@ -79,7 +79,7 @@ impl FondDuCoeur {
             }
         }
         Ok(Impression::new(
-            vec![Stimulus::new(summary.clone())],
+            vec![Stimulus::from_impressions(summary.clone(), inputs)],
             summary,
             None::<String>,
         ))

@@ -83,7 +83,7 @@ impl BufferedWit for HeartWit {
             }
         }
         vec![Impression::new(
-            vec![Stimulus::new(mood.clone())],
+            vec![Stimulus::from_impressions(mood.clone(), &inputs)],
             summary,
             Some(mood),
         )]

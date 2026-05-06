@@ -83,7 +83,11 @@ async fn bus_backed_digest_loops_summary_back_as_sensation() {
 
     combo
         .digest(&[Impression::new(
-            vec![Stimulus::new("I heard a voice nearby.".to_string())],
+            vec![Stimulus::with_source_sensation_ids(
+                "I heard a voice nearby.".to_string(),
+                chrono::Utc::now(),
+                ["sensation:audio:1"],
+            )],
             "",
             None::<String>,
         )])
@@ -97,4 +101,5 @@ async fn bus_backed_digest_loops_summary_back_as_sensation() {
     };
     let summary = payload.downcast_ref::<CombobulationSummary>().unwrap();
     assert_eq!(summary.text, "All clear.");
+    assert_eq!(summary.source_sensation_ids, vec!["sensation:audio:1"]);
 }

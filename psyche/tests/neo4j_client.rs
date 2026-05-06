@@ -179,6 +179,74 @@ async fn neo4j_client_ensures_constraint_once_per_client() {
 }
 
 #[tokio::test]
+async fn neo4j_client_counts_non_raw_graph_nodes() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (n:GraphNode)")
+                .body_contains("NOT n:Sensation")
+                .body_contains("NOT n:AudioClip")
+                .body_contains("NOT n:Image")
+                .body_contains("RETURN count(n)");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["count(n)"],
+                    "data": [{
+                        "row": [12]
+                    }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let count = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .count_non_raw_graph_nodes()
+        .await
+        .unwrap();
+
+    assert_eq!(count, 12);
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_detach_deletes_non_raw_graph_nodes_with_batch_limit() {
+    let server = MockServer::start_async().await;
+    let delete = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (n:GraphNode)")
+                .body_contains("NOT n:Sensation")
+                .body_contains("NOT n:AudioClip")
+                .body_contains("NOT n:Image")
+                .body_contains("LIMIT $limit")
+                .body_contains("DETACH DELETE node")
+                .body_contains("\"limit\":2");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["deleted_count"],
+                    "data": [{
+                        "row": [0]
+                    }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let deleted = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .detach_delete_non_raw_graph_nodes(2)
+        .await
+        .unwrap();
+
+    assert_eq!(deleted, 0);
+    delete.assert_async().await;
+}
+
+#[tokio::test]
 async fn neo4j_client_loads_latest_untranscribed_audio_clip() {
     let server = MockServer::start_async().await;
     let query = server

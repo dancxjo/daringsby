@@ -29,6 +29,7 @@ pub struct VisionWit {
     doer: Arc<dyn Doer>,
     last_caption_time: Mutex<Instant>,
     latest_image: Arc<Mutex<Option<ImageData>>>,
+    latest_source_sensation_ids: Arc<Mutex<Vec<String>>>,
     llm_semaphore: Arc<Semaphore>,
     tx: Option<broadcast::Sender<crate::WitReport>>,
 }
@@ -42,6 +43,7 @@ impl VisionWit {
             doer,
             last_caption_time: Mutex::new(Instant::now() - CAPTION_COOLDOWN),
             latest_image: Arc::new(Mutex::new(None)),
+            latest_source_sensation_ids: Arc::new(Mutex::new(Vec::new())),
             llm_semaphore: Arc::new(Semaphore::new(2)),
             tx: None,
         }
@@ -63,6 +65,7 @@ impl Wit for VisionWit {
 
     async fn observe(&self, input: Self::Input) {
         *self.latest_image.lock().unwrap() = Some(input);
+        self.latest_source_sensation_ids.lock().unwrap().clear();
     }
 
     async fn tick(&self) -> Vec<Impression<Self::Output>> {
@@ -81,6 +84,10 @@ impl Wit for VisionWit {
         let img = match img {
             Some(i) => i,
             None => return Vec::new(),
+        };
+        let source_sensation_ids = {
+            let mut guard = self.latest_source_sensation_ids.lock().unwrap();
+            std::mem::take(&mut *guard)
         };
         *self.last_caption_time.lock().unwrap() = now;
 
@@ -123,6 +130,7 @@ impl Wit for VisionWit {
             vec![Stimulus {
                 timestamp: image_captured_at(&img).unwrap_or_else(chrono::Utc::now),
                 what: img,
+                source_sensation_ids,
             }],
             how,
             None::<String>,
@@ -165,6 +173,7 @@ impl SensationObserver for VisionWit {
                         img.captured_at = Some(occurred_at.to_rfc3339());
                     }
                     self.observe(img).await;
+                    *self.latest_source_sensation_ids.lock().unwrap() = vec![sensation.id()];
                 }
             }
         }
