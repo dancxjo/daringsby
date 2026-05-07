@@ -67,6 +67,8 @@ assert(script.includes('function imageTimelineWindow(imageNode)'));
 assert(script.includes('function speechSegmentText(node)'));
 assert(script.includes('el.className = "present-speech-segment";'));
 assert(script.includes('el.classList.toggle("active", segment.start <= timelineCursor && segment.end >= timelineCursor);'));
+assert(script.includes('return "Instance of a face";'));
+assert(!script.includes('`face${index}`'));
 assert(script.includes('const timelineImagePreloadCache = new Map();'));
 assert(script.includes('function preloadTimelineImageNode(node)'));
 assert(script.includes('function timelineImageSrcForNode(node)'));

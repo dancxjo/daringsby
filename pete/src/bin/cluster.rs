@@ -6,13 +6,15 @@ use dotenvy::dotenv;
 use lingproc::{Doer, LlmInstruction};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
-    GraphClusterItem, GraphClusterTheme, Neo4jClient, QdrantClient, VectorCluster,
-    find_vector_clusters, qdrant_vector_collections,
+    GraphClusterItem, GraphClusterTheme, GraphFaceIdentityLabel, GraphVoiceIdentityLabel,
+    Neo4jClient, QdrantClient, VectorCluster, find_vector_clusters, qdrant_vector_collections,
 };
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{debug, error, info, warn};
 
 const ALGORITHM: &str = "cosine-threshold-components/v1";
+const FACE_COLLECTION: &str = "faces";
+const VOICE_COLLECTION: &str = "voices";
 
 #[derive(Parser)]
 #[command(
@@ -221,7 +223,7 @@ async fn run_cluster_collection(
         .context("failed to attach vector clusters to Neo4j")?;
 
     if let Some(themer) = themer {
-        theme_new_clusters(cli, graph, themer, &clusters).await?;
+        process_new_cluster_labels(cli, graph, themer, &clusters).await?;
     }
     Ok(())
 }
@@ -251,13 +253,21 @@ fn selected_collections(requested: &[String]) -> Vec<String> {
     deduped
 }
 
-async fn theme_new_clusters(
+async fn process_new_cluster_labels(
     cli: &Cli,
     graph: &Neo4jClient,
     themer: &ClusterThemeProcessor,
     clusters: &[VectorCluster],
 ) -> anyhow::Result<()> {
     for cluster in clusters {
+        if cluster.collection == FACE_COLLECTION {
+            identify_new_face_cluster(cli, graph, themer, cluster).await?;
+            continue;
+        }
+        if cluster.collection == VOICE_COLLECTION {
+            identify_new_voice_cluster(cli, graph, themer, cluster).await?;
+            continue;
+        }
         if graph
             .vector_cluster_has_theme(&cluster.cluster_id)
             .await
@@ -303,6 +313,104 @@ async fn theme_new_clusters(
     Ok(())
 }
 
+async fn identify_new_face_cluster(
+    cli: &Cli,
+    graph: &Neo4jClient,
+    themer: &ClusterThemeProcessor,
+    cluster: &VectorCluster,
+) -> anyhow::Result<()> {
+    if graph
+        .face_cluster_has_identity_run(&cluster.cluster_id)
+        .await
+        .with_context(|| format!("failed checking identity for {}", cluster.cluster_id))?
+    {
+        debug!(cluster_id = %cluster.cluster_id, "face cluster already has identity pass");
+        return Ok(());
+    }
+
+    let point_ids = cluster
+        .members
+        .iter()
+        .map(|member| member.point_id.clone())
+        .collect::<Vec<_>>();
+    let items = graph
+        .vector_cluster_items(&cluster.collection, &point_ids, cli.theme_item_limit)
+        .await
+        .with_context(|| format!("failed loading source items for {}", cluster.cluster_id))?;
+    if items.is_empty() {
+        warn!(
+            cluster_id = %cluster.cluster_id,
+            "face cluster had no graph items for identity extraction"
+        );
+        return Ok(());
+    }
+
+    let identity = themer
+        .identify_face_cluster(cluster, &items)
+        .await
+        .with_context(|| format!("failed extracting identity for {}", cluster.cluster_id))?;
+    graph
+        .attach_face_identity(cluster, &themer.llm_model, &items, identity.as_ref())
+        .await
+        .with_context(|| format!("failed attaching face identity for {}", cluster.cluster_id))?;
+    info!(
+        cluster_id = %cluster.cluster_id,
+        source_count = items.len(),
+        identity = identity.as_ref().map(|identity| identity.name.as_str()).unwrap_or(""),
+        "attached face identity pass"
+    );
+    Ok(())
+}
+
+async fn identify_new_voice_cluster(
+    cli: &Cli,
+    graph: &Neo4jClient,
+    themer: &ClusterThemeProcessor,
+    cluster: &VectorCluster,
+) -> anyhow::Result<()> {
+    if graph
+        .voice_cluster_has_identity_run(&cluster.cluster_id)
+        .await
+        .with_context(|| format!("failed checking identity for {}", cluster.cluster_id))?
+    {
+        debug!(cluster_id = %cluster.cluster_id, "voice cluster already has identity pass");
+        return Ok(());
+    }
+
+    let point_ids = cluster
+        .members
+        .iter()
+        .map(|member| member.point_id.clone())
+        .collect::<Vec<_>>();
+    let items = graph
+        .vector_cluster_items(&cluster.collection, &point_ids, cli.theme_item_limit)
+        .await
+        .with_context(|| format!("failed loading source items for {}", cluster.cluster_id))?;
+    if items.is_empty() {
+        warn!(
+            cluster_id = %cluster.cluster_id,
+            "voice cluster had no graph items for identity extraction"
+        );
+        return Ok(());
+    }
+
+    let identity = themer
+        .identify_voice_cluster(cluster, &items)
+        .await
+        .with_context(|| format!("failed extracting identity for {}", cluster.cluster_id))?;
+    graph
+        .attach_voice_identity(cluster, &themer.llm_model, &items, identity.as_ref())
+        .await
+        .with_context(|| format!("failed attaching voice identity for {}", cluster.cluster_id))?;
+    info!(
+        cluster_id = %cluster.cluster_id,
+        source_count = items.len(),
+        identity = identity.as_ref().map(|identity| identity.name.as_str()).unwrap_or(""),
+        "attached voice identity pass"
+    );
+    Ok(())
+}
+
 struct ClusterThemeProcessor {
     doer: lingproc::OllamaProvider,
     llm_model: String,
@@ -328,6 +436,50 @@ impl ClusterThemeProcessor {
             theme_id: format!("theme:{}", cluster.cluster_id),
             text,
         })
+    }
+
+    async fn identify_face_cluster(
+        &self,
+        _cluster: &VectorCluster,
+        items: &[GraphClusterItem],
+    ) -> anyhow::Result<Option<GraphFaceIdentityLabel>> {
+        let raw_text = self
+            .doer
+            .follow(LlmInstruction {
+                command: face_identity_prompt(items),
+                images: Vec::new(),
+            })
+            .await?
+            .to_string();
+        let Some(name) = normalize_face_identity(&raw_text) else {
+            return Ok(None);
+        };
+        Ok(Some(GraphFaceIdentityLabel {
+            identity_id: format!("identity:person:{}", identity_key(&name)),
+            name,
+        }))
+    }
+
+    async fn identify_voice_cluster(
+        &self,
+        _cluster: &VectorCluster,
+        items: &[GraphClusterItem],
+    ) -> anyhow::Result<Option<GraphVoiceIdentityLabel>> {
+        let raw_text = self
+            .doer
+            .follow(LlmInstruction {
+                command: voice_identity_prompt(items),
+                images: Vec::new(),
+            })
+            .await?
+            .to_string();
+        let Some(name) = normalize_face_identity(&raw_text) else {
+            return Ok(None);
+        };
+        Ok(Some(GraphVoiceIdentityLabel {
+            identity_id: format!("identity:person:{}", identity_key(&name)),
+            name,
+        }))
     }
 }
 
@@ -357,6 +509,76 @@ fn normalize_cluster_theme(raw_text: &str) -> String {
     let without_wrappers =
         strip_cluster_theme_sentence(trim_theme_punctuation(without_emojis.trim()));
     trim_theme_punctuation(without_wrappers).to_string()
+}
+
+fn face_identity_prompt(items: &[GraphClusterItem]) -> String {
+    let entries = items
+        .iter()
+        .map(cluster_prompt_item)
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "You identify recurring human faces from context.\n\n\
+         You've seen this face several times. Here is the context of when the face was seen:\n{}\n\n\
+         Who is the face these have in common? Answer with only the person's name. \
+         If the context does not identify the person, answer exactly UNKNOWN. \
+         Do not add commentary, uncertainty, punctuation, ids, timestamps, vectors, embeddings, clusters, or implementation details.",
+        entries
+    )
+}
+
+fn voice_identity_prompt(items: &[GraphClusterItem]) -> String {
+    let entries = items
+        .iter()
+        .map(cluster_prompt_item)
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "You identify recurring human voices from context.\n\n\
+         You've heard this voice several times. Here is the context of when the voice was heard:\n{}\n\n\
+         Who is the voice these have in common? Answer with only the person's name. \
+         If the context does not identify the person, answer exactly UNKNOWN. \
+         Do not add commentary, uncertainty, punctuation, ids, timestamps, vectors, embeddings, clusters, or implementation details.",
+        entries
+    )
+}
+
+fn normalize_face_identity(raw_text: &str) -> Option<String> {
+    let trimmed = trim_theme_punctuation(raw_text.trim().trim_matches('"')).trim();
+    let (without_emojis, _) = psyche::extract_emojis(trimmed);
+    let name = trim_theme_punctuation(without_emojis.trim()).trim();
+    if name.is_empty()
+        || name.eq_ignore_ascii_case("unknown")
+        || name.eq_ignore_ascii_case("i don't know")
+        || name.eq_ignore_ascii_case("cannot tell")
+        || name.eq_ignore_ascii_case("can't tell")
+    {
+        None
+    } else {
+        Some(name.to_string())
+    }
+}
+
+fn identity_key(name: &str) -> String {
+    let mut key = String::new();
+    let mut last_dash = false;
+    for ch in name.chars().flat_map(char::to_lowercase) {
+        if ch.is_ascii_alphanumeric() {
+            key.push(ch);
+            last_dash = false;
+        } else if !last_dash && !key.is_empty() {
+            key.push('-');
+            last_dash = true;
+        }
+    }
+    while key.ends_with('-') {
+        key.pop();
+    }
+    if key.is_empty() {
+        "unknown".into()
+    } else {
+        key
+    }
 }
 
 fn strip_cluster_theme_sentence(text: &str) -> &str {
@@ -588,6 +810,57 @@ mod tests {
         assert!(prompt.contains("vectors, embeddings, clusters"));
         assert!(prompt.contains("per-detection details"));
         assert!(prompt.contains("coffee is brewing"));
+    }
+
+    #[test]
+    fn face_identity_prompt_requests_person_name_or_unknown() {
+        let item = GraphClusterItem {
+            vector_id: "qdrant:faces:point-1".into(),
+            node_id: "face:1".into(),
+            labels: vec!["FaceInstance".into()],
+            text: "face instance detected".into(),
+            stimuli: Vec::new(),
+            edges: Vec::new(),
+            neighbors: vec!["TextObservation text: Anna entered the room".into()],
+        };
+
+        let prompt = face_identity_prompt(&[item]);
+
+        assert!(prompt.contains("You've seen this face several times"));
+        assert!(prompt.contains("Who is the face these have in common?"));
+        assert!(prompt.contains("Answer with only the person's name"));
+        assert!(prompt.contains("answer exactly UNKNOWN"));
+        assert!(prompt.contains("Anna entered the room"));
+        assert!(!prompt.contains("theme"));
+    }
+
+    #[test]
+    fn voice_identity_prompt_requests_person_name_or_unknown() {
+        let item = GraphClusterItem {
+            vector_id: "qdrant:voices:point-1".into(),
+            node_id: "voice-signature:speaker:1".into(),
+            labels: vec!["VoiceSignature".into()],
+            text: "voice signature: f0 150 Hz, speech rate 4.5".into(),
+            stimuli: vec!["audio: Anna said hello".into()],
+            edges: Vec::new(),
+            neighbors: vec!["AudioClip audio: Anna said hello".into()],
+        };
+
+        let prompt = voice_identity_prompt(&[item]);
+
+        assert!(prompt.contains("You've heard this voice several times"));
+        assert!(prompt.contains("Who is the voice these have in common?"));
+        assert!(prompt.contains("Answer with only the person's name"));
+        assert!(prompt.contains("answer exactly UNKNOWN"));
+        assert!(prompt.contains("Anna said hello"));
+        assert!(!prompt.contains("theme"));
+    }
+
+    #[test]
+    fn normalize_face_identity_skips_unknown_answers() {
+        assert_eq!(normalize_face_identity("UNKNOWN"), None);
+        assert_eq!(normalize_face_identity("I don't know."), None);
+        assert_eq!(normalize_face_identity("Anna."), Some("Anna".into()));
     }
 
     #[test]

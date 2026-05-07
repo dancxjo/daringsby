@@ -3,10 +3,11 @@ use httpmock::{Method::POST, MockServer};
 use psyche::{
     AudioClip, GeoLoc, GraphAudioClip, GraphAudioSourceSpan, GraphAwareness, GraphClusterItem,
     GraphClusterTheme, GraphConsolidatedSpeechCandidate, GraphConsolidatedSpeechSource,
-    GraphFaceDetection, GraphGeolocation, GraphImageDescription, GraphImageFrame,
-    GraphSceneVectorization, GraphSpeechSegment, GraphTimelineItem, GraphTimelineWindow,
-    GraphVoiceClip, GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature, ImageData,
-    Neo4jClient, VectorCluster, VectorClusterMember,
+    GraphFaceDetection, GraphFaceIdentityLabel, GraphGeolocation, GraphImageDescription,
+    GraphImageFrame, GraphSceneVectorization, GraphSpeechSegment, GraphTimelineItem,
+    GraphTimelineWindow, GraphVoiceClip, GraphVoiceIdentityLabel, GraphVoiceRecognition,
+    GraphVoiceSample, GraphVoiceSignature, ImageData, Neo4jClient, VectorCluster,
+    VectorClusterMember,
 };
 use serde_json::json;
 
@@ -1414,6 +1415,7 @@ async fn neo4j_client_attaches_face_recognition() {
                 .body_contains("\"kind\":\"face_recognition\"")
                 .body_contains("\"derived\":true")
                 .body_contains("\"how\":\"I see 1 face.\"")
+                .body_contains("\"how\":\"I see a face I've never seen before.\"")
                 .body_contains("\"embedding_len\":512")
                 .body_contains("\"detector\":\"face_id\"");
             then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
@@ -1443,6 +1445,7 @@ async fn neo4j_client_attaches_face_recognition() {
                 },
                 vector_id: "point-1".into(),
                 embedding_len: 512,
+                recognition: None,
             }],
         )
         .await
@@ -1492,6 +1495,91 @@ async fn neo4j_client_attaches_face_recognition_sensation_for_zero_faces() {
             },
             "face_id",
             &[],
+        )
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_per_face_identity_sensation() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("\"kind\":\"face_identity\"")
+                .body_contains("\"how\":\"I recognize Anna's face.\"")
+                .body_contains("\"matched_face_id\":\"cluster:face:1\"")
+                .body_contains("\"identity_name\":\"Anna\"")
+                .body_contains("\"how\":\"I recognize the face, but I don't know who it is.\"")
+                .body_contains("\"nearest_face_vector_id\":\"known-point\"")
+                .body_contains("MATCHED_FACE")
+                .body_contains("RECOGNIZED_AS")
+                .body_contains("MATCHED_NEAREST_VECTOR");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_face_recognition(
+            &GraphImageFrame {
+                id: "image:1".into(),
+                image: ImageData {
+                    mime: "image/jpeg".into(),
+                    base64: "/9j/AA==".into(),
+                    captured_at: Some("2026-05-05T12:34:56Z".into()),
+                },
+                occurred_at: Some("2026-05-05T12:34:57Z".into()),
+                sensation_id: Some("sensation:image:1".into()),
+            },
+            "face_id",
+            &[
+                GraphFaceDetection {
+                    index: 0,
+                    face_id: "face:1".into(),
+                    crop: ImageData {
+                        mime: "image/jpeg".into(),
+                        base64: "/9j/crop==".into(),
+                        captured_at: Some("2026-05-05T12:34:56Z".into()),
+                    },
+                    vector_id: "point-1".into(),
+                    embedding_len: 512,
+                    recognition: Some(psyche::GraphFaceMatch {
+                        face_id: "cluster:face:1".into(),
+                        identity: Some("Anna".into()),
+                        nearest_vector_id: "known-point".into(),
+                        score: 0.93,
+                    }),
+                },
+                GraphFaceDetection {
+                    index: 1,
+                    face_id: "face:2".into(),
+                    crop: ImageData {
+                        mime: "image/jpeg".into(),
+                        base64: "/9j/crop2==".into(),
+                        captured_at: Some("2026-05-05T12:34:56Z".into()),
+                    },
+                    vector_id: "point-2".into(),
+                    embedding_len: 512,
+                    recognition: Some(psyche::GraphFaceMatch {
+                        face_id: "cluster:face:2".into(),
+                        identity: None,
+                        nearest_vector_id: "known-point-2".into(),
+                        score: 0.91,
+                    }),
+                },
+            ],
         )
         .await
         .unwrap();
@@ -1777,6 +1865,120 @@ async fn neo4j_client_loads_vector_cluster_items() {
 }
 
 #[tokio::test]
+async fn neo4j_client_loads_face_identity_for_vector_neighbor() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (v:GraphNode:Vector {id: $vector_id})")
+                .body_contains(
+                    "MATCH (v)-[:MEMBER_OF_CLUSTER|HAS_CLUSTER_MEMBER]-(face:GraphNode:Face)",
+                )
+                .body_contains("candidate:Identity")
+                .body_contains("qdrant:faces:point-1");
+            then.status(200)
+                .body(r#"{"results":[{"data":[{"row":["cluster:face:1","Anna"]}]}],"errors":[]}"#);
+        })
+        .await;
+
+    let identity = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .face_identity_for_vector_neighbor("point-1")
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(identity.face_id, "cluster:face:1");
+    assert_eq!(identity.identity.as_deref(), Some("Anna"));
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_checks_face_cluster_identity_run_presence() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("HAS_FACE_IDENTITY_RUN")
+                .body_contains("cluster:face:1");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["EXISTS"],
+                    "data": [{"row": [true]}]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let has_identity_run = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .face_cluster_has_identity_run("cluster:face:1")
+        .await
+        .unwrap();
+
+    assert!(has_identity_run);
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_loads_voice_identity_for_vector_neighbor() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (v:GraphNode:Vector {id: $vector_id})")
+                .body_contains(
+                    "MATCH (v)-[:MEMBER_OF_CLUSTER|HAS_CLUSTER_MEMBER]-(voice:GraphNode:Voice)",
+                )
+                .body_contains("candidate:Identity")
+                .body_contains("qdrant:voices:point-1");
+            then.status(200)
+                .body(r#"{"results":[{"data":[{"row":["cluster:voice:1","Anna"]}]}],"errors":[]}"#);
+        })
+        .await;
+
+    let identity = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .voice_identity_for_vector_neighbor("point-1")
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(identity.voice_id, "cluster:voice:1");
+    assert_eq!(identity.identity.as_deref(), Some("Anna"));
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_checks_voice_cluster_identity_run_presence() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("HAS_VOICE_IDENTITY_RUN")
+                .body_contains("cluster:voice:1");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["EXISTS"],
+                    "data": [{"row": [true]}]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let has_identity_run = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .voice_cluster_has_identity_run("cluster:voice:1")
+        .await
+        .unwrap();
+
+    assert!(has_identity_run);
+    query.assert_async().await;
+}
+
+#[tokio::test]
 async fn neo4j_client_checks_vector_cluster_theme_presence() {
     let server = MockServer::start_async().await;
     let query = server
@@ -1857,6 +2059,130 @@ async fn neo4j_client_attaches_vector_cluster_theme() {
 
     Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
         .attach_vector_cluster_theme(&cluster, "gpt-oss", &items, &theme)
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_face_identity() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("FaceIdentityRun")
+                .body_contains("Identity")
+                .body_contains("Person")
+                .body_contains("HAS_FACE_IDENTITY_RUN")
+                .body_contains("HAS_IDENTITY")
+                .body_contains("IDENTITY_OF")
+                .body_contains("USED_CONTEXT")
+                .body_contains("Anna")
+                .body_contains("qdrant:faces:point-1");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    let cluster = VectorCluster {
+        cluster_id: "cluster:face:1".into(),
+        collection: "faces".into(),
+        threshold: 0.9,
+        centroid: vec![0.95, 0.05],
+        mean_similarity: 0.95,
+        members: vec![VectorClusterMember {
+            point_id: "point-1".into(),
+            average_similarity: 0.95,
+        }],
+    };
+    let items = vec![GraphClusterItem {
+        vector_id: "qdrant:faces:point-1".into(),
+        node_id: "face:1".into(),
+        labels: vec!["FaceInstance".into()],
+        text: "face instance detected".into(),
+        stimuli: Vec::new(),
+        edges: Vec::new(),
+        neighbors: vec!["TextObservation text: Anna".into()],
+    }];
+    let identity = GraphFaceIdentityLabel {
+        identity_id: "identity:person:anna".into(),
+        name: "Anna".into(),
+    };
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_face_identity(&cluster, "gpt-oss", &items, Some(&identity))
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_voice_identity() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("VoiceIdentityRun")
+                .body_contains("Identity")
+                .body_contains("Person")
+                .body_contains("HAS_VOICE_IDENTITY_RUN")
+                .body_contains("HAS_IDENTITY")
+                .body_contains("IDENTITY_OF")
+                .body_contains("USED_CONTEXT")
+                .body_contains("Anna")
+                .body_contains("qdrant:voices:point-1");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    let cluster = VectorCluster {
+        cluster_id: "cluster:voice:1".into(),
+        collection: "voices".into(),
+        threshold: 0.9,
+        centroid: vec![0.95, 0.05],
+        mean_similarity: 0.95,
+        members: vec![VectorClusterMember {
+            point_id: "point-1".into(),
+            average_similarity: 0.95,
+        }],
+    };
+    let items = vec![GraphClusterItem {
+        vector_id: "qdrant:voices:point-1".into(),
+        node_id: "voice-signature:speaker:1".into(),
+        labels: vec!["VoiceSignature".into()],
+        text: "voice signature: f0 150 Hz, speech rate 4.5".into(),
+        stimuli: vec!["audio: Anna said hello".into()],
+        edges: Vec::new(),
+        neighbors: Vec::new(),
+    }];
+    let identity = GraphVoiceIdentityLabel {
+        identity_id: "identity:person:anna".into(),
+        name: "Anna".into(),
+    };
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_voice_identity(&cluster, "gpt-oss", &items, Some(&identity))
         .await
         .unwrap();
 
@@ -2069,6 +2395,8 @@ async fn neo4j_client_attaches_voice_recognition() {
                 .body_contains("HAS_VOICE_VECTOR")
                 .body_contains("qdrant:voices:point-1")
                 .body_contains("sensation:audio:1")
+                .body_contains("\"kind\":\"voice_identity\"")
+                .body_contains("\"how\":\"I hear a voice I've never heard before.\"")
                 .body_contains("fundamental_frequency")
                 .body_contains("quality_score")
                 .body_contains("\"model\":\"voxudio\"");
@@ -2121,6 +2449,7 @@ async fn neo4j_client_attaches_voice_recognition() {
                 },
                 vector_id: "point-1".into(),
                 embedding_len: 256,
+                recognition: None,
             },
         )
         .await
@@ -2128,6 +2457,143 @@ async fn neo4j_client_attaches_voice_recognition() {
 
     constraint.assert_async().await;
     update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_known_voice_identity_sensation() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("\"kind\":\"voice_identity\"")
+                .body_contains("\"how\":\"I recognize Anna's voice.\"")
+                .body_contains("\"matched_voice_id\":\"cluster:voice:1\"")
+                .body_contains("\"identity_name\":\"Anna\"")
+                .body_contains("\"nearest_voice_vector_id\":\"known-point\"")
+                .body_contains("MATCHED_VOICE")
+                .body_contains("RECOGNIZED_AS")
+                .body_contains("MATCHED_NEAREST_VECTOR");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_voice_recognition(
+            &test_voice_clip(),
+            "voxudio",
+            &test_voice_recognition(Some(psyche::GraphVoiceMatch {
+                voice_id: "cluster:voice:1".into(),
+                identity: Some("Anna".into()),
+                nearest_vector_id: "known-point".into(),
+                score: 0.93,
+            })),
+        )
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_unknown_voice_match_sensation() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("\"kind\":\"voice_identity\"")
+                .body_contains("\"how\":\"I recognize the voice, but I don't know who it is.\"")
+                .body_contains("\"matched_voice_id\":\"cluster:voice:2\"")
+                .body_contains("\"nearest_voice_vector_id\":\"known-point-2\"")
+                .body_contains("MATCHED_VOICE");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_voice_recognition(
+            &test_voice_clip(),
+            "voxudio",
+            &test_voice_recognition(Some(psyche::GraphVoiceMatch {
+                voice_id: "cluster:voice:2".into(),
+                identity: None,
+                nearest_vector_id: "known-point-2".into(),
+                score: 0.91,
+            })),
+        )
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+fn test_voice_clip() -> GraphVoiceClip {
+    GraphVoiceClip {
+        id: "audio:1".into(),
+        clip: psyche::AudioClip {
+            mime: "audio/pcm;format=s16le;rate=16000".into(),
+            base64: "AAA=".into(),
+            sample_rate: 16000,
+            channels: 1,
+            transcript: None,
+            captured_at: Some("2026-05-05T12:34:56Z".into()),
+        },
+        occurred_at: Some("2026-05-05T12:34:57Z".into()),
+        sensation_id: Some("sensation:audio:1".into()),
+    }
+}
+
+fn test_voice_recognition(recognition: Option<psyche::GraphVoiceMatch>) -> GraphVoiceRecognition {
+    GraphVoiceRecognition {
+        signature: GraphVoiceSignature {
+            user_id: "speaker:1".into(),
+            fundamental_frequency: 150.0,
+            frequency_range: (100.0, 300.0),
+            formant_frequencies: vec![800.0, 1200.0, 2500.0],
+            speech_rate: 4.5,
+            mfcc_signature: vec![0.1, 0.2],
+            spectral_centroid: 1500.0,
+            jitter: 0.5,
+            shimmer: 3.0,
+            harmonic_to_noise_ratio: 20.0,
+            sample_count: 1,
+            last_updated: Utc::now(),
+            tags: vec!["voice".into()],
+        },
+        sample: GraphVoiceSample {
+            id: "voice-sample:1".into(),
+            user_id: "speaker:1".into(),
+            duration_ms: 2000,
+            sample_rate: 16000,
+            fundamental_frequency: 150.0,
+            formant_frequencies: vec![800.0, 1200.0, 2500.0],
+            mfcc: vec![0.1, 0.2],
+            quality_score: 0.9,
+            timestamp: Utc::now(),
+        },
+        vector_id: "point-1".into(),
+        embedding_len: 256,
+        recognition,
+    }
 }
 
 #[tokio::test]

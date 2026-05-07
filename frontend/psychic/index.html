@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
+
 <body>
   <header class="topbar">
     <div>
@@ -63,15 +65,21 @@
           <p id="timeline-range">No timed media</p>
         </div>
         <div class="timeline-playback" aria-label="Timeline playback controls">
-          <button id="timeline-step-back" type="button" title="Step back one frame" aria-label="Step back one frame">|◀</button>
+          <button id="timeline-step-back" type="button" title="Step back one frame"
+            aria-label="Step back one frame">|⁠◀</button>
           <button id="timeline-play" type="button" title="Play timeline" aria-label="Play timeline">▶</button>
-          <button id="timeline-step-forward" type="button" title="Step forward one frame" aria-label="Step forward one frame">▶|</button>
-          <button id="timeline-pause" type="button" title="Pause timeline" aria-label="Pause timeline" disabled>Ⅱ</button>
+          <button id="timeline-step-forward" type="button" title="Step forward one frame"
+            aria-label="Step forward one frame">▶⁠|</button>
+          <button id="timeline-pause" type="button" title="Pause timeline" aria-label="Pause timeline"
+            disabled>Ⅱ</button>
         </div>
         <div class="timeline-zoom" aria-label="Timeline zoom controls">
-          <button id="timeline-zoom-in" type="button" title="Zoom in on playhead" aria-label="Zoom in on playhead">+</button>
-          <button id="timeline-zoom-out" type="button" title="Zoom out from playhead" aria-label="Zoom out from playhead">-</button>
-          <button id="timeline-zoom-reset" type="button" title="Show full timeline" aria-label="Show full timeline">⛶</button>
+          <button id="timeline-zoom-in" type="button" title="Zoom in on playhead"
+            aria-label="Zoom in on playhead">+</button>
+          <button id="timeline-zoom-out" type="button" title="Zoom out from playhead"
+            aria-label="Zoom out from playhead">-</button>
+          <button id="timeline-zoom-reset" type="button" title="Show full timeline"
+            aria-label="Show full timeline">⛶</button>
         </div>
         <div class="timeline-scrubber">
           <label for="timeline-scrub">Scrub</label>
@@ -116,4 +124,5 @@
   <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
   <script src="/psychic.js"></script>
 </body>
+
 </html>

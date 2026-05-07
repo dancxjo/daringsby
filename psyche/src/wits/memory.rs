@@ -106,6 +106,17 @@ pub struct QdrantVectorPoint {
     pub payload: Value,
 }
 
+/// Nearest Qdrant neighbor for a freshly stored vector point.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QdrantNearestNeighbor {
+    /// Qdrant point id.
+    pub point_id: String,
+    /// Similarity score reported by Qdrant.
+    pub score: f32,
+    /// Qdrant payload metadata.
+    pub payload: Value,
+}
+
 /// One member of a discovered vector cluster.
 #[derive(Clone, Debug, PartialEq)]
 pub struct VectorClusterMember {
@@ -461,6 +472,28 @@ impl QdrantClient {
         Ok(id)
     }
 
+    /// Return the nearest already-stored face vector above `threshold`.
+    pub async fn nearest_face_neighbor(
+        &self,
+        vector: &[f32],
+        exclude_point_id: &str,
+        threshold: f32,
+    ) -> Result<Option<QdrantNearestNeighbor>> {
+        self.nearest_vector_neighbor(FACE_COLLECTION, vector, exclude_point_id, threshold)
+            .await
+    }
+
+    /// Return the nearest already-stored voice vector above `threshold`.
+    pub async fn nearest_voice_neighbor(
+        &self,
+        vector: &[f32],
+        exclude_point_id: &str,
+        threshold: f32,
+    ) -> Result<Option<QdrantNearestNeighbor>> {
+        self.nearest_vector_neighbor(VOICE_COLLECTION, vector, exclude_point_id, threshold)
+            .await
+    }
+
     /// Store a voice embedding in the voice collection.
     pub async fn store_voice_vector(&self, vector: &[f32]) -> Result<Uuid> {
         self.store_voice_vector_for(None, vector).await
@@ -628,6 +661,51 @@ impl QdrantClient {
         }
     }
 
+    async fn nearest_vector_neighbor(
+        &self,
+        collection: &str,
+        vector: &[f32],
+        exclude_point_id: &str,
+        threshold: f32,
+    ) -> Result<Option<QdrantNearestNeighbor>> {
+        if vector.is_empty() {
+            bail!("refusing to search empty vector in Qdrant collection {collection}");
+        }
+
+        let response = reqwest::Client::new()
+            .post(self.endpoint(&format!("collections/{collection}/points/search"))?)
+            .json(&json!({
+                "vector": vector,
+                "limit": 8,
+                "with_payload": true,
+                "score_threshold": threshold,
+            }))
+            .timeout(QDRANT_REQUEST_TIMEOUT)
+            .send()
+            .await
+            .with_context(|| format!("failed to search Qdrant collection {collection}"))?;
+
+        if !response.status().is_success() {
+            return Err(unexpected_qdrant_response(
+                response,
+                &format!("searching collection {collection}"),
+            )
+            .await);
+        }
+
+        let body: Value = response
+            .json()
+            .await
+            .with_context(|| format!("failed to decode Qdrant search response for {collection}"))?;
+        qdrant_search_neighbors(&body)
+            .with_context(|| format!("Qdrant search response for {collection} was invalid"))?
+            .into_iter()
+            .filter(|neighbor| neighbor.point_id != exclude_point_id && neighbor.score >= threshold)
+            .next()
+            .map(Ok)
+            .transpose()
+    }
+
     async fn ensure_collection(&self, collection: &str, vector_size: usize) -> Result<()> {
         let client = reqwest::Client::new();
         let url = self.endpoint(&format!("collections/{collection}"))?;
@@ -776,6 +854,37 @@ fn qdrant_vector_point(value: Value) -> Result<QdrantVectorPoint> {
     Ok(QdrantVectorPoint {
         point_id,
         vector,
+        payload: object.get("payload").cloned().unwrap_or_else(|| json!({})),
+    })
+}
+
+fn qdrant_search_neighbors(response: &Value) -> Result<Vec<QdrantNearestNeighbor>> {
+    response
+        .pointer("/result")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(qdrant_search_neighbor)
+        .collect()
+}
+
+fn qdrant_search_neighbor(value: Value) -> Result<QdrantNearestNeighbor> {
+    let object = value
+        .as_object()
+        .context("Qdrant search result was not an object")?;
+    let point_id = qdrant_point_id(
+        object
+            .get("id")
+            .context("Qdrant search result is missing id")?,
+    )?;
+    let score = object
+        .get("score")
+        .and_then(Value::as_f64)
+        .context("Qdrant search result is missing numeric score")? as f32;
+    Ok(QdrantNearestNeighbor {
+        point_id,
+        score,
         payload: object.get("payload").cloned().unwrap_or_else(|| json!({})),
     })
 }
@@ -1138,6 +1247,30 @@ pub struct GraphFaceDetection {
     pub vector_id: String,
     /// Face embedding dimension.
     pub embedding_len: usize,
+    /// Existing face cluster matched through vector similarity, when any.
+    pub recognition: Option<GraphFaceMatch>,
+}
+
+/// Existing face cluster matched by a detected face vector.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphFaceMatch {
+    /// Stable graph node id for the matched `Face` cluster.
+    pub face_id: String,
+    /// Human identity attached to the matched face, when known.
+    pub identity: Option<String>,
+    /// Qdrant point id of the nearest known face vector.
+    pub nearest_vector_id: String,
+    /// Similarity score from Qdrant.
+    pub score: f32,
+}
+
+/// Identity information attached to a persisted `Face` cluster.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GraphFaceIdentity {
+    /// Stable graph node id for the matched `Face` cluster.
+    pub face_id: String,
+    /// Human identity attached to the face cluster, when known.
+    pub identity: Option<String>,
 }
 
 /// Scene-level image vector ready to be linked into the graph.
@@ -1191,6 +1324,30 @@ pub struct GraphVoiceRecognition {
     pub vector_id: String,
     /// Voice embedding dimension.
     pub embedding_len: usize,
+    /// Existing voice cluster matched through vector similarity, when any.
+    pub recognition: Option<GraphVoiceMatch>,
+}
+
+/// Existing voice cluster matched by a detected voice vector.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphVoiceMatch {
+    /// Stable graph node id for the matched `Voice` cluster.
+    pub voice_id: String,
+    /// Human identity attached to the matched voice, when known.
+    pub identity: Option<String>,
+    /// Qdrant point id of the nearest known voice vector.
+    pub nearest_vector_id: String,
+    /// Similarity score from Qdrant.
+    pub score: f32,
+}
+
+/// Identity information attached to a persisted `Voice` cluster.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GraphVoiceIdentity {
+    /// Stable graph node id for the matched `Voice` cluster.
+    pub voice_id: String,
+    /// Human identity attached to the voice cluster, when known.
+    pub identity: Option<String>,
 }
 
 /// Speech segment produced by transcribing an `AudioClip`.
@@ -1408,6 +1565,24 @@ pub struct GraphClusterTheme {
     pub theme_id: String,
     /// Natural-language description of the common theme.
     pub text: String,
+}
+
+/// LLM-generated human identity for one recurring face cluster.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphFaceIdentityLabel {
+    /// Stable graph node id for the identity.
+    pub identity_id: String,
+    /// Person name inferred from the face cluster context.
+    pub name: String,
+}
+
+/// LLM-generated human identity for one recurring voice cluster.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphVoiceIdentityLabel {
+    /// Stable graph node id for the identity.
+    pub identity_id: String,
+    /// Person name inferred from the voice cluster context.
+    pub name: String,
 }
 
 impl Neo4jClient {
@@ -1751,6 +1926,98 @@ impl Neo4jClient {
         )
         .await?;
         rows.first().map(graph_image_frame_from_row).transpose()
+    }
+
+    /// Return the face cluster and optional identity containing a face vector point.
+    pub async fn face_identity_for_vector_neighbor(
+        &self,
+        point_id: &str,
+    ) -> Result<Option<GraphFaceIdentity>> {
+        let endpoint = self.http_endpoint()?;
+        let vector_id = qdrant_vector_node_id(FACE_COLLECTION, point_id);
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (v:GraphNode:Vector {id: $vector_id})
+                    MATCH (v)-[:MEMBER_OF_CLUSTER|HAS_CLUSTER_MEMBER]-(face:GraphNode:Face)
+                    OPTIONAL MATCH (face)--(identity:GraphNode)
+                    WITH face, [candidate IN collect(identity)
+                        WHERE candidate:Person
+                           OR candidate:Identity
+                           OR candidate.kind IN ["person", "identity"] |
+                        coalesce(
+                            candidate.name,
+                            candidate.display_name,
+                            candidate.full_name,
+                            candidate.title,
+                            candidate.text,
+                            candidate.summary
+                        )
+                    ] AS identity_names
+                    WITH face, head([name IN identity_names WHERE name IS NOT NULL AND name <> ""]) AS identity_name
+                    RETURN face.id, identity_name
+                    ORDER BY CASE WHEN identity_name IS NULL THEN 1 ELSE 0 END, identity_name
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({
+                    "vector_id": vector_id,
+                }),
+            },
+            "finding face identity for nearest vector",
+        )
+        .await?;
+        rows.first().map(graph_face_identity_from_row).transpose()
+    }
+
+    /// Return the voice cluster and optional identity containing a voice vector point.
+    pub async fn voice_identity_for_vector_neighbor(
+        &self,
+        point_id: &str,
+    ) -> Result<Option<GraphVoiceIdentity>> {
+        let endpoint = self.http_endpoint()?;
+        let vector_id = qdrant_vector_node_id(VOICE_COLLECTION, point_id);
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (v:GraphNode:Vector {id: $vector_id})
+                    MATCH (v)-[:MEMBER_OF_CLUSTER|HAS_CLUSTER_MEMBER]-(voice:GraphNode:Voice)
+                    OPTIONAL MATCH (voice)--(identity:GraphNode)
+                    WITH voice, [candidate IN collect(identity)
+                        WHERE candidate:Person
+                           OR candidate:Identity
+                           OR candidate.kind IN ["person", "identity"] |
+                        coalesce(
+                            candidate.name,
+                            candidate.display_name,
+                            candidate.full_name,
+                            candidate.title,
+                            candidate.text,
+                            candidate.summary
+                        )
+                    ] AS identity_names
+                    WITH voice, head([name IN identity_names WHERE name IS NOT NULL AND name <> ""]) AS identity_name
+                    RETURN voice.id, identity_name
+                    ORDER BY CASE WHEN identity_name IS NULL THEN 1 ELSE 0 END, identity_name
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({
+                    "vector_id": vector_id,
+                }),
+            },
+            "finding voice identity for nearest vector",
+        )
+        .await?;
+        rows.first().map(graph_voice_identity_from_row).transpose()
     }
 
     /// Return the latest `Image` graph node that has no scene-vectorization run.
@@ -2352,6 +2619,64 @@ impl Neo4jClient {
                 }),
             },
             "checking vector cluster theme",
+        )
+        .await?;
+        Ok(rows
+            .first()
+            .and_then(Value::as_array)
+            .and_then(|values| values.first())
+            .and_then(Value::as_bool)
+            .unwrap_or(false))
+    }
+
+    /// Return whether a face cluster already has a completed identity pass.
+    pub async fn face_cluster_has_identity_run(&self, cluster_id: &str) -> Result<bool> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (c:GraphNode:Face {id: $cluster_id})
+                    RETURN EXISTS { MATCH (c)-[:HAS_FACE_IDENTITY_RUN]->(:GraphNode:FaceIdentityRun) }
+                "#
+                .into(),
+                parameters: json!({
+                    "cluster_id": cluster_id,
+                }),
+            },
+            "checking face cluster identity",
+        )
+        .await?;
+        Ok(rows
+            .first()
+            .and_then(Value::as_array)
+            .and_then(|values| values.first())
+            .and_then(Value::as_bool)
+            .unwrap_or(false))
+    }
+
+    /// Return whether a voice cluster already has a completed identity pass.
+    pub async fn voice_cluster_has_identity_run(&self, cluster_id: &str) -> Result<bool> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (c:GraphNode:Voice {id: $cluster_id})
+                    RETURN EXISTS { MATCH (c)-[:HAS_VOICE_IDENTITY_RUN]->(:GraphNode:VoiceIdentityRun) }
+                "#
+                .into(),
+                parameters: json!({
+                    "cluster_id": cluster_id,
+                }),
+            },
+            "checking voice cluster identity",
         )
         .await?;
         Ok(rows
@@ -3251,6 +3576,17 @@ impl Neo4jClient {
 
         for detection in detections {
             let vector_id = qdrant_vector_node_id(FACE_COLLECTION, &detection.vector_id);
+            let identity_sensation_id = stable_bytes_id(
+                "sensation:face_identity",
+                format!(
+                    "{}:{}:{}",
+                    run_id,
+                    detection.face_id,
+                    face_match_key(detection.recognition.as_ref())
+                )
+                .as_bytes(),
+            );
+            let identity_how = face_identity_how(detection.recognition.as_ref());
             nodes.push(json!({
                 "label": "FaceInstance",
                 "id": detection.face_id,
@@ -3273,6 +3609,29 @@ impl Neo4jClient {
                 "face_instance",
                 Some(detector),
             ));
+            nodes.push(json!({
+                "label": "Sensation",
+                "id": identity_sensation_id,
+                "kind": "face_identity",
+                "derived": true,
+                "occurred_at": detection
+                    .crop
+                    .captured_at
+                    .clone()
+                    .or_else(|| frame.occurred_at.clone())
+                    .unwrap_or_else(|| processed_at.clone()),
+                "how": identity_how,
+                "how_formed_at": processed_at,
+                "source_image_id": frame.id,
+                "face_instance_id": detection.face_id,
+                "face_recognition_run_id": run_id,
+                "matched": detection.recognition.is_some(),
+                "matched_face_id": detection.recognition.as_ref().map(|matched| matched.face_id.clone()),
+                "identity_name": detection.recognition.as_ref().and_then(|matched| matched.identity.clone()),
+                "nearest_face_vector_id": detection.recognition.as_ref().map(|matched| matched.nearest_vector_id.clone()),
+                "nearest_face_score": detection.recognition.as_ref().map(|matched| matched.score),
+                "source_sensation_ids": source_sensation_ids.clone(),
+            }));
             relationships.push(json!({
                 "from": run_id,
                 "to": detection.face_id,
@@ -3299,6 +3658,54 @@ impl Neo4jClient {
                 "to": vector_id,
                 "type": "PRODUCED",
             }));
+            relationships.push(json!({
+                "from": run_id,
+                "to": identity_sensation_id,
+                "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": identity_sensation_id,
+                "to": detection.face_id,
+                "type": "OBSERVED",
+            }));
+            relationships.push(json!({
+                "from": identity_sensation_id,
+                "to": recognition_sensation_id,
+                "type": "DERIVED_FROM",
+            }));
+            if let Some(matched) = &detection.recognition {
+                let nearest_vector_id =
+                    qdrant_vector_node_id(FACE_COLLECTION, &matched.nearest_vector_id);
+                nodes.push(json!({
+                    "label": "Face",
+                    "labels": ["Cluster"],
+                    "id": matched.face_id,
+                }));
+                nodes.push(qdrant_vector_node(
+                    FACE_COLLECTION,
+                    &matched.nearest_vector_id,
+                    "face_instance",
+                    None,
+                ));
+                relationships.push(json!({
+                    "from": detection.face_id,
+                    "to": matched.face_id,
+                    "type": "MATCHED_FACE",
+                    "score": matched.score,
+                }));
+                relationships.push(json!({
+                    "from": identity_sensation_id,
+                    "to": matched.face_id,
+                    "type": "RECOGNIZED_AS",
+                    "score": matched.score,
+                }));
+                relationships.push(json!({
+                    "from": identity_sensation_id,
+                    "to": nearest_vector_id,
+                    "type": "MATCHED_NEAREST_VECTOR",
+                    "score": matched.score,
+                }));
+            }
             if let Some(sensation_id) = &frame.sensation_id {
                 relationships.push(json!({
                     "from": sensation_id,
@@ -3309,6 +3716,16 @@ impl Neo4jClient {
                     "from": sensation_id,
                     "to": vector_id,
                     "type": "PRODUCED",
+                }));
+                relationships.push(json!({
+                    "from": sensation_id,
+                    "to": identity_sensation_id,
+                    "type": "PRODUCED",
+                }));
+                relationships.push(json!({
+                    "from": identity_sensation_id,
+                    "to": sensation_id,
+                    "type": "DERIVED_FROM",
                 }));
             }
         }
@@ -3751,6 +4168,226 @@ impl Neo4jClient {
         .await
     }
 
+    /// Attach an LLM-generated identity pass to a recurring face cluster.
+    pub async fn attach_face_identity(
+        &self,
+        cluster: &VectorCluster,
+        llm_model: &str,
+        items: &[GraphClusterItem],
+        identity: Option<&GraphFaceIdentityLabel>,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            cluster.collection == FACE_COLLECTION,
+            "face identity can only be attached to face clusters"
+        );
+        anyhow::ensure!(!items.is_empty(), "face identity pass has no source items");
+        let processed_at = chrono::Utc::now().to_rfc3339();
+        let run_id = stable_bytes_id(
+            "face-identity-run",
+            format!("{}:{llm_model}:{processed_at}", cluster.cluster_id).as_bytes(),
+        );
+        let source_ids = items
+            .iter()
+            .map(|item| item.node_id.clone())
+            .collect::<Vec<_>>();
+        let mut nodes = vec![
+            json!({
+                "label": "Face",
+                "labels": ["Cluster"],
+                "id": cluster.cluster_id,
+                "kind": "face",
+                "collection": cluster.collection,
+                "threshold": cluster.threshold,
+                "member_count": cluster.members.len(),
+                "member_label": "FaceInstance",
+                "mean_similarity": cluster.mean_similarity,
+                "centroid_len": cluster.centroid.len(),
+            }),
+            json!({
+                "label": "FaceIdentityRun",
+                "id": run_id,
+                "cluster_id": cluster.cluster_id,
+                "model": llm_model,
+                "source_count": items.len(),
+                "source_ids": source_ids,
+                "identified": identity.is_some(),
+                "identity_name": identity.map(|identity| identity.name.clone()),
+                "processed_at": processed_at,
+            }),
+        ];
+        let mut relationships = vec![json!({
+            "from": cluster.cluster_id,
+            "to": run_id,
+            "type": "HAS_FACE_IDENTITY_RUN",
+        })];
+
+        if let Some(identity) = identity {
+            nodes.push(json!({
+                "label": "Identity",
+                "labels": ["Person"],
+                "id": identity.identity_id.clone(),
+                "kind": "person",
+                "name": identity.name.clone(),
+                "summary": identity.name.clone(),
+                "created_at": processed_at,
+            }));
+            relationships.push(json!({
+                "from": run_id,
+                "to": identity.identity_id.clone(),
+                "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": cluster.cluster_id,
+                "to": identity.identity_id.clone(),
+                "type": "HAS_IDENTITY",
+            }));
+            relationships.push(json!({
+                "from": identity.identity_id.clone(),
+                "to": cluster.cluster_id,
+                "type": "IDENTITY_OF",
+            }));
+        }
+
+        for (index, item) in items.iter().enumerate() {
+            relationships.push(json!({
+                "from": run_id,
+                "to": item.node_id,
+                "type": "USED_CONTEXT",
+                "source_index": index,
+                "vector_id": item.vector_id,
+            }));
+            if item.vector_id.starts_with("qdrant:") {
+                nodes.push(json!({
+                    "label": "Vector",
+                    "id": item.vector_id,
+                }));
+                relationships.push(json!({
+                    "from": run_id,
+                    "to": item.vector_id,
+                    "type": "USED_VECTOR",
+                    "source_index": index,
+                }));
+            }
+        }
+
+        self.store_data(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))
+        .await
+    }
+
+    /// Attach an LLM-generated identity pass to a recurring voice cluster.
+    pub async fn attach_voice_identity(
+        &self,
+        cluster: &VectorCluster,
+        llm_model: &str,
+        items: &[GraphClusterItem],
+        identity: Option<&GraphVoiceIdentityLabel>,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            cluster.collection == VOICE_COLLECTION,
+            "voice identity can only be attached to voice clusters"
+        );
+        anyhow::ensure!(!items.is_empty(), "voice identity pass has no source items");
+        let processed_at = chrono::Utc::now().to_rfc3339();
+        let run_id = stable_bytes_id(
+            "voice-identity-run",
+            format!("{}:{llm_model}:{processed_at}", cluster.cluster_id).as_bytes(),
+        );
+        let source_ids = items
+            .iter()
+            .map(|item| item.node_id.clone())
+            .collect::<Vec<_>>();
+        let mut nodes = vec![
+            json!({
+                "label": "Voice",
+                "labels": ["Cluster"],
+                "id": cluster.cluster_id,
+                "kind": "voice",
+                "collection": cluster.collection,
+                "threshold": cluster.threshold,
+                "member_count": cluster.members.len(),
+                "member_label": "VoiceSignature",
+                "mean_similarity": cluster.mean_similarity,
+                "centroid_len": cluster.centroid.len(),
+            }),
+            json!({
+                "label": "VoiceIdentityRun",
+                "id": run_id,
+                "cluster_id": cluster.cluster_id,
+                "model": llm_model,
+                "source_count": items.len(),
+                "source_ids": source_ids,
+                "identified": identity.is_some(),
+                "identity_name": identity.map(|identity| identity.name.clone()),
+                "processed_at": processed_at,
+            }),
+        ];
+        let mut relationships = vec![json!({
+            "from": cluster.cluster_id,
+            "to": run_id,
+            "type": "HAS_VOICE_IDENTITY_RUN",
+        })];
+
+        if let Some(identity) = identity {
+            nodes.push(json!({
+                "label": "Identity",
+                "labels": ["Person"],
+                "id": identity.identity_id.clone(),
+                "kind": "person",
+                "name": identity.name.clone(),
+                "summary": identity.name.clone(),
+                "created_at": processed_at,
+            }));
+            relationships.push(json!({
+                "from": run_id,
+                "to": identity.identity_id.clone(),
+                "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": cluster.cluster_id,
+                "to": identity.identity_id.clone(),
+                "type": "HAS_IDENTITY",
+            }));
+            relationships.push(json!({
+                "from": identity.identity_id.clone(),
+                "to": cluster.cluster_id,
+                "type": "IDENTITY_OF",
+            }));
+        }
+
+        for (index, item) in items.iter().enumerate() {
+            relationships.push(json!({
+                "from": run_id,
+                "to": item.node_id,
+                "type": "USED_CONTEXT",
+                "source_index": index,
+                "vector_id": item.vector_id,
+            }));
+            if item.vector_id.starts_with("qdrant:") {
+                nodes.push(json!({
+                    "label": "Vector",
+                    "id": item.vector_id,
+                }));
+                relationships.push(json!({
+                    "from": run_id,
+                    "to": item.vector_id,
+                    "type": "USED_VECTOR",
+                    "source_index": index,
+                }));
+            }
+        }
+
+        self.store_data(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))
+        .await
+    }
+
     /// Attach vector cluster discovery output to existing Qdrant vector nodes.
     pub async fn attach_vector_clusters(
         &self,
@@ -3990,6 +4627,18 @@ impl Neo4jClient {
         let signature_id = format!("voice-signature:{}", recognition.signature.user_id);
         let sample_id = recognition.sample.id.clone();
         let vector_id = qdrant_vector_node_id(VOICE_COLLECTION, &recognition.vector_id);
+        let source_sensation_ids = clip.sensation_id.clone().into_iter().collect::<Vec<_>>();
+        let identity_sensation_id = stable_bytes_id(
+            "sensation:voice_identity",
+            format!(
+                "{}:{}:{}",
+                run_id,
+                signature_id,
+                voice_match_key(recognition.recognition.as_ref())
+            )
+            .as_bytes(),
+        );
+        let identity_how = voice_identity_how(recognition.recognition.as_ref());
         let mut nodes = vec![
             json!({
                 "label": "AudioClip",
@@ -4011,6 +4660,29 @@ impl Neo4jClient {
                 "voice_signature",
                 Some(model),
             ),
+            json!({
+                "label": "Sensation",
+                "id": identity_sensation_id,
+                "kind": "voice_identity",
+                "derived": true,
+                "occurred_at": clip
+                    .clip
+                    .captured_at
+                    .clone()
+                    .or_else(|| clip.occurred_at.clone())
+                    .unwrap_or_else(|| processed_at.clone()),
+                "how": identity_how,
+                "how_formed_at": processed_at,
+                "audio_clip_id": clip.id,
+                "voice_signature_id": signature_id,
+                "voice_recognition_run_id": run_id,
+                "matched": recognition.recognition.is_some(),
+                "matched_voice_id": recognition.recognition.as_ref().map(|matched| matched.voice_id.clone()),
+                "identity_name": recognition.recognition.as_ref().and_then(|matched| matched.identity.clone()),
+                "nearest_voice_vector_id": recognition.recognition.as_ref().map(|matched| matched.nearest_vector_id.clone()),
+                "nearest_voice_score": recognition.recognition.as_ref().map(|matched| matched.score),
+                "source_sensation_ids": source_sensation_ids.clone(),
+            }),
         ];
         let mut relationships = vec![
             json!({
@@ -4058,7 +4730,56 @@ impl Neo4jClient {
                 "to": vector_id,
                 "type": "PRODUCED",
             }),
+            json!({
+                "from": run_id,
+                "to": identity_sensation_id,
+                "type": "PRODUCED",
+            }),
+            json!({
+                "from": identity_sensation_id,
+                "to": signature_id,
+                "type": "OBSERVED",
+            }),
+            json!({
+                "from": identity_sensation_id,
+                "to": run_id,
+                "type": "DERIVED_FROM",
+            }),
         ];
+
+        if let Some(matched) = &recognition.recognition {
+            let nearest_vector_id =
+                qdrant_vector_node_id(VOICE_COLLECTION, &matched.nearest_vector_id);
+            nodes.push(json!({
+                "label": "Voice",
+                "labels": ["Cluster"],
+                "id": matched.voice_id,
+            }));
+            nodes.push(qdrant_vector_node(
+                VOICE_COLLECTION,
+                &matched.nearest_vector_id,
+                "voice_signature",
+                None,
+            ));
+            relationships.push(json!({
+                "from": signature_id,
+                "to": matched.voice_id,
+                "type": "MATCHED_VOICE",
+                "score": matched.score,
+            }));
+            relationships.push(json!({
+                "from": identity_sensation_id,
+                "to": matched.voice_id,
+                "type": "RECOGNIZED_AS",
+                "score": matched.score,
+            }));
+            relationships.push(json!({
+                "from": identity_sensation_id,
+                "to": nearest_vector_id,
+                "type": "MATCHED_NEAREST_VECTOR",
+                "score": matched.score,
+            }));
+        }
 
         if let Some(sensation_id) = &clip.sensation_id {
             nodes.push(json!({
@@ -4089,6 +4810,16 @@ impl Neo4jClient {
                 "from": sensation_id,
                 "to": vector_id,
                 "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": identity_sensation_id,
+                "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": identity_sensation_id,
+                "to": sensation_id,
+                "type": "DERIVED_FROM",
             }));
         }
 
@@ -4578,6 +5309,40 @@ fn graph_image_frame_from_row(row: &Value) -> Result<GraphImageFrame> {
         image,
         occurred_at: row_optional_string(values, 4),
         sensation_id: row_optional_string(values, 5),
+    })
+}
+
+fn graph_face_identity_from_row(row: &Value) -> Result<GraphFaceIdentity> {
+    let values = row
+        .as_array()
+        .context("Neo4j face identity row was not an array")?;
+    Ok(GraphFaceIdentity {
+        face_id: row_string(values, 0, "face id")?,
+        identity: row_optional_string(values, 1).and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }),
+    })
+}
+
+fn graph_voice_identity_from_row(row: &Value) -> Result<GraphVoiceIdentity> {
+    let values = row
+        .as_array()
+        .context("Neo4j voice identity row was not an array")?;
+    Ok(GraphVoiceIdentity {
+        voice_id: row_string(values, 0, "voice id")?,
+        identity: row_optional_string(values, 1).and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }),
     })
 }
 
@@ -5402,6 +6167,54 @@ fn stable_bytes_id(prefix: &str, bytes: &[u8]) -> String {
 fn face_recognition_how(face_count: usize) -> String {
     let noun = if face_count == 1 { "face" } else { "faces" };
     format!("I see {face_count} {noun}.")
+}
+
+fn face_identity_how(recognition: Option<&GraphFaceMatch>) -> String {
+    match recognition {
+        Some(GraphFaceMatch {
+            identity: Some(name),
+            ..
+        }) if !name.trim().is_empty() => format!("I recognize {}'s face.", name.trim()),
+        Some(_) => "I recognize the face, but I don't know who it is.".into(),
+        None => "I see a face I've never seen before.".into(),
+    }
+}
+
+fn face_match_key(recognition: Option<&GraphFaceMatch>) -> String {
+    recognition
+        .map(|matched| {
+            format!(
+                "{}:{}:{:.4}",
+                matched.face_id,
+                matched.identity.as_deref().unwrap_or(""),
+                matched.score
+            )
+        })
+        .unwrap_or_else(|| "new".into())
+}
+
+fn voice_identity_how(recognition: Option<&GraphVoiceMatch>) -> String {
+    match recognition {
+        Some(GraphVoiceMatch {
+            identity: Some(name),
+            ..
+        }) if !name.trim().is_empty() => format!("I recognize {}'s voice.", name.trim()),
+        Some(_) => "I recognize the voice, but I don't know who it is.".into(),
+        None => "I hear a voice I've never heard before.".into(),
+    }
+}
+
+fn voice_match_key(recognition: Option<&GraphVoiceMatch>) -> String {
+    recognition
+        .map(|matched| {
+            format!(
+                "{}:{}:{:.4}",
+                matched.voice_id,
+                matched.identity.as_deref().unwrap_or(""),
+                matched.score
+            )
+        })
+        .unwrap_or_else(|| "new".into())
 }
 
 fn spans_overlap(a_start_ms: u32, a_end_ms: u32, b_start_ms: u32, b_end_ms: u32) -> bool {

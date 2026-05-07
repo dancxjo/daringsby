@@ -9,8 +9,8 @@ use dotenvy::dotenv;
 use hound::{SampleFormat, WavReader};
 use pete::{EventBus, init_logging};
 use psyche::{
-    GraphVoiceClip, GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature, Neo4jClient,
-    QdrantClient, parse_observed_at,
+    GraphVoiceClip, GraphVoiceMatch, GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature,
+    Neo4jClient, QdrantClient, parse_observed_at,
 };
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{error, info, trace, warn};
@@ -44,6 +44,9 @@ struct Cli {
     /// Delay between graph polling attempts.
     #[arg(long, env = "VRECOG_POLL_MS", default_value_t = 1000)]
     poll_ms: u64,
+    /// Minimum Qdrant similarity for treating a detected voice as a known voice.
+    #[arg(long, env = "VRECOG_VOICE_MATCH_THRESHOLD", default_value_t = 0.86)]
+    voice_match_threshold: f32,
     /// Process at most one clip and exit.
     #[arg(long)]
     once: bool,
@@ -69,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
     let mut recognizer = VoiceRecognizer::new(model_path)?;
 
     if cli.once {
-        process_next_clip(&graph, &qdrant, &mut recognizer).await?;
+        process_next_clip(&graph, &qdrant, &mut recognizer, cli.voice_match_threshold).await?;
         return Ok(());
     }
 
@@ -79,7 +82,9 @@ async fn main() -> anyhow::Result<()> {
     info!("voice recognition loop started");
     loop {
         ticker.tick().await;
-        if let Err(err) = process_next_clip(&graph, &qdrant, &mut recognizer).await {
+        if let Err(err) =
+            process_next_clip(&graph, &qdrant, &mut recognizer, cli.voice_match_threshold).await
+        {
             error!(error = %err, "voice recognition loop iteration failed");
         }
     }
@@ -89,6 +94,7 @@ async fn process_next_clip(
     graph: &Neo4jClient,
     qdrant: &QdrantClient,
     recognizer: &mut VoiceRecognizer,
+    voice_match_threshold: f32,
 ) -> anyhow::Result<()> {
     let Some(clip) = graph
         .latest_unprocessed_audio_clip_for_voice_recognition()
@@ -101,7 +107,7 @@ async fn process_next_clip(
 
     info!(clip_id = %clip.id, "recognizing voice in audio clip");
     match recognizer
-        .recognize(&clip, qdrant)
+        .recognize(&clip, graph, qdrant, voice_match_threshold)
         .await
         .with_context(|| format!("failed to recognize voice in audio clip {}", clip.id))?
     {
@@ -159,7 +165,9 @@ impl VoiceRecognizer {
     async fn recognize(
         &mut self,
         clip: &GraphVoiceClip,
+        graph: &Neo4jClient,
         qdrant: &QdrantClient,
+        voice_match_threshold: f32,
     ) -> anyhow::Result<VoiceRecognitionOutcome> {
         let samples = match decode_audio_clip_samples(&clip.clip, ANALYSIS_SAMPLE_RATE) {
             Ok(samples) => samples,
@@ -207,6 +215,15 @@ impl VoiceRecognizer {
             .await
             .context("failed to store voice vector")?
             .to_string();
+        let recognition = match_voice(
+            graph,
+            qdrant,
+            &embedding,
+            &vector_id,
+            voice_match_threshold,
+            &clip.id,
+        )
+        .await?;
         let timestamp = audio_timestamp(clip).unwrap_or_else(Utc::now);
         let features = analyze_voice(&samples, ANALYSIS_SAMPLE_RATE);
         let signature = GraphVoiceSignature {
@@ -240,8 +257,44 @@ impl VoiceRecognizer {
             sample,
             vector_id,
             embedding_len: embedding.len(),
+            recognition,
         }))
     }
+}
+
+async fn match_voice(
+    graph: &Neo4jClient,
+    qdrant: &QdrantClient,
+    embedding: &[f32],
+    vector_id: &str,
+    threshold: f32,
+    clip_id: &str,
+) -> anyhow::Result<Option<GraphVoiceMatch>> {
+    let Some(neighbor) = qdrant
+        .nearest_voice_neighbor(embedding, vector_id, threshold)
+        .await
+        .with_context(|| format!("failed to search nearest voice neighbor for {clip_id}"))?
+    else {
+        return Ok(None);
+    };
+    let Some(identity) = graph
+        .voice_identity_for_vector_neighbor(&neighbor.point_id)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to load voice identity for nearest vector {}",
+                neighbor.point_id
+            )
+        })?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(GraphVoiceMatch {
+        voice_id: identity.voice_id,
+        identity: identity.identity,
+        nearest_vector_id: neighbor.point_id,
+        score: neighbor.score,
+    }))
 }
 
 fn is_short_audio_embedding_error(error: &impl std::fmt::Display) -> bool {

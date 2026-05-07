@@ -1982,10 +1982,7 @@
   function nodeLabel(node) {
     const props = node.properties || {};
     if (nodeKind(node) === "FaceInstance") {
-      const index = Number.isFinite(Number(props.detection_index))
-        ? ` #${Number(props.detection_index) + 1}`
-        : "";
-      return truncate(`face${index}`, 28);
+      return "Instance of a face";
     }
     const text =
       props.summary ||

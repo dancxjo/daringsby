@@ -5,8 +5,8 @@ use clap::Parser;
 use dotenvy::dotenv;
 use pete::{EventBus, init_logging};
 use psyche::{
-    FaceDetector, FaceIdDetector, GraphFaceDetection, GraphImageFrame, Neo4jClient, QdrantClient,
-    image_content_id,
+    FaceDetector, FaceIdDetector, GraphFaceDetection, GraphFaceMatch, GraphImageFrame, Neo4jClient,
+    QdrantClient, image_content_id,
 };
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{error, info, trace};
@@ -36,6 +36,9 @@ struct Cli {
     /// Detector label stored on graph vector nodes and face-recognition runs.
     #[arg(long, env = "FRECOG_DETECTOR", default_value = "face_id")]
     detector: String,
+    /// Minimum Qdrant similarity for treating a detected face as a known face.
+    #[arg(long, env = "FRECOG_FACE_MATCH_THRESHOLD", default_value_t = 0.86)]
+    face_match_threshold: f32,
     /// Process at most one frame and exit.
     #[arg(long)]
     once: bool,
@@ -57,7 +60,14 @@ async fn main() -> anyhow::Result<()> {
     );
 
     if cli.once {
-        process_next_frame(&graph, &qdrant, detector, &cli.detector).await?;
+        process_next_frame(
+            &graph,
+            &qdrant,
+            detector,
+            &cli.detector,
+            cli.face_match_threshold,
+        )
+        .await?;
         return Ok(());
     }
 
@@ -67,7 +77,14 @@ async fn main() -> anyhow::Result<()> {
     info!("face recognition loop started");
     loop {
         ticker.tick().await;
-        if let Err(err) = process_next_frame(&graph, &qdrant, detector.clone(), &cli.detector).await
+        if let Err(err) = process_next_frame(
+            &graph,
+            &qdrant,
+            detector.clone(),
+            &cli.detector,
+            cli.face_match_threshold,
+        )
+        .await
         {
             error!(error = %err, "face recognition loop iteration failed");
         }
@@ -79,6 +96,7 @@ async fn process_next_frame(
     qdrant: &QdrantClient,
     detector: Arc<dyn FaceDetector>,
     detector_name: &str,
+    face_match_threshold: f32,
 ) -> anyhow::Result<()> {
     let Some(frame) = graph
         .latest_unprocessed_image_frame_for_face_recognition()
@@ -114,12 +132,22 @@ async fn process_next_frame(
             .await
             .with_context(|| format!("failed to store face vector for {face_id}"))?
             .to_string();
+        let recognition = match_face(
+            graph,
+            qdrant,
+            &embedding,
+            &vector_id,
+            face_match_threshold,
+            &face_id,
+        )
+        .await?;
         detections.push(GraphFaceDetection {
             index,
             face_id,
             crop,
             vector_id,
             embedding_len: embedding.len(),
+            recognition,
         });
     }
 
@@ -129,6 +157,41 @@ async fn process_next_frame(
         .with_context(|| format!("failed to attach face recognition for image {}", frame.id))?;
     log_completion(&frame, detections.len());
     Ok(())
+}
+
+async fn match_face(
+    graph: &Neo4jClient,
+    qdrant: &QdrantClient,
+    embedding: &[f32],
+    vector_id: &str,
+    threshold: f32,
+    face_id: &str,
+) -> anyhow::Result<Option<GraphFaceMatch>> {
+    let Some(neighbor) = qdrant
+        .nearest_face_neighbor(embedding, vector_id, threshold)
+        .await
+        .with_context(|| format!("failed to search nearest face neighbor for {face_id}"))?
+    else {
+        return Ok(None);
+    };
+    let Some(identity) = graph
+        .face_identity_for_vector_neighbor(&neighbor.point_id)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to load face identity for nearest vector {}",
+                neighbor.point_id
+            )
+        })?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(GraphFaceMatch {
+        face_id: identity.face_id,
+        identity: identity.identity,
+        nearest_vector_id: neighbor.point_id,
+        score: neighbor.score,
+    }))
 }
 
 fn log_completion(frame: &GraphImageFrame, face_count: usize) {

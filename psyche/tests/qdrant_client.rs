@@ -101,6 +101,34 @@ async fn store_face_vector_can_reference_source_sensation() {
 }
 
 #[tokio::test]
+async fn nearest_face_neighbor_searches_faces_and_skips_self() {
+    let server = MockServer::start_async().await;
+    let search = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/collections/faces/points/search")
+                .body_contains("\"limit\":8")
+                .body_contains("\"score_threshold\":0.86")
+                .body_contains("1.0")
+                .body_contains("2.0");
+            then.status(200).body(
+                r#"{"result":[{"id":"self","score":1.0,"payload":{"face_id":"face:new"}},{"id":"known","score":0.91,"payload":{"face_id":"face:old"}}],"status":"ok"}"#,
+            );
+        })
+        .await;
+
+    let neighbor = QdrantClient::new(server.base_url())
+        .nearest_face_neighbor(&[1.0, 2.0], "self", 0.86)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(neighbor.point_id, "known");
+    assert_eq!(neighbor.score, 0.91);
+    search.assert_async().await;
+}
+
+#[tokio::test]
 async fn store_geolocation_vector_creates_collection_and_upserts_point() {
     let server = MockServer::start_async().await;
     let get_collection = server
@@ -389,6 +417,34 @@ async fn store_voice_vector_can_reference_source_sensation_and_user() {
 
     get_collection.assert_async().await;
     upsert_point.assert_async().await;
+}
+
+#[tokio::test]
+async fn nearest_voice_neighbor_searches_voices_and_skips_self() {
+    let server = MockServer::start_async().await;
+    let search = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/collections/voices/points/search")
+                .body_contains("\"limit\":8")
+                .body_contains("\"score_threshold\":0.86")
+                .body_contains("1.0")
+                .body_contains("2.0");
+            then.status(200).body(
+                r#"{"result":[{"id":"self","score":1.0,"payload":{"user_id":"speaker:new"}},{"id":"known","score":0.91,"payload":{"user_id":"speaker:old"}}],"status":"ok"}"#,
+            );
+        })
+        .await;
+
+    let neighbor = QdrantClient::new(server.base_url())
+        .nearest_voice_neighbor(&[1.0, 2.0], "self", 0.86)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(neighbor.point_id, "known");
+    assert_eq!(neighbor.score, 0.91);
+    search.assert_async().await;
 }
 
 #[tokio::test]
