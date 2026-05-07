@@ -40,6 +40,7 @@
     Heartbeat: { color: "#ff7a90", icon: "♥" },
     ObjectObservation: { color: "#d2b48c", icon: "O" },
     Face: { color: "#ffcf99", icon: "◐" },
+    VoiceSignature: { color: "#7dd3fc", icon: "V" },
     Voice: { color: "#7dd3fc", icon: "V" },
     Person: { color: "#f0abfc", icon: "P" },
     RawPayload: { color: "#b8c0cc", icon: "R" },
@@ -307,10 +308,21 @@
     const labels = sortedUnique(
       fullGraph.nodes.flatMap((node) => node.labels || []),
     );
+    const semanticSimilarity = semanticSimilarityRelationships(
+      fullGraph.nodes,
+      fullGraph.relationships,
+      fullGraph.nodes,
+    );
     const predicates = sortedUnique([
       ...fullGraph.relationships.map((rel) => rel.type).filter(Boolean),
       ...(embeddingNeighborRelationships(fullGraph.nodes, fullGraph.relationships).length
         ? ["SIMILAR_EMBEDDING"]
+        : []),
+      ...(semanticSimilarity.some((rel) => rel.type === "SIMILAR_FACE")
+        ? ["SIMILAR_FACE"]
+        : []),
+      ...(semanticSimilarity.some((rel) => rel.type === "SIMILAR_VOICE_SIGNATURE")
+        ? ["SIMILAR_VOICE_SIGNATURE"]
         : []),
     ]);
 
@@ -366,8 +378,10 @@
       const target = relationshipEndpoint(rel.target);
       return visibleNodeIds.has(source) && visibleNodeIds.has(target) && predicateAllowed(rel.type);
     });
-    const syntheticRelationships = embeddingNeighborRelationships(graph.nodes, fullGraph.relationships)
-      .filter((rel) => predicateAllowed(rel.type));
+    const syntheticRelationships = [
+      ...embeddingNeighborRelationships(graph.nodes, fullGraph.relationships),
+      ...semanticSimilarityRelationships(graph.nodes, fullGraph.relationships, fullGraph.nodes),
+    ].filter((rel) => predicateAllowed(rel.type));
     graph.relationships = [...realRelationships, ...syntheticRelationships];
     nodeCountEl.textContent = graph.nodes.length.toString();
     relationshipCountEl.textContent = graph.relationships.length.toString();
@@ -592,6 +606,33 @@
   }
 
   function embeddingNeighborRelationships(nodes, relationships) {
+    return similarityRelationshipsForVectorClusters(nodes, relationships, {
+      type: "SIMILAR_EMBEDDING",
+      idPrefix: "synthetic:embedding-neighbor",
+      targetsForVector: (vectorId) => [vectorId],
+    });
+  }
+
+  function semanticSimilarityRelationships(nodes, relationships, contextNodes = nodes) {
+    const visibleNodeIds = new Set(nodes.map((node) => node.id));
+    const ownersByVector = vectorOwnersByKind(contextNodes, relationships);
+    return [
+      ...similarityRelationshipsForVectorClusters(contextNodes, relationships, {
+        type: "SIMILAR_FACE",
+        idPrefix: "synthetic:face-similarity",
+        targetsForVector: (vectorId) => (ownersByVector.face.get(vectorId) || [])
+          .filter((ownerId) => visibleNodeIds.has(ownerId)),
+      }),
+      ...similarityRelationshipsForVectorClusters(contextNodes, relationships, {
+        type: "SIMILAR_VOICE_SIGNATURE",
+        idPrefix: "synthetic:voice-signature-similarity",
+        targetsForVector: (vectorId) => (ownersByVector.voiceSignature.get(vectorId) || [])
+          .filter((ownerId) => visibleNodeIds.has(ownerId)),
+      }),
+    ];
+  }
+
+  function similarityRelationshipsForVectorClusters(nodes, relationships, options) {
     const nodesById = new Map(nodes.map((node) => [node.id, node]));
     const clusters = new Map();
 
@@ -621,14 +662,31 @@
 
     const byPair = new Map();
     clusters.forEach((cluster) => {
-      const members = [...cluster.members.values()];
+      const members = [...cluster.members.values()]
+        .flatMap((member) => {
+          const targets = options.targetsForVector(member.id)
+            .filter((targetId) => nodesById.has(targetId));
+          return targets.map((targetId) => ({
+            id: targetId,
+            vectorId: member.id,
+            strength: member.strength,
+          }));
+        });
       const pairs = [];
       for (let left = 0; left < members.length; left += 1) {
         for (let right = left + 1; right < members.length; right += 1) {
           const source = members[left];
           const target = members[right];
+          if (source.id === target.id) continue;
           const strength = clamp01((source.strength + target.strength + cluster.strength) / 3);
-          pairs.push({ source: source.id, target: target.id, strength, clusterId: cluster.id });
+          pairs.push({
+            source: source.id,
+            target: target.id,
+            strength,
+            clusterId: cluster.id,
+            sourceVectorId: source.vectorId,
+            targetVectorId: target.vectorId,
+          });
         }
       }
       pairs
@@ -646,17 +704,53 @@
     return [...byPair.values()]
       .sort((left, right) => left.source.localeCompare(right.source) || left.target.localeCompare(right.target))
       .map((pair) => ({
-        id: `synthetic:embedding-neighbor:${pair.source}:${pair.target}`,
+        id: `${options.idPrefix}:${pair.source}:${pair.target}`,
         source: pair.source,
         target: pair.target,
-        type: "SIMILAR_EMBEDDING",
+        type: options.type,
         synthetic: true,
         properties: {
           display_only: true,
           inferred_from_cluster: pair.clusterId,
+          source_vector_id: pair.sourceVectorId,
+          target_vector_id: pair.targetVectorId,
           strength: Number(pair.strength.toFixed(3)),
         },
       }));
+  }
+
+  function vectorOwnersByKind(nodes, relationships) {
+    const nodesById = new Map(nodes.map((node) => [node.id, node]));
+    const owners = {
+      face: new Map(),
+      voiceSignature: new Map(),
+    };
+
+    relationships.forEach((rel) => {
+      if (rel.type !== "HAS_FACE_VECTOR" && rel.type !== "HAS_VOICE_VECTOR") return;
+      const source = relationshipEndpoint(rel.source);
+      const target = relationshipEndpoint(rel.target);
+      const sourceNode = nodesById.get(source);
+      const targetNode = nodesById.get(target);
+      const vectorId = isEmbeddingNode(sourceNode) ? source : isEmbeddingNode(targetNode) ? target : "";
+      if (!vectorId) return;
+
+      const ownerId = source === vectorId ? target : source;
+      const ownerNode = nodesById.get(ownerId);
+      if (rel.type === "HAS_FACE_VECTOR" && nodeKind(ownerNode) === "Face") {
+        addVectorOwner(owners.face, vectorId, ownerId);
+      } else if (rel.type === "HAS_VOICE_VECTOR" && nodeKind(ownerNode) === "VoiceSignature") {
+        addVectorOwner(owners.voiceSignature, vectorId, ownerId);
+      }
+    });
+
+    return owners;
+  }
+
+  function addVectorOwner(owners, vectorId, ownerId) {
+    const ownerIds = owners.get(vectorId) || [];
+    if (!ownerIds.includes(ownerId)) ownerIds.push(ownerId);
+    owners.set(vectorId, ownerIds);
   }
 
   function selectItem(item, options = {}) {
@@ -854,7 +948,7 @@
   }
 
   function nodeKind(node) {
-    return (node.labels || []).find((label) => label !== "GraphNode") || "GraphNode";
+    return (node?.labels || []).find((label) => label !== "GraphNode") || "GraphNode";
   }
 
   function nodeLabel(node) {
@@ -887,6 +981,7 @@
     if (nodeKind(node) === "Impression") return 24;
     if (nodeKind(node) === "Sensation") return 21;
     if (nodeKind(node) === "Face") return 22;
+    if (nodeKind(node) === "VoiceSignature") return 22;
     return 19;
   }
 
@@ -1016,14 +1111,17 @@
   }
 
   function linkLabel(rel) {
-    if (rel.synthetic && rel.type === "SIMILAR_EMBEDDING") {
+    if (rel.synthetic && rel.type.startsWith("SIMILAR_")) {
       return formatStrength(similarityStrength(rel));
     }
     return compactRelationship(rel.type);
   }
 
   function linkClass(rel) {
-    return rel.synthetic ? "link embedding-link" : "link";
+    if (!rel.synthetic) return "link";
+    if (rel.type === "SIMILAR_FACE") return "link semantic-similarity-link face-similarity-link";
+    if (rel.type === "SIMILAR_VOICE_SIGNATURE") return "link semantic-similarity-link voice-signature-similarity-link";
+    return "link embedding-link";
   }
 
   function linkDistance(link) {

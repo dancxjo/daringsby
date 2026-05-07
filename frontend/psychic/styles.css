@@ -127,6 +127,18 @@ h1 {
   stroke-linecap: round;
 }
 
+.semantic-similarity-link {
+  stroke-linecap: round;
+}
+
+.face-similarity-link {
+  stroke: #ffcf99;
+}
+
+.voice-signature-similarity-link {
+  stroke: #7dd3fc;
+}
+
 .link-label {
   fill: #c9d4de;
   font-size: 0.68rem;

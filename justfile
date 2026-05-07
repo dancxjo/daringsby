@@ -9,6 +9,11 @@ run:
     #!/usr/bin/env bash
     set -euo pipefail
 
+    if [[ -x /usr/local/cuda/bin/nvcc ]]; then
+        export PATH="/usr/local/cuda/bin:$PATH"
+        export CUDACXX="/usr/local/cuda/bin/nvcc"
+    fi
+
     timestamp="$(date +%Y%m%d-%H%M%S)"
     log_root="${PETE_RUN_LOG_DIR:-logs/run}"
     run_log_dir="${log_root}/${timestamp}"
@@ -51,6 +56,8 @@ run:
         pkill -KILL -f "(^|[[:space:]])(.*/)?target/.*/${bin}([[:space:]]|$)" 2>/dev/null || true
     done
 
+    cargo build -p pete --features scene-vec --bins
+
     cleanup() {
         if ((${#pids[@]})); then
             kill "${pids[@]}" 2>/dev/null || true
@@ -74,23 +81,23 @@ run:
 
 # Forget derived graph/vector data while retaining raw sensations and media.
 forget *args:
-    cargo run -p pete --bin raw_retention -- --confirm {{args}}
+    cargo run -p pete --bin raw_retention -- --confirm {{ args }}
 
 # Start Pete with debug logging unless RUST_LOG is already set.
 debug *args:
-    RUST_LOG="${RUST_LOG:-debug}" cargo run -p pete --bin pete -- {{args}}
+    RUST_LOG="${RUST_LOG:-debug}" cargo run -p pete --bin pete -- {{ args }}
 
 # Fetch fast small + big large local models, or pass tiny.en/base.en/small.en/large-v3/URL for one Whisper model.
 fetch model="":
-    cargo run -p xtask -- fetch {{model}}
+    cargo run -p xtask -- fetch {{ model }}
 
 # Compatibility alias for fetching the audio models.
 fetch-asr-model model="":
-    just fetch {{model}}
+    just fetch {{ model }}
 
 # Fetch the default voice embedding model, or pass a custom ONNX URL/filename.
 fetch-voice-embedding-model model="":
-    cargo run -p xtask -- fetch-voice-embedding-model {{model}}
+    cargo run -p xtask -- fetch-voice-embedding-model {{ model }}
 
 # Run all Rust and frontend tests.
 test: test-rust test-frontend
@@ -129,8 +136,8 @@ clippy:
 
 # Simulate a text input event.
 simulate-text text:
-    cargo run -p pete --bin simulate -- text "{{text}}"
+    cargo run -p pete --bin simulate -- text "{{ text }}"
 
 # Simulate an image input event.
 simulate-image path:
-    cargo run -p pete --bin simulate -- image "{{path}}"
+    cargo run -p pete --bin simulate -- image "{{ path }}"
