@@ -459,6 +459,11 @@
       const source = audioContext.createMediaStreamSource(stream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
       const targetSampleRate = 16000;
+      const audioClipDurationMs = 500;
+      const audioClipSamples = Math.round((targetSampleRate * audioClipDurationMs) / 1000);
+      let queuedAudio = [];
+      let queuedAudioSamples = 0;
+      let queuedAudioStartedAt = null;
 
       window.onbeforeunload = () => {
         try {
@@ -473,23 +478,65 @@
 
       processor.onaudioprocess = (event) => {
         if (playing) {
+          queuedAudio = [];
+          queuedAudioSamples = 0;
+          queuedAudioStartedAt = null;
           return;
         }
         const input = event.inputBuffer.getChannelData(0);
         const pcm = floatTo16BitPcm(resample(input, audioContext.sampleRate, targetSampleRate));
         if (!pcm.byteLength) return;
-        safeSend(
-          JSON.stringify({
-            type: "Hear",
-            data: {
-              base64: arrayBufferToBase64(pcm.buffer),
-              mime: "audio/pcm;format=s16le;rate=16000",
-              sample_rate: targetSampleRate,
-              channels: 1,
-            },
-          })
-        );
+        queueAudioClip(pcm);
       };
+
+      function queueAudioClip(pcm) {
+        if (!queuedAudioStartedAt) {
+          queuedAudioStartedAt = new Date();
+        }
+        queuedAudio.push(pcm);
+        queuedAudioSamples += pcm.length;
+
+        while (queuedAudioSamples >= audioClipSamples) {
+          const clip = takeQueuedAudioSamples(audioClipSamples);
+          const capturedAt = queuedAudioStartedAt;
+          safeSend(
+            JSON.stringify({
+              type: "Hear",
+              data: {
+                base64: arrayBufferToBase64(clip.buffer),
+                mime: "audio/pcm;format=s16le;rate=16000",
+                sample_rate: targetSampleRate,
+                channels: 1,
+              },
+              at: capturedAt.toISOString(),
+            })
+          );
+          queuedAudioStartedAt =
+            queuedAudioSamples > 0
+              ? new Date(capturedAt.getTime() + audioClipDurationMs)
+              : null;
+        }
+      }
+
+      function takeQueuedAudioSamples(sampleCount) {
+        const clip = new Int16Array(sampleCount);
+        let offset = 0;
+        while (offset < sampleCount && queuedAudio.length) {
+          const next = queuedAudio[0];
+          const needed = sampleCount - offset;
+          if (next.length <= needed) {
+            clip.set(next, offset);
+            offset += next.length;
+            queuedAudio.shift();
+          } else {
+            clip.set(next.subarray(0, needed), offset);
+            queuedAudio[0] = next.subarray(needed);
+            offset += needed;
+          }
+        }
+        queuedAudioSamples -= sampleCount;
+        return clip;
+      }
 
       source.connect(processor);
       processor.connect(audioContext.destination);

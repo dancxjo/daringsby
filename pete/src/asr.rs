@@ -15,7 +15,9 @@ use serde::Serialize;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::mpsc;
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{error, info, trace, warn};
+#[cfg(feature = "voice")]
+use tracing::warn;
+use tracing::{error, info, trace};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 use psyche::{AudioClip, Sensation, Topic, TopicBus};
@@ -639,8 +641,8 @@ async fn run_connection(
                         if buffer.is_empty() {
                             buffer_started_at = Some(chunk.captured_at);
                         }
-                        let (samples, rms) = extend_buffer(&mut buffer, &chunk.bytes);
-                        silence_tracker.ingest(rms, samples);
+                        let samples = extend_buffer(&mut buffer, &chunk.bytes);
+                        silence_tracker.ingest_samples(&samples);
                     }
                     None => pcm_open = false,
                 }
@@ -653,7 +655,8 @@ async fn run_connection(
                     continue;
                 }
 
-                let has_pause = silence_tracker.has_boundary();
+                let boundary_sample = silence_tracker.boundary_sample();
+                let has_pause = boundary_sample.is_some();
                 let hit_max_buffer = buffer.len() >= max_samples;
                 let should_transcribe =
                     !pcm_open || (buffer.len() >= min_samples && (has_pause || hit_max_buffer));
@@ -661,10 +664,14 @@ async fn run_connection(
                     continue;
                 }
 
-                let audio = buffer.iter().copied().collect::<Vec<_>>();
+                let submitted_samples = if !pcm_open || hit_max_buffer {
+                    buffer.len()
+                } else {
+                    boundary_sample.unwrap_or(buffer.len()).min(buffer.len())
+                };
+                let audio = drain_buffer_front(&mut buffer, submitted_samples);
                 let utterance_start_samples = total_consumed_samples;
                 let utterance_started_at = buffer_started_at.unwrap_or_else(Utc::now);
-                let submitted_samples = buffer.len();
                 let (trimmed_audio, leading_trim) = trim_silence(
                     &audio,
                     service.sample_rate,
@@ -672,10 +679,17 @@ async fn run_connection(
                     service.silence_duration,
                 );
 
-                buffer.clear();
-                buffer_started_at = None;
                 total_consumed_samples += submitted_samples;
                 silence_tracker.reset();
+                if buffer.is_empty() {
+                    buffer_started_at = None;
+                } else {
+                    let elapsed_ms = ((submitted_samples as f32 / sample_rate) * 1000.0) as i64;
+                    buffer_started_at =
+                        Some(utterance_started_at + chrono::Duration::milliseconds(elapsed_ms));
+                    let remaining = buffer.iter().copied().collect::<Vec<_>>();
+                    silence_tracker.ingest_samples(&remaining);
+                }
 
                 if trimmed_audio.is_empty() {
                     trace!(
@@ -765,7 +779,10 @@ async fn process_utterance(
 struct SilenceTracker {
     threshold: f32,
     required_samples: usize,
+    window_samples: usize,
     tail_silence_samples: usize,
+    total_samples: usize,
+    boundary_sample: Option<usize>,
 }
 
 impl SilenceTracker {
@@ -774,50 +791,67 @@ impl SilenceTracker {
         if required_samples == 0 {
             required_samples = (sample_rate as f32 * 0.2).round() as usize;
         }
+        let window_samples = ((sample_rate as f32 * 0.02).round() as usize).max(1);
         Self {
             threshold,
             required_samples,
+            window_samples,
             tail_silence_samples: 0,
+            total_samples: 0,
+            boundary_sample: None,
         }
     }
 
-    fn ingest(&mut self, rms: f32, samples: usize) {
-        if samples == 0 {
+    fn ingest_samples(&mut self, samples: &[f32]) {
+        if samples.is_empty() {
             return;
         }
-        if rms <= self.threshold {
-            self.tail_silence_samples = self.tail_silence_samples.saturating_add(samples);
-        } else {
-            self.tail_silence_samples = 0;
+        for chunk in samples.chunks(self.window_samples) {
+            let chunk_len = chunk.len();
+            self.total_samples = self.total_samples.saturating_add(chunk_len);
+            if rms(chunk) <= self.threshold {
+                self.tail_silence_samples = self.tail_silence_samples.saturating_add(chunk_len);
+                if self.boundary_sample.is_none()
+                    && self.required_samples > 0
+                    && self.tail_silence_samples >= self.required_samples
+                {
+                    self.boundary_sample = Some(self.total_samples);
+                }
+            } else {
+                self.tail_silence_samples = 0;
+            }
         }
     }
 
     fn has_boundary(&self) -> bool {
-        self.required_samples > 0 && self.tail_silence_samples >= self.required_samples
+        self.boundary_sample.is_some()
+    }
+
+    fn boundary_sample(&self) -> Option<usize> {
+        self.boundary_sample
     }
 
     fn reset(&mut self) {
         self.tail_silence_samples = 0;
+        self.total_samples = 0;
+        self.boundary_sample = None;
     }
 }
 
-fn extend_buffer(buffer: &mut VecDeque<f32>, bytes: &[u8]) -> (usize, f32) {
-    let mut sum_sq = 0.0f64;
-    let mut count = 0usize;
+fn extend_buffer(buffer: &mut VecDeque<f32>, bytes: &[u8]) -> Vec<f32> {
+    let mut samples = Vec::with_capacity(bytes.len() / 2);
     for chunk in bytes.chunks_exact(2) {
         let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
         let normalized = sample as f32 / i16::MAX as f32;
-        let value = f64::from(normalized);
-        sum_sq += value * value;
         buffer.push_back(normalized);
-        count += 1;
+        samples.push(normalized);
     }
-    let rms = if count > 0 {
-        (sum_sq / count as f64).sqrt() as f32
-    } else {
-        0.0
-    };
-    (count, rms)
+    samples
+}
+
+fn drain_buffer_front(buffer: &mut VecDeque<f32>, samples: usize) -> Vec<f32> {
+    let count = samples.min(buffer.len());
+    buffer.drain(..count).collect()
 }
 
 fn trim_silence(
@@ -1158,12 +1192,28 @@ mod tests {
         let mut tracker = SilenceTracker::new(16_000, 0.01, Duration::from_millis(500));
         assert!(!tracker.has_boundary());
 
-        tracker.ingest(0.005, 8_000);
+        tracker.ingest_samples(&vec![0.005; 8_000]);
         assert!(tracker.has_boundary());
+        assert_eq!(tracker.boundary_sample(), Some(8_000));
 
         tracker.reset();
-        tracker.ingest(0.02, 8_000);
+        tracker.ingest_samples(&vec![0.02; 8_000]);
         assert!(!tracker.has_boundary());
+    }
+
+    #[test]
+    fn silence_tracker_finds_boundary_inside_mixed_frame() {
+        let mut tracker = SilenceTracker::new(100, 0.01, Duration::from_millis(500));
+        let mut samples = vec![0.2; 20];
+        samples.extend(vec![0.0; 60]);
+
+        tracker.ingest_samples(&samples);
+
+        assert!(tracker.has_boundary());
+        assert_eq!(tracker.boundary_sample(), Some(70));
+
+        tracker.ingest_samples(&vec![0.2; 20]);
+        assert_eq!(tracker.boundary_sample(), Some(70));
     }
 
     #[test]
