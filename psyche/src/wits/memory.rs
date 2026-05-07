@@ -2143,6 +2143,139 @@ impl Neo4jClient {
         graph_timeline_window_from_rows(&rows)
     }
 
+    /// Return a previously combobulated timeline whose rendered source text changed.
+    ///
+    /// This catches graph events such as audio sensations that were summarized
+    /// while their transcript was still pending, then gained transcription
+    /// details after the combobulation run was attached.
+    pub async fn latest_revisitable_timeline_window_for_combobulation(
+        &self,
+        limit: usize,
+    ) -> Result<Option<GraphTimelineWindow>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (run:GraphNode:CombobulationRun)
+                    WHERE run.source_ids IS NOT NULL
+                      AND size(run.source_ids) > 0
+                      AND coalesce(run.anchor_id, "") <> ""
+                      AND coalesce(run.anchor_at, "") <> ""
+                    WITH run
+                    ORDER BY datetime(coalesce(run.processed_at, run.anchor_at)) DESC, run.id
+                    LIMIT $limit
+                    MATCH (n:GraphNode:Sensation)
+                    WHERE n.id IN run.source_ids
+                      AND coalesce(n.occurred_at, "") <> ""
+                    OPTIONAL MATCH (n)-[:OBSERVED|PRODUCED]->(artifact:GraphNode)
+                    OPTIONAL MATCH (artifact)-[:HAS_TRANSCRIPTION|HAS_BIG_TRANSCRIPTION]->(attached_transcription:GraphNode:Transcription)
+                    OPTIONAL MATCH (artifact)-[:HAS_IMAGE_DESCRIPTION]->(attached_description:GraphNode:ImageDescription)
+                    WITH run, n, n.occurred_at AS occurred_at,
+                        head([idx IN range(0, size(run.source_ids) - 1)
+                            WHERE run.source_ids[idx] = n.id | idx
+                        ]) AS source_index,
+                        collect(DISTINCT artifact) AS artifacts,
+                        head([t IN collect(DISTINCT attached_transcription)
+                            WHERE coalesce(t.text, t.transcript, "") <> "" |
+                            coalesce(t.text, t.transcript, "")
+                        ]) AS attached_transcript,
+                        head([d IN collect(DISTINCT attached_description)
+                            WHERE coalesce(d.text, "") <> "" |
+                            d.text
+                        ]) AS image_description
+                    WITH run, n, occurred_at, source_index,
+                        head([a IN artifacts WHERE a:AudioClip | a]) AS audio,
+                        head([a IN artifacts WHERE a:Image | a]) AS image,
+                        head([a IN artifacts WHERE a:Geolocation | a]) AS geolocation,
+                        head([a IN artifacts WHERE a:Heartbeat | a]) AS heartbeat,
+                        head([a IN artifacts WHERE a:ObjectObservation | a]) AS object,
+                        head([a IN artifacts WHERE a:Utterance | a]) AS utterance,
+                        head([a IN artifacts WHERE a:CombobulationSummary | a]) AS combobulation,
+                        head([a IN artifacts WHERE a:JsonSensation | a]) AS json_sensation,
+                        attached_transcript,
+                        image_description
+                    WITH run, n, occurred_at, source_index,
+                    coalesce(
+                        audio.id,
+                        image.id,
+                        geolocation.id,
+                        heartbeat.id,
+                        object.id,
+                        utterance.id,
+                        combobulation.id,
+                        json_sensation.id,
+                        n.id
+                    ) AS event_id,
+                    CASE
+                        WHEN audio IS NOT NULL THEN
+                            CASE
+                                WHEN attached_transcript IS NOT NULL AND attached_transcript <> "" THEN
+                                    "audio sensation; transcript: " + attached_transcript
+                                WHEN audio.transcript IS NULL OR audio.transcript = "" THEN
+                                    "audio sensation; transcript pending"
+                                ELSE "audio sensation; transcript: " + audio.transcript
+                            END
+                        WHEN image_description IS NOT NULL AND image_description <> "" THEN
+                            "visual sensation; " + image_description
+                        WHEN image IS NOT NULL THEN "visual sensation; image captured"
+                        WHEN geolocation IS NOT NULL THEN
+                            "geolocation sensation; " + toString(geolocation.latitude) + ", " + toString(geolocation.longitude)
+                        WHEN heartbeat IS NOT NULL THEN "heartbeat sensation"
+                        WHEN object IS NOT NULL THEN
+                            "object sensation; " + coalesce(object.object_label, "unknown")
+                        WHEN utterance IS NOT NULL THEN
+                            "speech sensation; " + coalesce(utterance.speaker, "someone") + " said: " + coalesce(utterance.text, "")
+                        WHEN combobulation IS NOT NULL THEN
+                            "combobulation sensation; " + coalesce(combobulation.text, combobulation.summary, "")
+                        WHEN json_sensation IS NOT NULL THEN "structured sensation"
+                        ELSE coalesce(n.kind, "sensation")
+                    END AS text
+                    WHERE text <> "" AND source_index IS NOT NULL
+                    WITH run, n, occurred_at, source_index, event_id, text
+                    ORDER BY run.id, source_index
+                    WITH run,
+                        collect({
+                            id: n.id,
+                            event_id: event_id,
+                            labels: labels(n),
+                            text: text,
+                            occurred_at: occurred_at,
+                            source_index: source_index
+                        }) AS items,
+                        collect(text) AS current_source_texts
+                    WHERE size(items) = size(run.source_ids)
+                      AND (
+                        run.source_texts IS NULL
+                        OR run.source_texts <> current_source_texts
+                      )
+                      AND NOT EXISTS {
+                        MATCH (fresh:GraphNode:CombobulationRun)
+                        WHERE fresh.anchor_id = run.anchor_id
+                          AND fresh.source_ids = run.source_ids
+                          AND fresh.source_texts = current_source_texts
+                      }
+                    WITH run, items
+                    ORDER BY datetime(coalesce(run.processed_at, run.anchor_at)) DESC, run.id
+                    LIMIT 1
+                    UNWIND items AS item
+                    RETURN run.anchor_id, run.anchor_at, item.id, item.event_id, item.labels, item.text, item.occurred_at
+                    ORDER BY item.source_index
+                "#
+                .into(),
+                parameters: json!({
+                    "limit": i64::try_from(limit.max(1)).unwrap_or(i64::MAX),
+                }),
+            },
+            "finding revisitable timeline window for combobulation",
+        )
+        .await?;
+        graph_timeline_window_from_rows(&rows)
+    }
+
     /// Attach a Whisper transcript to an existing `AudioClip` graph node.
     pub async fn attach_audio_transcription(
         &self,
@@ -2902,6 +3035,16 @@ impl Neo4jClient {
             .iter()
             .map(|item| item.id.clone())
             .collect::<Vec<_>>();
+        let source_event_ids = window
+            .items
+            .iter()
+            .map(|item| item.event_id.clone())
+            .collect::<Vec<_>>();
+        let source_texts = window
+            .items
+            .iter()
+            .map(|item| item.text.clone())
+            .collect::<Vec<_>>();
         let source_started_at = window.items.first().map(|item| item.occurred_at.clone());
         let source_ended_at = window.items.last().map(|item| item.occurred_at.clone());
         let vector_id = qdrant_vector_node_id(MEMORY_COLLECTION, &awareness.vector_id);
@@ -2916,6 +3059,8 @@ impl Neo4jClient {
                 "processed_at": processed_at,
                 "source_count": window.items.len(),
                 "source_ids": source_ids,
+                "source_event_ids": source_event_ids,
+                "source_texts": source_texts,
                 "source_started_at": source_started_at,
                 "source_ended_at": source_ended_at,
                 "embedding_len": awareness.embedding_len,

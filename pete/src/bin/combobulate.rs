@@ -122,15 +122,38 @@ async fn process_next_window(
     window_seconds: u64,
     window_limit: usize,
 ) -> anyhow::Result<()> {
-    let Some(window) = graph
+    let mut processed = false;
+    if let Some(window) = graph
         .latest_timeline_window_for_combobulation(window_seconds, window_limit)
         .await
         .context("failed to load latest timeline window")?
-    else {
-        trace!("no timeline windows found for combobulation");
-        return Ok(());
-    };
+    {
+        process_window(graph, qdrant, processor, window_seconds, window).await?;
+        processed = true;
+    }
 
+    if let Some(window) = graph
+        .latest_revisitable_timeline_window_for_combobulation(window_limit)
+        .await
+        .context("failed to load revisitable timeline window")?
+    {
+        process_window(graph, qdrant, processor, window_seconds, window).await?;
+        processed = true;
+    }
+
+    if !processed {
+        trace!("no timeline windows found for combobulation");
+    }
+    Ok(())
+}
+
+async fn process_window(
+    graph: &Neo4jClient,
+    qdrant: &QdrantClient,
+    processor: &CombobulationProcessor,
+    window_seconds: u64,
+    window: GraphTimelineWindow,
+) -> anyhow::Result<()> {
     if window.items.is_empty() {
         debug!(
             anchor_id = %window.anchor_id,
