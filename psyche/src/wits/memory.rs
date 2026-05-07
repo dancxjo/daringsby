@@ -38,6 +38,58 @@ const QDRANT_VECTOR_COLLECTIONS: &[&str] = &[
 const QDRANT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const NEO4J_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct VectorClusterLabeling {
+    label: &'static str,
+    kind: &'static str,
+    member_label: &'static str,
+}
+
+fn vector_cluster_labeling(collection: &str) -> VectorClusterLabeling {
+    match collection {
+        FACE_COLLECTION => VectorClusterLabeling {
+            label: "Face",
+            kind: "face",
+            member_label: "FaceInstance",
+        },
+        VOICE_COLLECTION => VectorClusterLabeling {
+            label: "Voice",
+            kind: "voice",
+            member_label: "VoiceSignature",
+        },
+        GEOLOCATION_COLLECTION => VectorClusterLabeling {
+            label: "Place",
+            kind: "place",
+            member_label: "Geolocation",
+        },
+        SCENE_VECTOR_COLLECTION => VectorClusterLabeling {
+            label: "Scene",
+            kind: "scene",
+            member_label: "Image",
+        },
+        IMAGE_COLLECTION => VectorClusterLabeling {
+            label: "ImageCluster",
+            kind: "image_cluster",
+            member_label: "Image",
+        },
+        IMAGE_DESCRIPTION_COLLECTION => VectorClusterLabeling {
+            label: "ImageTheme",
+            kind: "image_theme",
+            member_label: "ImageDescription",
+        },
+        MEMORY_COLLECTION => VectorClusterLabeling {
+            label: "MemoryCluster",
+            kind: "memory_cluster",
+            member_label: "Impression",
+        },
+        _ => VectorClusterLabeling {
+            label: "Cluster",
+            kind: "vector_cluster",
+            member_label: "Vector",
+        },
+    }
+}
+
 /// Return the Qdrant collections Pete writes vector embeddings into.
 pub fn qdrant_vector_collections() -> &'static [&'static str] {
     QDRANT_VECTOR_COLLECTIONS
@@ -397,7 +449,7 @@ impl QdrantClient {
                 FACE_COLLECTION,
                 vector,
                 json!({
-                    "kind": "face",
+                    "kind": "face_instance",
                     "face_id": face_id,
                     "neo4j_node_id": face_id,
                     "source_image_id": source_image_id,
@@ -437,7 +489,7 @@ impl QdrantClient {
                 VOICE_COLLECTION,
                 vector,
                 json!({
-                    "kind": "voice",
+                    "kind": "voice_signature",
                     "clip_id": clip_id,
                     "neo4j_node_id": clip_id,
                     "sensation_id": sensation_id,
@@ -1937,8 +1989,11 @@ impl Neo4jClient {
                                 ELSE "audio: " + owner.transcript
                             END
                         WHEN owner:ObjectObservation THEN "object: " + coalesce(owner.object_label, "unknown")
-                        WHEN owner:Face THEN "face detected"
-                        WHEN owner:Voice THEN "voice detected"
+                        WHEN owner:FaceInstance THEN "face instance detected"
+                        WHEN owner:Face THEN "face cluster"
+                        WHEN owner:VoiceSignature THEN "voice signature: f0 " + toString(owner.fundamental_frequency) + " Hz, speech rate " + toString(owner.speech_rate)
+                        WHEN owner:VoiceSample THEN "voice sample: f0 " + toString(owner.fundamental_frequency) + " Hz"
+                        WHEN owner:Voice THEN "voice cluster"
                         WHEN owner:Vector THEN "vector: " + coalesce(owner.collection, "") + "/" + coalesce(owner.point_id, "")
                         ELSE coalesce(owner.summary, owner.text, owner.transcript, owner.object_label, "")
                     END AS owner_text
@@ -1987,8 +2042,11 @@ impl Neo4jClient {
                                         ELSE "audio: " + neighbor.transcript
                                     END
                                 WHEN neighbor:ObjectObservation THEN "object: " + coalesce(neighbor.object_label, "unknown")
-                                WHEN neighbor:Face THEN "face detected"
-                                WHEN neighbor:Voice THEN "voice detected"
+                                WHEN neighbor:FaceInstance THEN "face instance detected"
+                                WHEN neighbor:Face THEN "face cluster"
+                                WHEN neighbor:VoiceSignature THEN "voice signature: f0 " + toString(neighbor.fundamental_frequency) + " Hz, speech rate " + toString(neighbor.speech_rate)
+                                WHEN neighbor:VoiceSample THEN "voice sample: f0 " + toString(neighbor.fundamental_frequency) + " Hz"
+                                WHEN neighbor:Voice THEN "voice cluster"
                                 ELSE coalesce(neighbor.summary, neighbor.text, neighbor.transcript, neighbor.object_label, "")
                             END AS neighbor_text
                         ORDER BY type(rel), neighbor.id
@@ -2806,7 +2864,7 @@ impl Neo4jClient {
         for detection in detections {
             let vector_id = qdrant_vector_node_id(FACE_COLLECTION, &detection.vector_id);
             nodes.push(json!({
-                "label": "Face",
+                "label": "FaceInstance",
                 "id": detection.face_id,
                 "source_image_id": frame.id,
                 "crop_mime": detection.crop.mime.clone(),
@@ -2824,7 +2882,7 @@ impl Neo4jClient {
             nodes.push(qdrant_vector_node(
                 FACE_COLLECTION,
                 &detection.vector_id,
-                "face",
+                "face_instance",
                 Some(detector),
             ));
             relationships.push(json!({
@@ -3203,6 +3261,7 @@ impl Neo4jClient {
     ) -> Result<()> {
         anyhow::ensure!(!items.is_empty(), "cluster theme has no source items");
         let processed_at = chrono::Utc::now().to_rfc3339();
+        let labeling = vector_cluster_labeling(&cluster.collection);
         let run_id = stable_bytes_id(
             "cluster-theme-run",
             format!("{}:{llm_model}:{processed_at}", cluster.cluster_id).as_bytes(),
@@ -3213,11 +3272,14 @@ impl Neo4jClient {
             .collect::<Vec<_>>();
         let mut nodes = vec![
             json!({
-                "label": "Cluster",
+                "label": labeling.label,
+                "labels": ["Cluster"],
                 "id": cluster.cluster_id,
+                "kind": labeling.kind,
                 "collection": cluster.collection,
                 "threshold": cluster.threshold,
                 "member_count": cluster.members.len(),
+                "member_label": labeling.member_label,
                 "mean_similarity": cluster.mean_similarity,
                 "centroid_len": cluster.centroid.len(),
             }),
@@ -3330,19 +3392,23 @@ impl Neo4jClient {
         let mut relationships = Vec::new();
 
         for (cluster_index, cluster) in clusters.iter().enumerate() {
+            let labeling = vector_cluster_labeling(&cluster.collection);
             let member_ids = cluster
                 .members
                 .iter()
                 .map(|member| member.point_id.clone())
                 .collect::<Vec<_>>();
             nodes.push(json!({
-                "label": "Cluster",
+                "label": labeling.label,
+                "labels": ["Cluster"],
                 "id": cluster.cluster_id,
+                "kind": labeling.kind,
                 "collection": cluster.collection,
                 "algorithm": algorithm,
                 "threshold": cluster.threshold,
                 "member_count": cluster.members.len(),
                 "member_ids": member_ids,
+                "member_label": labeling.member_label,
                 "mean_similarity": cluster.mean_similarity,
                 "centroid_len": cluster.centroid.len(),
             }));
@@ -3554,7 +3620,7 @@ impl Neo4jClient {
             qdrant_vector_node(
                 VOICE_COLLECTION,
                 &recognition.vector_id,
-                "voice",
+                "voice_signature",
                 Some(model),
             ),
         ];
@@ -4383,23 +4449,47 @@ fn graph_statements(data: &Value) -> Result<Vec<CypherStatement>> {
 }
 
 fn node_statement(node: &Value) -> Result<CypherStatement> {
-    let label = node
-        .get("label")
-        .and_then(Value::as_str)
-        .context("graph node is missing label")?;
-    validate_graph_name(label, "label")?;
+    let labels = node_labels(node)?;
     let id = node
         .get("id")
         .and_then(Value::as_str)
         .context("graph node is missing id")?;
     let props = property_map(node);
+    let label_sets = labels
+        .iter()
+        .map(|label| format!(" SET n:`{label}`"))
+        .collect::<String>();
     Ok(CypherStatement {
-        statement: format!("MERGE (n:GraphNode {{id: $id}}) SET n += $props SET n:`{label}`"),
+        statement: format!("MERGE (n:GraphNode {{id: $id}}) SET n += $props{label_sets}"),
         parameters: json!({
             "id": id,
             "props": props,
         }),
     })
+}
+
+fn node_labels(node: &Value) -> Result<Vec<String>> {
+    let mut labels = Vec::new();
+    if let Some(label) = node.get("label").and_then(Value::as_str) {
+        labels.push(label.to_string());
+    }
+    if let Some(extra_labels) = node.get("labels").and_then(Value::as_array) {
+        for label in extra_labels {
+            let label = label
+                .as_str()
+                .context("graph node labels must be strings")?;
+            labels.push(label.to_string());
+        }
+    }
+    anyhow::ensure!(!labels.is_empty(), "graph node is missing label");
+    let mut deduped = Vec::new();
+    for label in labels {
+        validate_graph_name(&label, "label")?;
+        if !deduped.contains(&label) {
+            deduped.push(label);
+        }
+    }
+    Ok(deduped)
 }
 
 fn relationship_statement(rel: &Value) -> Result<CypherStatement> {
@@ -4452,7 +4542,15 @@ fn property_map(value: &Value) -> Value {
     for (key, value) in object {
         if matches!(
             key.as_str(),
-            "label" | "merge_key" | "from" | "to" | "type" | "relationships" | "nodes" | "op"
+            "label"
+                | "labels"
+                | "merge_key"
+                | "from"
+                | "to"
+                | "type"
+                | "relationships"
+                | "nodes"
+                | "op"
         ) {
             continue;
         }

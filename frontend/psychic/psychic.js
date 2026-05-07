@@ -21,9 +21,14 @@
   const labelFiltersEl = document.getElementById("label-filters");
   const predicateFiltersEl = document.getElementById("predicate-filters");
   const timelineRowsEl = document.getElementById("timeline-rows");
+  const timelineBoardEl = document.getElementById("timeline-board");
   const timelineRulerEl = document.getElementById("timeline-ruler");
   const timelinePlayheadEl = document.getElementById("timeline-playhead");
+  const timelineSelectionEl = document.getElementById("timeline-selection");
   const timelineScrubEl = document.getElementById("timeline-scrub");
+  const timelineZoomInEl = document.getElementById("timeline-zoom-in");
+  const timelineZoomOutEl = document.getElementById("timeline-zoom-out");
+  const timelineZoomResetEl = document.getElementById("timeline-zoom-reset");
   const timelineRangeEl = document.getElementById("timeline-range");
   const inspectorEmpty = document.getElementById("inspector-empty");
   const inspectorContent = document.getElementById("inspector-content");
@@ -98,9 +103,11 @@
   let detailRequestId = 0;
   let mediaObjectUrl = "";
   let viewMode = storedViewMode();
+  let timelineFullExtent = null;
   let temporalExtent = null;
   let timelineExtent = null;
   let timelineCursor = null;
+  let timelineSelection = null;
   let pendingLocationTarget = targetFromLocation();
   let graphCacheDbPromise = null;
   let graphCacheSaveTimer = 0;

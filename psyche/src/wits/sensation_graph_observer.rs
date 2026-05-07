@@ -719,7 +719,7 @@ async fn store_unknown_sensation(
 #[cfg(feature = "face")]
 fn face_node(face: &FaceInfo, occurred_at: String) -> Value {
     json!({
-        "label": "Face",
+        "label": "FaceInstance",
         "id": face.face_id,
         "source_image_id": face.source_image_id,
         "crop_mime": face.crop.mime.clone(),
@@ -728,7 +728,7 @@ fn face_node(face: &FaceInfo, occurred_at: String) -> Value {
         "occurred_at": occurred_at,
         "embedding": face.embedding,
         "embedding_len": face.embedding.len(),
-        "embedding_kind": "face",
+        "embedding_kind": "face_instance",
         "embedding_point_id": face.vector_id,
     })
 }

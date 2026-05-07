@@ -59,6 +59,11 @@
           <h2>Timeline</h2>
           <p id="timeline-range">No timed media</p>
         </div>
+        <div class="timeline-zoom" aria-label="Timeline zoom controls">
+          <button id="timeline-zoom-in" type="button" title="Zoom in on playhead" aria-label="Zoom in on playhead">+</button>
+          <button id="timeline-zoom-out" type="button" title="Zoom out from playhead" aria-label="Zoom out from playhead">-</button>
+          <button id="timeline-zoom-reset" type="button" title="Show full timeline" aria-label="Show full timeline">⛶</button>
+        </div>
         <div class="timeline-scrubber">
           <label for="timeline-scrub">Scrub</label>
           <input id="timeline-scrub" type="range" min="0" max="1000" value="0" step="1" />
@@ -66,6 +71,7 @@
       </div>
       <div class="timeline-board" id="timeline-board">
         <div class="timeline-ruler" id="timeline-ruler" aria-hidden="true"></div>
+        <div class="timeline-selection" id="timeline-selection" aria-hidden="true" hidden></div>
         <div class="timeline-playhead" id="timeline-playhead" aria-hidden="true">
           <div class="timeline-head"></div>
         </div>
