@@ -9,13 +9,22 @@
   const linkLayer = root.append("g").attr("class", "links");
   const labelLayer = root.append("g").attr("class", "link-labels");
   const nodeLayer = root.append("g").attr("class", "nodes");
+  const graphShell = document.querySelector(".graph-shell");
+  const timelineShell = document.getElementById("timeline-shell");
   const statusEl = document.getElementById("status");
   const nodeCountEl = document.getElementById("node-count");
   const relationshipCountEl = document.getElementById("relationship-count");
+  const graphModeEl = document.getElementById("graph-mode");
+  const timelineModeEl = document.getElementById("timeline-mode");
   const allLabelFiltersEl = document.getElementById("all-label-filters");
   const allPredicateFiltersEl = document.getElementById("all-predicate-filters");
   const labelFiltersEl = document.getElementById("label-filters");
   const predicateFiltersEl = document.getElementById("predicate-filters");
+  const timelineRowsEl = document.getElementById("timeline-rows");
+  const timelineRulerEl = document.getElementById("timeline-ruler");
+  const timelinePlayheadEl = document.getElementById("timeline-playhead");
+  const timelineScrubEl = document.getElementById("timeline-scrub");
+  const timelineRangeEl = document.getElementById("timeline-range");
   const inspectorEmpty = document.getElementById("inspector-empty");
   const inspectorContent = document.getElementById("inspector-content");
   const inspectorIcon = document.getElementById("inspector-icon");
@@ -54,6 +63,7 @@
     relationships: new Map(),
   };
   const nodeState = new Map();
+  const timelineDetailLoadingIds = new Set();
   const filters = {
     labels: new Map(),
     predicates: new Map(),
@@ -63,6 +73,15 @@
   const graphCacheDbVersion = 1;
   const maxEmbeddingLinksPerCluster = 80;
   const temporalMarginRatio = 0.12;
+  const timelineModeStorageKey = "psychic.view.mode.v1";
+  const timelineDetailLoadLimit = 36;
+  const timelineMinClipMs = 850;
+  const timelineDefaultClipMs = 3000;
+  const timelineRows = [
+    { id: "images", label: "Images", kinds: ["Image", "Face"] },
+    { id: "audio", label: "Audio Clips", kinds: ["AudioClip"] },
+    { id: "speech", label: "Speech Segments", kinds: ["SpeechSegment"] },
+  ];
   const temporalLayoutPropertyKeys = [
     "occurred_at",
     "observed_at",
@@ -78,7 +97,10 @@
   let lastFilterOptionsSignature = "";
   let detailRequestId = 0;
   let mediaObjectUrl = "";
+  let viewMode = storedViewMode();
   let temporalExtent = null;
+  let timelineExtent = null;
+  let timelineCursor = null;
   let pendingLocationTarget = targetFromLocation();
   let graphCacheDbPromise = null;
   let graphCacheSaveTimer = 0;
@@ -164,6 +186,7 @@
   }
 
   loadStoredFilters();
+  setViewMode(viewMode, { persist: false });
   restoreGraphCache().catch(() => {
     statusEl.textContent = "Connecting";
   }).finally(connect);
@@ -388,6 +411,7 @@
 
     syncSelectionWithFilteredGraph();
     render(reheat);
+    renderTimeline();
     if (resolvePendingLocationTarget()) {
       return;
     }
@@ -497,6 +521,274 @@
     if (reheat) {
       simulation.alpha(Math.max(simulation.alpha(), 0.72)).restart();
     }
+  }
+
+  function storedViewMode() {
+    try {
+      return window.localStorage.getItem(timelineModeStorageKey) === "timeline" ? "timeline" : "graph";
+    } catch (_err) {
+      return "graph";
+    }
+  }
+
+  function setViewMode(mode, options = {}) {
+    viewMode = mode === "timeline" ? "timeline" : "graph";
+    graphShell.hidden = viewMode !== "graph";
+    timelineShell.hidden = viewMode !== "timeline";
+    graphModeEl.classList.toggle("active", viewMode === "graph");
+    timelineModeEl.classList.toggle("active", viewMode === "timeline");
+    graphModeEl.setAttribute("aria-pressed", viewMode === "graph" ? "true" : "false");
+    timelineModeEl.setAttribute("aria-pressed", viewMode === "timeline" ? "true" : "false");
+    if (options.persist !== false) {
+      try {
+        window.localStorage.setItem(timelineModeStorageKey, viewMode);
+      } catch (_err) {
+        // View preference is optional.
+      }
+    }
+    if (viewMode === "timeline") {
+      renderTimeline();
+    } else {
+      resize();
+    }
+  }
+
+  function renderTimeline() {
+    if (!timelineRowsEl || !timelineRulerEl || !timelinePlayheadEl || !timelineScrubEl) return;
+    const items = timelineItems();
+    updateTimelineExtent(items);
+    timelineRowsEl.replaceChildren();
+
+    timelineRows.forEach((row) => {
+      const rowEl = document.createElement("div");
+      const label = document.createElement("div");
+      const track = document.createElement("div");
+      rowEl.className = "timeline-row";
+      label.className = "timeline-row-label";
+      label.textContent = row.label;
+      track.className = "timeline-track";
+      track.dataset.row = row.id;
+
+      items
+        .filter((item) => item.rowId === row.id)
+        .forEach((item) => track.append(timelineClipElement(item)));
+
+      rowEl.append(label, track);
+      timelineRowsEl.append(rowEl);
+    });
+
+    renderTimelineRuler();
+    syncTimelineScrubber();
+    hydrateTimelineMedia(items);
+  }
+
+  function timelineItems() {
+    return graph.nodes
+      .map((node) => {
+        const row = timelineRowForNode(node);
+        const start = nodeTimestamp(node);
+        if (!row || start === null) return null;
+        const duration = timelineDurationMs(node);
+        return {
+          node,
+          kind: nodeKind(node),
+          rowId: row.id,
+          start,
+          end: start + duration,
+          duration,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => left.start - right.start || left.node.id.localeCompare(right.node.id));
+  }
+
+  function timelineRowForNode(node) {
+    const kind = nodeKind(node);
+    return timelineRows.find((row) => row.kinds.includes(kind)) || null;
+  }
+
+  function updateTimelineExtent(items) {
+    if (!items.length) {
+      timelineExtent = null;
+      timelineCursor = null;
+      timelineRangeEl.textContent = "No timed media";
+      return;
+    }
+    const min = Math.min(...items.map((item) => item.start));
+    const max = Math.max(...items.map((item) => item.end), min + timelineDefaultClipMs);
+    timelineExtent = { min, max };
+    if (timelineCursor === null || timelineCursor < min || timelineCursor > max) {
+      timelineCursor = min;
+    }
+    timelineRangeEl.textContent = `${formatTimelineInstant(min)} to ${formatTimelineInstant(max)}`;
+  }
+
+  function timelineDurationMs(node) {
+    const props = node.properties || {};
+    const duration = numericProperty(props, "duration_ms") ?? numericProperty(props, "clip_duration_ms");
+    if (duration !== null && duration > 0) return Math.max(duration, timelineMinClipMs);
+    const startMs = numericProperty(props, "start_ms");
+    const endMs = numericProperty(props, "end_ms");
+    if (startMs !== null && endMs !== null && endMs > startMs) {
+      return Math.max(endMs - startMs, timelineMinClipMs);
+    }
+    const media = mediaForNode(node);
+    if (media.base64 && media.mime && nodeKind(node) === "AudioClip") {
+      const audioDuration = audioDurationFromProperties(props, media);
+      if (audioDuration !== null) return Math.max(audioDuration, timelineMinClipMs);
+    }
+    return nodeKind(node) === "AudioClip" ? timelineDefaultClipMs : timelineMinClipMs;
+  }
+
+  function audioDurationFromProperties(props, media) {
+    if (!media.mime.includes("format=s16") && !media.mime.startsWith("audio/pcm") && !media.mime.startsWith("audio/l16")) {
+      return null;
+    }
+    const sampleRate = Number(props.sample_rate || 16000);
+    const channels = Number(props.channels || 1);
+    if (!Number.isFinite(sampleRate) || sampleRate <= 0 || !Number.isFinite(channels) || channels <= 0) {
+      return null;
+    }
+    return (base64ToBytes(media.base64).byteLength / (sampleRate * channels * 2)) * 1000;
+  }
+
+  function timelineClipElement(item) {
+    const clip = document.createElement("button");
+    const media = mediaForNode(item.node);
+    const left = timelinePercent(item.start);
+    const width = Math.max(timelinePercent(item.end) - left, 0.15);
+    clip.type = "button";
+    clip.className = `timeline-clip timeline-clip-${item.rowId}`;
+    clip.style.left = `${left}%`;
+    clip.style.width = `${width}%`;
+    clip.title = `${nodeKind(item.node)}: ${nodeLabel(item.node)}`;
+    clip.classList.toggle("selected", selected?.kind === "node" && selected.value.id === item.node.id);
+    clip.addEventListener("click", () => selectItem({ kind: "node", value: item.node }));
+
+    if (media.base64 && media.mime.startsWith("image/")) {
+      const image = document.createElement("img");
+      image.alt = nodeLabel(item.node);
+      image.src = dataUrl(media.mime, media.base64);
+      clip.append(image);
+    } else {
+      const label = document.createElement("span");
+      label.textContent = timelineClipLabel(item.node);
+      clip.append(label);
+    }
+    return clip;
+  }
+
+  function timelineClipLabel(node) {
+    if (nodeKind(node) === "AudioClip") return "audio";
+    if (nodeKind(node) === "SpeechSegment") return "speech";
+    return nodeLabel(node);
+  }
+
+  function renderTimelineRuler() {
+    timelineRulerEl.replaceChildren();
+    if (!timelineExtent) {
+      updateTimelinePlayhead();
+      return;
+    }
+    const labelSpacer = document.createElement("div");
+    const track = document.createElement("div");
+    labelSpacer.className = "timeline-ruler-spacer";
+    track.className = "timeline-ruler-track";
+    timelineTicks().forEach((tick) => {
+      const mark = document.createElement("div");
+      const line = document.createElement("span");
+      const text = document.createElement("small");
+      mark.className = "timeline-tick";
+      mark.style.left = `${timelinePercent(tick)}%`;
+      text.textContent = formatTimelineTick(tick);
+      mark.append(line, text);
+      track.append(mark);
+    });
+    timelineRulerEl.append(labelSpacer, track);
+    updateTimelinePlayhead();
+  }
+
+  function timelineTicks() {
+    if (!timelineExtent) return [];
+    const span = Math.max(timelineExtent.max - timelineExtent.min, 1);
+    const count = Math.min(7, Math.max(3, Math.floor(timelineRulerEl.getBoundingClientRect().width / 180)));
+    return Array.from({ length: count }, (_item, index) =>
+      timelineExtent.min + (span * index) / Math.max(count - 1, 1),
+    );
+  }
+
+  function syncTimelineScrubber() {
+    timelineScrubEl.disabled = !timelineExtent;
+    timelineScrubEl.value = timelineExtent ? String(Math.round(timelinePercent(timelineCursor) * 10)) : "0";
+    updateTimelinePlayhead();
+  }
+
+  function updateTimelinePlayhead() {
+    if (!timelineExtent || timelineCursor === null) {
+      timelinePlayheadEl.hidden = true;
+      return;
+    }
+    timelinePlayheadEl.hidden = false;
+    const boardWidth = timelineBoardWidth();
+    const labelWidth = timelineLabelWidth();
+    const x = labelWidth + (timelinePercent(timelineCursor) / 100) * Math.max(0, boardWidth - labelWidth);
+    timelinePlayheadEl.style.left = `${x}px`;
+  }
+
+  function timelinePercent(timestamp) {
+    if (!timelineExtent || timelineExtent.max === timelineExtent.min) return 0;
+    return clamp01((timestamp - timelineExtent.min) / (timelineExtent.max - timelineExtent.min)) * 100;
+  }
+
+  function timelineBoardWidth() {
+    return document.getElementById("timeline-board")?.getBoundingClientRect().width || 0;
+  }
+
+  function timelineLabelWidth() {
+    return timelineRowsEl.querySelector(".timeline-row-label")?.getBoundingClientRect().width || 132;
+  }
+
+  function formatTimelineInstant(timestamp) {
+    const date = new Date(timestamp);
+    if (!Number.isFinite(date.getTime())) return "";
+    return date.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }
+
+  function formatTimelineTick(timestamp) {
+    const date = new Date(timestamp);
+    if (!Number.isFinite(date.getTime())) return "";
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  function hydrateTimelineMedia(items) {
+    const loadable = items
+      .filter((item) => (item.kind === "Image" || item.kind === "Face"))
+      .filter((item) => !mediaForNode(item.node).base64)
+      .filter((item) => !timelineDetailLoadingIds.has(item.node.id))
+      .slice(0, timelineDetailLoadLimit);
+    if (!loadable.length) return;
+
+    Promise.all(loadable.map(async (item) => {
+      timelineDetailLoadingIds.add(item.node.id);
+      try {
+        await fetchNodeDetails(item.node.id, { requireComplete: true });
+        return true;
+      } catch (_err) {
+        return false;
+      } finally {
+        timelineDetailLoadingIds.delete(item.node.id);
+      }
+    })).then((loaded) => {
+      if (!loaded.some(Boolean)) return;
+      materializeFullGraph();
+      renderTimeline();
+    });
   }
 
   function ticked() {
@@ -779,6 +1071,7 @@
       updateUrlForSelection(item, options);
     }
     render();
+    renderTimeline();
   }
 
   function clearSelection(options = {}) {
@@ -791,6 +1084,7 @@
       clearGraphTargetUrl(options);
     }
     render();
+    renderTimeline();
   }
 
   async function loadNodeDetails(node) {
@@ -812,6 +1106,7 @@
       scheduleGraphCacheSave();
       renderMediaPreview(selected.value);
       renderProperties(propertiesForNodeDetails(selected.value));
+      renderTimeline();
     } catch (err) {
       if (requestId === detailRequestId && selected?.kind === "node" && selected.value.id === node.id) {
         renderProperties({ id: node.id, labels: node.labels, detail_error: err.message, ...(node.properties || {}) });
@@ -1610,6 +1905,8 @@
     simulation.force("theme-y").y(rect.height / 2);
     simulation.force("time-x").x(temporalX);
     simulation.alpha(0.3).restart();
+    updateTimelinePlayhead();
+    renderTimelineRuler();
   }
 
   function zoomBy(factor) {
@@ -1635,6 +1932,14 @@
 
   svg.on("click", clearSelection);
 
+  graphModeEl.addEventListener("click", () => setViewMode("graph"));
+  timelineModeEl.addEventListener("click", () => setViewMode("timeline"));
+  timelineScrubEl.addEventListener("input", () => {
+    if (!timelineExtent) return;
+    const ratio = clamp01(Number(timelineScrubEl.value) / Number(timelineScrubEl.max || 1000));
+    timelineCursor = timelineExtent.min + ratio * (timelineExtent.max - timelineExtent.min);
+    updateTimelinePlayhead();
+  });
   document.getElementById("zoom-in").addEventListener("click", () => zoomBy(1.25));
   document.getElementById("zoom-out").addEventListener("click", () => zoomBy(0.8));
   document.getElementById("zoom-fit").addEventListener("click", fitGraph);

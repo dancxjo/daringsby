@@ -28,6 +28,10 @@ pub struct WitReport {
 }
 
 /// Inputs that can be sent to a running [`Psyche`].
+///
+/// Graph storage treats each sensation as `what` plus the real-world time it
+/// occurred, a quick first-person present-tense `how` sentence, and the time
+/// that sentence formed when known.
 #[derive(Debug)]
 pub enum Sensation {
     /// The assistant's speech was heard.
@@ -167,6 +171,14 @@ impl Sensation {
                             &combobulation_summary_id(summary, occurred_at),
                             occurred_at,
                         )
+                    } else if let Some(impression) =
+                        payload.downcast_ref::<crate::Impression<String>>()
+                    {
+                        sensation_id(
+                            "impression",
+                            &impression_sensation_id(impression, occurred_at),
+                            occurred_at,
+                        )
                     } else {
                         let type_id = format!("{:?}", payload.as_ref().type_id());
                         let id =
@@ -228,4 +240,17 @@ fn combobulation_summary_id(
     hasher.update([0]);
     hasher.update(occurred_at.to_rfc3339().as_bytes());
     format!("combobulation-summary:sha256:{:x}", hasher.finalize())
+}
+
+fn impression_sensation_id(
+    impression: &crate::Impression<String>,
+    occurred_at: &DateTime<Utc>,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(impression.summary.as_bytes());
+    hasher.update([0]);
+    hasher.update(impression.timestamp.to_rfc3339().as_bytes());
+    hasher.update([0]);
+    hasher.update(occurred_at.to_rfc3339().as_bytes());
+    format!("impression-sensation:sha256:{:x}", hasher.finalize())
 }

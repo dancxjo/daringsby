@@ -45,13 +45,15 @@ async fn links_geolocation_embedding_to_geolocation_node() {
 
     let stored = graph.0.lock().unwrap();
     assert_eq!(stored.len(), 1);
-    assert_eq!(stored[0]["nodes"][1]["id"], geoloc_id);
-    assert_eq!(stored[0]["nodes"][2]["collection"], "geolocations");
-    assert_eq!(stored[0]["nodes"][2]["database"], "qdrant");
     assert_eq!(
-        stored[0]["relationships"][1]["type"],
-        "HAS_GEOLOCATION_VECTOR"
+        stored[0]["nodes"][0]["how"],
+        "I feel I'm in the vicinity of latitude 10.00000, longitude 20.00000."
     );
+    assert_eq!(stored[0]["nodes"][1]["id"], geoloc_id);
+    assert_eq!(stored[0]["nodes"][1]["embedding_len"], 3);
+    assert_eq!(stored[0]["nodes"][1]["embedding_kind"], "geolocation");
+    assert_eq!(stored[0]["nodes"][1]["embedding_point_id"], "vector-1");
+    assert_eq!(stored[0]["relationships"][0]["type"], "PRODUCED");
 }
 
 #[tokio::test]
@@ -223,7 +225,7 @@ async fn stores_heartbeat_sensation() {
 }
 
 #[tokio::test]
-async fn stores_object_sensation_without_embedding_payload() {
+async fn stores_object_sensation_with_embedding_field() {
     let graph = Arc::new(MockGraph::default());
     let observer = SensationGraphObserver::new(graph.clone());
     let sensation = Sensation::of(ObjectInfo {
@@ -238,7 +240,10 @@ async fn stores_object_sensation_without_embedding_payload() {
     assert_eq!(stored[0]["nodes"][1]["label"], "ObjectObservation");
     assert_eq!(stored[0]["nodes"][1]["object_label"], "mug");
     assert_eq!(stored[0]["nodes"][1]["embedding_len"], 3);
-    assert!(stored[0]["nodes"][1].get("embedding").is_none());
+    assert_eq!(
+        stored[0]["nodes"][1]["embedding"].as_array().unwrap().len(),
+        3
+    );
 }
 
 #[tokio::test]

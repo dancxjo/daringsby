@@ -62,13 +62,26 @@ run:
         if ((${#pids[@]})); then
             kill "${pids[@]}" 2>/dev/null || true
         fi
+        for bin in "${bins[@]}"; do
+            kill_matches "cargo run -p pete .*--bin ${bin}([[:space:]]|$)"
+            kill_matches "(^|[[:space:]])(.*/)?target/.*/${bin}([[:space:]]|$)"
+        done
+        sleep 1
+        for bin in "${bins[@]}"; do
+            pkill -KILL -f "cargo run -p pete .*--bin ${bin}([[:space:]]|$)" 2>/dev/null || true
+            pkill -KILL -f "(^|[[:space:]])(.*/)?target/.*/${bin}([[:space:]]|$)" 2>/dev/null || true
+        done
     }
     trap cleanup INT TERM EXIT
 
     for bin in "${bins[@]}"; do
         log_file="${run_log_dir}/${bin}.log"
         printf 'starting %-18s -> %s\n' "$bin" "$log_file"
-        cargo run -p pete --features scene-vec --bin "$bin" >"$log_file" 2>&1 &
+        args=()
+        if [[ "$bin" == "timeline" ]]; then
+            args+=(-- --follow)
+        fi
+        cargo run -p pete --features scene-vec --bin "$bin" "${args[@]}" >"$log_file" 2>&1 &
         pids+=("$!")
     done
 

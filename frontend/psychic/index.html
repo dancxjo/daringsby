@@ -15,6 +15,10 @@
       <h1>Psychic</h1>
       <p id="status">Connecting</p>
     </div>
+    <div class="view-toggle" aria-label="View mode">
+      <button id="graph-mode" type="button" class="active" aria-pressed="true">Graph</button>
+      <button id="timeline-mode" type="button" aria-pressed="false">Timeline</button>
+    </div>
     <div class="metrics" aria-live="polite">
       <span><strong id="node-count">0</strong> nodes</span>
       <span><strong id="relationship-count">0</strong> relationships</span>
@@ -46,6 +50,26 @@
         <button id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
         <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">-</button>
         <button id="zoom-fit" type="button" title="Fit graph" aria-label="Fit graph">⛶</button>
+      </div>
+    </section>
+
+    <section class="timeline-shell" id="timeline-shell" aria-label="Timeline browser" hidden>
+      <div class="timeline-toolbar">
+        <div>
+          <h2>Timeline</h2>
+          <p id="timeline-range">No timed media</p>
+        </div>
+        <div class="timeline-scrubber">
+          <label for="timeline-scrub">Scrub</label>
+          <input id="timeline-scrub" type="range" min="0" max="1000" value="0" step="1" />
+        </div>
+      </div>
+      <div class="timeline-board" id="timeline-board">
+        <div class="timeline-ruler" id="timeline-ruler" aria-hidden="true"></div>
+        <div class="timeline-playhead" id="timeline-playhead" aria-hidden="true">
+          <div class="timeline-head"></div>
+        </div>
+        <div class="timeline-rows" id="timeline-rows"></div>
       </div>
     </section>
 

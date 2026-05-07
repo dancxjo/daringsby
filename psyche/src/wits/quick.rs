@@ -93,6 +93,9 @@ impl Quick {
                         "A prior combobulation summary said \"{}\"",
                         summary.text
                     ))
+                } else if let Some(impression) = payload.downcast_ref::<crate::Impression<String>>()
+                {
+                    Some(impression.summary.clone())
                 } else if payload.downcast_ref::<crate::AudioClip>().is_some() {
                     None
                 } else if payload.downcast_ref::<crate::ImageData>().is_some() {

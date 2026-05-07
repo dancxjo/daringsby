@@ -1,0 +1,33 @@
+const assert = require('assert');
+const fs = require('fs');
+
+const html = fs.readFileSync('frontend/psychic/index.html', 'utf8');
+const script = fs.readFileSync('frontend/psychic/psychic.js', 'utf8');
+const styles = fs.readFileSync('frontend/psychic/styles.css', 'utf8');
+
+assert(html.includes('id="graph-mode"'));
+assert(html.includes('id="timeline-mode"'));
+assert(html.includes('id="timeline-shell"'));
+assert(html.includes('id="timeline-scrub"'));
+assert(html.includes('id="timeline-playhead"'));
+assert(html.includes('class="timeline-head"'));
+assert(script.includes('const timelineModeStorageKey = "psychic.view.mode.v1";'));
+assert(script.includes('const timelineRows = ['));
+assert(script.includes('{ id: "images", label: "Images", kinds: ["Image", "Face"] }'));
+assert(script.includes('{ id: "audio", label: "Audio Clips", kinds: ["AudioClip"] }'));
+assert(script.includes('function setViewMode(mode, options = {})'));
+assert(script.includes('function renderTimeline()'));
+assert(script.includes('function timelineItems()'));
+assert(script.includes('function timelineDurationMs(node)'));
+assert(script.includes('function timelineClipElement(item)'));
+assert(script.includes('function renderTimelineRuler()'));
+assert(script.includes('function updateTimelinePlayhead()'));
+assert(script.includes('function hydrateTimelineMedia(items)'));
+assert(script.includes('timelineScrubEl.addEventListener("input"'));
+assert(styles.includes('.view-toggle'));
+assert(styles.includes('.timeline-shell'));
+assert(styles.includes('.timeline-ruler'));
+assert(styles.includes('.timeline-clip-audio'));
+assert(styles.includes('.timeline-playhead'));
+assert(styles.includes('.timeline-head'));
+console.log('psychic-timeline-mode ok');

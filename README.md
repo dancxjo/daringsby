@@ -14,10 +14,13 @@ Pete's cognitive engine is structured as a sequence of `Wit` modules. Each Wit i
 
 Key concepts:
 
-* `Sensation`: Raw input from sensors
-* `Stimulus<T>`: Timestamped observation of input or a prior impression
-* `Impression<T>`: Interpretation of one or more stimuli with summary text and optional emoji
-* `Experience<T>`: Remembered impression with vector embedding and ID
+* `Sensation`: raw input plus `occurred_at`, a quick first-person present-tense `how` sentence, and optional `how_formed_at`
+* `Stimulus<T>`: timestamped observation of input or a prior impression
+* `Impression<T>`: interpretation of one or more stimuli with summary text and optional emoji
+* `Experience<T>`: remembered impression with vector embedding and ID
+
+Graph storage keeps vectors as fields on the nodes they describe, rather than
+requiring separate vector nodes for ordinary sensation and impression records.
 
 ### Primary Wits
 

@@ -1,7 +1,8 @@
-Simplify the cognitive architecture around two core types:
+Simplify the cognitive architecture around the sensory timeline:
 
-1. `Stimulus<T>` captures any observed input. It stores the observation (`what`) and a timestamp.
-2. `Impression<T>` interprets one or more stimuli and summarizes them with text and an optional emoji.
-3. `Experience<T>` represents a remembered impression by adding a vector `embedding` and unique `id`.
+1. `Sensation` captures raw input as `what`, when it occurred, the quick first-person present-tense impression it leaves as `how`, and optionally when that impression formed.
+2. `Stimulus<T>` captures any observed input. It stores the observation (`what`) and a timestamp.
+3. `Impression<T>` interprets one or more stimuli and summarizes them with text and an optional emoji.
+4. `Experience<T>` represents a remembered impression by adding a vector `embedding` and unique `id`.
 
 These types enable recursive impressions and unify prior layers like `Instant` or `Episode` under a single model.

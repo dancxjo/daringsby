@@ -1264,6 +1264,23 @@ pub struct GraphTimelineWindow {
     pub items: Vec<GraphTimelineItem>,
 }
 
+/// One human-readable impression selected for a textual timeline.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphImpressionTimelineItem {
+    /// Stable graph node id for the impression-bearing node.
+    pub id: String,
+    /// Neo4j labels attached to the node.
+    pub labels: Vec<String>,
+    /// Node kind when present, otherwise the primary label.
+    pub kind: String,
+    /// Human-readable impression sentence.
+    pub text: String,
+    /// When the source event occurred.
+    pub occurred_at: String,
+    /// When the impression sentence was formed, when known.
+    pub formed_at: Option<String>,
+}
+
 /// LLM awareness summary ready to be linked into the graph.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GraphAwareness {
@@ -2141,6 +2158,57 @@ impl Neo4jClient {
         )
         .await?;
         graph_timeline_window_from_rows(&rows)
+    }
+
+    /// Return impression-bearing graph nodes in chronological order.
+    pub async fn impression_timeline(
+        &self,
+        start: chrono::DateTime<chrono::Utc>,
+        end: chrono::DateTime<chrono::Utc>,
+        limit: usize,
+    ) -> Result<Vec<GraphImpressionTimelineItem>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (n:GraphNode)
+                    WHERE (n:Sensation OR n:Impression OR n:Awareness OR n:ImageDescription OR n:CombobulationSummary)
+                    WITH n,
+                        coalesce(n.how, n.summary, n.text, "") AS text,
+                        coalesce(n.occurred_at, n.timestamp, n.created_at, "") AS occurred_at,
+                        coalesce(n.how_formed_at, n.timestamp, n.created_at, n.occurred_at, "") AS formed_at
+                    WHERE text <> ""
+                      AND occurred_at <> ""
+                      AND datetime(occurred_at) >= datetime($start)
+                      AND datetime(occurred_at) <= datetime($end)
+                    WITH n, labels(n) AS labels, text, occurred_at, formed_at
+                    RETURN
+                        n.id,
+                        labels,
+                        coalesce(n.kind, head([label IN labels WHERE label <> "GraphNode"]), "impression"),
+                        text,
+                        occurred_at,
+                        formed_at
+                    ORDER BY datetime(occurred_at) ASC, n.id
+                    LIMIT $limit
+                "#
+                .into(),
+                parameters: json!({
+                    "start": start.to_rfc3339(),
+                    "end": end.to_rfc3339(),
+                    "limit": i64::try_from(limit.max(1)).unwrap_or(i64::MAX),
+                }),
+            },
+            "loading impression timeline",
+        )
+        .await?;
+        rows.iter()
+            .map(graph_impression_timeline_item_from_row)
+            .collect()
     }
 
     /// Return a previously combobulated timeline whose rendered source text changed.
@@ -3974,6 +4042,20 @@ fn graph_timeline_item_from_row(row: &Value) -> Result<GraphTimelineItem> {
     })
 }
 
+fn graph_impression_timeline_item_from_row(row: &Value) -> Result<GraphImpressionTimelineItem> {
+    let values = row
+        .as_array()
+        .context("Neo4j impression timeline row was not an array")?;
+    Ok(GraphImpressionTimelineItem {
+        id: row_string(values, 0, "impression timeline id")?,
+        labels: row_string_vec(values, 1),
+        kind: row_string(values, 2, "impression timeline kind")?,
+        text: row_string(values, 3, "impression timeline text")?,
+        occurred_at: row_string(values, 4, "impression timeline occurred_at")?,
+        formed_at: row_optional_string(values, 5),
+    })
+}
+
 fn graph_cluster_item_from_row(row: &Value) -> Result<GraphClusterItem> {
     let values = row
         .as_array()
@@ -4413,29 +4495,40 @@ struct GraphStimulusTarget {
     relationships: Vec<Value>,
 }
 
-struct GraphVectorLink<'a> {
-    owner_id: String,
-    relationship: &'a str,
-    collection: &'a str,
-    point_id: String,
-    kind: &'a str,
-    model: Option<&'a str>,
+struct GraphEmbeddingFields {
+    vector: Vec<f32>,
+    collection: Option<String>,
+    point_id: Option<String>,
+    kind: Option<String>,
+    model: Option<String>,
 }
 
 fn impression_graph_record(
     impression: &Impression<Value>,
     stimulus_targets: &[GraphStimulusTarget],
-    vector_links: &[GraphVectorLink<'_>],
+    embedding: Option<&GraphEmbeddingFields>,
 ) -> Result<Value> {
     let impression_id = impression_id(impression)?;
-    let mut nodes = vec![json!({
+    let mut impression_node = json!({
         "label": "Impression",
         "id": impression_id,
         "summary": impression.summary,
+        "how": impression.summary,
         "emoji": impression.emoji,
         "timestamp": impression.timestamp.to_rfc3339(),
+        "occurred_at": impression.timestamp.to_rfc3339(),
+        "how_formed_at": impression.timestamp.to_rfc3339(),
         "source_sensation_ids": impression.source_sensation_ids.clone(),
-    })];
+    });
+    if let Some(embedding) = embedding {
+        impression_node["embedding"] = json!(embedding.vector);
+        impression_node["embedding_len"] = json!(embedding.vector.len());
+        impression_node["embedding_collection"] = json!(embedding.collection);
+        impression_node["embedding_point_id"] = json!(embedding.point_id);
+        impression_node["embedding_kind"] = json!(embedding.kind);
+        impression_node["embedding_model"] = json!(embedding.model);
+    }
+    let mut nodes = vec![impression_node];
     let mut relationships = Vec::new();
 
     for source_id in &impression.source_sensation_ids {
@@ -4459,21 +4552,6 @@ fn impression_graph_record(
             "from": impression_id,
             "to": target.target_id,
             "type": "INTERPRETS",
-        }));
-    }
-
-    for link in vector_links {
-        let vector_id = qdrant_vector_node_id(link.collection, &link.point_id);
-        nodes.push(qdrant_vector_node(
-            link.collection,
-            &link.point_id,
-            link.kind,
-            link.model,
-        ));
-        relationships.push(json!({
-            "from": link.owner_id,
-            "to": vector_id,
-            "type": link.relationship,
         }));
     }
 
@@ -4749,7 +4827,9 @@ fn object_info_node(object: &ObjectInfo, id: &str, occurred_at: String) -> Value
         "label": "ObjectObservation",
         "id": id,
         "object_label": object.label.clone(),
+        "embedding": object.embedding,
         "embedding_len": object.embedding.len(),
+        "embedding_kind": "object",
         "occurred_at": occurred_at,
     })
 }
@@ -4873,7 +4953,7 @@ impl Memory for BasicMemory {
                 None
             }
         };
-        let mut vector_links = Vec::new();
+        let mut embedding = None;
         if let Some(v) = vector {
             for image_id in impression
                 .stimuli
@@ -4892,45 +4972,30 @@ impl Memory for BasicMemory {
                     )
                     .await
                 {
-                    Ok(id) => {
-                        let point_id = id.to_string();
-                        vector_links.push(GraphVectorLink {
-                            owner_id: image_id,
-                            relationship: "HAS_IMAGE_DESCRIPTION_VECTOR",
-                            collection: IMAGE_DESCRIPTION_COLLECTION,
-                            point_id: point_id.clone(),
-                            kind: "image_description",
-                            model: None,
-                        });
-                        vector_links.push(GraphVectorLink {
-                            owner_id: impression_node_id.clone(),
-                            relationship: "HAS_IMAGE_DESCRIPTION_VECTOR",
-                            collection: IMAGE_DESCRIPTION_COLLECTION,
-                            point_id,
-                            kind: "image_description",
-                            model: None,
-                        });
-                    }
+                    Ok(_) => {}
                     Err(e) => tracing::error!(?e, "failed to store image description vector"),
                 }
             }
-            match self
+            let qdrant_point_id = match self
                 .qdrant
                 .store_vector_for_node(&impression.summary, Some(&impression_node_id), &v)
                 .await
             {
-                Ok(id) => vector_links.push(GraphVectorLink {
-                    owner_id: impression_node_id.clone(),
-                    relationship: "HAS_MEMORY_VECTOR",
-                    collection: MEMORY_COLLECTION,
-                    point_id: id.to_string(),
-                    kind: "memory",
-                    model: None,
-                }),
-                Err(e) => tracing::error!(?e, "failed to store vector"),
-            }
+                Ok(id) => Some(id.to_string()),
+                Err(e) => {
+                    tracing::error!(?e, "failed to store vector");
+                    None
+                }
+            };
+            embedding = Some(GraphEmbeddingFields {
+                vector: v,
+                collection: Some(MEMORY_COLLECTION.to_string()),
+                point_id: qdrant_point_id,
+                kind: Some("memory".to_string()),
+                model: None,
+            });
         }
-        let graph = impression_graph_record(impression, &stimulus_targets, &vector_links)?;
+        let graph = impression_graph_record(impression, &stimulus_targets, embedding.as_ref())?;
         self.neo4j.store_data(&graph).await?;
         Ok(())
     }
