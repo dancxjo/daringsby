@@ -48,12 +48,18 @@
 
   const fullGraph = { nodes: [], relationships: [] };
   const graph = { nodes: [], relationships: [] };
+  const graphStore = {
+    nodes: new Map(),
+    relationships: new Map(),
+  };
   const nodeState = new Map();
   const filters = {
     labels: new Map(),
     predicates: new Map(),
   };
   const filterStorageKey = "psychic.graph.filters.v1";
+  const graphCacheDbName = "psychic.graph.cache.v1";
+  const graphCacheDbVersion = 1;
   const maxEmbeddingLinksPerCluster = 80;
   const temporalMarginRatio = 0.12;
   const temporalLayoutPropertyKeys = [
@@ -73,6 +79,8 @@
   let mediaObjectUrl = "";
   let temporalExtent = null;
   let pendingLocationTarget = targetFromLocation();
+  let graphCacheDbPromise = null;
+  let graphCacheSaveTimer = 0;
 
   const zoom = d3
     .zoom()
@@ -136,37 +144,164 @@
     }
     lastSnapshotSignature = snapshotSignature;
 
-    const topologySignature = signatureForTopology(snapshot);
+    const previousTopologySignature = signatureForTopology(fullGraph);
+    const previousTemporalSignature = signatureForTemporalLayout(fullGraph);
+    const changed = mergeGraphSnapshot(snapshot, { persist: true });
+    const topologySignature = signatureForTopology(fullGraph);
     const topologyChanged = topologySignature !== lastTopologySignature;
     lastTopologySignature = topologySignature;
-    const temporalSignature = signatureForTemporalLayout(snapshot);
+    const temporalSignature = signatureForTemporalLayout(fullGraph);
     const temporalChanged = temporalSignature !== lastTemporalSignature;
     lastTemporalSignature = temporalSignature;
 
-    const previous = new Map(fullGraph.nodes.map((node) => [node.id, node]));
-    fullGraph.nodes = (snapshot.nodes || []).map((node) => {
-      const old = previous.get(node.id) || nodeState.get(node.id);
-      const next = { ...node };
-      if (old) {
-        next.x = old.x;
-        next.y = old.y;
-        next.vx = old.vx;
-        next.vy = old.vy;
-        next.fx = old.fx;
-        next.fy = old.fy;
-      }
-      nodeState.set(next.id, next);
-      return next;
-    });
-    const nodeIds = new Set(fullGraph.nodes.map((node) => node.id));
-    fullGraph.relationships = (snapshot.relationships || []).filter(
-      (rel) => nodeIds.has(relationshipEndpoint(rel.source)) && nodeIds.has(relationshipEndpoint(rel.target)),
-    );
+    if (!changed && previousTopologySignature === topologySignature && previousTemporalSignature === temporalSignature) {
+      statusEl.textContent = "Live";
+      return;
+    }
     syncFilterControls();
     applyGraphFilters(topologyChanged || temporalChanged);
   }
 
   loadStoredFilters();
+  restoreGraphCache().catch(() => {
+    statusEl.textContent = "Connecting";
+  }).finally(connect);
+
+  function mergeGraphSnapshot(snapshot, options = {}) {
+    let changed = false;
+    (snapshot.nodes || []).forEach((node) => {
+      changed = mergeGraphNode(node, { persist: false }) || changed;
+    });
+
+    const nodeIds = new Set(graphStore.nodes.keys());
+    (snapshot.relationships || []).forEach((rel) => {
+      if (!nodeIds.has(relationshipEndpoint(rel.source)) || !nodeIds.has(relationshipEndpoint(rel.target))) {
+        return;
+      }
+      changed = mergeGraphRelationship(rel, { persist: false }) || changed;
+    });
+
+    if (changed) {
+      materializeFullGraph();
+      if (options.persist !== false) scheduleGraphCacheSave();
+    }
+    return changed;
+  }
+
+  async function restoreGraphCache() {
+    const db = await openGraphCacheDb();
+    if (!db) return;
+    const cached = await readGraphCache(db);
+    if (!cached.nodes.length && !cached.relationships.length) return;
+
+    mergeGraphSnapshot(cached, { persist: false });
+    syncFilterControls();
+    applyGraphFilters(true);
+    statusEl.textContent = "Cached";
+  }
+
+  function openGraphCacheDb() {
+    if (!("indexedDB" in window)) return Promise.resolve(null);
+    if (graphCacheDbPromise) return graphCacheDbPromise;
+    graphCacheDbPromise = new Promise((resolve) => {
+      const request = window.indexedDB.open(graphCacheDbName, graphCacheDbVersion);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains("nodes")) {
+          db.createObjectStore("nodes", { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains("relationships")) {
+          db.createObjectStore("relationships", { keyPath: "id" });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+      request.onblocked = () => resolve(null);
+    });
+    return graphCacheDbPromise;
+  }
+
+  function readGraphCache(db) {
+    return new Promise((resolve) => {
+      const transaction = db.transaction(["nodes", "relationships"], "readonly");
+      const nodesRequest = transaction.objectStore("nodes").getAll();
+      const relationshipsRequest = transaction.objectStore("relationships").getAll();
+      transaction.oncomplete = () => {
+        resolve({
+          nodes: nodesRequest.result || [],
+          relationships: relationshipsRequest.result || [],
+        });
+      };
+      transaction.onerror = () => resolve({ nodes: [], relationships: [] });
+      transaction.onabort = () => resolve({ nodes: [], relationships: [] });
+    });
+  }
+
+  function scheduleGraphCacheSave() {
+    if (graphCacheSaveTimer) window.clearTimeout(graphCacheSaveTimer);
+    graphCacheSaveTimer = window.setTimeout(() => {
+      graphCacheSaveTimer = 0;
+      saveGraphCache().catch(() => {
+        // Cache writes are best-effort; the live graph remains authoritative for this session.
+      });
+    }, 350);
+  }
+
+  async function saveGraphCache() {
+    const db = await openGraphCacheDb();
+    if (!db) return;
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(["nodes", "relationships"], "readwrite");
+      const nodeStore = transaction.objectStore("nodes");
+      const relationshipStore = transaction.objectStore("relationships");
+      graphStore.nodes.forEach((node) => nodeStore.put(serializeCachedNode(node)));
+      graphStore.relationships.forEach((rel) => relationshipStore.put(serializeCachedRelationship(rel)));
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error || new Error("graph cache write failed"));
+      transaction.onabort = () => reject(transaction.error || new Error("graph cache write aborted"));
+    });
+  }
+
+  function serializeCachedNode(node) {
+    const cached = {
+      id: node.id,
+      labels: node.labels || [],
+      properties: compactCachedProperties(node.properties || {}),
+    };
+    if (node.detailsCached) cached.detailsCached = true;
+    if (Number.isFinite(node.x)) cached.x = node.x;
+    if (Number.isFinite(node.y)) cached.y = node.y;
+    if (Number.isFinite(node.fx)) cached.fx = node.fx;
+    if (Number.isFinite(node.fy)) cached.fy = node.fy;
+    if (Array.isArray(node.relationships)) {
+      cached.relationships = node.relationships.map(serializeCachedRelationship);
+    }
+    return cached;
+  }
+
+  function serializeCachedRelationship(rel) {
+    return {
+      id: relationshipId(rel),
+      source: relationshipEndpoint(rel.source),
+      target: relationshipEndpoint(rel.target),
+      type: rel.type,
+      properties: compactCachedProperties(rel.properties || {}),
+    };
+  }
+
+  function compactCachedProperties(properties) {
+    return Object.fromEntries(
+      Object.entries(properties).filter(([key]) => !largeMediaProperty(key)),
+    );
+  }
+
+  function materializeFullGraph() {
+    fullGraph.nodes = [...graphStore.nodes.values()];
+    const nodeIds = new Set(graphStore.nodes.keys());
+    fullGraph.relationships = [...graphStore.relationships.values()].filter(
+      (rel) => nodeIds.has(relationshipEndpoint(rel.source)) && nodeIds.has(relationshipEndpoint(rel.target)),
+    );
+  }
 
   function syncFilterControls() {
     const labels = sortedUnique(
@@ -567,7 +702,7 @@
   async function loadNodeDetails(node) {
     const requestId = ++detailRequestId;
     try {
-      const details = await fetchNodeDetails(node.id);
+      const details = await fetchNodeDetails(node.id, { requireComplete: true });
       if (requestId !== detailRequestId || selected?.kind !== "node" || selected.value.id !== node.id) {
         return;
       }
@@ -577,6 +712,10 @@
         properties: details.properties || node.properties || {},
         relationships: details.relationships || [],
       };
+      mergeGraphNode(selected.value);
+      (selected.value.relationships || []).forEach((rel) => mergeGraphRelationship(rel));
+      materializeFullGraph();
+      scheduleGraphCacheSave();
       renderMediaPreview(selected.value);
       renderProperties(propertiesForNodeDetails(selected.value));
     } catch (err) {
@@ -1080,12 +1219,12 @@
     let filtersChanged = false;
 
     if (target.relationship) {
-      changed = mergeGraphRelationship(target.relationship) || changed;
+      changed = mergeGraphRelationship(target.relationship, { persist: false }) || changed;
     }
 
     if (target.nodeId && !findFullGraphNode(target.nodeId)) {
       details = await fetchNodeDetails(target.nodeId);
-      changed = mergeGraphNode(details) || changed;
+      changed = mergeGraphNode(details, { persist: false }) || changed;
     }
 
     let relationship = target.relationshipId ? findFullGraphRelationship(target.relationshipId) : null;
@@ -1093,7 +1232,7 @@
       if (!details) details = await fetchNodeDetails(target.nodeId);
       relationship = (details.relationships || []).find((rel) => relationshipId(rel) === target.relationshipId);
       if (relationship) {
-        changed = mergeGraphRelationship(relationship) || changed;
+        changed = mergeGraphRelationship(relationship, { persist: false }) || changed;
       }
     }
 
@@ -1109,6 +1248,10 @@
     filtersChanged = allowNodeFilters(node) || filtersChanged;
 
     if (changed || filtersChanged) {
+      if (changed) {
+        materializeFullGraph();
+        scheduleGraphCacheSave();
+      }
       if (filtersChanged) {
         saveStoredFilters();
         renderFilterGroup(labelFiltersEl, "labels", sortedUnique([...filters.labels.keys()]));
@@ -1126,18 +1269,27 @@
     const existing = findFullGraphNode(id);
     if (existing) return existing;
     const details = await fetchNodeDetails(id);
-    mergeGraphNode(details);
+    mergeGraphNode(details, { persist: false });
+    materializeFullGraph();
+    scheduleGraphCacheSave();
     return findFullGraphNode(id);
   }
 
-  function mergeGraphNode(node) {
+  function mergeGraphNode(node, options = {}) {
     if (!node?.id) return false;
-    const existing = findFullGraphNode(node.id);
+    const existing = graphStore.nodes.get(node.id);
     const next = {
       id: node.id,
-      labels: node.labels || [],
-      properties: node.properties || {},
+      labels: sortedUnique([...(existing?.labels || []), ...(node.labels || [])]),
+      properties: { ...(existing?.properties || {}), ...(node.properties || {}) },
     };
+    if (Array.isArray(node.relationships)) {
+      next.relationships = node.relationships.map(serializeCachedRelationship);
+      next.detailsCached = true;
+    } else if (Array.isArray(existing?.relationships)) {
+      next.relationships = existing.relationships;
+    }
+    if (existing?.detailsCached) next.detailsCached = true;
     const old = existing || nodeState.get(node.id);
     if (old) {
       next.x = old.x;
@@ -1148,24 +1300,49 @@
       next.fy = old.fy;
     }
     if (existing) {
+      const changed = stableStringify(serializeCachedNode(existing)) !== stableStringify(serializeCachedNode(next));
       Object.assign(existing, next);
       nodeState.set(existing.id, existing);
-      return false;
+      if (changed && options.persist !== false) {
+        materializeFullGraph();
+        scheduleGraphCacheSave();
+      }
+      return changed;
     }
-    fullGraph.nodes.push(next);
+    graphStore.nodes.set(next.id, next);
     nodeState.set(next.id, next);
+    if (options.persist !== false) {
+      materializeFullGraph();
+      scheduleGraphCacheSave();
+    }
     return true;
   }
 
-  function mergeGraphRelationship(rel) {
-    if (!rel || findFullGraphRelationship(relationshipId(rel))) return false;
-    fullGraph.relationships.push({
+  function mergeGraphRelationship(rel, options = {}) {
+    if (!rel) return false;
+    const id = relationshipId(rel);
+    const existing = graphStore.relationships.get(id);
+    const next = {
       id: relationshipId(rel),
       source: relationshipEndpoint(rel.source),
       target: relationshipEndpoint(rel.target),
       type: rel.type,
-      properties: rel.properties || {},
-    });
+      properties: { ...(existing?.properties || {}), ...(rel.properties || {}) },
+    };
+    if (existing) {
+      const changed = stableStringify(serializeCachedRelationship(existing)) !== stableStringify(serializeCachedRelationship(next));
+      Object.assign(existing, next);
+      if (changed && options.persist !== false) {
+        materializeFullGraph();
+        scheduleGraphCacheSave();
+      }
+      return changed;
+    }
+    graphStore.relationships.set(id, next);
+    if (options.persist !== false) {
+      materializeFullGraph();
+      scheduleGraphCacheSave();
+    }
     return true;
   }
 
@@ -1184,10 +1361,34 @@
     return true;
   }
 
-  async function fetchNodeDetails(id) {
-    const response = await fetch(`/graph/node/${encodeURIComponent(id)}`);
+  async function fetchNodeDetails(id, options = {}) {
+    const cached = cachedNodeDetails(id);
+    if (cached && (!options.requireComplete || cachedNodeDetailsComplete(cached))) return cached;
+    const response = await fetch(`/graph/node/${encodeURIComponent(id)}`, { cache: "force-cache" });
     if (!response.ok) throw new Error(`detail request failed: ${response.status}`);
-    return response.json();
+    const details = await response.json();
+    mergeGraphNode(details, { persist: false });
+    (details.relationships || []).forEach((rel) => mergeGraphRelationship(rel, { persist: false }));
+    materializeFullGraph();
+    scheduleGraphCacheSave();
+    return details;
+  }
+
+  function cachedNodeDetails(id) {
+    const node = graphStore.nodes.get(id);
+    if (!node?.detailsCached) return null;
+    return {
+      id: node.id,
+      labels: node.labels || [],
+      properties: node.properties || {},
+      relationships: node.relationships || [],
+    };
+  }
+
+  function cachedNodeDetailsComplete(node) {
+    const media = mediaForNode(node);
+    if (nodeKind(node) === "SpeechSegment") return true;
+    return !media.mime || !!media.base64;
   }
 
   function findGraphNode(id) {
@@ -1195,7 +1396,7 @@
   }
 
   function findFullGraphNode(id) {
-    return fullGraph.nodes.find((node) => node.id === id);
+    return graphStore.nodes.get(id) || null;
   }
 
   function findGraphRelationship(id) {
@@ -1203,7 +1404,7 @@
   }
 
   function findFullGraphRelationship(id) {
-    return fullGraph.relationships.find((rel) => relationshipId(rel) === id);
+    return graphStore.relationships.get(id) || null;
   }
 
   function graphTargetHref(target) {
@@ -1301,6 +1502,7 @@
     if (!event.active) simulation.alphaTarget(0);
     node.fx = event.x;
     node.fy = event.y;
+    scheduleGraphCacheSave();
   }
 
   function resize() {
@@ -1355,5 +1557,4 @@
   });
 
   resize();
-  connect();
 })();

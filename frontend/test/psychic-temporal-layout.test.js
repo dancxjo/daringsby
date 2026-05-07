@@ -7,7 +7,7 @@ assert(script.includes('const temporalMarginRatio = 0.12;'));
 assert(script.includes('const temporalLayoutPropertyKeys = ['));
 assert(script.includes('let lastTemporalSignature = "";'));
 assert(script.includes('.force("time-x", d3.forceX(temporalX).strength(temporalXStrength))'));
-assert(script.includes('const temporalSignature = signatureForTemporalLayout(snapshot);'));
+assert(script.includes('const temporalSignature = signatureForTemporalLayout(fullGraph);'));
 assert(script.includes('applyGraphFilters(topologyChanged || temporalChanged);'));
 assert(script.includes('function updateTemporalExtent()'));
 assert(script.includes('function temporalX(node)'));
