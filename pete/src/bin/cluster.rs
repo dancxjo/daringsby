@@ -6,8 +6,8 @@ use dotenvy::dotenv;
 use lingproc::{Doer, LlmInstruction};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
-    GraphClusterItem, GraphClusterTheme, GraphFaceIdentityLabel, GraphVoiceIdentityLabel,
-    Neo4jClient, QdrantClient, VectorCluster, find_vector_clusters, qdrant_vector_collections,
+    GraphClusterItem, GraphFaceIdentityLabel, GraphVoiceIdentityLabel, Neo4jClient, QdrantClient,
+    VectorCluster, find_vector_clusters, qdrant_vector_collections,
 };
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{debug, error, info, warn};
@@ -20,7 +20,7 @@ const VOICE_COLLECTION: &str = "voices";
 #[command(
     author,
     version,
-    about = "Continuously find vector clusters, link them into Neo4j, and extract cluster themes"
+    about = "Continuously find vector clusters, link them into Neo4j, and identify face and voice clusters"
 )]
 struct Cli {
     /// Neo4j bolt or HTTP URI.
@@ -58,19 +58,19 @@ struct Cli {
     /// URL of the wits Ollama server.
     #[arg(long, env = "WITS_HOST", default_value = "http://localhost:11434")]
     wits_host: String,
-    /// Model name to use for cluster theme extraction.
+    /// Model name to use for face and voice identity extraction.
     #[arg(long, env = "WITS_MODEL", default_value = "gpt-oss")]
     wits_model: String,
-    /// Maximum graph items to present to the LLM for each cluster theme.
-    #[arg(long, env = "CLUSTER_THEME_ITEM_LIMIT", default_value_t = 24)]
-    theme_item_limit: usize,
+    /// Maximum graph items to present to the LLM for each cluster identity.
+    #[arg(long, env = "CLUSTER_LABEL_ITEM_LIMIT", default_value_t = 24)]
+    label_item_limit: usize,
     /// Delay between cluster discovery passes.
     #[arg(long, env = "CLUSTER_POLL_MS", default_value_t = 5000)]
     poll_ms: u64,
     /// Run one clustering pass and exit.
     #[arg(long)]
     once: bool,
-    /// Print results without writing cluster nodes to Neo4j or extracting themes.
+    /// Print results without writing cluster nodes to Neo4j or identifying faces/voices.
     #[arg(long)]
     dry_run: bool,
 }
@@ -93,17 +93,17 @@ async fn main() -> anyhow::Result<()> {
         cli.neo4j_user.clone(),
         cli.neo4j_pass.clone(),
     );
-    let themer = if cli.dry_run {
+    let labeler = if cli.dry_run {
         None
     } else {
-        Some(ClusterThemeProcessor {
+        Some(ClusterLabelProcessor {
             doer: ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?,
             llm_model: cli.wits_model.clone(),
         })
     };
 
     if cli.once || cli.dry_run {
-        run_cluster_pass(&cli, &qdrant, &graph, themer.as_ref()).await?;
+        run_cluster_pass(&cli, &qdrant, &graph, labeler.as_ref()).await?;
         return Ok(());
     }
 
@@ -120,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
     );
     loop {
         ticker.tick().await;
-        if let Err(err) = run_cluster_pass(&cli, &qdrant, &graph, themer.as_ref()).await {
+        if let Err(err) = run_cluster_pass(&cli, &qdrant, &graph, labeler.as_ref()).await {
             error!(
                 error = %err,
                 error_debug = ?err,
@@ -134,7 +134,7 @@ async fn run_cluster_pass(
     cli: &Cli,
     qdrant: &QdrantClient,
     graph: &Neo4jClient,
-    themer: Option<&ClusterThemeProcessor>,
+    labeler: Option<&ClusterLabelProcessor>,
 ) -> anyhow::Result<()> {
     let collections = selected_collections(&cli.collection);
     let skip_missing_collections = cli.collection.is_empty();
@@ -144,7 +144,7 @@ async fn run_cluster_pass(
             cli,
             qdrant,
             graph,
-            themer,
+            labeler,
             &collection,
             skip_missing_collections,
         )
@@ -158,7 +158,7 @@ async fn run_cluster_collection(
     cli: &Cli,
     qdrant: &QdrantClient,
     graph: &Neo4jClient,
-    themer: Option<&ClusterThemeProcessor>,
+    labeler: Option<&ClusterLabelProcessor>,
     collection: &str,
     skip_missing_collection: bool,
 ) -> anyhow::Result<()> {
@@ -222,8 +222,8 @@ async fn run_cluster_collection(
         .await
         .context("failed to attach vector clusters to Neo4j")?;
 
-    if let Some(themer) = themer {
-        process_new_cluster_labels(cli, graph, themer, &clusters).await?;
+    if let Some(labeler) = labeler {
+        process_new_cluster_labels(cli, graph, labeler, &clusters).await?;
     }
     Ok(())
 }
@@ -256,58 +256,22 @@ fn selected_collections(requested: &[String]) -> Vec<String> {
 async fn process_new_cluster_labels(
     cli: &Cli,
     graph: &Neo4jClient,
-    themer: &ClusterThemeProcessor,
+    labeler: &ClusterLabelProcessor,
     clusters: &[VectorCluster],
 ) -> anyhow::Result<()> {
     for cluster in clusters {
         if cluster.collection == FACE_COLLECTION {
-            identify_new_face_cluster(cli, graph, themer, cluster).await?;
+            identify_new_face_cluster(cli, graph, labeler, cluster).await?;
             continue;
         }
         if cluster.collection == VOICE_COLLECTION {
-            identify_new_voice_cluster(cli, graph, themer, cluster).await?;
+            identify_new_voice_cluster(cli, graph, labeler, cluster).await?;
             continue;
         }
-        if graph
-            .vector_cluster_has_theme(&cluster.cluster_id)
-            .await
-            .with_context(|| format!("failed checking theme for {}", cluster.cluster_id))?
-        {
-            debug!(cluster_id = %cluster.cluster_id, "cluster already has a theme");
-            continue;
-        }
-
-        let point_ids = cluster
-            .members
-            .iter()
-            .map(|member| member.point_id.clone())
-            .collect::<Vec<_>>();
-        let items = graph
-            .vector_cluster_items(&cluster.collection, &point_ids, cli.theme_item_limit)
-            .await
-            .with_context(|| format!("failed loading source items for {}", cluster.cluster_id))?;
-        if items.is_empty() {
-            warn!(
-                cluster_id = %cluster.cluster_id,
-                "cluster had no graph items for theme extraction"
-            );
-            continue;
-        }
-
-        let theme = themer
-            .theme_cluster(cluster, &items)
-            .await
-            .with_context(|| format!("failed extracting theme for {}", cluster.cluster_id))?;
-        graph
-            .attach_vector_cluster_theme(cluster, &themer.llm_model, &items, &theme)
-            .await
-            .with_context(|| format!("failed attaching theme for {}", cluster.cluster_id))?;
-        info!(
+        debug!(
             cluster_id = %cluster.cluster_id,
-            theme_id = %theme.theme_id,
-            source_count = items.len(),
-            theme = %theme.text,
-            "attached cluster theme"
+            collection = %cluster.collection,
+            "skipping non-identity cluster label"
         );
     }
     Ok(())
@@ -316,7 +280,7 @@ async fn process_new_cluster_labels(
 async fn identify_new_face_cluster(
     cli: &Cli,
     graph: &Neo4jClient,
-    themer: &ClusterThemeProcessor,
+    labeler: &ClusterLabelProcessor,
     cluster: &VectorCluster,
 ) -> anyhow::Result<()> {
     if graph
@@ -334,7 +298,7 @@ async fn identify_new_face_cluster(
         .map(|member| member.point_id.clone())
         .collect::<Vec<_>>();
     let items = graph
-        .vector_cluster_items(&cluster.collection, &point_ids, cli.theme_item_limit)
+        .vector_cluster_items(&cluster.collection, &point_ids, cli.label_item_limit)
         .await
         .with_context(|| format!("failed loading source items for {}", cluster.cluster_id))?;
     if items.is_empty() {
@@ -345,12 +309,12 @@ async fn identify_new_face_cluster(
         return Ok(());
     }
 
-    let identity = themer
+    let identity = labeler
         .identify_face_cluster(cluster, &items)
         .await
         .with_context(|| format!("failed extracting identity for {}", cluster.cluster_id))?;
     graph
-        .attach_face_identity(cluster, &themer.llm_model, &items, identity.as_ref())
+        .attach_face_identity(cluster, &labeler.llm_model, &items, identity.as_ref())
         .await
         .with_context(|| format!("failed attaching face identity for {}", cluster.cluster_id))?;
     info!(
@@ -365,7 +329,7 @@ async fn identify_new_face_cluster(
 async fn identify_new_voice_cluster(
     cli: &Cli,
     graph: &Neo4jClient,
-    themer: &ClusterThemeProcessor,
+    labeler: &ClusterLabelProcessor,
     cluster: &VectorCluster,
 ) -> anyhow::Result<()> {
     if graph
@@ -383,7 +347,7 @@ async fn identify_new_voice_cluster(
         .map(|member| member.point_id.clone())
         .collect::<Vec<_>>();
     let items = graph
-        .vector_cluster_items(&cluster.collection, &point_ids, cli.theme_item_limit)
+        .vector_cluster_items(&cluster.collection, &point_ids, cli.label_item_limit)
         .await
         .with_context(|| format!("failed loading source items for {}", cluster.cluster_id))?;
     if items.is_empty() {
@@ -394,12 +358,12 @@ async fn identify_new_voice_cluster(
         return Ok(());
     }
 
-    let identity = themer
+    let identity = labeler
         .identify_voice_cluster(cluster, &items)
         .await
         .with_context(|| format!("failed extracting identity for {}", cluster.cluster_id))?;
     graph
-        .attach_voice_identity(cluster, &themer.llm_model, &items, identity.as_ref())
+        .attach_voice_identity(cluster, &labeler.llm_model, &items, identity.as_ref())
         .await
         .with_context(|| format!("failed attaching voice identity for {}", cluster.cluster_id))?;
     info!(
@@ -411,33 +375,12 @@ async fn identify_new_voice_cluster(
     Ok(())
 }
 
-struct ClusterThemeProcessor {
+struct ClusterLabelProcessor {
     doer: lingproc::OllamaProvider,
     llm_model: String,
 }
 
-impl ClusterThemeProcessor {
-    async fn theme_cluster(
-        &self,
-        cluster: &VectorCluster,
-        items: &[GraphClusterItem],
-    ) -> anyhow::Result<GraphClusterTheme> {
-        let raw_text = self
-            .doer
-            .follow(LlmInstruction {
-                command: cluster_theme_prompt(cluster, items),
-                images: Vec::new(),
-            })
-            .await?
-            .to_string();
-        let text = normalize_cluster_theme(&raw_text);
-        anyhow::ensure!(!text.is_empty(), "cluster theme model returned empty text");
-        Ok(GraphClusterTheme {
-            theme_id: format!("theme:{}", cluster.cluster_id),
-            text,
-        })
-    }
-
+impl ClusterLabelProcessor {
     async fn identify_face_cluster(
         &self,
         _cluster: &VectorCluster,
@@ -483,34 +426,6 @@ impl ClusterThemeProcessor {
     }
 }
 
-fn cluster_theme_prompt(cluster: &VectorCluster, items: &[GraphClusterItem]) -> String {
-    let entries = items
-        .iter()
-        .map(cluster_prompt_item)
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!(
-        "You extract terse real-world labels for the person, object, place, or idea that unites related memories and perceptions.\n\n\
-         The following entries are memories or perceptions whose embeddings are near each other. \
-         Each entry may include supporting stimuli, graph edges, and nearby graph nodes for context. \
-         Treat labels like Vector, Cluster, Impression, SpeechSegment, AudioClip, ImageDescription, FaceInstance, VoiceSignature, and VoiceSample as implementation details, not as the topic.\n\
-         What person, object, place, or idea unites these items? Answer with only that uniting person, object, place, or idea as a concise noun phrase. \
-         Do not summarize each item. Do not write a complete sentence. Do not add commentary, emotion, sentence-ending punctuation, vectors, embeddings, clusters, graph ids, timestamps, hashes, edges, per-detection details, or implementation details.\n\n\
-         Collection: {}\n\
-         Cluster mean similarity: {:.3}\n\
-         Entries:\n{}\n\n\n\nJust complete this sentence: These items are united by ",
-        cluster.collection, cluster.mean_similarity, entries
-    )
-}
-
-fn normalize_cluster_theme(raw_text: &str) -> String {
-    let trimmed = raw_text.trim().trim_matches('"').trim();
-    let (without_emojis, _) = psyche::extract_emojis(trimmed);
-    let without_wrappers =
-        strip_cluster_theme_sentence(trim_theme_punctuation(without_emojis.trim()));
-    trim_theme_punctuation(without_wrappers).to_string()
-}
-
 fn face_identity_prompt(items: &[GraphClusterItem]) -> String {
     let entries = items
         .iter()
@@ -544,9 +459,9 @@ fn voice_identity_prompt(items: &[GraphClusterItem]) -> String {
 }
 
 fn normalize_face_identity(raw_text: &str) -> Option<String> {
-    let trimmed = trim_theme_punctuation(raw_text.trim().trim_matches('"')).trim();
+    let trimmed = trim_label_punctuation(raw_text.trim().trim_matches('"')).trim();
     let (without_emojis, _) = psyche::extract_emojis(trimmed);
-    let name = trim_theme_punctuation(without_emojis.trim()).trim();
+    let name = trim_label_punctuation(without_emojis.trim()).trim();
     if name.is_empty()
         || name.eq_ignore_ascii_case("unknown")
         || name.eq_ignore_ascii_case("i don't know")
@@ -581,79 +496,7 @@ fn identity_key(name: &str) -> String {
     }
 }
 
-fn strip_cluster_theme_sentence(text: &str) -> &str {
-    let mut theme = text.trim();
-    for prefix in [
-        "the common theme is ",
-        "the shared theme is ",
-        "the theme is ",
-        "these items are united by ",
-        "they are united by ",
-        "the uniting person, object, place, or idea is ",
-        "the unifying person, object, place, or idea is ",
-        "the uniting idea is ",
-        "the unifying idea is ",
-        "the common person, object, place, or idea is ",
-        "the consistent topic is ",
-        "the topic is ",
-        "common theme: ",
-        "shared theme: ",
-        "theme: ",
-        "united by: ",
-        "uniting person, object, place, or idea: ",
-        "unifying person, object, place, or idea: ",
-        "uniting idea: ",
-        "unifying idea: ",
-        "topic: ",
-    ] {
-        if let Some(rest) = strip_prefix_ignore_ascii_case(theme, prefix) {
-            theme = rest.trim();
-            break;
-        }
-    }
-
-    for suffix in [
-        " is the consistent topic of these transcriptions",
-        " is the consistent topic of these entries",
-        " is the consistent topic of these items",
-        " is the common topic of these transcriptions",
-        " is the common topic of these entries",
-        " is the common topic of these items",
-        " is the common theme",
-        " is the shared theme",
-        " is what unites these items",
-        " unites these items",
-        " is the uniting person, object, place, or idea",
-        " is the unifying person, object, place, or idea",
-        " is the uniting idea",
-        " is the unifying idea",
-        " is the topic",
-    ] {
-        if let Some(rest) = strip_suffix_ignore_ascii_case(theme, suffix) {
-            theme = rest.trim();
-            break;
-        }
-    }
-
-    theme
-}
-
-fn strip_prefix_ignore_ascii_case<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
-    let possible_prefix = text.get(..prefix.len())?;
-    possible_prefix
-        .eq_ignore_ascii_case(prefix)
-        .then(|| &text[prefix.len()..])
-}
-
-fn strip_suffix_ignore_ascii_case<'a>(text: &'a str, suffix: &str) -> Option<&'a str> {
-    let suffix_start = text.len().checked_sub(suffix.len())?;
-    let possible_suffix = text.get(suffix_start..)?;
-    possible_suffix
-        .eq_ignore_ascii_case(suffix)
-        .then(|| &text[..suffix_start])
-}
-
-fn trim_theme_punctuation(text: &str) -> &str {
+fn trim_label_punctuation(text: &str) -> &str {
     text.trim()
         .trim_matches('"')
         .trim_end_matches(['.', '!', '?', ':', ';'])
@@ -726,7 +569,6 @@ fn truncate_for_prompt(value: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use psyche::VectorClusterMember;
 
     #[test]
     fn cluster_prompt_item_omits_graphnode_label_and_includes_stimuli() {
@@ -770,49 +612,6 @@ mod tests {
     }
 
     #[test]
-    fn cluster_theme_prompt_requests_uniting_label() {
-        let cluster = VectorCluster {
-            cluster_id: "cluster:1".into(),
-            collection: "memories".into(),
-            threshold: 0.86,
-            centroid: vec![1.0, 0.0],
-            mean_similarity: 0.91,
-            members: vec![VectorClusterMember {
-                point_id: "point-1".into(),
-                average_similarity: 0.91,
-            }],
-        };
-        let item = GraphClusterItem {
-            vector_id: "qdrant:memories:point-1".into(),
-            node_id: "impression:1".into(),
-            labels: vec!["Impression".into()],
-            text: "impression: coffee is brewing".into(),
-            stimuli: Vec::new(),
-            edges: Vec::new(),
-            neighbors: Vec::new(),
-        };
-
-        let prompt = cluster_theme_prompt(&cluster, &[item]);
-
-        assert!(prompt.contains("person, object, place, or idea that unites"));
-        assert!(prompt.contains("What person, object, place, or idea unites these items?"));
-        assert!(prompt.contains(
-            "Answer with only that uniting person, object, place, or idea as a concise noun phrase"
-        ));
-        assert!(prompt.contains("These items are united by"));
-        assert!(!prompt.contains("common real-world theme"));
-        assert!(!prompt.contains("The common theme is"));
-        assert!(prompt.contains("Do not summarize each item"));
-        assert!(prompt.contains("Do not write a complete sentence"));
-        assert!(!prompt.contains("You intersperse emojis"));
-        assert!(!prompt.contains("emoji"));
-        assert!(!prompt.contains("one short sentence"));
-        assert!(prompt.contains("vectors, embeddings, clusters"));
-        assert!(prompt.contains("per-detection details"));
-        assert!(prompt.contains("coffee is brewing"));
-    }
-
-    #[test]
     fn face_identity_prompt_requests_person_name_or_unknown() {
         let item = GraphClusterItem {
             vector_id: "qdrant:faces:point-1".into(),
@@ -831,7 +630,6 @@ mod tests {
         assert!(prompt.contains("Answer with only the person's name"));
         assert!(prompt.contains("answer exactly UNKNOWN"));
         assert!(prompt.contains("Anna entered the room"));
-        assert!(!prompt.contains("theme"));
     }
 
     #[test]
@@ -853,7 +651,6 @@ mod tests {
         assert!(prompt.contains("Answer with only the person's name"));
         assert!(prompt.contains("answer exactly UNKNOWN"));
         assert!(prompt.contains("Anna said hello"));
-        assert!(!prompt.contains("theme"));
     }
 
     #[test]
@@ -861,35 +658,5 @@ mod tests {
         assert_eq!(normalize_face_identity("UNKNOWN"), None);
         assert_eq!(normalize_face_identity("I don't know."), None);
         assert_eq!(normalize_face_identity("Anna."), Some("Anna".into()));
-    }
-
-    #[test]
-    fn normalize_cluster_theme_removes_sentence_wrapper_and_emoji() {
-        assert_eq!(
-            normalize_cluster_theme(
-                "A virus outbreak on a boat is the consistent topic of these transcriptions. 😟"
-            ),
-            "A virus outbreak on a boat"
-        );
-    }
-
-    #[test]
-    fn normalize_cluster_theme_removes_theme_prefix_and_punctuation() {
-        assert_eq!(
-            normalize_cluster_theme("\"The common theme is coffee brewing.\""),
-            "coffee brewing"
-        );
-    }
-
-    #[test]
-    fn normalize_cluster_theme_removes_uniting_sentence_wrapper() {
-        assert_eq!(
-            normalize_cluster_theme("These items are united by coffee brewing."),
-            "coffee brewing"
-        );
-        assert_eq!(
-            normalize_cluster_theme("coffee brewing is what unites these items."),
-            "coffee brewing"
-        );
     }
 }

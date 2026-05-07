@@ -2783,8 +2783,15 @@ impl Neo4jClient {
                         ELSE coalesce(n.how, n.summary, n.kind, "sensation")
                     END AS text
                     WHERE text <> ""
-                    WITH anchor, anchor_at, n, occurred_at, event_id, text
-                    ORDER BY datetime(occurred_at) ASC, n.id
+                    WITH anchor, anchor_at, n, occurred_at, event_id, text,
+                        CASE coalesce(n.kind, "")
+                            WHEN "image" THEN 0
+                            WHEN "face" THEN 1
+                            WHEN "face_recognition" THEN 1
+                            WHEN "face_identity" THEN 2
+                            ELSE 10
+                        END AS timeline_order
+                    ORDER BY datetime(occurred_at) ASC, timeline_order ASC, n.id
                     LIMIT $limit
                     RETURN anchor.id, anchor_at, n.id, event_id, labels(n), text, occurred_at
                 "#
@@ -2825,8 +2832,15 @@ impl Neo4jClient {
                       AND occurred_at <> ""
                       AND ($start IS NULL OR datetime(occurred_at) >= datetime($start))
                       AND datetime(occurred_at) <= datetime($end)
-                    WITH n, labels(n) AS labels, text, occurred_at, formed_at
-                    ORDER BY datetime(occurred_at) DESC, n.id DESC
+                    WITH n, labels(n) AS labels, text, occurred_at, formed_at,
+                        CASE coalesce(n.kind, "")
+                            WHEN "image" THEN 0
+                            WHEN "face" THEN 1
+                            WHEN "face_recognition" THEN 1
+                            WHEN "face_identity" THEN 2
+                            ELSE 10
+                        END AS timeline_order
+                    ORDER BY datetime(occurred_at) DESC, timeline_order DESC, n.id DESC
                     LIMIT $limit
                     WITH collect({
                         id: n.id,
@@ -3983,6 +3997,10 @@ impl Neo4jClient {
         let source_started_at = window.items.first().map(|item| item.occurred_at.clone());
         let source_ended_at = window.items.last().map(|item| item.occurred_at.clone());
         let vector_id = qdrant_vector_node_id(MEMORY_COLLECTION, &awareness.vector_id);
+        let sensation_id = stable_bytes_id(
+            "sensation:combobulation_summary",
+            format!("{run_id}:{}", awareness.awareness_id).as_bytes(),
+        );
         let nodes = vec![
             json!({
                 "label": "CombobulationRun",
@@ -4010,6 +4028,18 @@ impl Neo4jClient {
                 "occurred_at": source_ended_at,
                 "created_at": processed_at,
             }),
+            json!({
+                "label": "Sensation",
+                "id": sensation_id,
+                "kind": "combobulation_summary",
+                "derived": true,
+                "occurred_at": processed_at,
+                "how": awareness.text,
+                "how_formed_at": processed_at,
+                "combobulation_run_id": run_id,
+                "awareness_id": awareness.awareness_id,
+                "source_sensation_ids": source_ids,
+            }),
             qdrant_vector_node(
                 MEMORY_COLLECTION,
                 &awareness.vector_id,
@@ -4033,6 +4063,21 @@ impl Neo4jClient {
                 "to": vector_id,
                 "type": "PRODUCED",
             }),
+            json!({
+                "from": run_id,
+                "to": sensation_id,
+                "type": "PRODUCED",
+            }),
+            json!({
+                "from": sensation_id,
+                "to": run_id,
+                "type": "DERIVED_FROM",
+            }),
+            json!({
+                "from": sensation_id,
+                "to": awareness.awareness_id,
+                "type": "OBSERVED",
+            }),
         ];
 
         for (index, item) in window.items.iter().enumerate() {
@@ -4045,6 +4090,13 @@ impl Neo4jClient {
             }));
             relationships.push(json!({
                 "from": awareness.awareness_id,
+                "to": item.id,
+                "type": "DERIVED_FROM",
+                "source_index": index,
+                "occurred_at": item.occurred_at,
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
                 "to": item.id,
                 "type": "DERIVED_FROM",
                 "source_index": index,
@@ -6169,18 +6221,17 @@ fn stable_bytes_id(prefix: &str, bytes: &[u8]) -> String {
 }
 
 fn face_recognition_how(face_count: usize) -> String {
-    let noun = if face_count == 1 { "face" } else { "faces" };
-    format!("I see {face_count} {noun}.")
+    match face_count {
+        0 => "I don't see any faces.".into(),
+        1 => "I see a face.".into(),
+        _ => format!("I see {face_count} faces."),
+    }
 }
 
 fn face_identity_how(recognition: Option<&GraphFaceMatch>) -> String {
     match recognition {
-        Some(GraphFaceMatch {
-            identity: Some(name),
-            ..
-        }) if !name.trim().is_empty() => format!("I recognize {}'s face.", name.trim()),
-        Some(_) => "I recognize the face, but I don't know who it is.".into(),
-        None => "I see a face I've never seen before.".into(),
+        Some(_) => "I've seen this face before.".into(),
+        None => "I've never seen this face before.".into(),
     }
 }
 

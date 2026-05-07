@@ -189,6 +189,10 @@ async fn stores_combobulation_summary_as_sensation() {
     let stored = graph.0.lock().unwrap();
     assert_eq!(stored.len(), 1);
     assert_eq!(stored[0]["nodes"][0]["kind"], "combobulation_summary");
+    assert_eq!(
+        stored[0]["nodes"][0]["how"],
+        "I may be hearing someone nearby."
+    );
     assert_eq!(stored[0]["nodes"][1]["label"], "CombobulationSummary");
     assert_eq!(
         stored[0]["nodes"][1]["text"],

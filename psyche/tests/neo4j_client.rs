@@ -1414,8 +1414,8 @@ async fn neo4j_client_attaches_face_recognition() {
                 .body_contains("\"face_count\":1")
                 .body_contains("\"kind\":\"face_recognition\"")
                 .body_contains("\"derived\":true")
-                .body_contains("\"how\":\"I see 1 face.\"")
-                .body_contains("\"how\":\"I see a face I've never seen before.\"")
+                .body_contains("\"how\":\"I see a face.\"")
+                .body_contains("\"how\":\"I've never seen this face before.\"")
                 .body_contains("\"embedding_len\":512")
                 .body_contains("\"detector\":\"face_id\"");
             then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
@@ -1475,7 +1475,7 @@ async fn neo4j_client_attaches_face_recognition_sensation_for_zero_faces() {
                 .body_contains("\"face_count\":0")
                 .body_contains("\"kind\":\"face_recognition\"")
                 .body_contains("\"derived\":true")
-                .body_contains("\"how\":\"I see 0 faces.\"")
+                .body_contains("\"how\":\"I don't see any faces.\"")
                 .body_contains("\"detector\":\"face_id\"");
             then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
         })
@@ -1519,10 +1519,9 @@ async fn neo4j_client_attaches_per_face_identity_sensation() {
             when.method(POST)
                 .path("/db/neo4j/tx/commit")
                 .body_contains("\"kind\":\"face_identity\"")
-                .body_contains("\"how\":\"I recognize Anna's face.\"")
+                .body_contains("\"how\":\"I've seen this face before.\"")
                 .body_contains("\"matched_face_id\":\"cluster:face:1\"")
                 .body_contains("\"identity_name\":\"Anna\"")
-                .body_contains("\"how\":\"I recognize the face, but I don't know who it is.\"")
                 .body_contains("\"nearest_face_vector_id\":\"known-point\"")
                 .body_contains("MATCHED_FACE")
                 .body_contains("RECOGNIZED_AS")
@@ -2200,6 +2199,8 @@ async fn neo4j_client_loads_latest_timeline_window_for_combobulation() {
                 .body_contains("MATCH (anchor:GraphNode:Sensation)")
                 .body_contains("INCLUDED_IN_COMBOBULATION")
                 .body_contains("duration({seconds: $seconds})")
+                .body_contains("timeline_order")
+                .body_contains("ORDER BY datetime(occurred_at) ASC, timeline_order ASC, n.id")
                 .body_contains("RETURN anchor.id, anchor_at, n.id, event_id, labels(n), text, occurred_at")
                 .body_contains("\"seconds\":30")
                 .body_contains("\"limit\":80");
@@ -2326,6 +2327,11 @@ async fn neo4j_client_attaches_combobulation() {
                 .body_contains("INCLUDED_IN_COMBOBULATION")
                 .body_contains("HAS_MEMORY_VECTOR")
                 .body_contains("qdrant:memories:point-1")
+                .body_contains("\"kind\":\"combobulation_summary\"")
+                .body_contains("\"derived\":true")
+                .body_contains("\"how\":\"I hear someone greeting me.\"")
+                .body_contains("\"combobulation_run_id\"")
+                .body_contains("\"awareness_id\":\"awareness:speech:2\"")
                 .body_contains("\"model\":\"wit-test\"")
                 .body_contains("\"embedding_model\":\"embed-test\"")
                 .body_contains("\"source_count\":2")

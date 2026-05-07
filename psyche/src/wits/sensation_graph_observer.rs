@@ -407,7 +407,7 @@ impl SensationObserver for SensationGraphObserver {
                                 &sensation_id,
                                 "combobulation_summary",
                                 occurred_at.to_rfc3339(),
-                                &format!("I notice {}.", summary.text.trim_end_matches('.')),
+                                &summary.text,
                             ),
                             combobulation_summary_node(summary, &id, occurred_at.to_rfc3339()),
                         ],
