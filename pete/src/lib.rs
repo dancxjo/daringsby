@@ -36,6 +36,7 @@ mod event_bus;
 mod face_ipc;
 mod logging;
 mod motor;
+pub mod movie;
 mod mouth;
 mod ollama;
 mod psyche_factory;
