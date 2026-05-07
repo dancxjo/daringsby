@@ -85,7 +85,7 @@ impl SensationObserver for SensationGraphObserver {
                             &sensation_id,
                             "image",
                             occurred_at.to_rfc3339(),
-                            "I see a camera frame.",
+                            "I see something.",
                         ),
                         image_node(image, &id, occurred_at.to_rfc3339()),
                     ],
@@ -556,7 +556,7 @@ fn audio_how(audio: &AudioClip) -> String {
         .filter(|text| !text.trim().is_empty())
     {
         Some(transcript) => format!("I hear audio saying \"{}\".", transcript.trim()),
-        None => "I hear an audio clip.".into(),
+        None => "I hear something.".into(),
     }
 }
 
