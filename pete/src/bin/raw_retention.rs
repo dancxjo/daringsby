@@ -63,9 +63,14 @@ async fn dry_run(graph: &Neo4jClient, qdrant: &QdrantClient) -> anyhow::Result<(
         .count_non_raw_graph_nodes()
         .await
         .context("failed to count non-raw graph nodes")?;
+    let audio_transcript_count = graph
+        .count_audio_clip_transcript_properties()
+        .await
+        .context("failed to count raw audio transcript properties")?;
     let collections = existing_qdrant_collections(qdrant).await?;
 
     println!("would delete {graph_count} non-raw Neo4j graph nodes");
+    println!("would clear transcript fields from {audio_transcript_count} raw audio clips");
     if collections.is_empty() {
         println!("no known Qdrant vector collections found");
     } else {
@@ -87,6 +92,14 @@ async fn prune(
         .await
         .context("failed to delete non-raw graph nodes")?;
     info!(deleted_graph_nodes, "deleted non-raw Neo4j graph nodes");
+    let cleared_audio_transcripts = graph
+        .clear_audio_clip_transcript_properties()
+        .await
+        .context("failed to clear raw audio transcript properties")?;
+    info!(
+        cleared_audio_transcripts,
+        "cleared transcript fields from raw audio clips"
+    );
 
     let mut deleted_collections = Vec::new();
     let mut missing_collections = Vec::new();
@@ -110,6 +123,7 @@ async fn prune(
     }
 
     println!("deleted {deleted_graph_nodes} non-raw Neo4j graph nodes");
+    println!("cleared transcript fields from {cleared_audio_transcripts} raw audio clips");
     if deleted_collections.is_empty() {
         println!("deleted no Qdrant collections");
     } else {

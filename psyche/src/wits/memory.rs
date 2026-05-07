@@ -1488,6 +1488,62 @@ impl Neo4jClient {
         Ok(deleted)
     }
 
+    /// Count retained raw audio clips that still carry copied transcript text.
+    pub async fn count_audio_clip_transcript_properties(&self) -> Result<u64> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (a:GraphNode:AudioClip)
+                    WHERE a.transcript IS NOT NULL
+                    RETURN count(a)
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "counting raw audio transcript properties",
+        )
+        .await?;
+        rows.first()
+            .and_then(Value::as_array)
+            .and_then(|values| values.first())
+            .and_then(Value::as_u64)
+            .context("Neo4j audio transcript property count was missing")
+    }
+
+    /// Remove copied transcript text from retained raw audio clips.
+    pub async fn clear_audio_clip_transcript_properties(&self) -> Result<u64> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (a:GraphNode:AudioClip)
+                    WHERE a.transcript IS NOT NULL
+                    WITH collect(a) AS clips, count(a) AS cleared_count
+                    FOREACH (clip IN clips | REMOVE clip.transcript, clip.transcribed_at)
+                    RETURN cleared_count
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "clearing raw audio transcript properties",
+        )
+        .await?;
+        rows.first()
+            .and_then(Value::as_array)
+            .and_then(|values| values.first())
+            .and_then(Value::as_u64)
+            .context("Neo4j cleared audio transcript property count was missing")
+    }
+
     /// Return the latest `AudioClip` graph node that has no transcript property.
     pub async fn latest_untranscribed_audio_clip(&self) -> Result<Option<GraphAudioClip>> {
         let endpoint = self.http_endpoint()?;

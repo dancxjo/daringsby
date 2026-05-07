@@ -247,6 +247,69 @@ async fn neo4j_client_detach_deletes_non_raw_graph_nodes_with_batch_limit() {
 }
 
 #[tokio::test]
+async fn neo4j_client_counts_audio_clip_transcript_properties() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (a:GraphNode:AudioClip)")
+                .body_contains("a.transcript IS NOT NULL")
+                .body_contains("RETURN count(a)");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["count(a)"],
+                    "data": [{
+                        "row": [7]
+                    }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let count = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .count_audio_clip_transcript_properties()
+        .await
+        .unwrap();
+
+    assert_eq!(count, 7);
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_clears_audio_clip_transcript_properties() {
+    let server = MockServer::start_async().await;
+    let clear = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (a:GraphNode:AudioClip)")
+                .body_contains("a.transcript IS NOT NULL")
+                .body_contains("REMOVE clip.transcript, clip.transcribed_at")
+                .body_contains("RETURN cleared_count");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["cleared_count"],
+                    "data": [{
+                        "row": [7]
+                    }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let cleared = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .clear_audio_clip_transcript_properties()
+        .await
+        .unwrap();
+
+    assert_eq!(cleared, 7);
+    clear.assert_async().await;
+}
+
+#[tokio::test]
 async fn neo4j_client_loads_latest_untranscribed_audio_clip() {
     let server = MockServer::start_async().await;
     let query = server
