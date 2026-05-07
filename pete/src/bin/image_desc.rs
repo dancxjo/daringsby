@@ -14,7 +14,7 @@ use psyche::{
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{error, info, trace, warn};
 
-const DEFAULT_IMAGE_DESCRIPTION_MODEL: &str = "gemma3";
+const DEFAULT_IMAGE_DESCRIPTION_MODEL: &str = "gemma4";
 
 #[derive(Parser)]
 #[command(
@@ -241,9 +241,12 @@ fn ensure_vision_model(model: &str) -> anyhow::Result<()> {
             "IMAGE_DESCRIPTION_MODEL={model} is text-only in Ollama; use a vision-capable model like {DEFAULT_IMAGE_DESCRIPTION_MODEL}"
         );
     }
-    if matches!(normalized.as_str(), "gemma3:270m" | "gemma3:1b") {
+    if matches!(
+        normalized.as_str(),
+        "gemma3:270m" | "gemma3:1b" | "gemma4:270m" | "gemma4:1b"
+    ) {
         bail!(
-            "IMAGE_DESCRIPTION_MODEL={model} is text-only in Ollama; use a vision-capable Gemma 3 variant like {DEFAULT_IMAGE_DESCRIPTION_MODEL}, gemma3:4b, gemma3:12b, or gemma3:27b"
+            "IMAGE_DESCRIPTION_MODEL={model} is text-only in Ollama; use a vision-capable model like {DEFAULT_IMAGE_DESCRIPTION_MODEL}"
         );
     }
     if normalized.contains("llama3") || normalized.contains("qwen3") {
@@ -275,17 +278,17 @@ mod tests {
     }
 
     #[test]
-    fn ensure_vision_model_allows_default_gemma3() {
+    fn ensure_vision_model_allows_default_gemma4() {
         ensure_vision_model(DEFAULT_IMAGE_DESCRIPTION_MODEL).unwrap();
     }
 
     #[test]
-    fn ensure_vision_model_rejects_text_only_gemma3_variants() {
-        for model in ["gemma3:270m", "gemma3:1b"] {
+    fn ensure_vision_model_rejects_text_only_gemma_variants() {
+        for model in ["gemma3:270m", "gemma3:1b", "gemma4:270m", "gemma4:1b"] {
             let err = ensure_vision_model(model).unwrap_err();
 
             assert!(err.to_string().contains("text-only"));
-            assert!(err.to_string().contains("gemma3:4b"));
+            assert!(err.to_string().contains(DEFAULT_IMAGE_DESCRIPTION_MODEL));
         }
     }
 }

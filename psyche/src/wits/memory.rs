@@ -3160,6 +3160,18 @@ impl Neo4jClient {
     ) -> Result<()> {
         let processed_at = chrono::Utc::now().to_rfc3339();
         let run_id = format!("face-recognition:{}", frame.id);
+        let face_count = detections.len();
+        let recognition_sensation_id = stable_bytes_id(
+            "sensation:face_recognition",
+            format!("{run_id}:{detector}").as_bytes(),
+        );
+        let recognition_occurred_at = frame
+            .image
+            .captured_at
+            .clone()
+            .or_else(|| frame.occurred_at.clone())
+            .unwrap_or_else(|| processed_at.clone());
+        let source_sensation_ids = frame.sensation_id.clone().into_iter().collect::<Vec<_>>();
         let mut nodes = vec![
             json!({
                 "label": "Image",
@@ -3171,7 +3183,20 @@ impl Neo4jClient {
                 "image_id": frame.id,
                 "detector": detector,
                 "processed_at": processed_at,
-                "face_count": detections.len(),
+                "face_count": face_count,
+            }),
+            json!({
+                "label": "Sensation",
+                "id": recognition_sensation_id,
+                "kind": "face_recognition",
+                "derived": true,
+                "occurred_at": recognition_occurred_at,
+                "how": face_recognition_how(face_count),
+                "how_formed_at": processed_at,
+                "face_count": face_count,
+                "source_image_id": frame.id,
+                "face_recognition_run_id": run_id,
+                "source_sensation_ids": source_sensation_ids,
             }),
         ];
         let mut relationships = vec![
@@ -3185,6 +3210,21 @@ impl Neo4jClient {
                 "to": frame.id,
                 "type": "PROCESSED_IMAGE",
             }),
+            json!({
+                "from": run_id,
+                "to": recognition_sensation_id,
+                "type": "PRODUCED",
+            }),
+            json!({
+                "from": recognition_sensation_id,
+                "to": run_id,
+                "type": "OBSERVED",
+            }),
+            json!({
+                "from": recognition_sensation_id,
+                "to": frame.id,
+                "type": "DERIVED_FROM",
+            }),
         ];
 
         if let Some(sensation_id) = &frame.sensation_id {
@@ -3196,6 +3236,16 @@ impl Neo4jClient {
                 "from": sensation_id,
                 "to": run_id,
                 "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": recognition_sensation_id,
+                "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": recognition_sensation_id,
+                "to": sensation_id,
+                "type": "DERIVED_FROM",
             }));
         }
 
@@ -5347,6 +5397,11 @@ fn stable_bytes_id(prefix: &str, bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("{prefix}:sha256:{:x}", hasher.finalize())
+}
+
+fn face_recognition_how(face_count: usize) -> String {
+    let noun = if face_count == 1 { "face" } else { "faces" };
+    format!("I see {face_count} {noun}.")
 }
 
 fn spans_overlap(a_start_ms: u32, a_end_ms: u32, b_start_ms: u32, b_end_ms: u32) -> bool {

@@ -77,11 +77,12 @@ The repo `justfile` loads `.env` automatically before running commands.
 just run
 ```
 
-Pete uses separate Ollama models for text generation and embeddings. Pull both
-before running with the default configuration:
+Pete uses separate Ollama models for text generation, vision, and embeddings.
+Pull all three before running with the default configuration:
 
 ```sh
 ollama pull gpt-oss
+ollama pull gemma4
 ollama pull embeddinggemma
 ```
 

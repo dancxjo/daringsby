@@ -1411,6 +1411,9 @@ async fn neo4j_client_attaches_face_recognition() {
                 .body_contains("qdrant:faces:point-1")
                 .body_contains("sensation:image:1")
                 .body_contains("\"face_count\":1")
+                .body_contains("\"kind\":\"face_recognition\"")
+                .body_contains("\"derived\":true")
+                .body_contains("\"how\":\"I see 1 face.\"")
                 .body_contains("\"embedding_len\":512")
                 .body_contains("\"detector\":\"face_id\"");
             then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
@@ -1441,6 +1444,54 @@ async fn neo4j_client_attaches_face_recognition() {
                 vector_id: "point-1".into(),
                 embedding_len: 512,
             }],
+        )
+        .await
+        .unwrap();
+
+    constraint.assert_async().await;
+    update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_attaches_face_recognition_sensation_for_zero_faces() {
+    let server = MockServer::start_async().await;
+    let constraint = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CREATE CONSTRAINT pete_graph_node_id");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+    let update = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("FaceRecognitionRun")
+                .body_contains("Sensation")
+                .body_contains("\"face_count\":0")
+                .body_contains("\"kind\":\"face_recognition\"")
+                .body_contains("\"derived\":true")
+                .body_contains("\"how\":\"I see 0 faces.\"")
+                .body_contains("\"detector\":\"face_id\"");
+            then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
+        })
+        .await;
+
+    Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .attach_face_recognition(
+            &GraphImageFrame {
+                id: "image:1".into(),
+                image: ImageData {
+                    mime: "image/jpeg".into(),
+                    base64: "/9j/AA==".into(),
+                    captured_at: Some("2026-05-05T12:34:56Z".into()),
+                },
+                occurred_at: Some("2026-05-05T12:34:57Z".into()),
+                sensation_id: Some("sensation:image:1".into()),
+            },
+            "face_id",
+            &[],
         )
         .await
         .unwrap();
