@@ -237,11 +237,14 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                                     #[cfg(feature = "asr")]
                                     handle_hear_frame(&data, at.as_deref(), &asr_pcm_tx).await;
                                     #[cfg(not(feature = "asr"))]
-                                    trace!(
-                                        mime = %data.mime,
-                                        bytes = data.base64.len(),
-                                        "audio fragment received; server-side ASR disabled"
-                                    );
+                                    {
+                                        let _ = at;
+                                        trace!(
+                                            mime = %data.mime,
+                                            bytes = data.base64.len(),
+                                            "audio fragment received; server-side ASR disabled"
+                                        );
+                                    }
                                 }
                                 WsRequest::Geolocate { mut data, at } => {
                                     trace!("geolocation received");
