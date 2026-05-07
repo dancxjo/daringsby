@@ -87,11 +87,6 @@ path = "src/bin/transcription.rs"
 required-features = ["asr"]
 
 [[bin]]
-name = "big_transcribe"
-path = "src/bin/big_transcribe.rs"
-required-features = ["asr"]
-
-[[bin]]
 name = "frecog"
 path = "src/bin/frecog.rs"
 required-features = ["face"]

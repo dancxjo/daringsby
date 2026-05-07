@@ -104,7 +104,7 @@ movie *args:
 debug *args:
     RUST_LOG="${RUST_LOG:-debug}" cargo run -p pete --bin pete -- {{ args }}
 
-# Fetch fast small + big large local models, or pass tiny.en/base.en/small.en/large-v3/URL for one Whisper model.
+# Fetch the fast small local model, or pass tiny.en/base.en/small.en/large-v3/URL for one Whisper model.
 fetch model="":
     cargo run -p xtask -- fetch {{ model }}
 

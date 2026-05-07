@@ -107,19 +107,17 @@ cargo run -p pete --bin pete
 
 Server-side ASR is enabled by default when a Whisper model is available. The
 default Pete build compiles Whisper with CUDA support and enables GPU loading
-unless `ASR_USE_GPU=false` is set. Fetch the default fast `small.en` model,
-the high-quality multilingual `large-v3` model used by `big_transcribe`, and
+unless `ASR_USE_GPU=false` is set. Fetch the default fast `small.en` model and
 the voice embedding model with:
 
 ```sh
 just fetch
 ```
 
-That writes `models/whisper/ggml-small.en.bin`,
-`models/whisper/ggml-large-v3.bin`, and
+That writes `models/whisper/ggml-small.en.bin` and
 `models/voice/speaker_embedding_extractor.onnx`, which Pete discovers
-automatically. The fast transcription loop prefers `small.en`; to fetch a
-different Whisper model:
+automatically. The transcription loop prefers `small.en`; to fetch a different
+Whisper model:
 
 ```sh
 just fetch tiny.en
@@ -127,8 +125,6 @@ just fetch base.en
 just fetch small.en
 ```
 
-The `big_transcribe` binary uses `models/whisper/ggml-large-v3.bin` by default;
-set `BIG_TRANSCRIPTION_WHISPER_MODEL` or pass `--whisper-model` to override it.
 You can also set `WHISPER_MODEL` or `VOICE_EMBEDDING_MODEL` in `.env` to point
 at custom model paths for the live ASR service.
 
