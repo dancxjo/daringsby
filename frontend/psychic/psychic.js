@@ -1014,7 +1014,7 @@
     if (media.base64 && media.mime.startsWith("image/")) {
       presentImageNodeId = imageNode.id;
       const overlay = renderPresentImageFrame(imageNode, media);
-      renderPresentSpeechOverlays(overlay);
+      renderPresentSpeechOverlays(overlay, imageNode);
       return;
     }
     presentImageNodeId = imageNode.id;
@@ -1065,27 +1065,37 @@
     return overlay;
   }
 
-  function renderPresentSpeechOverlays(container) {
-    container.replaceChildren(
-      ...visibleSpeechSegments().map((segment, index) => {
-        const el = document.createElement("div");
-        const text = document.createElement("span");
-        const left = timelinePercent(Math.max(segment.start, timelineExtent.min));
-        const right = timelinePercent(Math.min(segment.end, timelineExtent.max));
+  function renderPresentSpeechOverlays(container, imageNode) {
+    const segments = visibleSpeechSegments(imageNode);
+    const wantedIds = new Set(segments.map((segment) => segment.node.id));
+
+    Array.from(container.children).forEach((child) => {
+      if (!wantedIds.has(child.dataset.segmentId)) child.remove();
+    });
+
+    segments.forEach((segment, index) => {
+      const id = segment.node.id;
+      let el = Array.from(container.children).find((child) => child.dataset.segmentId === id);
+      let text = el?.querySelector("span");
+      if (!el) {
+        el = document.createElement("span");
+        text = document.createElement("span");
         el.className = "present-speech-segment";
-        el.classList.toggle("active", segment.start <= timelineCursor && segment.end >= timelineCursor);
-        el.style.left = `${left}%`;
-        el.style.width = `${Math.max(right - left, 4)}%`;
-        el.style.bottom = `${0.55 + (index % 3) * 1.85}rem`;
-        text.textContent = speechSegmentText(segment.node);
+        el.dataset.segmentId = id;
         el.append(text);
-        return el;
-      }),
-    );
+      }
+
+      el.classList.toggle("active", segment.start <= timelineCursor && segment.end >= timelineCursor);
+      text.textContent = speechSegmentText(segment.node);
+      if (container.children[index] !== el) {
+        container.insertBefore(el, container.children[index] || null);
+      }
+    });
   }
 
-  function visibleSpeechSegments() {
+  function visibleSpeechSegments(imageNode) {
     if (!timelineExtent || timelineCursor === null) return [];
+    const imageWindow = imageTimelineWindow(imageNode);
     return graph.nodes
       .filter((node) => nodeKind(node) === "SpeechSegment")
       .map((node) => {
@@ -1094,8 +1104,22 @@
         return { node, start, end: start + timelineDurationMs(node) };
       })
       .filter(Boolean)
-      .filter((segment) => segment.start <= timelineExtent.max && segment.end >= timelineExtent.min)
+      .filter((segment) => segment.start <= timelineCursor)
+      .filter((segment) => segment.end >= imageWindow.start && segment.start < imageWindow.end)
       .sort((left, right) => left.start - right.start || left.node.id.localeCompare(right.node.id));
+  }
+
+  function imageTimelineWindow(imageNode) {
+    const start = nodeTimestamp(imageNode) ?? timelineExtent.min;
+    const next = graph.nodes
+      .filter((node) => nodeKind(node) === "Image" && node.id !== imageNode.id)
+      .map(nodeTimestamp)
+      .filter((timestamp) => timestamp !== null && timestamp > start)
+      .sort((left, right) => left - right)[0];
+    return {
+      start,
+      end: next ?? timelineExtent.max,
+    };
   }
 
   function speechSegmentText(node) {

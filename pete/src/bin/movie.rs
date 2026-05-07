@@ -197,11 +197,11 @@ fn write_concat_file(
         if duration <= 0 {
             continue;
         }
-        writeln!(file, "file '{}'", ffmpeg_path(frame_path))?;
+        writeln!(file, "file '{}'", ffmpeg_path(frame_path)?)?;
         writeln!(file, "duration {:.3}", duration as f64 / 1000.0)?;
     }
     if let Some((last_path, _)) = frames.last() {
-        writeln!(file, "file '{}'", ffmpeg_path(last_path))?;
+        writeln!(file, "file '{}'", ffmpeg_path(last_path)?)?;
     }
     Ok(())
 }
@@ -309,8 +309,11 @@ fn image_extension(mime: &str) -> &'static str {
     }
 }
 
-fn ffmpeg_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\'', "'\\''")
+fn ffmpeg_path(path: &Path) -> anyhow::Result<String> {
+    let absolute = path
+        .canonicalize()
+        .with_context(|| format!("failed to resolve frame path {}", path.display()))?;
+    Ok(absolute.to_string_lossy().replace('\'', "'\\''"))
 }
 
 fn vtt_text(text: &str) -> String {

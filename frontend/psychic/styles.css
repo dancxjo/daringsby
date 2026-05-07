@@ -604,43 +604,60 @@ button.active {
 
 .present-speech-overlay {
   position: absolute;
-  inset: 0;
+  inset: auto 0 0;
+  max-height: 48%;
   overflow: hidden;
+  padding: 1.6rem 0.72rem 0.72rem;
+  background: linear-gradient(180deg, transparent 0%, rgba(7, 9, 12, 0.72) 48%, rgba(7, 9, 12, 0.86) 100%);
+  color: #ffe7d8;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.35;
   pointer-events: none;
 }
 
 .present-speech-segment {
-  position: absolute;
-  min-width: 2.25rem;
-  max-width: 100%;
-  overflow: hidden;
-  padding: 0.22rem 0.42rem;
-  border: 1px solid rgba(248, 160, 107, 0.62);
-  border-radius: 6px;
-  background: rgba(20, 13, 10, 0.78);
-  color: #ffe7d8;
-  font-size: 0.72rem;
-  font-weight: 700;
-  line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.32);
+  position: static;
+  display: inline;
+  overflow: visible;
+  padding: 0 0.08em;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.65);
+  white-space: normal;
+  animation: present-speech-pop 140ms ease-out;
 }
 
 .present-speech-segment.active {
-  border-color: var(--warn);
-  background: rgba(83, 52, 22, 0.9);
+  background: rgba(255, 209, 102, 0.18);
   color: var(--text);
 }
 
 .present-speech-segment span {
-  display: block;
-  overflow: hidden;
+  display: inline;
+  overflow: visible;
   padding: 0;
   color: inherit;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: inherit;
+  white-space: inherit;
+}
+
+.present-speech-segment + .present-speech-segment::before {
+  content: " ";
+}
+
+@keyframes present-speech-pop {
+  from {
+    opacity: 0;
+    transform: translateY(0.22rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .present-media span {
@@ -650,13 +667,19 @@ button.active {
   text-align: center;
 }
 
+.present-media .present-speech-segment {
+  padding: 0 0.08em;
+  color: inherit;
+  font-size: inherit;
+  text-align: inherit;
+}
+
 .present-media .present-speech-segment span {
-  overflow: hidden;
+  overflow: visible;
   padding: 0;
   color: inherit;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: inherit;
+  white-space: inherit;
 }
 
 .inspector-empty {
