@@ -13,6 +13,9 @@ run:
     for path in pete/src/bin/*.rs; do
         bin="${path##*/}"
         bin="${bin%.rs}"
+        if [[ "$bin" == "forget_silence" ]]; then
+            bin="forget-silence"
+        fi
         # simulate is an ad hoc client utility that requires a subcommand.
         if [[ "$bin" == "pete" || "$bin" == "simulate" || "$bin" == "raw_retention" ]]; then
             continue

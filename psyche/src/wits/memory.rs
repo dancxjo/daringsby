@@ -3322,7 +3322,7 @@ impl Neo4jClient {
         let signature_id = format!("voice-signature:{}", recognition.signature.user_id);
         let sample_id = recognition.sample.id.clone();
         let vector_id = qdrant_vector_node_id(VOICE_COLLECTION, &recognition.vector_id);
-        let nodes = vec![
+        let mut nodes = vec![
             json!({
                 "label": "AudioClip",
                 "id": clip.id,
@@ -3393,6 +3393,10 @@ impl Neo4jClient {
         ];
 
         if let Some(sensation_id) = &clip.sensation_id {
+            nodes.push(json!({
+                "label": "Sensation",
+                "id": sensation_id,
+            }));
             relationships.push(json!({
                 "from": sensation_id,
                 "to": run_id,
@@ -3402,6 +3406,16 @@ impl Neo4jClient {
                 "from": sensation_id,
                 "to": signature_id,
                 "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": signature_id,
+                "to": sensation_id,
+                "type": "DERIVED_FROM",
+            }));
+            relationships.push(json!({
+                "from": sample_id,
+                "to": sensation_id,
+                "type": "DERIVED_FROM",
             }));
             relationships.push(json!({
                 "from": sensation_id,

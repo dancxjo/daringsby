@@ -124,3 +124,8 @@ path = "src/bin/cluster.rs"
 [[bin]]
 name = "raw_retention"
 path = "src/bin/raw_retention.rs"
+
+[[bin]]
+name = "forget-silence"
+path = "src/bin/forget_silence.rs"
+required-features = ["asr"]
