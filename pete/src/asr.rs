@@ -15,7 +15,7 @@ use serde::Serialize;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::mpsc;
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, trace, warn};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 use psyche::{AudioClip, Sensation, Topic, TopicBus};
@@ -658,7 +658,7 @@ async fn run_connection(
                 silence_tracker.reset();
 
                 if trimmed_audio.is_empty() {
-                    debug!(
+                    trace!(
                         submitted_samples,
                         has_pause,
                         hit_max_buffer,

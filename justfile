@@ -9,6 +9,12 @@ run:
     #!/usr/bin/env bash
     set -euo pipefail
 
+    timestamp="$(date +%Y%m%d-%H%M%S)"
+    log_root="${PETE_RUN_LOG_DIR:-logs/run}"
+    run_log_dir="${log_root}/${timestamp}"
+    mkdir -p "$run_log_dir"
+    printf 'writing program logs to %s\n' "$run_log_dir"
+
     bins=()
     for path in pete/src/bin/*.rs; do
         bin="${path##*/}"
@@ -53,11 +59,18 @@ run:
     trap cleanup INT TERM EXIT
 
     for bin in "${bins[@]}"; do
-        cargo run -p pete --features scene-vec --bin "$bin" &
+        log_file="${run_log_dir}/${bin}.log"
+        printf 'starting %-18s -> %s\n' "$bin" "$log_file"
+        cargo run -p pete --features scene-vec --bin "$bin" >"$log_file" 2>&1 &
         pids+=("$!")
     done
 
+    set +e
     wait -n "${pids[@]}"
+    status="$?"
+    set -e
+    printf 'a program exited with status %s; logs are in %s\n' "$status" "$run_log_dir"
+    exit "$status"
 
 # Forget derived graph/vector data while retaining raw sensations and media.
 forget *args:

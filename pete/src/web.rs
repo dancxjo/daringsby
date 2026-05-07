@@ -23,7 +23,7 @@ use tokio::sync::{broadcast, mpsc};
 use tower_http::services::ServeDir;
 #[cfg(feature = "asr")]
 use tracing::warn;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
 use crate::EventBus;
 use lingproc::Role;
@@ -66,22 +66,22 @@ pub type WsRequest = WsPayload;
 pub type WsResponse = WsPayload;
 
 pub async fn index() -> Html<&'static str> {
-    info!("index requested");
+    debug!("index requested");
     Html(include_str!("../../frontend/dist/index.html"))
 }
 
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Body>) -> impl IntoResponse {
-    info!("websocket upgrade initiated");
+    debug!("websocket upgrade initiated");
     ws.on_upgrade(move |socket| async move { handle_socket(socket, state).await })
 }
 
 pub async fn log_ws_handler(ws: WebSocketUpgrade, State(state): State<Body>) -> impl IntoResponse {
-    info!("log websocket upgrade initiated");
+    debug!("log websocket upgrade initiated");
     ws.on_upgrade(move |socket| async move { handle_log_socket(socket, state).await })
 }
 
 pub async fn wit_ws_handler(ws: WebSocketUpgrade, State(state): State<Body>) -> impl IntoResponse {
-    info!("wit websocket upgrade initiated");
+    debug!("wit websocket upgrade initiated");
     ws.on_upgrade(move |socket| async move { handle_wit_socket(socket, state).await })
 }
 
@@ -207,7 +207,7 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                             match req {
                                 WsRequest::Text { text: message, at } => {
                                     let occurred_at = parse_ws_at(at.as_deref());
-                                    debug!("user message: {}", message);
+                                    debug!(text_len = message.len(), "user message received");
                                     state.ear.hear_user_say_at(&message, occurred_at).await;
                                     let entry = ConvEntry {
                                         role: "user".into(),
@@ -219,16 +219,16 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                                 }
                                 WsRequest::Echo { text, at } => {
                                     let occurred_at = parse_ws_at(at.as_deref());
-                                    debug!("played ack: {}", text);
+                                    trace!(text_len = text.len(), "played ack received");
                                     state.ear.hear_self_say_at(&text, occurred_at).await;
                                 }
                                 WsRequest::See { data, at } => {
                                     if let Some((mime, base64)) = parse_data_url(&data) {
                                         if base64.trim().is_empty() {
-                                            debug!("blank image ignored");
+                                            trace!("blank image ignored");
                                             state.eye.sense(ImageData { mime, base64: String::new(), captured_at: at }).await;
                                         } else {
-                                            debug!("image received");
+                                            trace!("image received");
                                             state.eye.sense(ImageData { mime, base64, captured_at: at }).await;
                                         }
                                     }
@@ -237,24 +237,24 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                                     #[cfg(feature = "asr")]
                                     handle_hear_frame(&data, at.as_deref(), &asr_pcm_tx).await;
                                     #[cfg(not(feature = "asr"))]
-                                    info!(
+                                    trace!(
                                         mime = %data.mime,
                                         bytes = data.base64.len(),
                                         "audio fragment received; server-side ASR disabled"
                                     );
                                 }
                                 WsRequest::Geolocate { mut data, at } => {
-                                    debug!("geolocation received");
+                                    trace!("geolocation received");
                                     data.observed_at = at;
                                     state.geo.sense(data).await;
                                 }
                                 WsRequest::Motion { mut data, at } => {
-                                    debug!("browser motion received");
+                                    trace!("browser motion received");
                                     data.observed_at = at;
                                     state.motion.sense(data).await;
                                 }
                                 WsRequest::Sense { .. } => {
-                                    debug!("sense event received");
+                                    trace!("sense event received");
                                 }
                                 _ => {}
                             }
@@ -346,7 +346,7 @@ async fn handle_hear_frame(
     asr_pcm_tx: &Option<mpsc::Sender<crate::asr::AudioChunk>>,
 ) {
     let Some(tx) = asr_pcm_tx else {
-        info!(
+        trace!(
             mime = %data.mime,
             bytes = data.base64.len(),
             "audio fragment received; Whisper model not configured"
@@ -354,7 +354,7 @@ async fn handle_hear_frame(
         return;
     };
     if !is_pcm_mime(&data.mime) {
-        info!(
+        debug!(
             mime = %data.mime,
             bytes = data.base64.len(),
             "audio fragment ignored; expected 16-bit mono PCM"
@@ -398,18 +398,18 @@ fn is_pcm_mime(mime: &str) -> bool {
 }
 
 async fn handle_log_socket(mut socket: WebSocket, state: Body) {
-    info!("log websocket connected");
+    debug!("log websocket connected");
     let mut logs = state.bus.subscribe_logs();
     while let Ok(line) = logs.recv().await {
         if socket.send(WsMessage::Text(line.into())).await.is_err() {
             break;
         }
     }
-    info!("log websocket disconnected");
+    debug!("log websocket disconnected");
 }
 
 async fn handle_wit_socket(mut socket: WebSocket, state: Body) {
-    info!("wit websocket connected");
+    debug!("wit websocket connected");
     for last in state.bus.latest_wits() {
         let msg = serde_json::to_string(&WsResponse::Think(last)).unwrap();
         if socket.send(WsMessage::Text(msg.into())).await.is_err() {
@@ -423,7 +423,7 @@ async fn handle_wit_socket(mut socket: WebSocket, state: Body) {
             break;
         }
     }
-    info!("wit websocket disconnected");
+    debug!("wit websocket disconnected");
 }
 
 pub async fn conversation_log(State(state): State<Body>) -> impl IntoResponse {
@@ -527,7 +527,7 @@ pub async fn listen_user_input(
     voice: Arc<psyche::Voice>,
 ) {
     while let Some(msg) = rx.recv().await {
-        debug!("forwarding user input: {}", msg);
+        debug!(text_len = msg.len(), "forwarding user input");
         ear.hear_user_say(&msg).await;
         voice.permit(None);
     }

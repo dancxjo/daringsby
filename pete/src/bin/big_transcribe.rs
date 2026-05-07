@@ -19,7 +19,7 @@ use psyche::{
     Neo4jClient, audio_clip_id, parse_observed_at,
 };
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 #[derive(Parser)]
 #[command(
@@ -109,7 +109,7 @@ async fn transcribe_next_window(
         .await
         .context("failed to load latest audio clip window")?
     else {
-        debug!("no audio clip windows found for big transcription");
+        trace!("no audio clip windows found for big transcription");
         return Ok(());
     };
 
@@ -185,7 +185,7 @@ async fn consolidate_next_big_transcription(
         .await
         .context("failed to load speech consolidation candidate")?
     else {
-        debug!("no big transcriptions found for speech consolidation");
+        trace!("no big transcriptions found for speech consolidation");
         return Ok(());
     };
 

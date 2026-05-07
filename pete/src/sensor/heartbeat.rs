@@ -4,7 +4,7 @@ use psyche::{Heartbeat, Sensation, Sensor};
 use rand::Rng;
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tracing::info;
+use tracing::trace;
 
 /// Sensor emitting a timestamp every ~60 seconds.
 #[derive(Clone)]
@@ -33,7 +33,7 @@ impl HeartbeatSensor {
                     timestamp: Utc::now(),
                 };
                 let occurred_at = beat.timestamp;
-                info!("heartbeat");
+                trace!("heartbeat");
                 let _ = forward.send(Sensation::of_at(beat, occurred_at)).await;
             }
         });

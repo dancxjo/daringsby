@@ -6,6 +6,7 @@ Cargo.lock
 /tts
 /ollama
 /models
+/logs
 .env
 debug.log
 node_modules/

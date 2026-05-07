@@ -3,7 +3,7 @@ use chrono::Utc;
 use psyche::{ImageData, Sensation, Sensor, image_captured_at};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, watch};
-use tracing::{debug, info};
+use tracing::trace;
 
 /// Sensor that forwards webcam images to the psyche.
 #[derive(Clone)]
@@ -64,8 +64,7 @@ impl EyeSensor {
 #[async_trait]
 impl Sensor<ImageData> for EyeSensor {
     async fn sense(&self, image: ImageData) {
-        info!("eye sensed image");
-        debug!("eye sensed image");
+        trace!("eye sensed image");
         if let Some(buf) = &self.latest {
             *buf.lock().unwrap() = Some(image.clone());
         }

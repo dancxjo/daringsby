@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_stream::StreamExt;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 /// Provider backed by one or more Ollama servers.
 #[derive(Clone)]
@@ -73,8 +73,13 @@ impl Doer for OllamaProvider {
     async fn follow(&self, instruction: LlmInstruction) -> Result<String> {
         use ollama_rs::generation::images::Image;
         let LlmInstruction { command, images } = instruction;
-        info!(model = %self.model, %command, image_count = images.len(), "ollama follow");
-        debug!(%command, image_count = images.len(), "ollama follow request");
+        debug!(
+            model = %self.model,
+            command_len = command.len(),
+            image_count = images.len(),
+            "ollama follow"
+        );
+        trace!(%command, image_count = images.len(), "ollama follow request");
 
         let mut msg = ChatMessage::user(command);
         if !images.is_empty() {
@@ -86,7 +91,7 @@ impl Doer for OllamaProvider {
         }
         let req = ChatMessageRequest::new(self.model.clone(), vec![msg]);
         let res = self.client().send_chat_messages(req).await?;
-        debug!(response = %res.message.content, "ollama follow response");
+        trace!(response = %res.message.content, "ollama follow response");
         Ok(res.message.content)
     }
 }
@@ -109,8 +114,13 @@ impl Chatter for OllamaProvider {
             };
             msgs.push(m);
         }
-        info!(model = %self.model, history_len = history.len(), "ollama chat");
-        debug!(%prompt, ?history, "ollama chat request");
+        debug!(
+            model = %self.model,
+            history_len = history.len(),
+            prompt_len = prompt.len(),
+            "ollama chat"
+        );
+        trace!(%prompt, ?history, "ollama chat request");
         let req = ChatMessageRequest::new(self.model.clone(), msgs);
         let stream = self
             .client()
@@ -119,11 +129,11 @@ impl Chatter for OllamaProvider {
             .map(|res| match res {
                 Ok(r) => {
                     let chunk = r.message.content;
-                    debug!(%chunk, "ollama chat chunk");
+                    trace!(%chunk, "ollama chat chunk");
                     Ok(chunk)
                 }
                 Err(e) => {
-                    debug!(error = ?e, "ollama stream error");
+                    warn!(error = ?e, "ollama stream error");
                     Err(anyhow!("ollama stream error"))
                 }
             });
@@ -135,8 +145,8 @@ impl Chatter for OllamaProvider {
 impl Vectorizer for OllamaProvider {
     /// Request text embeddings from Ollama.
     async fn vectorize(&self, text: &str) -> Result<Vec<f32>> {
-        info!(model = %self.model, len = text.len(), "ollama vectorize");
-        debug!(?text, "ollama vectorize request");
+        debug!(model = %self.model, len = text.len(), "ollama vectorize");
+        trace!(?text, "ollama vectorize request");
         let mut attempts = 0;
         loop {
             attempts += 1;
@@ -153,7 +163,7 @@ impl Vectorizer for OllamaProvider {
                     return Err(anyhow!("timeout"));
                 }
                 Ok(Ok(res)) => {
-                    debug!(
+                    trace!(
                         embedding_len = res.embeddings.len(),
                         "ollama vectorize response"
                     );

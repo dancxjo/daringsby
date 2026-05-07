@@ -764,6 +764,7 @@ async fn neo4j_client_loads_graph_snapshot() {
                 .body_contains("WHERE EXISTS { MATCH (n)--(:GraphNode) }")
                 .body_contains("MATCH (anchor)--(neighbor:GraphNode)")
                 .body_contains("LIMIT $limit")
+                .body_contains("candidate_nodes[..$limit] AS nodes")
                 .body_contains("\"limit\":25");
             then.status(200).json_body(json!({
                 "results": [{

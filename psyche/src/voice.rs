@@ -7,7 +7,7 @@ use std::sync::{
 use tokio::sync::broadcast;
 use tokio::time::Duration;
 use tokio_stream::StreamExt;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 pub struct Voice {
     chatter: Arc<dyn Chatter>,
@@ -83,12 +83,12 @@ impl Voice {
     }
 
     pub async fn take_turn(&self, system_prompt: &str, history: &[Message]) -> anyhow::Result<()> {
-        info!("voice take_turn called");
+        trace!("voice take_turn called");
         if !self.ready.swap(false, Ordering::SeqCst) {
-            info!("voice not ready, returning early");
+            trace!("voice not ready, returning early");
             return Ok(());
         }
-        info!("voice permitted, generating speech");
+        debug!("voice permitted, generating speech");
         let extra = self.extra_prompt.lock().unwrap().take();
         let base = { self.prompt.lock().unwrap().build_prompt(system_prompt) };
         let prompt = if let Some(extra) = extra {
@@ -96,14 +96,14 @@ impl Voice {
         } else {
             base
         };
-        info!(%prompt, "voice prompt");
+        trace!(%prompt, "voice prompt");
         if let Ok(mut stream) = self.chatter.chat(&prompt, history).await {
             let mut full = String::new();
             let mut segmenter = SentenceSegmenter::new();
             while let Some(chunk_res) = stream.next().await {
                 match chunk_res {
                     Ok(chunk) => {
-                        debug!("chunk received: {}", chunk);
+                        trace!("chunk received: {}", chunk);
                         if !chunk.trim().is_empty() {
                             let _ = self.events.send(Event::StreamChunk(chunk.clone()));
                         }
@@ -121,12 +121,13 @@ impl Voice {
             for sentence in segmenter.finish() {
                 self.emit_sentence(&sentence).await;
             }
-            info!(%full, "voice full response");
+            debug!(response_len = full.len(), "voice full response");
+            trace!(%full, "voice full response body");
             let will = { self.will.lock().unwrap().clone() };
             if let Some(w) = will {
                 w.handle_llm_output(&full).await;
             } else {
-                debug!("Will not set; skipping output handling");
+                trace!("Will not set; skipping output handling");
             }
         }
         Ok(())

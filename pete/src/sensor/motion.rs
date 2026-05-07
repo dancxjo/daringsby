@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use psyche::{BrowserMotion, Sensation, Sensor, browser_motion_observed_at};
 use tokio::sync::mpsc;
-use tracing::{debug, info, warn};
+use tracing::{trace, warn};
 
 /// Sensor forwarding browser motion updates to the psyche.
 #[derive(Clone)]
@@ -20,8 +20,7 @@ impl MotionSensor {
 #[async_trait]
 impl Sensor<BrowserMotion> for MotionSensor {
     async fn sense(&self, mut motion: BrowserMotion) {
-        info!("motion sensor received browser motion");
-        debug!("motion sensor received browser motion");
+        trace!("motion sensor received browser motion");
         let occurred_at = browser_motion_observed_at(&motion).unwrap_or_else(Utc::now);
         if motion.observed_at.is_none() {
             motion.observed_at = Some(occurred_at.to_rfc3339());

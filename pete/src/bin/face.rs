@@ -33,7 +33,7 @@ use psyche::{
 use shared::WsPayload;
 use tokio::{io::AsyncWriteExt, net::UnixListener, sync::broadcast};
 use tower_http::services::ServeDir;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, trace, warn};
 
 #[derive(Parser)]
 #[command(
@@ -201,7 +201,7 @@ async fn handle_request(request: WsPayload, state: &FaceState, audio_lines: &mut
                 return;
             };
             if base64.trim().is_empty() {
-                debug!("blank image ignored");
+                trace!("blank image ignored");
                 return;
             }
 
@@ -249,13 +249,19 @@ async fn handle_request(request: WsPayload, state: &FaceState, audio_lines: &mut
             }
         }
         WsPayload::Text { text, at } => {
-            debug!(%text, "text received by face capture server");
+            trace!(
+                text_len = text.len(),
+                "text received by face capture server"
+            );
             let occurred_at = parse_ws_at(at.as_deref()).unwrap_or_else(Utc::now);
             let sensation = Sensation::heard_user_voice_at(text, occurred_at);
             state.graph.observe_sensation(&sensation).await;
         }
         WsPayload::Echo { text, at } => {
-            debug!(%text, "echo received by face capture server");
+            trace!(
+                text_len = text.len(),
+                "echo received by face capture server"
+            );
             let occurred_at = parse_ws_at(at.as_deref()).unwrap_or_else(Utc::now);
             let sensation = Sensation::heard_own_voice_at(text, occurred_at);
             state.graph.observe_sensation(&sensation).await;

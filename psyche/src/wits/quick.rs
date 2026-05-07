@@ -21,7 +21,7 @@ use lingproc::LlmInstruction;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
-use tracing::{debug, info};
+use tracing::{debug, trace};
 pub struct Quick {
     buffer: Arc<Mutex<VecDeque<Stimulus<String>>>>,
     bus: TopicBus,
@@ -127,7 +127,7 @@ impl Quick {
                 } else if let Some(beat) = payload.downcast_ref::<crate::Heartbeat>() {
                     Some(format!("I felt a heartbeat at {}", beat.timestamp))
                 } else {
-                    debug!("unrecognized sensation type: {:?}", payload.type_id());
+                    trace!("unrecognized sensation type: {:?}", payload.type_id());
                     Some("I sensed something happened".to_string())
                 }
             }
@@ -190,7 +190,7 @@ impl crate::traits::wit::Wit for Quick {
             }
             buf.drain(..).collect::<Vec<_>>()
         };
-        debug!(count = items.len(), "quick summarizing sensations");
+        trace!(count = items.len(), "quick summarizing sensations");
         let stimuli = items;
         let prompt_bullets: Vec<String> = stimuli.iter().map(Stimulus::prompt_list_item).collect();
         let fallback_bullets: Vec<String> = stimuli.iter().map(|s| s.what.clone()).collect();
@@ -218,8 +218,8 @@ impl crate::traits::wit::Wit for Quick {
             }
             Err(_) => fallback_bullets.join("; "),
         };
-        info!(count = stimuli.len(), out = %out, "quick emitting instant impression");
-        debug!(
+        debug!(count = stimuli.len(), summary = %out, "quick emitting instant impression");
+        trace!(
             "quick: emitting instant impression from {} sensations: \"{}\"",
             stimuli.len(),
             out

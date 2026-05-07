@@ -9,7 +9,7 @@ use open_clip_inference::VisionEmbedder;
 use pete::{EventBus, init_logging};
 use psyche::{GraphImageFrame, GraphSceneVectorization, Neo4jClient, QdrantClient};
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{debug, error, info};
+use tracing::{error, info, trace};
 
 const DEFAULT_SCENE_VEC_MODEL: &str = "RuteNL/MobileCLIP2-S3-OpenCLIP-ONNX";
 
@@ -84,7 +84,7 @@ async fn process_next_frame(
         .await
         .context("failed to load latest unprocessed image frame")?
     else {
-        debug!("no unprocessed image frames found");
+        trace!("no unprocessed image frames found");
         return Ok(());
     };
 

@@ -632,7 +632,7 @@ impl Psyche {
                         text: msg,
                         occurred_at,
                     }) => {
-                        debug!("heard user voice: {}", msg);
+                        trace!("heard user voice: {}", msg);
                         self.ear.hear_user_say_at(&msg, occurred_at).await;
                         self.buffer_user_speech_at(&msg, occurred_at).await;
                         if self.pending_turn.is_empty() && self.fallback_turn {
@@ -650,7 +650,7 @@ impl Psyche {
                         text: msg,
                         occurred_at,
                     }) => {
-                        debug!("Received HeardOwnVoice: '{}'", msg);
+                        trace!("received HeardOwnVoice: '{}'", msg);
                         self.ear.hear_self_say_at(&msg, occurred_at).await;
                         self.buffer_self_speech_at(&msg, occurred_at).await;
                         self.notify_observers(&Sensation::heard_own_voice_at(
@@ -661,7 +661,7 @@ impl Psyche {
                         continue;
                     }
                     Some(s @ Sensation::Of { .. }) => {
-                        debug!("received non-voice sensation while waiting");
+                        trace!("received non-voice sensation while waiting");
                         self.notify_observers(&s).await;
                         self.sensation_buffer.lock().await.push_back(Arc::new(s));
                         continue;
@@ -671,7 +671,7 @@ impl Psyche {
             }
 
             if let Some(extra) = self.pending_turn.take() {
-                debug!(%extra, "pending_turn being processed");
+                debug!(extra_len = extra.len(), "pending_turn being processed");
                 let (history, mut prompt) = {
                     let pb = self.prompt_builder.lock().await;
                     let hist = pb.get_conversation_tail(self.max_history).await;
@@ -680,18 +680,18 @@ impl Psyche {
                 };
                 prompt.push('\n');
                 prompt.push_str(&extra);
-                info!(%prompt, "conversation prompt");
+                trace!(%prompt, "conversation prompt");
                 self.is_speaking.store(true, Ordering::SeqCst);
                 if let Err(e) = self.voice.take_turn(&prompt, &history).await {
                     error!(?e, "voice chat failed");
                     break;
                 }
                 self.prompt_builder.lock().await.flush();
-                debug!("prompt context flushed");
+                trace!("prompt context flushed");
                 self.is_speaking.store(false, Ordering::SeqCst);
                 self.speak_policy.after_speech();
                 turns += 1;
-                debug!("turn {} complete", turns);
+                debug!(turns, "turn complete");
             } else {
                 trace!("no pending_turn available this tick");
                 let pending_turn = Arc::clone(&self.pending_turn);
@@ -782,9 +782,9 @@ impl Psyche {
     ) {
         loop {
             let name = wit.name();
-            debug!(%name, "tick start");
+            trace!(%name, "tick start");
             let imps = wit.tick_erased().await;
-            debug!(%name, count = imps.len(), "tick finished");
+            trace!(%name, count = imps.len(), "tick finished");
             let now = Utc::now();
             {
                 let mut map = ticks.lock().await;

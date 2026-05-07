@@ -10,7 +10,7 @@ use psyche::{
     SENSOR_GROUNDING_RULES, with_default_system_prompt,
 };
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
 #[derive(Parser)]
 #[command(
@@ -127,7 +127,7 @@ async fn process_next_window(
         .await
         .context("failed to load latest timeline window")?
     else {
-        debug!("no timeline windows found for combobulation");
+        trace!("no timeline windows found for combobulation");
         return Ok(());
     };
 

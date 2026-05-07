@@ -12,7 +12,7 @@ use psyche::{
     with_default_system_prompt,
 };
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, trace, warn};
 
 const DEFAULT_IMAGE_DESCRIPTION_MODEL: &str = "gemma3";
 
@@ -114,7 +114,7 @@ async fn process_next_frame(
         .await
         .context("failed to load latest unprocessed image frame")?
     else {
-        debug!("no undescribed image frames found");
+        trace!("no undescribed image frames found");
         return Ok(());
     };
 
@@ -164,7 +164,7 @@ impl ImageDescriptionProcessor {
         } else {
             let (base64, image_bytes) = normalized_image_base64(&frame.image.base64)
                 .with_context(|| format!("invalid base64 image payload for {}", frame.id))?;
-            debug!(
+            trace!(
                 image_id = %frame.id,
                 image_base64_len = base64.len(),
                 image_bytes,

@@ -1,4 +1,24 @@
 services:
+  nginx:
+    build:
+      context: ./docker/nginx
+    network_mode: host
+    environment:
+      PETE_TLS_PORT_3000: ${PETE_TLS_PORT_3000:-3443}
+      PETE_TLS_PORT_3001: ${PETE_TLS_PORT_3001:-3444}
+      PETE_UPSTREAM_3000: ${PETE_UPSTREAM_3000:-127.0.0.1:3000}
+      PETE_UPSTREAM_3001: ${PETE_UPSTREAM_3001:-127.0.0.1:3001}
+      PETE_TLS_CERT: /etc/nginx/self-signed/localhost.crt
+      PETE_TLS_KEY: /etc/nginx/self-signed/localhost.key
+      PETE_TLS_COMMON_NAME: ${PETE_TLS_COMMON_NAME:-localhost}
+    volumes:
+      - nginx_certs:/etc/nginx/self-signed
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   tts:
     image: ghcr.io/coqui-ai/tts
     ports:
@@ -31,3 +51,6 @@ services:
       - NEO4J_AUTH=neo4j/password
     volumes:
       - ./neo4j_data:/data
+
+volumes:
+  nginx_certs:

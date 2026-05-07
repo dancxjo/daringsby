@@ -10,7 +10,7 @@ use quick_xml::{Reader, events::Event};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
-use tracing::{debug, info};
+use tracing::{debug, trace};
 
 /// Decide Pete's next action or speech using a language model.
 ///
@@ -136,7 +136,8 @@ impl crate::wit::Wit for Will {
             command: crate::with_default_system_prompt(self.prompt.build_prompt(&input)),
             images: Vec::new(),
         };
-        info!(prompt = %llm_instruction.command, "will prompt");
+        debug!(prompt_len = llm_instruction.command.len(), "will prompt");
+        trace!(prompt = %llm_instruction.command, "will prompt body");
         let resp = match self.doer.follow(llm_instruction.clone()).await {
             Ok(r) => r,
             Err(e) => {
@@ -144,7 +145,8 @@ impl crate::wit::Wit for Will {
                 return Vec::new();
             }
         };
-        info!(response = %resp, "will response");
+        debug!(response_len = resp.len(), "will response");
+        trace!(response = %resp, "will response body");
         if let Some(tx) = &self.tx {
             if crate::debug::debug_enabled(Self::LABEL).await {
                 let _ = tx.send(WitReport {

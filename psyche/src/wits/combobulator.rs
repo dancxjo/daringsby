@@ -9,7 +9,7 @@ use lingproc::LlmInstruction;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::{Semaphore, broadcast};
-use tracing::info;
+use tracing::debug;
 
 #[cfg(not(test))]
 const CAPTION_COOLDOWN: Duration = Duration::from_secs(30);
@@ -120,7 +120,7 @@ impl Wit for Combobulator {
             let permit = self.llm_semaphore.clone().acquire_owned().await.unwrap();
             let start = Instant::now();
             let result = self.describe_image(&image).await;
-            info!("🖼️ image captioning took {:?}", start.elapsed());
+            debug!(elapsed=?start.elapsed(), "combobulator image captioned");
             drop(permit);
             if let Ok(caption) = result {
                 self.buffer.lock().unwrap().push(Impression::new(

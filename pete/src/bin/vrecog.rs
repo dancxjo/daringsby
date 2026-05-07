@@ -13,7 +13,7 @@ use psyche::{
     QdrantClient, parse_observed_at,
 };
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, trace, warn};
 
 const DEFAULT_VOICE_EMBEDDING_MODEL_PATH: &str = "models/voice/speaker_embedding_extractor.onnx";
 const ANALYSIS_SAMPLE_RATE: u32 = 16_000;
@@ -95,7 +95,7 @@ async fn process_next_clip(
         .await
         .context("failed to load latest unprocessed audio clip")?
     else {
-        debug!("no unprocessed audio clips found");
+        trace!("no unprocessed audio clips found");
         return Ok(());
     };
 

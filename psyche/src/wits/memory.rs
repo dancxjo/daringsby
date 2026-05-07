@@ -16,7 +16,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::{trace, warn};
 use uuid::Uuid;
 
 const MEMORY_COLLECTION: &str = "memories";
@@ -237,7 +237,7 @@ impl QdrantClient {
                 }),
             )
             .await?;
-        info!(target: "qdrant", ?headline, len = vector.len(), url = %self.url, "stored vector");
+        trace!(target: "qdrant", ?headline, len = vector.len(), url = %self.url, "stored vector");
         Ok(id)
     }
 
@@ -254,7 +254,7 @@ impl QdrantClient {
                 }),
             )
             .await?;
-        info!(target: "qdrant", image_id, len = vector.len(), url = %self.url, "stored image vector");
+        trace!(target: "qdrant", image_id, len = vector.len(), url = %self.url, "stored image vector");
         Ok(id)
     }
 
@@ -313,7 +313,7 @@ impl QdrantClient {
                 }),
             )
             .await?;
-        info!(target: "qdrant", image_id, len = vector.len(), url = %self.url, "stored image description vector");
+        trace!(target: "qdrant", image_id, len = vector.len(), url = %self.url, "stored image description vector");
         Ok(id)
     }
 
@@ -339,7 +339,7 @@ impl QdrantClient {
                 }),
             )
             .await?;
-        info!(target: "qdrant", image_id, len = vector.len(), url = %self.url, "stored scene vector");
+        trace!(target: "qdrant", image_id, len = vector.len(), url = %self.url, "stored scene vector");
         Ok(id)
     }
 
@@ -364,7 +364,7 @@ impl QdrantClient {
                 }),
             )
             .await?;
-        info!(target: "qdrant", geoloc_id, len = vector.len(), url = %self.url, "stored geolocation vector");
+        trace!(target: "qdrant", geoloc_id, len = vector.len(), url = %self.url, "stored geolocation vector");
         Ok(id)
     }
 
@@ -405,7 +405,7 @@ impl QdrantClient {
                 }),
             )
             .await?;
-        info!(target: "qdrant", len = vector.len(), url = %self.url, "stored face vector");
+        trace!(target: "qdrant", len = vector.len(), url = %self.url, "stored face vector");
         Ok(id)
     }
 
@@ -445,7 +445,7 @@ impl QdrantClient {
                 }),
             )
             .await?;
-        info!(target: "qdrant", len = vector.len(), url = %self.url, "stored voice vector");
+        trace!(target: "qdrant", len = vector.len(), url = %self.url, "stored voice vector");
         Ok(id)
     }
 
@@ -1710,7 +1710,8 @@ impl Neo4jClient {
                     UNWIND anchors AS anchor
                     MATCH (anchor)--(neighbor:GraphNode)
                     WITH anchors, collect(DISTINCT neighbor) AS neighbors
-                    WITH anchors + [neighbor IN neighbors WHERE NOT neighbor IN anchors] AS nodes
+                    WITH anchors + [neighbor IN neighbors WHERE NOT neighbor IN anchors] AS candidate_nodes
+                    WITH candidate_nodes[..$limit] AS nodes
                     UNWIND nodes AS n
                     OPTIONAL MATCH (n)-[r]-(m:GraphNode)
                     WHERE m IN nodes
@@ -3450,7 +3451,7 @@ impl Neo4jClient {
             "committing graph records",
         )
         .await?;
-        info!(
+        trace!(
             target: "neo4j",
             uri = %self.uri,
             endpoint = %endpoint,
@@ -4704,7 +4705,7 @@ pub struct BasicMemory {
 #[async_trait]
 impl Memory for BasicMemory {
     async fn store(&self, impression: &Impression<Value>) -> Result<()> {
-        info!(summary = %impression.summary, "memory store");
+        trace!(summary = %impression.summary, "memory store");
         let stimulus_targets = impression
             .stimuli
             .iter()

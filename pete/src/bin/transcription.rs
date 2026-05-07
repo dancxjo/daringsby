@@ -7,7 +7,7 @@ use dotenvy::dotenv;
 use pete::{AsrService, EventBus, SegmentMessage, WordTiming, init_logging};
 use psyche::{GraphAudioClip, GraphSpeechSegment, Neo4jClient, parse_observed_at};
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{debug, error, info};
+use tracing::{error, info, trace};
 
 #[derive(Parser)]
 #[command(
@@ -62,7 +62,7 @@ async fn transcribe_next_clip(graph: &Neo4jClient, asr: &AsrService) -> anyhow::
         .await
         .context("failed to load latest untranscribed audio clip")?
     else {
-        debug!("no untranscribed audio clips found");
+        trace!("no untranscribed audio clips found");
         return Ok(());
     };
 

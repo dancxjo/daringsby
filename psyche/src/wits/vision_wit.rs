@@ -9,7 +9,7 @@ use lingproc::LlmInstruction;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::{Semaphore, broadcast};
-use tracing::{debug, info};
+use tracing::debug;
 
 #[cfg(not(test))]
 const CAPTION_COOLDOWN: Duration = Duration::from_secs(10);
@@ -115,7 +115,7 @@ impl Wit for VisionWit {
             }
         };
         let how = caption.trim().to_string();
-        info!(elapsed=?start.elapsed(), "image captioned");
+        debug!(elapsed=?start.elapsed(), caption_len = how.len(), "image captioned");
         drop(permit);
         if let Some(tx) = &self.tx {
             if crate::debug::debug_enabled(Self::LABEL).await {

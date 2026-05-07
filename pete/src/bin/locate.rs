@@ -6,7 +6,7 @@ use dotenvy::dotenv;
 use pete::{EventBus, init_logging};
 use psyche::{GraphGeolocation, Neo4jClient, QdrantClient, geoloc_vector};
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{debug, error, info};
+use tracing::{error, info, trace};
 
 const GEOLOCATION_MODEL: &str = "earth-unit-sphere/v1";
 
@@ -73,7 +73,7 @@ async fn process_next_geolocation(
         .await
         .context("failed to load latest unprocessed geolocation")?
     else {
-        debug!("no unprocessed geolocations found");
+        trace!("no unprocessed geolocations found");
         return Ok(());
     };
 

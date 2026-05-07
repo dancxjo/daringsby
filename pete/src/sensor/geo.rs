@@ -5,7 +5,7 @@ use psyche::{
     geoloc_observed_at, geoloc_vector,
 };
 use tokio::sync::mpsc;
-use tracing::{debug, info, warn};
+use tracing::{trace, warn};
 
 /// Sensor forwarding geolocation updates to the psyche.
 #[derive(Clone)]
@@ -39,8 +39,7 @@ impl GeoSensor {
 #[async_trait]
 impl Sensor<GeoLoc> for GeoSensor {
     async fn sense(&self, mut loc: GeoLoc) {
-        info!("geo sensor received location");
-        debug!("geo sensor received location");
+        trace!("geo sensor received location");
         let occurred_at = geoloc_observed_at(&loc).unwrap_or_else(Utc::now);
         if loc.observed_at.is_none() {
             loc.observed_at = Some(occurred_at.to_rfc3339());

@@ -13,7 +13,7 @@ use reqwest::Url;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, trace, warn};
 
 #[derive(Parser)]
 #[command(
@@ -117,7 +117,7 @@ async fn main() -> Result<()> {
 async fn sweep_once(graph: &Neo4jHttp, cli: &Cli) -> Result<()> {
     let candidates = graph.fetch_candidates(cli.batch_size.max(1)).await?;
     if candidates.is_empty() {
-        debug!("no unchecked audio clips found");
+        trace!("no unchecked audio clips found");
         return Ok(());
     }
 

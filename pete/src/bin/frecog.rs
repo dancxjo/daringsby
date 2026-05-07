@@ -9,7 +9,7 @@ use psyche::{
     image_content_id,
 };
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{debug, error, info};
+use tracing::{error, info, trace};
 
 #[derive(Parser)]
 #[command(
@@ -85,7 +85,7 @@ async fn process_next_frame(
         .await
         .context("failed to load latest unprocessed image frame")?
     else {
-        debug!("no unprocessed image frames found");
+        trace!("no unprocessed image frames found");
         return Ok(());
     };
 

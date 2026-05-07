@@ -12,7 +12,7 @@ use std::sync::{
 #[cfg(feature = "ear")]
 use tokio::sync::mpsc;
 #[cfg(feature = "ear")]
-use tracing::{debug, info, warn};
+use tracing::{info, trace, warn};
 
 #[cfg(feature = "ear")]
 /// [`Ear`] implementation that forwards heard text through a channel.
@@ -64,7 +64,6 @@ impl Ear for ChannelEar {
     async fn hear_self_say_at(&self, text: &str, occurred_at: DateTime<Utc>) {
         self.speaking.store(false, Ordering::SeqCst);
         info!(%text, "ear heard self say");
-        debug!("ear heard self say: {}", text);
         self.voice.permit(None);
         self.queue_sensation(
             Sensation::heard_own_voice_at(text.to_string(), occurred_at),
@@ -78,7 +77,7 @@ impl Ear for ChannelEar {
 
     async fn hear_user_say_at(&self, text: &str, occurred_at: DateTime<Utc>) {
         info!(%text, "ear heard user say");
-        debug!("ear heard user say: {}", text);
+        trace!("ear heard user say queued");
         self.voice.permit(None);
         self.queue_sensation(
             Sensation::heard_user_voice_at(text.to_string(), occurred_at),

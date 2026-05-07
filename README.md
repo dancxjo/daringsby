@@ -145,6 +145,21 @@ Events from Pete include speech, emotion changes, wit reports and conversation u
 { "type": "Emote", "data": "😊" }
 ```
 
+For local HTTPS without managing certificates by hand, start the nginx TLS
+wrapper from Docker Compose:
+
+```sh
+docker compose up nginx
+```
+
+It generates and persists a self-signed localhost certificate, then proxies:
+
+* [`https://localhost:3443/`](https://localhost:3443/) -> `http://127.0.0.1:3000/`
+* [`https://localhost:3444/`](https://localhost:3444/) -> `http://127.0.0.1:3001/`
+
+Override `PETE_TLS_PORT_3000`, `PETE_TLS_PORT_3001`, `PETE_UPSTREAM_3000`, or
+`PETE_UPSTREAM_3001` in `.env` if you want different ports.
+
 ### Psychic Graph Client
 
 Run the graph browser beside the face capture server:
