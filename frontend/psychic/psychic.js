@@ -1984,6 +1984,10 @@
     if (nodeKind(node) === "FaceInstance") {
       return "Instance of a face";
     }
+    if (hasNodeLabel(node, "Cluster")) {
+      const kind = nodeKind(node);
+      if (kind === "Face" || kind === "Voice") return kind;
+    }
     const text =
       props.summary ||
       props.text ||

@@ -2740,7 +2740,8 @@ impl Neo4jClient {
                         head([a IN artifacts WHERE a:JsonSensation | a]) AS json_sensation,
                         head([a IN artifacts WHERE a:Transcription | a]) AS transcription,
                         attached_transcript,
-                        image_description
+                        image_description,
+                        coalesce(n.how, n.summary, n.text, "") AS impression_text
                     WITH anchor, anchor_at, n, occurred_at,
                     coalesce(
                         audio.id,
@@ -2755,6 +2756,7 @@ impl Neo4jClient {
                         n.id
                     ) AS event_id,
                     CASE
+                        WHEN impression_text <> "" THEN impression_text
                         WHEN audio IS NOT NULL THEN
                             CASE
                                 WHEN attached_transcript IS NOT NULL AND attached_transcript <> "" THEN
@@ -2909,7 +2911,8 @@ impl Neo4jClient {
                         head([a IN artifacts WHERE a:JsonSensation | a]) AS json_sensation,
                         head([a IN artifacts WHERE a:Transcription | a]) AS transcription,
                         attached_transcript,
-                        image_description
+                        image_description,
+                        coalesce(n.how, n.summary, n.text, "") AS impression_text
                     WITH run, n, occurred_at, source_index,
                     coalesce(
                         audio.id,
@@ -2924,6 +2927,7 @@ impl Neo4jClient {
                         n.id
                     ) AS event_id,
                     CASE
+                        WHEN impression_text <> "" THEN impression_text
                         WHEN audio IS NOT NULL THEN
                             CASE
                                 WHEN attached_transcript IS NOT NULL AND attached_transcript <> "" THEN

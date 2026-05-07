@@ -254,31 +254,32 @@ fn combobulation_prompt(window: &GraphTimelineWindow, window_seconds: u64) -> St
         "The following entries are a chronological timeline of your sensations during the last {window_seconds} seconds. Each entry is already a compact summary of one source sensation, such as hearing, seeing, feeling, locating, or thinking a combobulation thought.\n\
          Treat these sensations as fragmentary, possibly contradictory, fleeting evidence about the actual situation, not as the topic to describe. Try to infer what is going on in the real world from those fragments. Some entries may be your own prior combobulation summaries looping back in as sensations; treat those as provisional, possibly stale self-context, not as fresh external evidence.\n\
          {SENSOR_GROUNDING_RULES} What is going on right now? Summarize your current awareness in one or two grounded first-person sentences. Keep it compact: compress repeated low-level records into the real-world gist. Do not say that you are observing a timeline, sensations, recordings, entries, a previous summary, or a shift in conversation. Do not mention graph ids, hashes, timestamps, edges, or per-detection details unless they are directly relevant.\n\n\
-         Sensation timeline:\n{timeline}"
+         Timeline:\n{timeline}"
     ))
 }
 
 fn timeline_prompt(window: &GraphTimelineWindow) -> String {
-    window
+    let from = window
+        .items
+        .first()
+        .map(|item| item.occurred_at.as_str())
+        .unwrap_or(window.anchor_at.as_str());
+    let entries = window
         .items
         .iter()
         .map(timeline_prompt_item)
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    format!(
+        "Impression timeline {} to {}\n{}",
+        from, window.anchor_at, entries
+    )
 }
 
 fn timeline_prompt_item(item: &GraphTimelineItem) -> String {
-    let labels = item
-        .labels
-        .iter()
-        .filter(|label| label.as_str() != "GraphNode")
-        .cloned()
-        .collect::<Vec<_>>()
-        .join(",");
     format!(
-        "- [{}] {} {}",
+        "[{}] {}",
         item.occurred_at,
-        if labels.is_empty() { "Event" } else { &labels },
         truncate_for_prompt(&item.text, 500)
     )
 }
@@ -308,7 +309,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn timeline_prompt_item_omits_graphnode_label() {
+    fn timeline_prompt_item_matches_timeline_binary_entry_format() {
         let item = GraphTimelineItem {
             id: "sensation:audio:1".into(),
             event_id: "audio:1".into(),
@@ -319,7 +320,7 @@ mod tests {
 
         assert_eq!(
             timeline_prompt_item(&item),
-            "- [2026-05-05T12:34:56Z] Sensation audio sensation; transcript: hello"
+            "[2026-05-05T12:34:56Z] audio sensation; transcript: hello"
         );
     }
 
@@ -351,14 +352,17 @@ mod tests {
         assert!(prompt.contains("Do not say that you are observing a timeline"));
         assert!(prompt.contains("Keep it compact"));
         assert!(prompt.contains("per-detection details"));
-        assert!(prompt.contains("Sensation audio sensation; transcript: hello"));
+        assert!(prompt.contains("Timeline:"));
+        assert!(prompt.contains(
+            "Impression timeline 2026-05-05T12:34:56Z to 2026-05-05T12:34:56Z\n[2026-05-05T12:34:56Z] audio sensation; transcript: hello"
+        ));
     }
 
     #[test]
-    fn timeline_prompt_keeps_one_line_per_sensation() {
+    fn timeline_prompt_matches_timeline_binary_header_and_entries() {
         let window = GraphTimelineWindow {
             anchor_id: "sensation:audio:2".into(),
-            anchor_at: "2026-05-05T12:34:56Z".into(),
+            anchor_at: "2026-05-05T12:34:57Z".into(),
             items: vec![
                 GraphTimelineItem {
                     id: "sensation:audio:1".into(),
@@ -379,7 +383,7 @@ mod tests {
 
         assert_eq!(
             timeline_prompt(&window),
-            "- [2026-05-05T12:34:56Z] Sensation audio sensation; transcript: hello\n- [2026-05-05T12:34:57Z] Sensation combobulation sensation; I may be hearing a greeting."
+            "Impression timeline 2026-05-05T12:34:56Z to 2026-05-05T12:34:57Z\n[2026-05-05T12:34:56Z] audio sensation; transcript: hello\n[2026-05-05T12:34:57Z] combobulation sensation; I may be hearing a greeting."
         );
     }
 }
