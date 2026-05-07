@@ -166,7 +166,7 @@ async fn stores_audio_sensation_without_transcript_as_something_heard() {
     observer.observe_sensation(&Sensation::of(audio)).await;
 
     let stored = graph.0.lock().unwrap();
-    assert_eq!(stored[0]["nodes"][0]["how"], "I hear something.");
+    assert_eq!(stored[0]["nodes"][0]["how"], "I'm listening.");
 }
 
 #[tokio::test]
@@ -217,7 +217,7 @@ async fn merges_duplicate_image_sensations_once() {
     let stored = graph.0.lock().unwrap();
     assert_eq!(stored.len(), 1);
     assert_eq!(stored[0]["nodes"][1]["id"], expected_id);
-    assert_eq!(stored[0]["nodes"][0]["how"], "I see something.");
+    assert_eq!(stored[0]["nodes"][0]["how"], "I'm looking.");
     assert_eq!(stored[0]["nodes"][1]["base64"], "zzz");
     assert_eq!(stored[0]["nodes"][1]["captured_at"], "2026-05-05T12:34:56Z");
     assert_eq!(stored[0]["relationships"][0]["type"], "OBSERVED");

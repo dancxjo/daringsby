@@ -1,4 +1,10 @@
-use std::{fs, net::SocketAddr, path::Path as FsPath, sync::Arc, time::Duration};
+use std::{
+    fs,
+    net::SocketAddr,
+    path::{Path as FsPath, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use axum::{
     Json, Router,
@@ -8,18 +14,25 @@ use axum::{
     },
     http::{StatusCode, header},
     response::{Html, IntoResponse},
-    routing::{get, get_service},
+    routing::{get, get_service, post},
 };
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::Parser;
 use dotenvy::dotenv;
-use pete::{EventBus, init_logging};
+use pete::{EventBus, init_logging, movie};
 use psyche::{GraphSnapshot, GraphSpeechSegmentAudio, Neo4jClient};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 use tokio::time::interval;
 use tower_http::services::ServeDir;
 use tracing::{error, info, warn};
+
+const DEFAULT_MOVIE_DIR: &str = "movies";
+const SPEECH_SEGMENT_PREROLL_MS: u32 = 40;
+const SPEECH_SEGMENT_POSTROLL_MS: u32 = 90;
+const SPEECH_SEGMENT_EDGE_SEARCH_MS: u32 = 12;
+const SPEECH_SEGMENT_FADE_MS: u32 = 6;
 
 #[derive(Parser)]
 #[command(
@@ -46,6 +59,9 @@ struct Cli {
     /// Snapshot refresh interval for WebSocket clients.
     #[arg(long, env = "PSYCHIC_REFRESH_MS", default_value_t = 1000)]
     refresh_ms: u64,
+    /// Maximum duration the browser may request for generated movies.
+    #[arg(long, env = "PSYCHIC_MOVIE_MAX_MS", default_value_t = 180_000)]
+    movie_max_ms: i64,
 }
 
 #[derive(Clone)]
@@ -53,6 +69,9 @@ struct PsychicState {
     graph: Arc<Neo4jClient>,
     graph_limit: usize,
     refresh: Duration,
+    movie_dir: PathBuf,
+    movie_max_ms: i64,
+    movie_render_lock: Arc<Mutex<()>>,
 }
 
 #[derive(Serialize)]
@@ -71,6 +90,12 @@ struct MovieAsset {
     duration_ms: i64,
 }
 
+#[derive(Deserialize)]
+struct MovieRequest {
+    from: String,
+    to: String,
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
     let (bus, _user_rx) = EventBus::new();
@@ -86,6 +111,9 @@ async fn main() -> anyhow::Result<()> {
         )),
         graph_limit: cli.graph_limit,
         refresh: Duration::from_millis(cli.refresh_ms.max(250)),
+        movie_dir: PathBuf::from(DEFAULT_MOVIE_DIR),
+        movie_max_ms: cli.movie_max_ms.max(1000),
+        movie_render_lock: Arc::new(Mutex::new(())),
     };
     let addr: SocketAddr = cli.addr.parse()?;
     let app = app(state);
@@ -101,6 +129,7 @@ fn app(state: PsychicState) -> Router {
         .route("/", get(index))
         .route("/graph", get(graph_snapshot))
         .route("/movie-index", get(movie_index))
+        .route("/movie", post(request_movie))
         .route("/graph/node/{id}", get(graph_node_details))
         .route(
             "/graph/speech-segment/{id}/audio.wav",
@@ -109,7 +138,7 @@ fn app(state: PsychicState) -> Router {
         .route("/ws", get(ws_handler))
         .nest_service(
             "/movies",
-            get_service(ServeDir::new("movies"))
+            get_service(ServeDir::new(DEFAULT_MOVIE_DIR))
                 .handle_error(|_| async { StatusCode::INTERNAL_SERVER_ERROR }),
         )
         .fallback_service(
@@ -140,7 +169,7 @@ async fn graph_snapshot(State(state): State<PsychicState>) -> impl IntoResponse 
 }
 
 async fn movie_index() -> impl IntoResponse {
-    match movie_assets(FsPath::new("movies")) {
+    match movie_assets(FsPath::new(DEFAULT_MOVIE_DIR)) {
         Ok(assets) => Json(assets).into_response(),
         Err(err) => {
             error!(%err, "failed to index movies");
@@ -153,6 +182,49 @@ async fn movie_index() -> impl IntoResponse {
                 .into_response()
         }
     }
+}
+
+async fn request_movie(
+    State(state): State<PsychicState>,
+    Json(request): Json<MovieRequest>,
+) -> impl IntoResponse {
+    match provide_movie(&state, request).await {
+        Ok(asset) => Json(asset).into_response(),
+        Err(err) => {
+            warn!(%err, "failed to provide requested movie");
+            (
+                StatusCode::BAD_REQUEST,
+                Json(PsychicMessage::Error {
+                    message: err.to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn provide_movie(state: &PsychicState, request: MovieRequest) -> anyhow::Result<MovieAsset> {
+    let from = movie::parse_time(&request.from)?;
+    let to = movie::parse_time(&request.to)?;
+    anyhow::ensure!(to > from, "movie request must have a positive duration");
+    let duration_ms = (to - from).num_milliseconds();
+    anyhow::ensure!(
+        duration_ms <= state.movie_max_ms,
+        "movie request duration {duration_ms}ms exceeds the {}ms limit",
+        state.movie_max_ms
+    );
+
+    let out = state.movie_dir.join(format!(
+        "pete-{}-{}.webm",
+        movie_time_for_path(from),
+        movie_time_for_path(to)
+    ));
+    let work_dir = movie::default_work_dir(&out);
+    let _guard = state.movie_render_lock.lock().await;
+    if !out.exists() {
+        movie::render_graph_movie(&state.graph, out.clone(), work_dir, from, to).await?;
+    }
+    movie_asset_for_path(&state.movie_dir, &out)
 }
 
 fn movie_assets(root: &FsPath) -> anyhow::Result<Vec<MovieAsset>> {
@@ -173,23 +245,9 @@ fn movie_assets(root: &FsPath) -> anyhow::Result<Vec<MovieAsset>> {
             continue;
         };
         let captions_path = path.with_extension("vtt");
-        let file_name = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or_default();
-        let captions = captions_path
-            .exists()
-            .then(|| {
-                captions_path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .unwrap_or_default()
-                    .to_string()
-            })
-            .filter(|name| !name.is_empty())
-            .map(|name| format!("/movies/{name}"));
+        let captions = captions_url(&captions_path);
         assets.push(MovieAsset {
-            src: format!("/movies/{file_name}"),
+            src: movie_url(&path),
             captions,
             from: from.to_rfc3339(),
             to: to.to_rfc3339(),
@@ -200,10 +258,54 @@ fn movie_assets(root: &FsPath) -> anyhow::Result<Vec<MovieAsset>> {
     Ok(assets)
 }
 
+fn movie_asset_for_path(root: &FsPath, path: &FsPath) -> anyhow::Result<MovieAsset> {
+    anyhow::ensure!(
+        path.starts_with(root),
+        "movie path is outside movie directory"
+    );
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .ok_or_else(|| anyhow::anyhow!("movie path is missing a file stem"))?;
+    let (from, to) = movie_times_from_stem(stem)
+        .ok_or_else(|| anyhow::anyhow!("movie path has an invalid timestamp range"))?;
+    Ok(MovieAsset {
+        src: movie_url(path),
+        captions: captions_url(&path.with_extension("vtt")),
+        from: from.to_rfc3339(),
+        to: to.to_rfc3339(),
+        duration_ms: (to - from).num_milliseconds(),
+    })
+}
+
+fn movie_url(path: &FsPath) -> String {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    format!("/movies/{file_name}")
+}
+
+fn captions_url(path: &FsPath) -> Option<String> {
+    path.exists()
+        .then(|| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+                .to_string()
+        })
+        .filter(|name| !name.is_empty())
+        .map(|name| format!("/movies/{name}"))
+}
+
 fn movie_times_from_stem(stem: &str) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
     let rest = stem.strip_prefix("pete-")?;
     let (from, to) = rest.split_once('-')?;
     Some((parse_movie_time(from)?, parse_movie_time(to)?))
+}
+
+fn movie_time_for_path(value: DateTime<Utc>) -> String {
+    value.format("%Y%m%dT%H%M%SZ").to_string()
 }
 
 fn parse_movie_time(value: &str) -> Option<DateTime<Utc>> {
@@ -241,7 +343,8 @@ async fn speech_segment_audio(
     Path(id): Path<String>,
     State(state): State<PsychicState>,
 ) -> impl IntoResponse {
-    match state.graph.graph_speech_segment_audio(&id).await {
+    let lookup_id = decoded_path_id(&id);
+    match load_speech_segment_audio(&state, &id, lookup_id.as_deref()).await {
         Ok(Some(segment)) => match speech_segment_wav(&segment) {
             Ok(wav) => ([(header::CONTENT_TYPE, "audio/wav")], wav).into_response(),
             Err(err) => {
@@ -273,6 +376,28 @@ async fn speech_segment_audio(
                 .into_response()
         }
     }
+}
+
+async fn load_speech_segment_audio(
+    state: &PsychicState,
+    id: &str,
+    decoded_id: Option<&str>,
+) -> anyhow::Result<Option<GraphSpeechSegmentAudio>> {
+    let segment = state.graph.graph_speech_segment_audio(id).await?;
+    if segment.is_some() {
+        return Ok(segment);
+    }
+    let Some(decoded_id) = decoded_id.filter(|decoded_id| *decoded_id != id) else {
+        return Ok(None);
+    };
+    state.graph.graph_speech_segment_audio(decoded_id).await
+}
+
+fn decoded_path_id(id: &str) -> Option<String> {
+    urlencoding::decode(id)
+        .ok()
+        .map(|decoded| decoded.into_owned())
+        .filter(|decoded| decoded != id)
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<PsychicState>) -> impl IntoResponse {
@@ -335,16 +460,25 @@ fn speech_segment_wav(segment: &GraphSpeechSegmentAudio) -> anyhow::Result<Vec<u
     let frame_size = usize::from(source.channels).saturating_mul(2);
     anyhow::ensure!(frame_size > 0, "source audio has no channels");
     let frame_count = source.bytes.len() / frame_size;
-    let start_frame = ms_to_frame(segment.start_ms, source.sample_rate).min(frame_count);
-    let end_frame = ms_to_frame(segment.end_ms, source.sample_rate).min(frame_count);
+    let requested_start = segment.start_ms.saturating_sub(SPEECH_SEGMENT_PREROLL_MS);
+    let requested_end = segment.end_ms.saturating_add(SPEECH_SEGMENT_POSTROLL_MS);
+    let start_frame = ms_to_frame(requested_start, source.sample_rate).min(frame_count);
+    let end_frame = ms_to_frame(requested_end, source.sample_rate).min(frame_count);
     anyhow::ensure!(
         end_frame > start_frame,
         "speech segment falls outside source audio"
     );
+    let search_frames = ms_to_frame(SPEECH_SEGMENT_EDGE_SEARCH_MS, source.sample_rate);
+    let start_frame = quiet_frame_near(&source.bytes, source.channels, start_frame, search_frames);
+    let end_frame = quiet_frame_near(&source.bytes, source.channels, end_frame, search_frames);
+    let end_frame = end_frame.max(start_frame + 1).min(frame_count);
     let start_byte = start_frame * frame_size;
     let end_byte = end_frame * frame_size;
+    let mut pcm = source.bytes[start_byte..end_byte].to_vec();
+    let fade_frames = ms_to_frame(SPEECH_SEGMENT_FADE_MS, source.sample_rate);
+    apply_edge_fades(&mut pcm, source.channels, fade_frames);
     Ok(encode_wav_pcm_s16le(
-        &source.bytes[start_byte..end_byte],
+        &pcm,
         source.sample_rate,
         source.channels,
     ))
@@ -443,6 +577,77 @@ fn ms_to_frame(ms: u32, sample_rate: u32) -> usize {
     (u128::from(ms).saturating_mul(u128::from(sample_rate)) / 1000) as usize
 }
 
+fn quiet_frame_near(pcm: &[u8], channels: u16, target_frame: usize, radius_frames: usize) -> usize {
+    let frame_size = usize::from(channels).saturating_mul(2);
+    if frame_size == 0 {
+        return target_frame;
+    }
+    let frame_count = pcm.len() / frame_size;
+    if frame_count == 0 {
+        return 0;
+    }
+    let target_frame = target_frame.min(frame_count);
+    let start = target_frame.saturating_sub(radius_frames);
+    let end = target_frame.saturating_add(radius_frames).min(frame_count);
+    (start..=end)
+        .filter(|frame| is_zero_crossing_boundary(pcm, channels, *frame))
+        .min_by_key(|frame| frame.abs_diff(target_frame))
+        .unwrap_or(target_frame)
+}
+
+fn is_zero_crossing_boundary(pcm: &[u8], channels: u16, frame: usize) -> bool {
+    let frame_size = usize::from(channels).saturating_mul(2);
+    let frame_count = pcm.len() / frame_size;
+    if frame == 0 || frame >= frame_count {
+        return true;
+    }
+    let previous = frame_signal(pcm, channels, frame - 1);
+    let current = frame_signal(pcm, channels, frame);
+    previous == 0 || current == 0 || previous.signum() != current.signum()
+}
+
+fn frame_signal(pcm: &[u8], channels: u16, frame: usize) -> i32 {
+    let frame_size = usize::from(channels).saturating_mul(2);
+    let start = frame.saturating_mul(frame_size);
+    let end = start.saturating_add(frame_size).min(pcm.len());
+    pcm[start..end]
+        .chunks_exact(2)
+        .map(|sample| i32::from(i16::from_le_bytes([sample[0], sample[1]])))
+        .sum()
+}
+
+fn apply_edge_fades(pcm: &mut [u8], channels: u16, fade_frames: usize) {
+    let frame_size = usize::from(channels).saturating_mul(2);
+    if frame_size == 0 || fade_frames == 0 {
+        return;
+    }
+    let frame_count = pcm.len() / frame_size;
+    let fade_frames = fade_frames.min(frame_count / 2);
+    if fade_frames == 0 {
+        return;
+    }
+    for frame in 0..fade_frames {
+        let fade_in = frame as f32 / fade_frames as f32;
+        scale_frame(pcm, frame_size, frame, fade_in);
+
+        let end_frame = frame_count - frame - 1;
+        let fade_out = frame as f32 / fade_frames as f32;
+        scale_frame(pcm, frame_size, end_frame, fade_out);
+    }
+}
+
+fn scale_frame(pcm: &mut [u8], frame_size: usize, frame: usize, gain: f32) {
+    let start = frame.saturating_mul(frame_size);
+    let end = start.saturating_add(frame_size).min(pcm.len());
+    for sample in pcm[start..end].chunks_exact_mut(2) {
+        let value = i16::from_le_bytes([sample[0], sample[1]]) as f32;
+        let scaled = (value * gain)
+            .round()
+            .clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+        sample.copy_from_slice(&scaled.to_le_bytes());
+    }
+}
+
 fn encode_wav_pcm_s16le(pcm: &[u8], sample_rate: u32, channels: u16) -> Vec<u8> {
     let mut wav = Vec::with_capacity(44 + pcm.len());
     wav.extend_from_slice(b"RIFF");
@@ -472,7 +677,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn speech_segment_wav_slices_raw_pcm_by_timing() {
+    fn speech_segment_wav_keeps_context_around_raw_pcm_timing() {
         let pcm = [1i16, 2, 3, 4]
             .into_iter()
             .flat_map(i16::to_le_bytes)
@@ -493,12 +698,12 @@ mod tests {
 
         assert_eq!(&wav[0..4], b"RIFF");
         assert_eq!(&wav[8..12], b"WAVE");
-        assert_eq!(u32::from_le_bytes(wav[40..44].try_into().unwrap()), 4);
-        assert_eq!(&wav[44..], &pcm[2..6]);
+        assert_eq!(u32::from_le_bytes(wav[40..44].try_into().unwrap()), 8);
+        assert_eq!(pcm_i16_samples(&wav[44..]), vec![0, 1, 2, 0]);
     }
 
     #[test]
-    fn speech_segment_wav_slices_wav_sources() {
+    fn speech_segment_wav_keeps_context_around_wav_sources() {
         let pcm = [1i16, 2, 3, 4]
             .into_iter()
             .flat_map(i16::to_le_bytes)
@@ -518,7 +723,35 @@ mod tests {
 
         let wav = speech_segment_wav(&segment).unwrap();
 
-        assert_eq!(u32::from_le_bytes(wav[40..44].try_into().unwrap()), 2);
-        assert_eq!(&wav[44..], &pcm[4..6]);
+        assert_eq!(u32::from_le_bytes(wav[40..44].try_into().unwrap()), 8);
+        assert_eq!(pcm_i16_samples(&wav[44..]), vec![0, 1, 2, 0]);
+    }
+
+    #[test]
+    fn quiet_frame_near_prefers_zero_crossing_boundaries() {
+        let pcm = [10i16, 10, 10, -10, -10]
+            .into_iter()
+            .flat_map(i16::to_le_bytes)
+            .collect::<Vec<_>>();
+
+        let frame = quiet_frame_near(&pcm, 1, 2, 2);
+
+        assert_eq!(frame, 3);
+    }
+
+    #[test]
+    fn decoded_path_id_accepts_encoded_segment_ids() {
+        let id = "transcription%3Asha256%3Aabc%3Asegment%3A3";
+
+        assert_eq!(
+            decoded_path_id(id).as_deref(),
+            Some("transcription:sha256:abc:segment:3")
+        );
+    }
+
+    fn pcm_i16_samples(pcm: &[u8]) -> Vec<i16> {
+        pcm.chunks_exact(2)
+            .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect()
     }
 }

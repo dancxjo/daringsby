@@ -4,7 +4,9 @@ use clap::Parser;
 use dotenvy::dotenv;
 use pete::{
     EventBus, init_logging,
-    movie::{default_movie_path, default_time_range, default_work_dir, parse_time, render_graph_movie},
+    movie::{
+        default_movie_path, default_time_range, default_work_dir, parse_time, render_graph_movie,
+    },
 };
 use psyche::Neo4jClient;
 
@@ -53,7 +55,10 @@ async fn main() -> anyhow::Result<()> {
     let from = cli.from.as_deref().map(parse_time).transpose()?;
     let to = cli.to.as_deref().map(parse_time).transpose()?;
     let (from, to) = default_time_range(&graph, from, to).await?;
-    let out = cli.out.clone().unwrap_or_else(|| default_movie_path(from, to));
+    let out = cli
+        .out
+        .clone()
+        .unwrap_or_else(|| default_movie_path(from, to));
     let work_dir = cli
         .work_dir
         .clone()

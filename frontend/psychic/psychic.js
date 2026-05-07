@@ -98,6 +98,8 @@
   const timelineDefaultClipMs = 3000;
   const timelinePlaybackWindowMs = 12000;
   const maxHeadMovieDurationMs = 180000;
+  const headMovieRequestDurationMs = 90000;
+  const headMovieRequestBucketMs = 30000;
   const movieIndexRefreshMs = 30000;
   const timelineRows = [
     { id: "images", label: "Images", kinds: ["Image", "FaceInstance"] },
@@ -132,6 +134,7 @@
   let movieIndex = [];
   let movieIndexPromise = null;
   let movieIndexFetchedAt = 0;
+  const pendingMovieRequests = new Set();
   let activeMovieSrc = "";
   let timelineSelection = null;
   let pendingLocationTarget = targetFromLocation();
@@ -1066,6 +1069,7 @@
       renderPresentPlaceholder("No image at head");
       return;
     }
+    requestMovieForTimelineCursor();
     const media = mediaForNode(imageNode);
     if (media.base64 && media.mime.startsWith("image/")) {
       presentImageNodeId = imageNode.id;
@@ -1217,6 +1221,58 @@
         return movieIndex;
       });
     return movieIndexPromise;
+  }
+
+  function requestMovieForTimelineCursor() {
+    const window = movieRequestWindowForCursor();
+    if (!window) return;
+    const key = `${window.from}/${window.to}`;
+    if (pendingMovieRequests.has(key) || movieIndex.some((movie) => movie.src.includes(window.slug))) return;
+    pendingMovieRequests.add(key);
+    fetch("/movie", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: window.from, to: window.to }),
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((asset) => {
+        const movie = normalizeMovieAsset(asset);
+        if (!movie) return;
+        upsertMovieAsset(movie);
+        if (movieForTimelineCursor() === movie) renderPresentInstant();
+      })
+      .catch(() => {})
+      .finally(() => {
+        pendingMovieRequests.delete(key);
+      });
+  }
+
+  function movieRequestWindowForCursor() {
+    if (timelineCursor === null || !timelineFullExtent) return null;
+    const center = Math.round(timelineCursor / headMovieRequestBucketMs) * headMovieRequestBucketMs;
+    const half = headMovieRequestDurationMs / 2;
+    const min = timelineFullExtent.min;
+    const max = timelineFullExtent.max;
+    const fromMs = Math.max(min, center - half);
+    const toMs = Math.min(max, center + half);
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs - fromMs < timelineMinClipMs) return null;
+    return {
+      from: new Date(fromMs).toISOString(),
+      to: new Date(toMs).toISOString(),
+      slug: `pete-${moviePathTimestamp(fromMs)}-${moviePathTimestamp(toMs)}.webm`,
+    };
+  }
+
+  function moviePathTimestamp(timestamp) {
+    return new Date(timestamp).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  }
+
+  function upsertMovieAsset(movie) {
+    movieIndex = movieIndex
+      .filter((existing) => existing.src !== movie.src)
+      .concat(movie)
+      .sort((left, right) => left.fromMs - right.fromMs || left.toMs - right.toMs);
+    movieIndexFetchedAt = Date.now();
   }
 
   function normalizeMovieAsset(asset) {
