@@ -1,5 +1,5 @@
 use anyhow::Context;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use clap::Parser;
 use dotenvy::dotenv;
 use pete::{EventBus, init_logging};
@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use tokio::time::{Duration as TokioDuration, MissedTickBehavior, interval};
 
 #[derive(Parser)]
-#[command(author, version, about = "Print a text timeline of recent impressions")]
+#[command(author, version, about = "Print a text timeline of impressions")]
 struct Cli {
     /// Neo4j bolt or HTTP URI.
     #[arg(long, env = "NEO4J_URI", default_value = "bolt://localhost:7687")]
@@ -19,7 +19,7 @@ struct Cli {
     /// Neo4j password.
     #[arg(long, env = "NEO4J_PASS", default_value = "password")]
     neo4j_pass: String,
-    /// Inclusive start time, as RFC3339, e.g. 2026-05-07T12:00:00Z.
+    /// Inclusive start time, as RFC3339, e.g. 2026-05-07T12:00:00Z. Omit for the beginning of recorded history.
     #[arg(long)]
     from: Option<String>,
     /// Inclusive end time, as RFC3339, e.g. 2026-05-07T12:01:30Z.
@@ -83,16 +83,18 @@ async fn follow_timeline(graph: &Neo4jClient, cli: &Cli) -> anyhow::Result<()> {
     }
 }
 
-fn time_range(cli: &Cli) -> anyhow::Result<(DateTime<Utc>, DateTime<Utc>)> {
+fn time_range(cli: &Cli) -> anyhow::Result<(Option<DateTime<Utc>>, DateTime<Utc>)> {
     let to = match &cli.to {
         Some(value) => parse_time(value).context("invalid --to")?,
         None => Utc::now(),
     };
     let from = match &cli.from {
-        Some(value) => parse_time(value).context("invalid --from")?,
-        None => to - Duration::seconds(90),
+        Some(value) => Some(parse_time(value).context("invalid --from")?),
+        None => None,
     };
-    anyhow::ensure!(from <= to, "--from must be earlier than or equal to --to");
+    if let Some(from) = from.as_ref() {
+        anyhow::ensure!(from <= &to, "--from must be earlier than or equal to --to");
+    }
     Ok((from, to))
 }
 
@@ -100,12 +102,15 @@ fn parse_time(value: &str) -> anyhow::Result<DateTime<Utc>> {
     Ok(DateTime::parse_from_rfc3339(value)?.with_timezone(&Utc))
 }
 
-fn print_timeline(from: DateTime<Utc>, to: DateTime<Utc>, items: &[GraphImpressionTimelineItem]) {
-    println!(
-        "Impression timeline {} to {}",
-        from.to_rfc3339(),
-        to.to_rfc3339()
-    );
+fn print_timeline(
+    from: Option<DateTime<Utc>>,
+    to: DateTime<Utc>,
+    items: &[GraphImpressionTimelineItem],
+) {
+    let from = from
+        .map(|value| value.to_rfc3339())
+        .unwrap_or_else(|| "forever".to_string());
+    println!("Impression timeline {} to {}", from, to.to_rfc3339());
     if items.is_empty() {
         println!("(no impressions)");
         return;

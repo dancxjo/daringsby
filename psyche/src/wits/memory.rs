@@ -2410,7 +2410,7 @@ impl Neo4jClient {
     /// Return impression-bearing graph nodes in chronological order.
     pub async fn impression_timeline(
         &self,
-        start: chrono::DateTime<chrono::Utc>,
+        start: Option<chrono::DateTime<chrono::Utc>>,
         end: chrono::DateTime<chrono::Utc>,
         limit: usize,
     ) -> Result<Vec<GraphImpressionTimelineItem>> {
@@ -2430,22 +2430,27 @@ impl Neo4jClient {
                         coalesce(n.how_formed_at, n.timestamp, n.created_at, n.occurred_at, "") AS formed_at
                     WHERE text <> ""
                       AND occurred_at <> ""
-                      AND datetime(occurred_at) >= datetime($start)
+                      AND ($start IS NULL OR datetime(occurred_at) >= datetime($start))
                       AND datetime(occurred_at) <= datetime($end)
                     WITH n, labels(n) AS labels, text, occurred_at, formed_at
-                    RETURN
-                        n.id,
-                        labels,
-                        coalesce(n.kind, head([label IN labels WHERE label <> "GraphNode"]), "impression"),
-                        text,
-                        occurred_at,
-                        formed_at
-                    ORDER BY datetime(occurred_at) ASC, n.id
+                    ORDER BY datetime(occurred_at) DESC, n.id DESC
                     LIMIT $limit
+                    WITH collect({
+                        id: n.id,
+                        labels: labels,
+                        kind: coalesce(n.kind, head([label IN labels WHERE label <> "GraphNode"]), "impression"),
+                        text: text,
+                        occurred_at: occurred_at,
+                        formed_at: formed_at
+                    }) AS rows
+                    UNWIND CASE rows WHEN [] THEN [] ELSE range(0, size(rows) - 1) END AS idx
+                    WITH rows[size(rows) - 1 - idx] AS row, idx
+                    RETURN row.id, row.labels, row.kind, row.text, row.occurred_at, row.formed_at
+                    ORDER BY idx
                 "#
                 .into(),
                 parameters: json!({
-                    "start": start.to_rfc3339(),
+                    "start": start.map(|value| value.to_rfc3339()),
                     "end": end.to_rfc3339(),
                     "limit": i64::try_from(limit.max(1)).unwrap_or(i64::MAX),
                 }),

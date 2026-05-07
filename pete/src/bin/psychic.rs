@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{fs, net::SocketAddr, path::Path as FsPath, sync::Arc, time::Duration};
 
 use axum::{
     Json, Router,
@@ -11,6 +11,7 @@ use axum::{
     routing::{get, get_service},
 };
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::Parser;
 use dotenvy::dotenv;
 use pete::{EventBus, init_logging};
@@ -61,6 +62,15 @@ enum PsychicMessage<'a> {
     Error { message: String },
 }
 
+#[derive(Serialize)]
+struct MovieAsset {
+    src: String,
+    captions: Option<String>,
+    from: String,
+    to: String,
+    duration_ms: i64,
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
     let (bus, _user_rx) = EventBus::new();
@@ -90,12 +100,18 @@ fn app(state: PsychicState) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/graph", get(graph_snapshot))
+        .route("/movie-index", get(movie_index))
         .route("/graph/node/{id}", get(graph_node_details))
         .route(
             "/graph/speech-segment/{id}/audio.wav",
             get(speech_segment_audio),
         )
         .route("/ws", get(ws_handler))
+        .nest_service(
+            "/movies",
+            get_service(ServeDir::new("movies"))
+                .handle_error(|_| async { StatusCode::INTERNAL_SERVER_ERROR }),
+        )
         .fallback_service(
             get_service(ServeDir::new("frontend/psychic"))
                 .handle_error(|_| async { StatusCode::INTERNAL_SERVER_ERROR }),
@@ -121,6 +137,78 @@ async fn graph_snapshot(State(state): State<PsychicState>) -> impl IntoResponse 
                 .into_response()
         }
     }
+}
+
+async fn movie_index() -> impl IntoResponse {
+    match movie_assets(FsPath::new("movies")) {
+        Ok(assets) => Json(assets).into_response(),
+        Err(err) => {
+            error!(%err, "failed to index movies");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(PsychicMessage::Error {
+                    message: err.to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+fn movie_assets(root: &FsPath) -> anyhow::Result<Vec<MovieAsset>> {
+    let mut assets = Vec::new();
+    if !root.exists() {
+        return Ok(assets);
+    }
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("webm") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        let Some((from, to)) = movie_times_from_stem(stem) else {
+            continue;
+        };
+        let captions_path = path.with_extension("vtt");
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        let captions = captions_path
+            .exists()
+            .then(|| {
+                captions_path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .filter(|name| !name.is_empty())
+            .map(|name| format!("/movies/{name}"));
+        assets.push(MovieAsset {
+            src: format!("/movies/{file_name}"),
+            captions,
+            from: from.to_rfc3339(),
+            to: to.to_rfc3339(),
+            duration_ms: (to - from).num_milliseconds(),
+        });
+    }
+    assets.sort_by(|left, right| left.from.cmp(&right.from));
+    Ok(assets)
+}
+
+fn movie_times_from_stem(stem: &str) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
+    let rest = stem.strip_prefix("pete-")?;
+    let (from, to) = rest.split_once('-')?;
+    Some((parse_movie_time(from)?, parse_movie_time(to)?))
+}
+
+fn parse_movie_time(value: &str) -> Option<DateTime<Utc>> {
+    let naive = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%SZ").ok()?;
+    Some(DateTime::from_naive_utc_and_offset(naive, Utc))
 }
 
 async fn graph_node_details(

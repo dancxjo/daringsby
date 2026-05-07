@@ -26,7 +26,9 @@
   const timelinePlayheadEl = document.getElementById("timeline-playhead");
   const timelineSelectionEl = document.getElementById("timeline-selection");
   const timelineScrubEl = document.getElementById("timeline-scrub");
+  const timelineStepBackEl = document.getElementById("timeline-step-back");
   const timelinePlayEl = document.getElementById("timeline-play");
+  const timelineStepForwardEl = document.getElementById("timeline-step-forward");
   const timelinePauseEl = document.getElementById("timeline-pause");
   const timelineZoomInEl = document.getElementById("timeline-zoom-in");
   const timelineZoomOutEl = document.getElementById("timeline-zoom-out");
@@ -95,6 +97,8 @@
   const timelineMinClipMs = 850;
   const timelineDefaultClipMs = 3000;
   const timelinePlaybackWindowMs = 12000;
+  const maxHeadMovieDurationMs = 180000;
+  const movieIndexRefreshMs = 30000;
   const timelineRows = [
     { id: "images", label: "Images", kinds: ["Image", "FaceInstance"] },
     { id: "audio", label: "Audio Clips", kinds: ["AudioClip"] },
@@ -125,6 +129,10 @@
   let timelinePlaybackLastTick = 0;
   let presentImageNodeId = "";
   let presentImageLoadingId = "";
+  let movieIndex = [];
+  let movieIndexPromise = null;
+  let movieIndexFetchedAt = 0;
+  let activeMovieSrc = "";
   let timelineSelection = null;
   let pendingLocationTarget = targetFromLocation();
   let graphCacheDbPromise = null;
@@ -573,6 +581,7 @@
       }
     }
     if (viewMode === "timeline") {
+      loadMovieIndex({ refresh: true }).then(renderPresentInstant);
       renderTimeline();
     } else {
       pauseTimeline();
@@ -837,6 +846,7 @@
     timelinePlaying = true;
     timelinePlaybackLastTick = performance.now();
     syncTimelinePlaybackControls();
+    renderPresentInstant();
     timelinePlaybackFrame = requestAnimationFrame(tickTimelinePlayback);
   }
 
@@ -847,7 +857,42 @@
     }
     timelinePlaying = false;
     timelinePlaybackLastTick = 0;
+    pausePresentMovie();
     syncTimelinePlaybackControls();
+  }
+
+  function stepTimelineFrame(direction) {
+    if (!timelineExtent) return;
+    pauseTimeline();
+    const timestamps = visibleTimelineFrameTimestamps();
+    if (!timestamps.length) return;
+    const cursor = timelineCursor ?? timelineExtent.min;
+    let next = direction > 0 ? timestamps[timestamps.length - 1] : timestamps[0];
+    if (direction > 0) {
+      const after = timestamps.find((timestamp) => timestamp > cursor + 0.5);
+      if (after !== undefined) next = after;
+    } else {
+      for (let index = timestamps.length - 1; index >= 0; index -= 1) {
+        if (timestamps[index] < cursor - 0.5) {
+          next = timestamps[index];
+          break;
+        }
+      }
+    }
+    timelineCursor = next;
+    syncTimelineScrubber();
+  }
+
+  function visibleTimelineFrameTimestamps() {
+    if (!timelineExtent) return [];
+    return Array.from(
+      new Set(
+        graph.nodes
+          .filter((node) => nodeKind(node) === "Image")
+          .map(nodeTimestamp)
+          .filter((timestamp) => timestamp !== null && timestamp >= timelineExtent.min && timestamp <= timelineExtent.max),
+      ),
+    ).sort((left, right) => left - right);
   }
 
   function tickTimelinePlayback(now) {
@@ -871,7 +916,13 @@
 
   function syncTimelinePlaybackControls() {
     const canPlay = !!timelineExtent;
+    const frameTimestamps = visibleTimelineFrameTimestamps();
+    const cursor = timelineCursor ?? timelineExtent?.min ?? null;
     timelinePlayEl.disabled = !canPlay || timelinePlaying;
+    timelineStepBackEl.disabled =
+      !canPlay || cursor === null || !frameTimestamps.some((timestamp) => timestamp < cursor - 0.5);
+    timelineStepForwardEl.disabled =
+      !canPlay || cursor === null || !frameTimestamps.some((timestamp) => timestamp > cursor + 0.5);
     timelinePauseEl.disabled = !timelinePlaying;
   }
 
@@ -1003,6 +1054,11 @@
       return;
     }
     presentTimeEl.textContent = formatTimelineInstant(timelineCursor);
+    const movie = movieForTimelineCursor();
+    if (movie) {
+      renderPresentMovie(movie);
+      return;
+    }
     const imageNode = latestImageAtTimelineCursor();
     if (!imageNode) {
       presentImageNodeId = "";
@@ -1036,12 +1092,14 @@
   }
 
   function renderPresentPlaceholder(text) {
+    stopPresentMovieFetch();
     const placeholder = document.createElement("span");
     placeholder.textContent = text;
     presentMediaEl.replaceChildren(placeholder);
   }
 
   function renderPresentImageFrame(imageNode, media) {
+    stopPresentMovieFetch();
     let frame = presentMediaEl.querySelector(".present-frame");
     let image = frame?.querySelector("img");
     let overlay = frame?.querySelector(".present-speech-overlay");
@@ -1063,6 +1121,127 @@
     }
 
     return overlay;
+  }
+
+  function renderPresentMovie(movie) {
+    presentImageNodeId = "";
+    presentImageLoadingId = "";
+    let frame = presentMediaEl.querySelector(".present-movie-frame");
+    let video = frame?.querySelector("video");
+    const captions = movie.captions || "";
+
+    if (!frame || frame.dataset.src !== movie.src || frame.dataset.captions !== captions) {
+      stopPresentMovieFetch();
+      frame = document.createElement("div");
+      video = document.createElement("video");
+      frame.className = "present-movie-frame";
+      frame.dataset.src = movie.src;
+      frame.dataset.captions = captions;
+      video.src = movie.src;
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = timelinePlaying ? "auto" : "metadata";
+      video.addEventListener("loadedmetadata", () => {
+        syncHeadMovieVideo(video, movie);
+        showMovieCaptions(video);
+      });
+      if (captions) {
+        const track = document.createElement("track");
+        track.kind = "captions";
+        track.label = "Captions";
+        track.srclang = "en";
+        track.src = captions;
+        track.default = true;
+        video.append(track);
+      }
+      frame.append(video);
+      presentMediaEl.replaceChildren(frame);
+    }
+
+    activeMovieSrc = movie.src;
+    video.preload = timelinePlaying ? "auto" : "metadata";
+    syncHeadMovieVideo(video, movie);
+    showMovieCaptions(video);
+    if (timelinePlaying) {
+      if (video.paused) video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  }
+
+  function syncHeadMovieVideo(video, movie) {
+    if (timelineCursor === null) return;
+    const offsetSeconds = Math.max(0, (timelineCursor - movie.fromMs) / 1000);
+    const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : movie.durationMs / 1000;
+    const targetSeconds = Math.min(offsetSeconds, Math.max(0, duration - 0.04));
+    if (video.readyState > 0 && (!timelinePlaying || Math.abs(video.currentTime - targetSeconds) > 0.18)) {
+      video.currentTime = targetSeconds;
+    }
+  }
+
+  function showMovieCaptions(video) {
+    Array.from(video.textTracks || []).forEach((track) => {
+      track.mode = "showing";
+    });
+  }
+
+  function pausePresentMovie() {
+    const video = presentMediaEl.querySelector(".present-movie-frame video");
+    if (video) video.pause();
+  }
+
+  function stopPresentMovieFetch() {
+    if (!activeMovieSrc) return;
+    const video = presentMediaEl.querySelector(".present-movie-frame video");
+    if (video) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
+    activeMovieSrc = "";
+  }
+
+  function loadMovieIndex(options = {}) {
+    const now = Date.now();
+    if (movieIndexPromise && !options.refresh && now - movieIndexFetchedAt < movieIndexRefreshMs) return movieIndexPromise;
+    movieIndexFetchedAt = now;
+    movieIndexPromise = fetch("/movie-index", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : []))
+      .then((assets) => {
+        movieIndex = Array.isArray(assets) ? assets.map(normalizeMovieAsset).filter(Boolean) : [];
+        return movieIndex;
+      })
+      .catch(() => {
+        movieIndex = [];
+        movieIndexFetchedAt = 0;
+        return movieIndex;
+      });
+    return movieIndexPromise;
+  }
+
+  function normalizeMovieAsset(asset) {
+    const fromMs = Date.parse(asset?.from);
+    const toMs = Date.parse(asset?.to);
+    const durationMs = Number(asset?.duration_ms ?? asset?.durationMs ?? toMs - fromMs);
+    if (!asset?.src || !Number.isFinite(fromMs) || !Number.isFinite(toMs) || !Number.isFinite(durationMs)) return null;
+    if (toMs <= fromMs || durationMs <= 0) return null;
+    return {
+      src: asset.src,
+      captions: asset.captions || "",
+      fromMs,
+      toMs,
+      durationMs,
+    };
+  }
+
+  function movieForTimelineCursor() {
+    if (timelineCursor === null || !movieIndex.length) return null;
+    return (
+      movieIndex
+        .filter((movie) => movie.durationMs <= maxHeadMovieDurationMs)
+        .filter((movie) => movie.fromMs <= timelineCursor && movie.toMs >= timelineCursor)
+        .sort((left, right) => left.durationMs - right.durationMs || right.fromMs - left.fromMs)[0] || null
+    );
   }
 
   function renderPresentSpeechOverlays(container, imageNode) {
@@ -1091,6 +1270,7 @@
         container.insertBefore(el, container.children[index] || null);
       }
     });
+    container.scrollTop = container.scrollHeight;
   }
 
   function visibleSpeechSegments(imageNode) {
@@ -2359,7 +2539,9 @@
     timelineCursor = timelineExtent.min + ratio * (timelineExtent.max - timelineExtent.min);
     syncTimelineScrubber();
   });
+  timelineStepBackEl.addEventListener("click", () => stepTimelineFrame(-1));
   timelinePlayEl.addEventListener("click", playTimeline);
+  timelineStepForwardEl.addEventListener("click", () => stepTimelineFrame(1));
   timelinePauseEl.addEventListener("click", pauseTimeline);
   timelineZoomInEl.addEventListener("click", () => zoomTimelineBy(0.5));
   timelineZoomOutEl.addEventListener("click", () => zoomTimelineBy(2));
