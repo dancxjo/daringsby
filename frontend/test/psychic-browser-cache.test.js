@@ -1,11 +1,15 @@
 const assert = require('assert');
 const fs = require('fs');
 
+const html = fs.readFileSync('frontend/psychic/index.html', 'utf8');
 const script = fs.readFileSync('frontend/psychic/psychic.js', 'utf8');
+const styles = fs.readFileSync('frontend/psychic/styles.css', 'utf8');
 
+assert(html.includes('id="clear-cache"'));
 assert(script.includes('const graphStore = {'));
 assert(script.includes('nodes: new Map()'));
 assert(script.includes('relationships: new Map()'));
+assert(script.includes('const clearCacheEl = document.getElementById("clear-cache");'));
 assert(script.includes('const graphCacheDbName = "psychic.graph.cache.v1";'));
 assert(script.includes('restoreGraphCache().catch(() => {'));
 assert(script.includes('function openGraphCacheDb()'));
@@ -19,9 +23,19 @@ assert(script.includes('fullGraph.nodes = [...graphStore.nodes.values()];'));
 assert(script.includes('function scheduleGraphCacheSave()'));
 assert(script.includes('function saveGraphCache()'));
 assert(script.includes('graphStore.nodes.forEach((node) => nodeStore.put(serializeCachedNode(node)));'));
+assert(script.includes('function deleteGraphCacheDb()'));
+assert(script.includes('window.indexedDB.deleteDatabase(graphCacheDbName)'));
+assert(script.includes('function clearLocalCache()'));
+assert(script.includes('window.localStorage.removeItem(filterStorageKey);'));
+assert(script.includes('window.localStorage.removeItem(timelineModeStorageKey);'));
+assert(script.includes('function resetLocalGraphState()'));
+assert(script.includes('graphStore.nodes.clear();'));
+assert(script.includes('timelineImagePreloadCache.clear();'));
+assert(script.includes('clearCacheEl?.addEventListener("click"'));
 assert(script.includes('function cachedNodeDetails(id)'));
 assert(script.includes('if (cached && (!options.requireComplete || cachedNodeDetailsComplete(cached))) return cached;'));
 assert(script.includes('function cachedNodeDetailsComplete(node)'));
 assert(script.includes('fetchNodeDetails(node.id, { requireComplete: true })'));
 assert(script.includes('fetch(`/graph/node/${encodeURIComponent(id)}`, { cache: "force-cache" })'));
+assert(styles.includes('.cache-clear'));
 console.log('psychic-browser-cache ok');

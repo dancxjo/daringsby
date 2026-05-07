@@ -1210,6 +1210,12 @@ pub struct GraphSpeechSegment {
     pub ended_at: Option<String>,
 }
 
+struct TranscriptSensationNode {
+    id: String,
+    source_sensation_id: String,
+    node: Value,
+}
+
 /// Speech segment selected for a movie caption export.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GraphMovieSpeechSegment {
@@ -2351,6 +2357,7 @@ impl Neo4jClient {
                         head([a IN artifacts WHERE a:Utterance | a]) AS utterance,
                         head([a IN artifacts WHERE a:CombobulationSummary | a]) AS combobulation,
                         head([a IN artifacts WHERE a:JsonSensation | a]) AS json_sensation,
+                        head([a IN artifacts WHERE a:Transcription | a]) AS transcription,
                         attached_transcript,
                         image_description
                     WITH anchor, anchor_at, n, occurred_at,
@@ -2363,6 +2370,7 @@ impl Neo4jClient {
                         utterance.id,
                         combobulation.id,
                         json_sensation.id,
+                        transcription.id,
                         n.id
                     ) AS event_id,
                     CASE
@@ -2387,7 +2395,9 @@ impl Neo4jClient {
                         WHEN combobulation IS NOT NULL THEN
                             "combobulation sensation; " + coalesce(combobulation.text, combobulation.summary, "")
                         WHEN json_sensation IS NOT NULL THEN "structured sensation"
-                        ELSE coalesce(n.kind, "sensation")
+                        WHEN transcription IS NOT NULL THEN
+                            coalesce(n.how, "transcription sensation; transcript: " + coalesce(transcription.text, transcription.transcript, ""))
+                        ELSE coalesce(n.how, n.summary, n.kind, "sensation")
                     END AS text
                     WHERE text <> ""
                     WITH anchor, anchor_at, n, occurred_at, event_id, text
@@ -2516,6 +2526,7 @@ impl Neo4jClient {
                         head([a IN artifacts WHERE a:Utterance | a]) AS utterance,
                         head([a IN artifacts WHERE a:CombobulationSummary | a]) AS combobulation,
                         head([a IN artifacts WHERE a:JsonSensation | a]) AS json_sensation,
+                        head([a IN artifacts WHERE a:Transcription | a]) AS transcription,
                         attached_transcript,
                         image_description
                     WITH run, n, occurred_at, source_index,
@@ -2528,6 +2539,7 @@ impl Neo4jClient {
                         utterance.id,
                         combobulation.id,
                         json_sensation.id,
+                        transcription.id,
                         n.id
                     ) AS event_id,
                     CASE
@@ -2552,7 +2564,9 @@ impl Neo4jClient {
                         WHEN combobulation IS NOT NULL THEN
                             "combobulation sensation; " + coalesce(combobulation.text, combobulation.summary, "")
                         WHEN json_sensation IS NOT NULL THEN "structured sensation"
-                        ELSE coalesce(n.kind, "sensation")
+                        WHEN transcription IS NOT NULL THEN
+                            coalesce(n.how, "transcription sensation; transcript: " + coalesce(transcription.text, transcription.transcript, ""))
+                        ELSE coalesce(n.how, n.summary, n.kind, "sensation")
                     END AS text
                     WHERE text <> "" AND source_index IS NOT NULL
                     WITH run, n, occurred_at, source_index, event_id, text
@@ -2596,11 +2610,51 @@ impl Neo4jClient {
         graph_timeline_window_from_rows(&rows)
     }
 
+    fn transcript_sensation_node(
+        transcript: &str,
+        source_sensation_id: Option<&str>,
+        source_captured_at: Option<&str>,
+        transcribed_at: &str,
+        transcription_id: &str,
+    ) -> Option<TranscriptSensationNode> {
+        let source_sensation_id = source_sensation_id?;
+        let transcript = transcript.trim();
+        if transcript.is_empty() {
+            return None;
+        }
+        let id = stable_bytes_id(
+            "sensation:transcription",
+            format!("{source_sensation_id}:{transcription_id}").as_bytes(),
+        );
+        let occurred_at = source_captured_at.unwrap_or(transcribed_at);
+        let mut how = format!("I heard: {transcript}");
+        if !matches!(how.chars().last(), Some('.') | Some('!') | Some('?')) {
+            how.push('.');
+        }
+        Some(TranscriptSensationNode {
+            id: id.clone(),
+            source_sensation_id: source_sensation_id.to_string(),
+            node: json!({
+                "label": "Sensation",
+                "id": id,
+                "kind": "transcription",
+                "derived": true,
+                "occurred_at": occurred_at,
+                "how": how,
+                "how_formed_at": transcribed_at,
+                "transcription_id": transcription_id,
+                "transcript": transcript,
+                "source_sensation_ids": [source_sensation_id],
+            }),
+        })
+    }
+
     /// Attach a Whisper transcript to an existing `AudioClip` graph node.
     pub async fn attach_audio_transcription(
         &self,
         audio_clip_id: &str,
         transcript: &str,
+        source_sensation_id: Option<&str>,
         source_captured_at: Option<&str>,
         segments: &[GraphSpeechSegment],
     ) -> Result<()> {
@@ -2611,6 +2665,13 @@ impl Neo4jClient {
         let transcription_id = stable_bytes_id(
             "transcription",
             format!("{audio_clip_id}:{transcribed_at}").as_bytes(),
+        );
+        let transcript_sensation = Self::transcript_sensation_node(
+            transcript,
+            source_sensation_id,
+            source_captured_at,
+            &transcribed_at,
+            &transcription_id,
         );
         let mut nodes = vec![
             json!({
@@ -2638,6 +2699,33 @@ impl Neo4jClient {
                 "type": "DERIVED_FROM_AUDIO",
             }),
         ];
+        if let Some(transcript_sensation) = &transcript_sensation {
+            nodes.push(transcript_sensation.node.clone());
+            nodes.push(json!({
+                "label": "Sensation",
+                "id": transcript_sensation.source_sensation_id,
+            }));
+            relationships.push(json!({
+                "from": transcript_sensation.id,
+                "to": transcription_id,
+                "type": "OBSERVED",
+            }));
+            relationships.push(json!({
+                "from": transcript_sensation.id,
+                "to": transcript_sensation.source_sensation_id,
+                "type": "DERIVED_FROM",
+            }));
+            relationships.push(json!({
+                "from": transcript_sensation.source_sensation_id,
+                "to": transcription_id,
+                "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": transcription_id,
+                "to": transcript_sensation.source_sensation_id,
+                "type": "DERIVED_FROM",
+            }));
+        }
         for segment in segments {
             let segment_id = format!("{transcription_id}:segment:{}", segment.index);
             nodes.push(json!({
@@ -3975,7 +4063,7 @@ fn raw_retention_match(suffix: &str) -> String {
     format!(
         r#"
             MATCH (n:GraphNode)
-            WHERE NOT n:Sensation
+            WHERE (NOT n:Sensation OR coalesce(n.derived, false) = true)
               AND NOT n:AudioClip
               AND NOT n:Image
             {suffix}

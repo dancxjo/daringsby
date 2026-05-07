@@ -78,6 +78,7 @@ async fn transcribe_next_clip(graph: &Neo4jClient, asr: &AsrService) -> anyhow::
         .attach_audio_transcription(
             &audio.id,
             &transcription.text,
+            audio.sensation_id.as_deref(),
             source_captured_at.as_deref(),
             &segments,
         )

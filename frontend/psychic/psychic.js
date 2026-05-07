@@ -16,6 +16,7 @@
   const relationshipCountEl = document.getElementById("relationship-count");
   const graphModeEl = document.getElementById("graph-mode");
   const timelineModeEl = document.getElementById("timeline-mode");
+  const clearCacheEl = document.getElementById("clear-cache");
   const allLabelFiltersEl = document.getElementById("all-label-filters");
   const allPredicateFiltersEl = document.getElementById("all-predicate-filters");
   const labelFiltersEl = document.getElementById("label-filters");
@@ -296,6 +297,75 @@
       transaction.onerror = () => resolve({ nodes: [], relationships: [] });
       transaction.onabort = () => resolve({ nodes: [], relationships: [] });
     });
+  }
+
+  async function deleteGraphCacheDb() {
+    const openDb = graphCacheDbPromise ? await graphCacheDbPromise : null;
+    if (openDb) openDb.close();
+    graphCacheDbPromise = null;
+    if (!("indexedDB" in window)) return;
+    await new Promise((resolve) => {
+      const request = window.indexedDB.deleteDatabase(graphCacheDbName);
+      request.onsuccess = resolve;
+      request.onerror = resolve;
+      request.onblocked = resolve;
+    });
+  }
+
+  async function clearLocalCache() {
+    if (clearCacheEl) clearCacheEl.disabled = true;
+    const previousStatus = statusEl.textContent;
+    statusEl.textContent = "Clearing cache";
+    if (graphCacheSaveTimer) {
+      window.clearTimeout(graphCacheSaveTimer);
+      graphCacheSaveTimer = 0;
+    }
+    try {
+      window.localStorage.removeItem(filterStorageKey);
+      window.localStorage.removeItem(timelineModeStorageKey);
+    } catch (_err) {
+      // Clearing local preferences is best-effort.
+    }
+    await deleteGraphCacheDb();
+    resetLocalGraphState();
+    statusEl.textContent = socket?.readyState === WebSocket.OPEN ? "Cache cleared" : previousStatus || "Connecting";
+    if (clearCacheEl) clearCacheEl.disabled = false;
+  }
+
+  function resetLocalGraphState() {
+    pauseTimeline();
+    selected = null;
+    detailRequestId += 1;
+    lastSnapshotSignature = "";
+    lastTopologySignature = "";
+    lastTemporalSignature = "";
+    lastFilterOptionsSignature = "";
+    timelineFullExtent = null;
+    temporalExtent = null;
+    timelineExtent = null;
+    timelineCursor = null;
+    presentImageNodeId = "";
+    presentImageLoadingId = "";
+    timelineSelection = null;
+    pendingLocationTarget = targetFromLocation();
+    fullGraph.nodes = [];
+    fullGraph.relationships = [];
+    graph.nodes = [];
+    graph.relationships = [];
+    graphStore.nodes.clear();
+    graphStore.relationships.clear();
+    nodeState.clear();
+    timelineDetailLoadingIds.clear();
+    timelineImagePreloadCache.clear();
+    filters.labels.clear();
+    filters.predicates.clear();
+    nodeCountEl.textContent = "0";
+    relationshipCountEl.textContent = "0";
+    labelFiltersEl?.replaceChildren();
+    predicateFiltersEl?.replaceChildren();
+    syncFilterGroupControl("labels");
+    syncFilterGroupControl("predicates");
+    clearSelection({ updateUrl: false });
   }
 
   function scheduleGraphCacheSave() {
@@ -2615,6 +2685,12 @@
 
   graphModeEl.addEventListener("click", () => setViewMode("graph"));
   timelineModeEl.addEventListener("click", () => setViewMode("timeline"));
+  clearCacheEl?.addEventListener("click", () => {
+    clearLocalCache().catch(() => {
+      statusEl.textContent = "Cache clear failed";
+      clearCacheEl.disabled = false;
+    });
+  });
   timelineScrubEl.addEventListener("input", () => {
     if (!timelineExtent) return;
     const ratio = clamp01(Number(timelineScrubEl.value) / Number(timelineScrubEl.max || 1000));

@@ -116,6 +116,20 @@ h1 {
   color: var(--text);
 }
 
+.utility-actions {
+  display: inline-flex;
+  align-items: center;
+}
+
+.cache-clear {
+  width: auto;
+  min-width: 6.75rem;
+  height: 2.4rem;
+  padding: 0 0.85rem;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
 .workspace {
   height: calc(100vh - 72px);
   display: grid;
@@ -850,6 +864,11 @@ button.active {
 
   .view-toggle button {
     flex: 1;
+  }
+
+  .utility-actions,
+  .cache-clear {
+    width: 100%;
   }
 
   .workspace {

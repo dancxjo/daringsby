@@ -186,7 +186,7 @@ async fn neo4j_client_counts_non_raw_graph_nodes() {
             when.method(POST)
                 .path("/db/neo4j/tx/commit")
                 .body_contains("MATCH (n:GraphNode)")
-                .body_contains("NOT n:Sensation")
+                .body_contains("NOT n:Sensation OR coalesce(n.derived, false) = true")
                 .body_contains("NOT n:AudioClip")
                 .body_contains("NOT n:Image")
                 .body_contains("RETURN count(n)");
@@ -219,7 +219,7 @@ async fn neo4j_client_detach_deletes_non_raw_graph_nodes_with_batch_limit() {
             when.method(POST)
                 .path("/db/neo4j/tx/commit")
                 .body_contains("MATCH (n:GraphNode)")
-                .body_contains("NOT n:Sensation")
+                .body_contains("NOT n:Sensation OR coalesce(n.derived, false) = true")
                 .body_contains("NOT n:AudioClip")
                 .body_contains("NOT n:Image")
                 .body_contains("LIMIT $limit")
@@ -1095,9 +1095,18 @@ async fn neo4j_client_attaches_audio_transcription() {
                 .body_contains("transcribed_at")
                 .body_contains("AudioClip")
                 .body_contains("Transcription")
+                .body_contains("\"kind\":\"transcription\"")
+                .body_contains("\"derived\":true")
+                .body_contains("\"how\":\"I heard: hello there.\"")
+                .body_contains("\"source_sensation_ids\":[\"sensation:audio:1\"]")
+                .body_contains("\"from\":\"sensation:audio:1\"")
+                .body_contains("\"to\":\"sensation:audio:1\"")
                 .body_contains("SpeechSegment")
                 .body_contains("HAS_TRANSCRIPTION")
                 .body_contains("DERIVED_FROM_AUDIO")
+                .body_contains("DERIVED_FROM")
+                .body_contains("PRODUCED")
+                .body_contains("OBSERVED")
                 .body_contains("HAS_SEGMENT")
                 .body_contains("\"start_ms\":250")
                 .body_contains("\"end_ms\":1250")
@@ -1116,6 +1125,7 @@ async fn neo4j_client_attaches_audio_transcription() {
         .attach_audio_transcription(
             "audio:1",
             "hello there",
+            Some("sensation:audio:1"),
             Some("2026-05-05T12:34:56Z"),
             &[GraphSpeechSegment {
                 index: 0,
