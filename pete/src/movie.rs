@@ -230,13 +230,17 @@ fn write_captions(
         if cue_end <= cue_start {
             continue;
         }
+        let text = vtt_text(&segment.text);
+        if text.is_empty() {
+            continue;
+        }
         writeln!(
             file,
             "{} --> {}",
             vtt_timestamp(cue_start - from),
             vtt_timestamp(cue_end - from)
         )?;
-        writeln!(file, "{}\n", vtt_text(&segment.text))?;
+        writeln!(file, "{text}\n")?;
     }
     Ok(())
 }
@@ -274,7 +278,29 @@ fn ffmpeg_path(path: &Path) -> anyhow::Result<String> {
 }
 
 fn vtt_text(text: &str) -> String {
-    text.replace("-->", "->").trim().to_string()
+    strip_transcription_time_tags(text)
+        .replace("-->", "->")
+        .trim()
+        .to_string()
+}
+
+fn strip_transcription_time_tags(text: &str) -> String {
+    let mut stripped = String::with_capacity(text.len());
+    let mut rest = text;
+
+    while let Some(start) = rest.find("[_TT") {
+        stripped.push_str(&rest[..start]);
+        let after_prefix = &rest[start + 4..];
+        let Some(end) = after_prefix.find(']') else {
+            stripped.push_str(&rest[start..]);
+            rest = "";
+            break;
+        };
+        rest = &after_prefix[end + 1..];
+    }
+    stripped.push_str(rest);
+
+    stripped.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn vtt_timestamp(duration: Duration) -> String {
@@ -284,4 +310,25 @@ fn vtt_timestamp(duration: Duration) -> String {
     let seconds = (total_ms % 60_000) / 1000;
     let millis = total_ms % 1000;
     format!("{hours:02}:{minutes:02}:{seconds:02}.{millis:03}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{strip_transcription_time_tags, vtt_text};
+
+    #[test]
+    fn vtt_text_removes_transcription_time_tags() {
+        assert_eq!(
+            vtt_text(" hello [_TT12345] there [_TTabc.def] "),
+            "hello there"
+        );
+    }
+
+    #[test]
+    fn strip_transcription_time_tags_leaves_unclosed_tags_alone() {
+        assert_eq!(
+            strip_transcription_time_tags("hello [_TT123"),
+            "hello [_TT123"
+        );
+    }
 }

@@ -135,6 +135,7 @@
   let movieIndexPromise = null;
   let movieIndexFetchedAt = 0;
   const pendingMovieRequests = new Set();
+  const captionTracksWithScrubber = new WeakSet();
   let activeMovieSrc = "";
   let timelineSelection = null;
   let pendingLocationTarget = targetFromLocation();
@@ -1186,6 +1187,17 @@
   function showMovieCaptions(video) {
     Array.from(video.textTracks || []).forEach((track) => {
       track.mode = "showing";
+      scrubTextTrackCues(track);
+      if (!captionTracksWithScrubber.has(track)) {
+        captionTracksWithScrubber.add(track);
+        track.addEventListener("cuechange", () => scrubTextTrackCues(track));
+      }
+    });
+  }
+
+  function scrubTextTrackCues(track) {
+    Array.from(track.cues || []).forEach((cue) => {
+      if (typeof cue.text === "string") cue.text = stripTranscriptionTimeTags(cue.text);
     });
   }
 
@@ -1360,7 +1372,7 @@
 
   function speechSegmentText(node) {
     const props = node.properties || {};
-    return String(props.text || props.transcript || props.summary || nodeLabel(node));
+    return stripTranscriptionTimeTags(String(props.text || props.transcript || props.summary || nodeLabel(node)));
   }
 
   function latestImageAtTimelineCursor() {
@@ -1840,7 +1852,7 @@
         if (key === "relationships" && Array.isArray(value)) {
           renderRelationshipLinks(dd, value);
         } else {
-          dd.textContent = formatValue(value);
+          dd.textContent = formatPropertyValue(key, value);
         }
         inspectorProperties.append(dt, dd);
       });
@@ -1914,7 +1926,10 @@
       props.mime ||
       props.id ||
       node.id;
-    return truncate(String(text), 28);
+    const label = nodeKind(node) === "SpeechSegment"
+      ? stripTranscriptionTimeTags(String(text))
+      : String(text);
+    return truncate(label, 28);
   }
 
   function styleForNode(node) {
@@ -2107,6 +2122,17 @@
     if (Array.isArray(value)) return value.join(", ");
     if (typeof value === "object") return JSON.stringify(value, null, 2);
     return String(value);
+  }
+
+  function formatPropertyValue(key, value) {
+    if (typeof value === "string" && ["summary", "text", "transcript"].includes(key)) {
+      return stripTranscriptionTimeTags(value);
+    }
+    return formatValue(value);
+  }
+
+  function stripTranscriptionTimeTags(value) {
+    return value.replace(/\[_TT[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
   }
 
   function dataUrl(mime, base64) {
