@@ -4,10 +4,14 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-const DEFAULT_MODEL: &str = "large-v3";
-const DEFAULT_MODEL_URL: &str =
+const DEFAULT_FAST_MODEL: &str = "small.en";
+const DEFAULT_FAST_MODEL_URL: &str =
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin";
+const DEFAULT_FAST_MODEL_PATH: &str = "models/whisper/ggml-small.en.bin";
+const DEFAULT_BIG_MODEL: &str = "large-v3";
+const DEFAULT_BIG_MODEL_URL: &str =
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin";
-const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-large-v3.bin";
+const DEFAULT_BIG_MODEL_PATH: &str = "models/whisper/ggml-large-v3.bin";
 const DEFAULT_VOICE_EMBEDDING_MODEL_URL: &str =
     "https://github.com/mzdk100/voxudio/releases/download/model/speaker_embedding_extractor.onnx";
 const DEFAULT_VOICE_EMBEDDING_MODEL_PATH: &str = "models/voice/speaker_embedding_extractor.onnx";
@@ -26,7 +30,9 @@ fn main() -> Result<()> {
 
 fn print_help() {
     println!("xtask commands:");
-    println!("  fetch [tiny.en|base.en|small.en|large-v3|URL]            # fetches local models");
+    println!(
+        "  fetch [tiny.en|base.en|small.en|large-v3|URL]            # fetches default fast and big local models, or one model if specified"
+    );
     println!(
         "  fetch-asr-model [tiny.en|base.en|small.en|large-v3|URL]  # also fetches voice embeddings"
     );
@@ -34,9 +40,20 @@ fn print_help() {
 }
 
 fn fetch_asr_model(choice: Option<String>) -> Result<()> {
-    let choice = choice.unwrap_or_else(|| DEFAULT_MODEL.to_string());
-    let (url, path) = model_choice(&choice);
-    fetch_model(&url, &path, "ASR", "WHISPER_MODEL")?;
+    if let Some(choice) = choice {
+        let (url, path) = model_choice(&choice);
+        fetch_model(&url, &path, "ASR", "WHISPER_MODEL")?;
+    } else {
+        let (url, path) = model_choice(DEFAULT_FAST_MODEL);
+        fetch_model(&url, &path, "fast ASR", "WHISPER_MODEL")?;
+        let (url, path) = model_choice(DEFAULT_BIG_MODEL);
+        fetch_model(
+            &url,
+            &path,
+            "big transcription",
+            "BIG_TRANSCRIPTION_WHISPER_MODEL",
+        )?;
+    }
     fetch_voice_embedding_model(None)
 }
 
@@ -111,13 +128,17 @@ fn model_choice(choice: &str) -> (String, PathBuf) {
         "large-v3" => "ggml-large-v3.bin",
         other => other,
     };
-    let url = if choice == DEFAULT_MODEL {
-        DEFAULT_MODEL_URL.to_string()
+    let url = if choice == DEFAULT_FAST_MODEL {
+        DEFAULT_FAST_MODEL_URL.to_string()
+    } else if choice == DEFAULT_BIG_MODEL {
+        DEFAULT_BIG_MODEL_URL.to_string()
     } else {
         format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{file}")
     };
-    let path = if choice == DEFAULT_MODEL {
-        PathBuf::from(DEFAULT_MODEL_PATH)
+    let path = if choice == DEFAULT_FAST_MODEL {
+        PathBuf::from(DEFAULT_FAST_MODEL_PATH)
+    } else if choice == DEFAULT_BIG_MODEL {
+        PathBuf::from(DEFAULT_BIG_MODEL_PATH)
     } else {
         Path::new("models").join("whisper").join(file)
     };
@@ -169,8 +190,19 @@ mod tests {
     }
 
     #[test]
-    fn default_model_is_large_multilingual_whisper() {
-        let (url, path) = model_choice(DEFAULT_MODEL);
+    fn default_fast_model_is_small_english_whisper() {
+        let (url, path) = model_choice(DEFAULT_FAST_MODEL);
+
+        assert_eq!(
+            url,
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin"
+        );
+        assert_eq!(path, PathBuf::from("models/whisper/ggml-small.en.bin"));
+    }
+
+    #[test]
+    fn default_big_model_is_large_multilingual_whisper() {
+        let (url, path) = model_choice(DEFAULT_BIG_MODEL);
 
         assert_eq!(
             url,

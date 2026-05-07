@@ -39,9 +39,10 @@ open_clip_inference = { version = "0.4.0", optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"], optional = true }
 
 [features]
-default = ["tts", "asr", "voice", "all-sensors"]
+default = ["tts", "asr-cuda", "voice", "all-sensors"]
 tts = []
 asr = ["dep:hound", "dep:num_cpus", "dep:whisper-rs"]
+asr-cuda = ["asr", "whisper-rs/cuda"]
 voice = ["asr", "dep:voxudio"]
 scene-vec = ["dep:open_clip_inference", "dep:image"]
 e2e = []

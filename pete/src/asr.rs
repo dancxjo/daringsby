@@ -22,7 +22,8 @@ use psyche::{AudioClip, Sensation, Topic, TopicBus};
 #[cfg(feature = "voice")]
 use psyche::{QdrantClient, VoiceInfo, audio_clip_id};
 
-pub const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-base.en.bin";
+pub const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-small.en.bin";
+pub const LEGACY_FAST_MODEL_PATH: &str = "models/whisper/ggml-base.en.bin";
 pub const HIGH_QUALITY_MULTILINGUAL_MODEL_PATH: &str = "models/whisper/ggml-large-v3.bin";
 #[cfg(feature = "voice")]
 pub const DEFAULT_VOICE_EMBEDDING_MODEL_PATH: &str =
@@ -129,6 +130,10 @@ impl AsrService {
                 default.exists().then_some(default)
             })
             .or_else(|| {
+                let legacy = PathBuf::from(LEGACY_FAST_MODEL_PATH);
+                legacy.exists().then_some(legacy)
+            })
+            .or_else(|| {
                 let high_quality = PathBuf::from(HIGH_QUALITY_MULTILINGUAL_MODEL_PATH);
                 high_quality.exists().then_some(high_quality)
             });
@@ -165,15 +170,26 @@ impl AsrService {
             parse_env("ASR_SILENCE_DURATION_MS", 1_200u64)?.clamp(100, 10_000);
         let pcm_queue_capacity =
             parse_env("ASR_PCM_QUEUE_CAPACITY", DEFAULT_PCM_QUEUE_CAPACITY)?.clamp(1usize, 64usize);
+        let whisper_use_gpu = parse_env("ASR_USE_GPU", whisper_gpu_enabled_by_default())?;
+        let whisper_gpu_device = parse_env("ASR_GPU_DEVICE", 0i32)?.max(0);
 
         let context = if let Some(model_path) = model_path {
-            info!(model_path = %model_path.display(), "loading whisper model");
+            info!(
+                model_path = %model_path.display(),
+                use_gpu = whisper_use_gpu,
+                gpu_device = whisper_gpu_device,
+                "loading whisper model"
+            );
+            let mut context_params = WhisperContextParameters::default();
+            context_params
+                .use_gpu(whisper_use_gpu)
+                .gpu_device(whisper_gpu_device);
             Some(Arc::new(Mutex::new(
                 WhisperContext::new_with_params(
                     model_path
                         .to_str()
                         .ok_or_else(|| anyhow!("WHISPER_MODEL path is not valid UTF-8"))?,
-                    WhisperContextParameters::default(),
+                    context_params,
                 )
                 .with_context(|| {
                     format!("failed to load whisper model from {}", model_path.display())
@@ -486,6 +502,10 @@ where
         .unwrap_or_else(|_| default_to_string(&default))
         .parse()
         .with_context(|| format!("invalid {key}"))
+}
+
+fn whisper_gpu_enabled_by_default() -> bool {
+    cfg!(feature = "asr-cuda")
 }
 
 fn default_to_string<T>(value: &T) -> String
