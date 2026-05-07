@@ -123,6 +123,10 @@ name = "timeline"
 path = "src/bin/timeline.rs"
 
 [[bin]]
+name = "movie"
+path = "src/bin/movie.rs"
+
+[[bin]]
 name = "cluster"
 path = "src/bin/cluster.rs"
 

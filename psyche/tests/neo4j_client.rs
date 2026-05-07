@@ -781,7 +781,7 @@ async fn neo4j_client_loads_graph_snapshot() {
                                 }
                             }, {
                                 "id": "face:1",
-                                "labels": ["GraphNode", "Face"],
+                                "labels": ["GraphNode", "FaceInstance"],
                                 "properties": {
                                     "id": "face:1",
                                     "crop_mime": "image/jpeg",
@@ -888,6 +888,128 @@ async fn neo4j_client_loads_graph_node_details_with_media_payload() {
     assert_eq!(details.relationships.len(), 1);
     assert_eq!(details.relationships[0].relationship_type, "OBSERVED");
     query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_loads_movie_export_media() {
+    let server = MockServer::start_async().await;
+    let latest_query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("GraphNode:Image")
+                .body_contains("GraphNode:SpeechSegment");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["observed_at"],
+                    "data": [{ "row": ["2026-05-07T12:01:30Z"] }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+    let image_query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (i:GraphNode:Image)")
+                .body_contains("datetime(observed_at) >= datetime($from)")
+                .body_contains("\"from\":\"2026-05-07T12:00:00+00:00\"")
+                .body_contains("\"to\":\"2026-05-07T12:01:30+00:00\"");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["i.id", "i.mime", "i.base64", "i.captured_at", "observed_at", "s.id"],
+                    "data": [{ "row": [
+                        "image:1",
+                        "image/png",
+                        "iVBORw0KGgo=",
+                        "2026-05-07T12:00:00Z",
+                        "2026-05-07T12:00:00Z",
+                        "sensation:1"
+                    ] }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+    let prior_image_query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (i:GraphNode:Image)")
+                .body_contains("datetime(observed_at) < datetime($before)")
+                .body_contains("\"before\":\"2026-05-07T12:00:00+00:00\"");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["i.id", "i.mime", "i.base64", "i.captured_at", "observed_at", "s.id"],
+                    "data": [{ "row": [
+                        "image:0",
+                        "image/jpeg",
+                        "/9j/AA==",
+                        null,
+                        "2026-05-07T11:59:59Z",
+                        null
+                    ] }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+    let speech_query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (speech:GraphNode:SpeechSegment)")
+                .body_contains("datetime(started_at) <= datetime($to)");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["speech.id", "text", "start_ms", "end_ms", "started_at", "ended_at"],
+                    "data": [{ "row": [
+                        "speech:1",
+                        "hello",
+                        250,
+                        1250,
+                        "2026-05-07T12:00:02Z",
+                        "2026-05-07T12:00:03Z"
+                    ] }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let graph = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into());
+    let from = chrono::DateTime::parse_from_rfc3339("2026-05-07T12:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let to = chrono::DateTime::parse_from_rfc3339("2026-05-07T12:01:30Z")
+        .unwrap()
+        .with_timezone(&Utc);
+
+    assert_eq!(
+        graph.latest_movie_timestamp().await.unwrap().unwrap(),
+        "2026-05-07T12:01:30Z"
+    );
+    let frames = graph.movie_image_frames(from, to).await.unwrap();
+    assert_eq!(frames[0].id, "image:1");
+    assert_eq!(frames[0].image.mime, "image/png");
+    assert_eq!(frames[0].occurred_at, "2026-05-07T12:00:00Z");
+    let prior = graph
+        .latest_movie_image_frame_before(from)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(prior.id, "image:0");
+    let speech = graph.movie_speech_segments(from, to).await.unwrap();
+    assert_eq!(speech[0].id, "speech:1");
+    assert_eq!(speech[0].text, "hello");
+    assert_eq!(speech[0].start_ms, 250);
+    assert_eq!(speech[0].ended_at.as_deref(), Some("2026-05-07T12:00:03Z"));
+
+    latest_query.assert_async().await;
+    image_query.assert_async().await;
+    prior_image_query.assert_async().await;
+    speech_query.assert_async().await;
 }
 
 #[tokio::test]
@@ -1208,6 +1330,7 @@ async fn neo4j_client_attaches_face_recognition() {
             when.method(POST)
                 .path("/db/neo4j/tx/commit")
                 .body_contains("FaceRecognitionRun")
+                .body_contains("FaceInstance")
                 .body_contains("HAS_FACE_RECOGNITION_RUN")
                 .body_contains("DETECTED_FACE")
                 .body_contains("CONTAINS_FACE")

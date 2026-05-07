@@ -59,6 +59,10 @@
           <h2>Timeline</h2>
           <p id="timeline-range">No timed media</p>
         </div>
+        <div class="timeline-playback" aria-label="Timeline playback controls">
+          <button id="timeline-play" type="button" title="Play timeline" aria-label="Play timeline">▶</button>
+          <button id="timeline-pause" type="button" title="Pause timeline" aria-label="Pause timeline" disabled>Ⅱ</button>
+        </div>
         <div class="timeline-zoom" aria-label="Timeline zoom controls">
           <button id="timeline-zoom-in" type="button" title="Zoom in on playhead" aria-label="Zoom in on playhead">+</button>
           <button id="timeline-zoom-out" type="button" title="Zoom out from playhead" aria-label="Zoom out from playhead">-</button>
@@ -80,6 +84,15 @@
     </section>
 
     <aside class="inspector" aria-label="Selection inspector">
+      <section class="present-panel" id="present-panel" aria-label="Timeline head instant" hidden>
+        <div class="present-head">
+          <h2>Head</h2>
+          <p id="present-time">No instant</p>
+        </div>
+        <div class="present-media" id="present-media">
+          <span>No image at head</span>
+        </div>
+      </section>
       <div class="inspector-empty" id="inspector-empty">Select a node or relationship</div>
       <div class="inspector-content" id="inspector-content" hidden>
         <div class="inspector-head">

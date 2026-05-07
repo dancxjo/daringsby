@@ -11,14 +11,14 @@ use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error};
 
-/// Information about a detected face.
+/// Information about one detected face instance.
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FaceInfo {
     /// Cropped face image.
     pub crop: ImageData,
-    /// Stable content id of the cropped face image.
+    /// Stable content id of the cropped face instance image.
     pub face_id: String,
     /// Stable content id of the source image.
     pub source_image_id: String,

@@ -341,7 +341,7 @@ fn cluster_theme_prompt(cluster: &VectorCluster, items: &[GraphClusterItem]) -> 
         "You extract terse real-world labels for the person, object, place, or idea that unites related memories and perceptions.\n\n\
          The following entries are memories or perceptions whose embeddings are near each other. \
          Each entry may include supporting stimuli, graph edges, and nearby graph nodes for context. \
-         Treat labels like Vector, Cluster, Impression, SpeechSegment, AudioClip, and ImageDescription as implementation details, not as the topic.\n\
+         Treat labels like Vector, Cluster, Impression, SpeechSegment, AudioClip, ImageDescription, FaceInstance, VoiceSignature, and VoiceSample as implementation details, not as the topic.\n\
          What person, object, place, or idea unites these items? Answer with only that uniting person, object, place, or idea as a concise noun phrase. \
          Do not summarize each item. Do not write a complete sentence. Do not add commentary, emotion, sentence-ending punctuation, vectors, embeddings, clusters, graph ids, timestamps, hashes, edges, per-detection details, or implementation details.\n\n\
          Collection: {}\n\

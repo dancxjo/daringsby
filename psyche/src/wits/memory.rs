@@ -1086,6 +1086,19 @@ pub struct GraphImageFrame {
     pub sensation_id: Option<String>,
 }
 
+/// Image frame selected for a movie export.
+#[derive(Clone, Debug)]
+pub struct GraphMovieImageFrame {
+    /// Stable graph node id for the `Image`.
+    pub id: String,
+    /// Image payload and metadata stored on the graph node.
+    pub image: ImageData,
+    /// Best-known frame timestamp.
+    pub occurred_at: String,
+    /// Source `Sensation` node that observed this frame, when present.
+    pub sensation_id: Option<String>,
+}
+
 /// LLM image description ready to be linked into the graph.
 #[derive(Clone, Debug)]
 pub struct GraphImageDescription {
@@ -1112,12 +1125,12 @@ pub struct GraphGeolocation {
     pub sensation_id: Option<String>,
 }
 
-/// Face recognition result ready to be linked into the graph.
+/// Face-instance recognition result ready to be linked into the graph.
 #[derive(Clone, Debug)]
 pub struct GraphFaceDetection {
     /// Zero-based detection order within the source frame.
     pub index: usize,
-    /// Stable graph node id for the cropped face image.
+    /// Stable graph node id for the cropped face instance image.
     pub face_id: String,
     /// Cropped face image and capture metadata.
     pub crop: ImageData,
@@ -1194,6 +1207,23 @@ pub struct GraphSpeechSegment {
     /// Absolute segment start timestamp, when the source clip was timestamped.
     pub occurred_at: Option<String>,
     /// Absolute segment end timestamp, when the source clip was timestamped.
+    pub ended_at: Option<String>,
+}
+
+/// Speech segment selected for a movie caption export.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphMovieSpeechSegment {
+    /// Stable graph node id for the speech segment.
+    pub id: String,
+    /// Segment text.
+    pub text: String,
+    /// Segment-local start offset from the source audio clip.
+    pub start_ms: u32,
+    /// Segment-local end offset from the source audio clip.
+    pub end_ms: u32,
+    /// Absolute segment start timestamp.
+    pub occurred_at: String,
+    /// Absolute segment end timestamp, when present.
     pub ended_at: Option<String>,
 }
 
@@ -1751,6 +1781,165 @@ impl Neo4jClient {
         )
         .await?;
         rows.first().map(graph_geolocation_from_row).transpose()
+    }
+
+    /// Return the latest timestamp available for movie export media.
+    pub async fn latest_movie_timestamp(&self) -> Result<Option<String>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    CALL {
+                        MATCH (i:GraphNode:Image)
+                        OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(i)
+                        WITH coalesce(i.captured_at, i.occurred_at, s.occurred_at, "") AS observed_at
+                        WHERE observed_at <> ""
+                        RETURN observed_at
+                        UNION
+                        MATCH (speech:GraphNode:SpeechSegment)
+                        WITH coalesce(speech.occurred_at, speech.timestamp, "") AS observed_at
+                        WHERE observed_at <> ""
+                        RETURN observed_at
+                    }
+                    RETURN observed_at
+                    ORDER BY datetime(observed_at) DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "loading latest movie timestamp",
+        )
+        .await?;
+        rows.first()
+            .map(|row| {
+                row.as_array()
+                    .and_then(|values| values.first())
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string)
+                    .context("Neo4j latest movie timestamp row is missing observed_at")
+            })
+            .transpose()
+    }
+
+    /// Return image frames in the requested movie export range.
+    pub async fn movie_image_frames(
+        &self,
+        from: chrono::DateTime<chrono::Utc>,
+        to: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<GraphMovieImageFrame>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (i:GraphNode:Image)
+                    WHERE i.base64 IS NOT NULL
+                    OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(i)
+                    WITH i, s, coalesce(i.captured_at, i.occurred_at, s.occurred_at, "") AS observed_at
+                    WHERE observed_at <> ""
+                      AND datetime(observed_at) >= datetime($from)
+                      AND datetime(observed_at) <= datetime($to)
+                    RETURN i.id, i.mime, i.base64, i.captured_at, observed_at, s.id
+                    ORDER BY datetime(observed_at) ASC, i.id
+                "#
+                .into(),
+                parameters: json!({
+                    "from": from.to_rfc3339(),
+                    "to": to.to_rfc3339(),
+                }),
+            },
+            "loading movie image frames",
+        )
+        .await?;
+        rows.iter().map(graph_movie_image_frame_from_row).collect()
+    }
+
+    /// Return the latest image frame before the requested movie export range.
+    pub async fn latest_movie_image_frame_before(
+        &self,
+        before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<GraphMovieImageFrame>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (i:GraphNode:Image)
+                    WHERE i.base64 IS NOT NULL
+                    OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(i)
+                    WITH i, s, coalesce(i.captured_at, i.occurred_at, s.occurred_at, "") AS observed_at
+                    WHERE observed_at <> ""
+                      AND datetime(observed_at) < datetime($before)
+                    RETURN i.id, i.mime, i.base64, i.captured_at, observed_at, s.id
+                    ORDER BY datetime(observed_at) DESC, i.id
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({
+                    "before": before.to_rfc3339(),
+                }),
+            },
+            "loading latest movie image frame before range",
+        )
+        .await?;
+        rows.first()
+            .map(graph_movie_image_frame_from_row)
+            .transpose()
+    }
+
+    /// Return speech segments overlapping the requested movie export range.
+    pub async fn movie_speech_segments(
+        &self,
+        from: chrono::DateTime<chrono::Utc>,
+        to: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<GraphMovieSpeechSegment>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (speech:GraphNode:SpeechSegment)
+                    WITH speech,
+                         coalesce(speech.occurred_at, speech.timestamp, "") AS started_at,
+                         coalesce(speech.ended_at, "") AS ended_at
+                    WHERE started_at <> ""
+                      AND datetime(started_at) <= datetime($to)
+                      AND (ended_at = "" OR datetime(ended_at) >= datetime($from))
+                    RETURN
+                        speech.id,
+                        coalesce(speech.text, ""),
+                        toInteger(coalesce(speech.start_ms, 0)),
+                        toInteger(coalesce(speech.end_ms, speech.start_ms, 0)),
+                        started_at,
+                        ended_at
+                    ORDER BY datetime(started_at) ASC, speech.id
+                "#
+                .into(),
+                parameters: json!({
+                    "from": from.to_rfc3339(),
+                    "to": to.to_rfc3339(),
+                }),
+            },
+            "loading movie speech segments",
+        )
+        .await?;
+        rows.iter()
+            .map(graph_movie_speech_segment_from_row)
+            .collect()
     }
 
     /// Return a display-oriented snapshot of the latest graph nodes and their relationships.
@@ -4190,6 +4379,38 @@ fn graph_image_frame_from_row(row: &Value) -> Result<GraphImageFrame> {
         image,
         occurred_at: row_optional_string(values, 4),
         sensation_id: row_optional_string(values, 5),
+    })
+}
+
+fn graph_movie_image_frame_from_row(row: &Value) -> Result<GraphMovieImageFrame> {
+    let values = row
+        .as_array()
+        .context("Neo4j movie image frame row was not an array")?;
+    let id = row_string(values, 0, "id")?;
+    let image = ImageData {
+        mime: row_string(values, 1, "mime")?,
+        base64: row_string(values, 2, "base64")?,
+        captured_at: row_optional_string(values, 3),
+    };
+    Ok(GraphMovieImageFrame {
+        id,
+        image,
+        occurred_at: row_string(values, 4, "movie image occurred_at")?,
+        sensation_id: row_optional_string(values, 5),
+    })
+}
+
+fn graph_movie_speech_segment_from_row(row: &Value) -> Result<GraphMovieSpeechSegment> {
+    let values = row
+        .as_array()
+        .context("Neo4j movie speech segment row was not an array")?;
+    Ok(GraphMovieSpeechSegment {
+        id: row_string(values, 0, "speech segment id")?,
+        text: row_string(values, 1, "speech segment text")?,
+        start_ms: row_u32(values, 2, "speech segment start_ms")?,
+        end_ms: row_u32(values, 3, "speech segment end_ms")?,
+        occurred_at: row_string(values, 4, "speech segment occurred_at")?,
+        ended_at: row_optional_string(values, 5),
     })
 }
 

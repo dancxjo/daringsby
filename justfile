@@ -28,7 +28,7 @@ run:
             bin="forget-silence"
         fi
         # simulate is an ad hoc client utility that requires a subcommand.
-        if [[ "$bin" == "pete" || "$bin" == "simulate" || "$bin" == "raw_retention" ]]; then
+        if [[ "$bin" == "pete" || "$bin" == "simulate" || "$bin" == "raw_retention" || "$bin" == "movie" ]]; then
             continue
         fi
         bins+=("$bin")
@@ -95,6 +95,10 @@ run:
 # Forget derived graph/vector data while retaining raw sensations and media.
 forget *args:
     cargo run -p pete --bin raw_retention -- --confirm {{ args }}
+
+# Render a WebM movie and WebVTT captions from Pete's graph timeline.
+movie *args:
+    cargo run -p pete --no-default-features --bin movie -- {{ args }}
 
 # Start Pete with debug logging unless RUST_LOG is already set.
 debug *args:
