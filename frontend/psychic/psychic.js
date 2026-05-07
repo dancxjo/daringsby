@@ -72,6 +72,7 @@
   let detailRequestId = 0;
   let mediaObjectUrl = "";
   let temporalExtent = null;
+  let pendingLocationTarget = targetFromLocation();
 
   const zoom = d3
     .zoom()
@@ -238,8 +239,11 @@
 
     syncSelectionWithFilteredGraph();
     render(reheat);
+    if (resolvePendingLocationTarget()) {
+      return;
+    }
     if (!selected && graph.nodes.length > 0) {
-      selectItem({ kind: "node", value: graph.nodes[0] });
+      selectItem({ kind: "node", value: graph.nodes[0] }, { updateUrl: false });
     }
   }
 
@@ -251,7 +255,7 @@
         return;
       }
     } else if (selected?.kind === "relationship") {
-      const relationship = graph.relationships.find((item) => item.id === selected.value.id);
+      const relationship = graph.relationships.find((item) => relationshipId(item) === relationshipId(selected.value));
       if (relationship) {
         selected.value = relationship;
         return;
@@ -259,7 +263,7 @@
     } else {
       return;
     }
-    clearSelection();
+    clearSelection({ updateUrl: false });
   }
 
   function render(reheat = false) {
@@ -274,7 +278,7 @@
       .append("line")
       .on("click", (event, rel) => {
         event.stopPropagation();
-        selectItem({ kind: "relationship", value: rel });
+        selectItem({ kind: "relationship", value: rel, focusNodeId: relationshipEndpoint(rel.target) });
       });
     enteredLinks
       .merge(links)
@@ -335,7 +339,7 @@
       .selectAll("line")
       .classed(
         "selected",
-        (rel) => selected?.kind === "relationship" && selected.value.id === rel.id,
+        (rel) => selected?.kind === "relationship" && relationshipId(selected.value) === relationshipId(rel),
       );
 
     simulation.nodes(graph.nodes);
@@ -520,7 +524,7 @@
       }));
   }
 
-  function selectItem(item) {
+  function selectItem(item, options = {}) {
     selected = item;
     inspectorEmpty.hidden = true;
     inspectorContent.hidden = false;
@@ -542,24 +546,28 @@
       inspectorKind.textContent = `${relationshipEndpoint(rel.source)} → ${relationshipEndpoint(rel.target)}`;
       renderProperties({ id: rel.id, source: relationshipEndpoint(rel.source), target: relationshipEndpoint(rel.target), ...(rel.properties || {}) });
     }
+    if (options.updateUrl !== false) {
+      updateUrlForSelection(item, options);
+    }
     render();
   }
 
-  function clearSelection() {
+  function clearSelection(options = {}) {
     selected = null;
     inspectorEmpty.hidden = false;
     inspectorContent.hidden = true;
     inspectorMedia.hidden = true;
     clearMediaPreview();
+    if (options.updateUrl !== false) {
+      clearGraphTargetUrl(options);
+    }
     render();
   }
 
   async function loadNodeDetails(node) {
     const requestId = ++detailRequestId;
     try {
-      const response = await fetch(`/graph/node/${encodeURIComponent(node.id)}`);
-      if (!response.ok) throw new Error(`detail request failed: ${response.status}`);
-      const details = await response.json();
+      const details = await fetchNodeDetails(node.id);
       if (requestId !== detailRequestId || selected?.kind !== "node" || selected.value.id !== node.id) {
         return;
       }
@@ -632,29 +640,78 @@
   function propertiesForNodeDetails(node) {
     const props = { id: node.id, labels: node.labels, ...(node.properties || {}) };
     if (node.relationships?.length) {
-      props.relationships = node.relationships.map((rel) => {
-        const source = relationshipEndpoint(rel.source);
-        const target = relationshipEndpoint(rel.target);
-        return `${source === node.id ? "out" : "in"} ${rel.type} ${source === node.id ? target : source}`;
-      });
+      props.relationships = node.relationships.map((rel) => relationshipReferenceForNode(node.id, rel));
     }
     return props;
   }
 
   function renderProperties(properties) {
     inspectorProperties.replaceChildren();
-    Object.entries(properties)
+    const entries = Object.entries(properties)
       .filter(([, value]) => value !== null && value !== undefined && value !== "")
       .filter(([key]) => !largeMediaProperty(key))
-      .filter(([key]) => !temporalProperty(key))
-      .slice(0, 36)
+      .filter(([key]) => !temporalProperty(key));
+    const relationshipEntries = entries.filter(([key]) => key === "relationships");
+    const visibleEntries = [
+      ...entries.filter(([key]) => key !== "relationships").slice(0, 36),
+      ...relationshipEntries,
+    ];
+    visibleEntries
       .forEach(([key, value]) => {
         const dt = document.createElement("dt");
         const dd = document.createElement("dd");
         dt.textContent = key;
-        dd.textContent = formatValue(value);
+        if (key === "relationships" && Array.isArray(value)) {
+          renderRelationshipLinks(dd, value);
+        } else {
+          dd.textContent = formatValue(value);
+        }
         inspectorProperties.append(dt, dd);
       });
+  }
+
+  function renderRelationshipLinks(container, relationships) {
+    const list = document.createElement("ul");
+    list.className = "relationship-list";
+    relationships.forEach((relationship) => {
+      const item = document.createElement("li");
+      const link = document.createElement("a");
+      const target = {
+        nodeId: relationship.otherId,
+        relationshipId: relationshipId(relationship),
+        relationship,
+      };
+      link.href = graphTargetHref(target);
+      link.textContent = relationship.label || formatRelationshipReference(relationship);
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        navigateToGraphTarget(target, { updateUrl: true }).catch((err) => {
+          statusEl.textContent = err.message || "Graph target unavailable";
+        });
+      });
+      item.append(link);
+      list.append(item);
+    });
+    container.append(list);
+  }
+
+  function relationshipReferenceForNode(nodeId, rel) {
+    const source = relationshipEndpoint(rel.source);
+    const target = relationshipEndpoint(rel.target);
+    const outgoing = source === nodeId;
+    const otherId = outgoing ? target : source;
+    return {
+      ...rel,
+      source,
+      target,
+      otherId,
+      direction: outgoing ? "out" : "in",
+      label: `${outgoing ? "out" : "in"} ${rel.type} ${otherId}`,
+    };
+  }
+
+  function formatRelationshipReference(relationship) {
+    return `${relationship.direction || "rel"} ${relationship.type} ${relationship.otherId || relationshipEndpoint(relationship.target)}`;
   }
 
   function nodeKind(node) {
@@ -851,6 +908,10 @@
     return value && typeof value === "object" ? value.id : value;
   }
 
+  function relationshipId(rel) {
+    return rel?.id || `${relationshipEndpoint(rel?.source)}:${rel?.type}:${relationshipEndpoint(rel?.target)}`;
+  }
+
   function truncate(value, length) {
     return value.length > length ? `${value.slice(0, length - 1)}…` : value;
   }
@@ -973,6 +1034,258 @@
       .join(",")}}`;
   }
 
+  function targetFromLocation() {
+    const params = new URLSearchParams(window.location.search);
+    const nodeId = params.get("node") || "";
+    const relationshipId = params.get("relationship") || "";
+    if (!nodeId && !relationshipId) return null;
+    return { nodeId, relationshipId };
+  }
+
+  function resolvePendingLocationTarget() {
+    if (!pendingLocationTarget) return false;
+    const target = pendingLocationTarget;
+    pendingLocationTarget = null;
+    window.setTimeout(() => {
+      navigateToGraphTarget(target, { updateUrl: false }).catch((err) => {
+        statusEl.textContent = err.message || "Graph target unavailable";
+      });
+    }, 0);
+    return true;
+  }
+
+  async function navigateToGraphTarget(target, options = {}) {
+    await ensureGraphTarget(target);
+    applyGraphFilters(true);
+
+    const relationship = target.relationshipId ? findGraphRelationship(target.relationshipId) : null;
+    if (relationship) {
+      const focusNodeId = target.nodeId || relationshipEndpoint(relationship.target);
+      const item = { kind: "relationship", value: relationship, focusNodeId };
+      selectItem(item, options);
+      snapRelationshipIntoView(relationship);
+      return;
+    }
+
+    const node = target.nodeId ? findGraphNode(target.nodeId) : null;
+    if (node) {
+      selectItem({ kind: "node", value: node }, options);
+      snapNodeIntoView(node);
+    }
+  }
+
+  async function ensureGraphTarget(target) {
+    let details = null;
+    let changed = false;
+    let filtersChanged = false;
+
+    if (target.relationship) {
+      changed = mergeGraphRelationship(target.relationship) || changed;
+    }
+
+    if (target.nodeId && !findFullGraphNode(target.nodeId)) {
+      details = await fetchNodeDetails(target.nodeId);
+      changed = mergeGraphNode(details) || changed;
+    }
+
+    let relationship = target.relationshipId ? findFullGraphRelationship(target.relationshipId) : null;
+    if (!relationship && target.relationshipId && target.nodeId) {
+      if (!details) details = await fetchNodeDetails(target.nodeId);
+      relationship = (details.relationships || []).find((rel) => relationshipId(rel) === target.relationshipId);
+      if (relationship) {
+        changed = mergeGraphRelationship(relationship) || changed;
+      }
+    }
+
+    if (relationship) {
+      const sourceNode = await ensureGraphNode(relationshipEndpoint(relationship.source));
+      const targetNode = await ensureGraphNode(relationshipEndpoint(relationship.target));
+      filtersChanged = allowNodeFilters(sourceNode) || filtersChanged;
+      filtersChanged = allowNodeFilters(targetNode) || filtersChanged;
+      filtersChanged = allowPredicateFilter(relationship.type) || filtersChanged;
+    }
+
+    const node = target.nodeId ? findFullGraphNode(target.nodeId) : null;
+    filtersChanged = allowNodeFilters(node) || filtersChanged;
+
+    if (changed || filtersChanged) {
+      if (filtersChanged) {
+        saveStoredFilters();
+        renderFilterGroup(labelFiltersEl, "labels", sortedUnique([...filters.labels.keys()]));
+        renderFilterGroup(predicateFiltersEl, "predicates", sortedUnique([...filters.predicates.keys()]));
+        syncFilterGroupControl("labels");
+        syncFilterGroupControl("predicates");
+      } else {
+        syncFilterControls();
+      }
+    }
+  }
+
+  async function ensureGraphNode(id) {
+    if (!id) return null;
+    const existing = findFullGraphNode(id);
+    if (existing) return existing;
+    const details = await fetchNodeDetails(id);
+    mergeGraphNode(details);
+    return findFullGraphNode(id);
+  }
+
+  function mergeGraphNode(node) {
+    if (!node?.id) return false;
+    const existing = findFullGraphNode(node.id);
+    const next = {
+      id: node.id,
+      labels: node.labels || [],
+      properties: node.properties || {},
+    };
+    const old = existing || nodeState.get(node.id);
+    if (old) {
+      next.x = old.x;
+      next.y = old.y;
+      next.vx = old.vx;
+      next.vy = old.vy;
+      next.fx = old.fx;
+      next.fy = old.fy;
+    }
+    if (existing) {
+      Object.assign(existing, next);
+      nodeState.set(existing.id, existing);
+      return false;
+    }
+    fullGraph.nodes.push(next);
+    nodeState.set(next.id, next);
+    return true;
+  }
+
+  function mergeGraphRelationship(rel) {
+    if (!rel || findFullGraphRelationship(relationshipId(rel))) return false;
+    fullGraph.relationships.push({
+      id: relationshipId(rel),
+      source: relationshipEndpoint(rel.source),
+      target: relationshipEndpoint(rel.target),
+      type: rel.type,
+      properties: rel.properties || {},
+    });
+    return true;
+  }
+
+  function allowNodeFilters(node) {
+    if (!node) return false;
+    return (node.labels || []).reduce((changed, label) => {
+      if (filters.labels.get(label) === true) return changed;
+      filters.labels.set(label, true);
+      return true;
+    }, false);
+  }
+
+  function allowPredicateFilter(type) {
+    if (!type || filters.predicates.get(type) === true) return false;
+    filters.predicates.set(type, true);
+    return true;
+  }
+
+  async function fetchNodeDetails(id) {
+    const response = await fetch(`/graph/node/${encodeURIComponent(id)}`);
+    if (!response.ok) throw new Error(`detail request failed: ${response.status}`);
+    return response.json();
+  }
+
+  function findGraphNode(id) {
+    return graph.nodes.find((node) => node.id === id);
+  }
+
+  function findFullGraphNode(id) {
+    return fullGraph.nodes.find((node) => node.id === id);
+  }
+
+  function findGraphRelationship(id) {
+    return graph.relationships.find((rel) => relationshipId(rel) === id);
+  }
+
+  function findFullGraphRelationship(id) {
+    return fullGraph.relationships.find((rel) => relationshipId(rel) === id);
+  }
+
+  function graphTargetHref(target) {
+    const url = new URL(window.location.href);
+    if (target.nodeId) {
+      url.searchParams.set("node", target.nodeId);
+    } else {
+      url.searchParams.delete("node");
+    }
+    if (target.relationshipId) {
+      url.searchParams.set("relationship", target.relationshipId);
+    } else {
+      url.searchParams.delete("relationship");
+    }
+    return `${url.pathname}${url.search}${url.hash}`;
+  }
+
+  function updateUrlForSelection(item, options = {}) {
+    if (item.kind === "node") {
+      updateGraphTargetUrl({ nodeId: item.value.id }, options);
+    } else {
+      updateGraphTargetUrl(
+        {
+          nodeId: item.focusNodeId || relationshipEndpoint(item.value.target),
+          relationshipId: relationshipId(item.value),
+        },
+        options,
+      );
+    }
+  }
+
+  function updateGraphTargetUrl(target, options = {}) {
+    const next = graphTargetHref(target);
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (next === current) return;
+    window.history[options.replaceUrl ? "replaceState" : "pushState"]({}, "", next);
+  }
+
+  function clearGraphTargetUrl(options = {}) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("node");
+    url.searchParams.delete("relationship");
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (next === current) return;
+    window.history[options.replaceUrl ? "replaceState" : "pushState"]({}, "", next);
+  }
+
+  function snapNodeIntoView(node) {
+    const point = endpoint(node.id);
+    snapPointsIntoView([{ x: point.x, y: point.y }], 2.2);
+  }
+
+  function snapRelationshipIntoView(rel) {
+    const source = endpoint(rel.source);
+    const target = endpoint(rel.target);
+    snapPointsIntoView(
+      [
+        { x: source.x, y: source.y },
+        { x: target.x, y: target.y },
+      ],
+      1.85,
+    );
+  }
+
+  function snapPointsIntoView(points, maxScale) {
+    const rect = svg.node().getBoundingClientRect();
+    if (!points.length || rect.width === 0 || rect.height === 0) return;
+    const xs = points.map((point) => point.x ?? rect.width / 2);
+    const ys = points.map((point) => point.y ?? rect.height / 2);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const width = Math.max(maxX - minX, 1);
+    const height = Math.max(maxY - minY, 1);
+    const scale = Math.max(0.15, Math.min(maxScale, 0.7 / Math.max(width / rect.width, height / rect.height)));
+    const tx = rect.width / 2 - scale * (minX + width / 2);
+    const ty = rect.height / 2 - scale * (minY + height / 2);
+    svg.transition().duration(260).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+  }
+
   function dragStarted(event, node) {
     if (!event.active) simulation.alphaTarget(0.3).restart();
     node.fx = node.x;
@@ -1030,6 +1343,16 @@
     setFilterGroup("predicates", allPredicateFiltersEl.checked),
   );
   window.addEventListener("resize", resize);
+  window.addEventListener("popstate", () => {
+    const target = targetFromLocation();
+    if (target) {
+      navigateToGraphTarget(target, { updateUrl: false }).catch((err) => {
+        statusEl.textContent = err.message || "Graph target unavailable";
+      });
+    } else {
+      clearSelection({ updateUrl: false });
+    }
+  });
 
   resize();
   connect();

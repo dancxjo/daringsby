@@ -371,6 +371,31 @@ button.active {
   white-space: pre-wrap;
 }
 
+.relationship-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.relationship-list a {
+  display: block;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid rgba(157, 171, 186, 0.24);
+  border-radius: 8px;
+  background: rgba(30, 37, 44, 0.7);
+  color: var(--accent);
+  text-decoration: none;
+  white-space: normal;
+}
+
+.relationship-list a:hover,
+.relationship-list a:focus {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
 @media (max-width: 860px) {
   body {
     overflow: auto;
