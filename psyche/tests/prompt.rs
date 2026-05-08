@@ -99,7 +99,7 @@ fn sensory_prompt_phrases_match_graph_sensation_text() {
     );
     assert_eq!(
         psyche::face_familiarity_sensation_text(false),
-        "I've never seen this face before."
+        "I don't think I recognize this face."
     );
 }
 

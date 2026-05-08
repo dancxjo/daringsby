@@ -2618,6 +2618,58 @@ async fn neo4j_client_loads_latest_combobulation_emotion() {
 }
 
 #[tokio::test]
+async fn neo4j_client_loads_latest_combobulation() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("RETURN n.id, text, emoji, formed_at");
+            then.status(200).body(
+                r#"{"results":[{"data":[{"row":["awareness:1","I think someone is nearby. 🙂","","2026-05-07T12:00:00Z"]}]}],"errors":[]}"#,
+            );
+        })
+        .await;
+
+    let latest = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .latest_combobulation()
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(latest.id, "awareness:1");
+    assert_eq!(latest.text, "I think someone is nearby. 🙂");
+    assert_eq!(latest.emoji.as_deref(), Some("🙂"));
+    assert_eq!(latest.formed_at, "2026-05-07T12:00:00Z");
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_loads_latest_presentable_face_emotion() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("I turn my face into");
+            then.status(200).body(
+                r#"{"results":[{"data":[{"row":["impression:1","😐","I turn my face into a 😐."]}]}],"errors":[]}"#,
+            );
+        })
+        .await;
+
+    let emotion = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .latest_presentable_face_emotion()
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(emotion.id, "impression:1");
+    assert_eq!(emotion.emoji, "😐");
+    query.assert_async().await;
+}
+
+#[tokio::test]
 async fn neo4j_client_attaches_voice_recognition() {
     let server = MockServer::start_async().await;
     let constraint = server

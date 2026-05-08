@@ -28,7 +28,7 @@ pub fn face_familiarity_sensation_text(seen_before: bool) -> &'static str {
     if seen_before {
         "I've seen this face before."
     } else {
-        "I've never seen this face before."
+        "I don't think I recognize this face."
     }
 }
 

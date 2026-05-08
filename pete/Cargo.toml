@@ -114,6 +114,10 @@ name = "combobulate"
 path = "src/bin/combobulate.rs"
 
 [[bin]]
+name = "will"
+path = "src/bin/will.rs"
+
+[[bin]]
 name = "timeline"
 path = "src/bin/timeline.rs"
 

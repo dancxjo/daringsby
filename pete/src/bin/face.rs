@@ -27,8 +27,8 @@ use clap::Parser;
 use dotenvy::dotenv;
 use pete::{EventBus, MediaEvent, init_logging, parse_data_url};
 use psyche::{
-    AudioClip, ImageData, Neo4jClient, Sensation, SensationGraphObserver, SensationObserver,
-    image_content_id,
+    AudioClip, ImageData, Impression, Neo4jClient, Sensation, SensationGraphObserver,
+    SensationObserver, Stimulus, image_content_id,
 };
 use shared::WsPayload;
 use tokio::{io::AsyncWriteExt, net::UnixListener, sync::broadcast};
@@ -136,6 +136,7 @@ async fn main() -> anyhow::Result<()> {
 
     spawn_combobulation_emote_poller(
         graph_store,
+        state.graph.clone(),
         state.emotes.clone(),
         state.latest_emote.clone(),
         Duration::from_millis(cli.combobulation_emotion_poll_ms.max(100)),
@@ -545,6 +546,7 @@ fn is_pcm_mime(mime: &str) -> bool {
 
 fn spawn_combobulation_emote_poller(
     graph: Arc<Neo4jClient>,
+    observer: Arc<SensationGraphObserver>,
     tx: broadcast::Sender<WsPayload>,
     latest: Arc<Mutex<Option<String>>>,
     poll_interval: Duration,
@@ -552,18 +554,34 @@ fn spawn_combobulation_emote_poller(
     tokio::spawn(async move {
         let mut last_id: Option<String> = None;
         loop {
-            match graph.latest_combobulation_emotion().await {
+            match graph.latest_presentable_face_emotion().await {
                 Ok(Some(emotion)) if last_id.as_deref() != Some(emotion.id.as_str()) => {
                     last_id = Some(emotion.id);
                     *latest.lock().unwrap() = Some(emotion.emoji.clone());
+                    store_face_report_sensation(&observer, &emotion.emoji).await;
                     let _ = tx.send(WsPayload::Emote(emotion.emoji));
                 }
                 Ok(_) => {}
-                Err(err) => warn!(%err, "failed polling latest combobulation emotion"),
+                Err(err) => warn!(%err, "failed polling latest face emotion"),
             }
             tokio::time::sleep(poll_interval).await;
         }
     });
+}
+
+async fn store_face_report_sensation(observer: &SensationGraphObserver, emoji: &str) {
+    let occurred_at = Utc::now();
+    let summary = format!("I feel my face turn into a {emoji}.");
+    let impression = Impression::new(
+        vec![Stimulus::at(
+            format!("face display changed to {emoji}"),
+            occurred_at,
+        )],
+        summary,
+        Some(emoji.to_string()),
+    );
+    let sensation = Sensation::of_at(impression, occurred_at);
+    observer.observe_sensation(&sensation).await;
 }
 
 async fn spawn_ipc_server(path: PathBuf, tx: broadcast::Sender<MediaEvent>) -> anyhow::Result<()> {

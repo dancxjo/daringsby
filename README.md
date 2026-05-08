@@ -31,6 +31,32 @@ requiring separate vector nodes for ordinary sensation and impression records.
 * **Will**: Issues behavioral instructions
 * **Voice**: Generates responses when permitted
 
+### Face Expression Control
+
+Pete's face expression is intentionally driven through two overlapping paths:
+
+* **Combobulation mirroring**: the `face` binary polls the latest
+  combobulation emoji and sends it to the browser as an `Emote` WebSocket
+  payload. This preserves a low-latency emotional readout of the current
+  awareness.
+* **Will expression**: the standalone `will` binary polls the latest
+  combobulation text, prompts with Pete's system prompt without a timeline, and
+  asks for strict JSON of the form `{"emoji":"🙂"}`. It stores the active
+  decision as an impression sensation: `I turn my face into a $EMOJI.`
+* **Face proprioception**: whenever the `face` binary actually emits an emoji
+  to the browser, it also stores a redundant impression sensation:
+  `I feel my face turn into a $EMOJI.`
+
+This scheme gives Pete a "pseudoconscious" control channel over the face:
+`Will` can intentionally choose an outward expression based on the latest
+awareness summary, and that chosen expression becomes graph-visible as an act.
+At the same time, combobulation mirroring remains active as a separate,
+ambient path. Those direct combobulation updates behave like microexpressions:
+small, fast facial shifts that surface from current awareness before or between
+explicit Will decisions. The redundant face sensation closes the loop by
+recording that the presented face changed, so later cognition can treat the
+expression as both an intended action and a felt bodily state.
+
 ---
 
 ## 💻 Example Usage

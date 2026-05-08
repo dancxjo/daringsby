@@ -73,11 +73,24 @@ Provides LLM and embedding utilities.
 
    * `Will` considers the current situation and emotional tone.
    * May emit behavioral instructions (e.g., `<say>`, `<pounce>`, `<move>`).
+   * The standalone `will` binary also reads the latest combobulation without
+     a timeline and chooses a structured face emoji, recording
+     `I turn my face into a $EMOJI.` as an impression sensation.
 
 5. **Speech**
 
    * `Will` invokes `Voice::take_turn()` with a prompt, permitting it to speak.
    * `Voice` emits structured speech and updates the conversation log.
+
+6. **Face Expression**
+
+   * The `face` binary still mirrors direct combobulation emojis to `/ws`.
+   * It also treats Will's `I turn my face into...` impressions as presentable
+     face expressions.
+   * Every emitted face emoji is redundantly stored as
+     `I feel my face turn into a $EMOJI.` This lets the graph preserve both
+     pseudoconscious facial control from Will and microexpression-like shifts
+     from combobulation.
 
 ---
 

@@ -79,9 +79,9 @@ run:
         printf 'starting %-18s -> %s\n' "$bin" "$log_file"
         args=()
         if [[ "$bin" == "timeline" ]]; then
-            args+=(-- --follow)
+            args+=(--follow)
         fi
-        cargo run -p pete --features scene-vec --bin "$bin" "${args[@]}" >"$log_file" 2>&1 &
+        "./target/debug/$bin" "${args[@]}" >"$log_file" 2>&1 &
         pids+=("$!")
     done
 

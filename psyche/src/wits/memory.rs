@@ -1550,6 +1550,19 @@ pub struct GraphCombobulationEmotion {
     pub emoji: String,
 }
 
+/// Latest combobulation text suitable for the offline Will loop.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphLatestCombobulation {
+    /// Graph node id for the combobulation-bearing node.
+    pub id: String,
+    /// Human-readable combobulation text.
+    pub text: String,
+    /// Optional emoji explicitly attached to or extractable from the text.
+    pub emoji: Option<String>,
+    /// When the combobulation was formed.
+    pub formed_at: String,
+}
+
 /// Human-readable graph item related to one vector-cluster member.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GraphClusterItem {
@@ -2938,6 +2951,87 @@ impl Neo4jClient {
                 parameters: json!({}),
             },
             "finding latest combobulation emotion",
+        )
+        .await?;
+        Ok(rows.first().and_then(graph_combobulation_emotion_from_row))
+    }
+
+    /// Return the newest combobulation text for the offline Will loop.
+    pub async fn latest_combobulation(&self) -> Result<Option<GraphLatestCombobulation>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (n:GraphNode)
+                    WHERE n:Awareness
+                       OR n:CombobulationSummary
+                       OR (n:Sensation AND n.kind = "combobulation_summary")
+                    WITH n,
+                        coalesce(n.emoji, "") AS emoji,
+                        coalesce(n.text, n.summary, n.how, "") AS text,
+                        coalesce(n.created_at, n.how_formed_at, n.occurred_at, "") AS formed_at
+                    WHERE formed_at <> ""
+                      AND text <> ""
+                    RETURN n.id, text, emoji, formed_at
+                    ORDER BY datetime(formed_at) DESC, n.id DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest combobulation",
+        )
+        .await?;
+        rows.first()
+            .map(graph_latest_combobulation_from_row)
+            .transpose()
+    }
+
+    /// Return the newest emotion that should be reflected by the face.
+    ///
+    /// This intentionally includes both direct combobulation emotions and the
+    /// Will's active "I turn my face into..." impressions. It excludes the
+    /// face's own "I feel..." reports so the face does not feed back on itself.
+    pub async fn latest_presentable_face_emotion(
+        &self,
+    ) -> Result<Option<GraphCombobulationEmotion>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (n:GraphNode)
+                    WHERE n:Awareness
+                       OR n:CombobulationSummary
+                       OR (n:Sensation AND n.kind = "combobulation_summary")
+                       OR n:Impression
+                    WITH n,
+                        coalesce(n.emoji, "") AS emoji,
+                        coalesce(n.text, n.summary, n.how, "") AS text,
+                        coalesce(n.created_at, n.how_formed_at, n.timestamp, n.occurred_at, "") AS formed_at
+                    WHERE formed_at <> ""
+                      AND (emoji <> "" OR text <> "")
+                      AND (
+                        n:Awareness
+                        OR n:CombobulationSummary
+                        OR (n:Sensation AND n.kind = "combobulation_summary")
+                        OR text STARTS WITH "I turn my face into"
+                      )
+                    RETURN n.id, emoji, text
+                    ORDER BY datetime(formed_at) DESC, n.id DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest presentable face emotion",
         )
         .await?;
         Ok(rows.first().and_then(graph_combobulation_emotion_from_row))
@@ -5455,6 +5549,25 @@ fn graph_combobulation_emotion_from_row(row: &Value) -> Option<GraphCombobulatio
         explicit.to_string()
     };
     Some(GraphCombobulationEmotion { id, emoji })
+}
+
+fn graph_latest_combobulation_from_row(row: &Value) -> Result<GraphLatestCombobulation> {
+    let values = row
+        .as_array()
+        .context("Neo4j latest combobulation row was not an array")?;
+    let text = row_string(values, 1, "latest combobulation text")?;
+    let explicit = values.get(2).and_then(Value::as_str).unwrap_or("").trim();
+    let emoji = if explicit.is_empty() {
+        crate::extract_emojis(&text).1.last().cloned()
+    } else {
+        Some(explicit.to_string())
+    };
+    Ok(GraphLatestCombobulation {
+        id: row_string(values, 0, "latest combobulation id")?,
+        text,
+        emoji,
+        formed_at: row_string(values, 3, "latest combobulation formed_at")?,
+    })
 }
 
 fn graph_impression_timeline_item_from_row(row: &Value) -> Result<GraphImpressionTimelineItem> {
