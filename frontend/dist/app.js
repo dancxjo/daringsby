@@ -29,6 +29,7 @@
   const thoughtTabs = document.getElementById("thought-tabs");
   const thoughtImage = document.getElementById("thought-image");
   const imageThumbnail = document.getElementById("image-thumbnail");
+  const swapCameraButton = document.getElementById("swap-camera");
   const player = document.getElementById("audio-player");
   const face = document.getElementById("face");
   const audioQueue = [];
@@ -390,19 +391,56 @@
 
   let webcamStream = null;
   let webcamReady = false;
+  let webcamStarting = false;
+  let webcamCaptureInterval = null;
+  let selectedVideoDeviceId = null;
+  let preferredFacingMode = null;
   let audioStarted = false;
 
+  async function listVideoDevices() {
+    if (!navigator.mediaDevices?.enumerateDevices) return [];
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter((device) => device.kind === "videoinput" && device.deviceId);
+  }
+
+  function webcamVideoConstraints() {
+    if (selectedVideoDeviceId) {
+      return { deviceId: { exact: selectedVideoDeviceId } };
+    }
+    if (preferredFacingMode) {
+      return { facingMode: { ideal: preferredFacingMode } };
+    }
+    return true;
+  }
+
+  function stopWebcamStream() {
+    if (webcamStream) {
+      webcamStream.getTracks().forEach((t) => t.stop());
+      webcamStream = null;
+    }
+  }
+
+  function resetWebcamCaptureLoop() {
+    if (webcamCaptureInterval) {
+      clearInterval(webcamCaptureInterval);
+      webcamCaptureInterval = null;
+    }
+  }
+
   async function setupWebcam() {
+    if (webcamStarting) return;
+    webcamStarting = true;
+    if (swapCameraButton) {
+      swapCameraButton.disabled = true;
+    }
     try {
       const video = document.getElementById("webcam");
       if (webcamStream?.active) {
         return; // already running
       }
-      if (webcamStream) {
-        webcamStream.getTracks().forEach((t) => t.stop());
-      }
+      stopWebcamStream();
       console.debug("requesting webcam access");
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: webcamVideoConstraints() });
       webcamStream = stream;
       stream.getTracks().forEach((t) =>
         t.addEventListener(
@@ -419,7 +457,8 @@
       const canvas = document.createElement("canvas");
       canvas.id = "webcam-canvas";
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      setInterval(() => {
+      resetWebcamCaptureLoop();
+      webcamCaptureInterval = setInterval(() => {
         if (!webcamReady) return;
         const data = captureWebcamFrame(video, canvas, ctx);
         if (data === null) return;
@@ -441,11 +480,52 @@
         console.error("webcam", e);
       }
       mien.textContent = "🦯";
+    } finally {
+      webcamStarting = false;
+      if (swapCameraButton) {
+        swapCameraButton.disabled = false;
+      }
+    }
+  }
+
+  async function swapCamera() {
+    if (!webcamReady || webcamStarting || !navigator.mediaDevices?.getUserMedia) return;
+    if (swapCameraButton) {
+      swapCameraButton.disabled = true;
+    }
+    try {
+      const devices = await listVideoDevices();
+      const currentDeviceId =
+        webcamStream?.getVideoTracks()[0]?.getSettings?.().deviceId || selectedVideoDeviceId;
+
+      if (devices.length > 1) {
+        const currentIndex = devices.findIndex((device) => device.deviceId === currentDeviceId);
+        selectedVideoDeviceId = devices[(currentIndex + 1 + devices.length) % devices.length].deviceId;
+        preferredFacingMode = null;
+      } else {
+        selectedVideoDeviceId = null;
+        preferredFacingMode = preferredFacingMode === "environment" ? "user" : "environment";
+      }
+
+      stopWebcamStream();
+      resetWebcamCaptureLoop();
+      await setupWebcam();
+    } catch (e) {
+      console.warn("camera swap", e);
+      if (swapCameraButton) {
+        swapCameraButton.disabled = false;
+      }
     }
   }
 
   if (navigator.mediaDevices?.getUserMedia) {
     if (webcamReady) setupWebcam();
+  } else if (swapCameraButton) {
+    swapCameraButton.disabled = true;
+  }
+
+  if (swapCameraButton) {
+    swapCameraButton.addEventListener("click", swapCamera);
   }
 
   async function setupAudio() {

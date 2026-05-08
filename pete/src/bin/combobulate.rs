@@ -143,6 +143,13 @@ async fn process_next_window(
         .await
         .context("failed to load revisitable timeline window")?
     {
+        if backfill_before.is_none() {
+            backfill_before = window
+                .items
+                .first()
+                .map(|item| item.occurred_at.clone())
+                .or_else(|| Some(window.anchor_at.clone()));
+        }
         process_window(graph, qdrant, processor, window_seconds, window).await?;
         processed = true;
     }

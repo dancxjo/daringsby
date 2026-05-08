@@ -477,11 +477,25 @@
   }
 
   function materializeFullGraph() {
-    fullGraph.nodes = [...graphStore.nodes.values()];
-    const nodeIds = new Set(graphStore.nodes.keys());
+    fullGraph.nodes = [...graphStore.nodes.values()].filter(nodeVisibleInPsychicViews);
+    const nodeIds = new Set(fullGraph.nodes.map((node) => node.id));
     fullGraph.relationships = [...graphStore.relationships.values()].filter(
       (rel) => nodeIds.has(relationshipEndpoint(rel.source)) && nodeIds.has(relationshipEndpoint(rel.target)),
     );
+  }
+
+  function nodeVisibleInPsychicViews(node) {
+    return !isEmptyFaceRecognitionNode(node);
+  }
+
+  function isEmptyFaceRecognitionNode(node) {
+    const props = node.properties || {};
+    const faceCount = numericProperty(props, "face_count");
+    if (faceCount !== 0) return false;
+    const kind = String(props.kind || "").toLowerCase();
+    return nodeKind(node) === "FaceInstance"
+      || nodeKind(node) === "FaceRecognitionRun"
+      || kind === "face_recognition";
   }
 
   function syncFilterControls() {

@@ -19,7 +19,7 @@ assert(script.includes('db.createObjectStore("relationships", { keyPath: "id" })
 assert(script.includes('function mergeGraphSnapshot(snapshot, options = {})'));
 assert(script.includes('changed = mergeGraphNode(node, { persist: false }) || changed;'));
 assert(script.includes('function materializeFullGraph()'));
-assert(script.includes('fullGraph.nodes = [...graphStore.nodes.values()];'));
+assert(script.includes('fullGraph.nodes = [...graphStore.nodes.values()].filter(nodeVisibleInPsychicViews);'));
 assert(script.includes('function scheduleGraphCacheSave()'));
 assert(script.includes('function saveGraphCache()'));
 assert(script.includes('graphStore.nodes.forEach((node) => nodeStore.put(serializeCachedNode(node)));'));

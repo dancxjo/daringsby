@@ -12,7 +12,8 @@ body {
   background-color: black;
   color: white;
   font-family: var(--font-family);
-  height: 100vh;
+  min-height: 100vh;
+  min-height: 100svh;
   margin: 0;
   display: flex;
   flex-direction: row;
@@ -38,6 +39,7 @@ main {
   padding: 1rem;
   box-sizing: border-box;
   overflow: hidden;
+  min-width: 0;
 }
 
 .face {
@@ -161,6 +163,7 @@ main {
   padding-top: 1rem;
   padding-right: 1rem;
   box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 #image-thumbnail {
@@ -173,14 +176,33 @@ main {
   flex-shrink: 0;
 }
 
+.camera-button {
+  width: 3rem;
+  height: 3rem;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  border-radius: 50%;
+  background-color: rgba(13, 110, 253, 0.85);
+  font-size: 1.5rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.camera-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 #text-form {
   display: flex;
   flex: 1;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 #text-input {
   flex: 1;
+  min-width: 0;
   padding: 0.75rem;
   border-radius: var(--bs-border-radius);
   border: 1px solid var(--bs-secondary);
@@ -321,4 +343,130 @@ button:hover {
 
 #face.playing .mien {
   animation: pulse-glow 1s infinite;
+}
+
+@media (max-width: 900px) {
+  body {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+    min-height: 100svh;
+    overflow-y: auto;
+  }
+
+  video {
+    height: 100svh;
+  }
+
+  main {
+    min-height: 100vh;
+    min-height: 100svh;
+    padding: 0.75rem;
+    overflow: visible;
+  }
+
+  .face {
+    min-height: 0;
+    justify-content: center;
+  }
+
+  .face .mien,
+  .mien,
+  .Mien {
+    font-size: min(46vw, 34vh);
+    line-height: 1.35;
+  }
+
+  #thought {
+    max-width: min(28rem, 88vw);
+    padding: 0.875rem;
+    border-radius: 1rem;
+  }
+
+  #thought:before,
+  #thought:after {
+    display: none;
+  }
+
+  .spoken-words {
+    max-width: 92vw;
+    max-height: 7rem;
+    font-size: 1rem;
+    border-radius: 0.75rem;
+  }
+
+  .bottom-bar {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.75rem 0 0;
+  }
+
+  #image-thumbnail {
+    width: 56px;
+    height: 42px;
+  }
+
+  .camera-button {
+    width: 2.75rem;
+    height: 2.75rem;
+    font-size: 1.25rem;
+  }
+
+  #text-form {
+    gap: 0.5rem;
+  }
+
+  #text-input,
+  button {
+    min-height: 2.75rem;
+    padding: 0.625rem 0.75rem;
+    font-size: 1rem;
+  }
+
+  .sidebar {
+    width: 100%;
+    max-width: none;
+    max-height: 48vh;
+    padding: 0.75rem;
+    overflow-y: auto;
+  }
+
+  .scroll-well {
+    max-height: 12rem;
+  }
+}
+
+@media (max-width: 520px) {
+  main {
+    padding: 0.5rem;
+  }
+
+  #thought {
+    max-width: 92vw;
+    min-height: 0;
+    margin-bottom: 0.5rem;
+  }
+
+  #thought-image {
+    width: 64px;
+    height: 48px;
+  }
+
+  #thought-tabs {
+    font-size: 0.75rem;
+  }
+
+  .bottom-bar {
+    grid-template-columns: auto auto minmax(0, 1fr);
+  }
+
+  #text-form button {
+    padding-inline: 0.875rem;
+  }
+
+  .sidebar {
+    max-height: 42vh;
+  }
 }

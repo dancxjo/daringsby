@@ -2962,11 +2962,13 @@ impl Neo4jClient {
             .collect()
     }
 
-    /// Return a previously combobulated timeline whose rendered source text changed.
+    /// Return the latest previously combobulated timeline whose rendered source text changed.
     ///
     /// This catches graph events such as audio sensations that were summarized
     /// while their transcript was still pending, then gained transcription
-    /// details after the combobulation run was attached.
+    /// details after the combobulation run was attached. The query filters for
+    /// changed source details before selecting one run so repeated calls can
+    /// work backward through older changed runs.
     pub async fn latest_revisitable_timeline_window_for_combobulation(
         &self,
         limit: usize,
@@ -2982,11 +2984,9 @@ impl Neo4jClient {
                     MATCH (run:GraphNode:CombobulationRun)
                     WHERE run.source_ids IS NOT NULL
                       AND size(run.source_ids) > 0
+                      AND size(run.source_ids) <= $limit
                       AND coalesce(run.anchor_id, "") <> ""
                       AND coalesce(run.anchor_at, "") <> ""
-                    WITH run
-                    ORDER BY datetime(coalesce(run.processed_at, run.anchor_at)) DESC, run.id
-                    LIMIT $limit
                     MATCH (n:GraphNode:Sensation)
                     WHERE n.id IN run.source_ids
                       AND coalesce(n.occurred_at, "") <> ""

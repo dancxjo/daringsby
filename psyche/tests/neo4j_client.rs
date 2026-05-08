@@ -2468,6 +2468,7 @@ async fn neo4j_client_loads_revisitable_timeline_window_for_combobulation() {
                 .body_contains("MATCH (run:GraphNode:CombobulationRun)")
                 .body_contains("run.source_texts")
                 .body_contains("current_source_texts")
+                .body_contains("size(run.source_ids) <= $limit")
                 .body_contains("NOT EXISTS")
                 .body_contains("HAS_TRANSCRIPTION|HAS_BIG_TRANSCRIPTION")
                 .body_contains("RETURN run.anchor_id, run.anchor_at, item.id, item.event_id, item.labels, item.text, item.occurred_at")
