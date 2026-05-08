@@ -69,6 +69,23 @@ async fn debug_report_uses_full_prompt() {
 }
 
 #[tokio::test]
+async fn describes_web_interface_text_as_typed_input() {
+    let bus = TopicBus::new(8);
+    let quick = Quick::new(bus, Arc::new(Dummy));
+    let occurred_at = chrono::Utc::now() - chrono::Duration::seconds(1);
+    quick
+        .observe(Sensation::web_interface_text_at("hello pete", occurred_at))
+        .await;
+
+    let out = quick.tick().await;
+
+    assert_eq!(
+        out[0].stimuli[0].what,
+        "I hear someone on my web interface type: hello pete"
+    );
+}
+
+#[tokio::test]
 async fn preserves_sensation_occurrence_time() {
     let bus = TopicBus::new(8);
     let quick = Quick::new(bus, Arc::new(Dummy));

@@ -611,6 +611,10 @@ impl Psyche {
                     Sensation::HeardUserVoice {
                         text: msg,
                         occurred_at,
+                    }
+                    | Sensation::WebInterfaceText {
+                        text: msg,
+                        occurred_at,
                     } => {
                         let mut conv = self.conversation.lock().await;
                         conv.add_message_from_user(msg.clone());
@@ -639,6 +643,23 @@ impl Psyche {
                             self.pending_turn.set("I'm listening.".to_string());
                         }
                         self.notify_observers(&Sensation::heard_user_voice_at(
+                            msg.clone(),
+                            occurred_at,
+                        ))
+                        .await;
+                        self.speak_policy.received_user_message();
+                        continue;
+                    }
+                    Some(Sensation::WebInterfaceText {
+                        text: msg,
+                        occurred_at,
+                    }) => {
+                        trace!("received web interface text: {}", msg);
+                        self.buffer_user_speech_at(&msg, occurred_at).await;
+                        if self.pending_turn.is_empty() && self.fallback_turn {
+                            self.pending_turn.set("I'm listening.".to_string());
+                        }
+                        self.notify_observers(&Sensation::web_interface_text_at(
                             msg.clone(),
                             occurred_at,
                         ))
@@ -712,6 +733,10 @@ impl Psyche {
                                 self.buffer_self_speech_at(msg, *occurred_at).await;
                             }
                             Sensation::HeardUserVoice {
+                                text: msg,
+                                occurred_at,
+                            }
+                            | Sensation::WebInterfaceText {
                                 text: msg,
                                 occurred_at,
                             } => {

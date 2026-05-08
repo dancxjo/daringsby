@@ -69,7 +69,7 @@ impl SensationObserver for SensationGraphObserver {
             occurred_at,
         } = sensation
         else {
-            store_spoken_sensation(self, sensation).await;
+            store_textual_sensation(self, sensation).await;
             return;
         };
 
@@ -457,11 +457,59 @@ async fn store_voice(observer: &SensationGraphObserver, voice: &VoiceInfo, occur
         .await;
 }
 
-async fn store_spoken_sensation(observer: &SensationGraphObserver, sensation: &Sensation) {
-    let (speaker, text, occurred_at) = match sensation {
-        Sensation::HeardOwnVoice { text, occurred_at } => ("self", text, occurred_at),
-        Sensation::HeardUserVoice { text, occurred_at } => ("user", text, occurred_at),
+async fn store_textual_sensation(observer: &SensationGraphObserver, sensation: &Sensation) {
+    let (kind, text, occurred_at) = match sensation {
+        Sensation::HeardOwnVoice { text, occurred_at } => {
+            return store_spoken_sensation(observer, "self", text, occurred_at).await;
+        }
+        Sensation::HeardUserVoice { text, occurred_at } => {
+            return store_spoken_sensation(observer, "user", text, occurred_at).await;
+        }
+        Sensation::WebInterfaceText { text, occurred_at } => {
+            ("web_interface_text", text, occurred_at)
+        }
         Sensation::Of { .. } => return,
+    };
+    let id = format!("web-interface-text:{}:{text}", occurred_at.to_rfc3339());
+    let sensation_id = sensation_id(kind, &id, occurred_at.to_rfc3339());
+    observer
+        .store_once(
+            id.clone(),
+            json!({
+                "op": "merge_graph",
+                "nodes": [
+                    sensation_node(
+                        &sensation_id,
+                        kind,
+                        occurred_at.to_rfc3339(),
+                        &web_interface_text_how(text),
+                    ),
+                    {
+                        "label": "WebInterfaceText",
+                        "id": id,
+                        "text": text,
+                        "occurred_at": occurred_at.to_rfc3339(),
+                    }
+                ],
+                "relationships": [{
+                    "from": sensation_id,
+                    "to": id,
+                    "type": "OBSERVED",
+                }],
+            }),
+        )
+        .await;
+}
+
+async fn store_spoken_sensation(
+    observer: &SensationGraphObserver,
+    speaker: &str,
+    text: &str,
+    occurred_at: &chrono::DateTime<chrono::Utc>,
+) {
+    let (speaker, text, occurred_at) = match speaker {
+        "self" | "user" => (speaker, text, occurred_at),
+        _ => return,
     };
     let utterance_id = format!("utterance:{speaker}:{}:{text}", occurred_at.to_rfc3339());
     let sensation_id = sensation_id("utterance", &utterance_id, occurred_at.to_rfc3339());
@@ -577,6 +625,10 @@ fn utterance_how(speaker: &str, text: &str) -> String {
         "user" => format!("I hear the user saying \"{}\".", text.trim()),
         _ => format!("I hear someone saying \"{}\".", text.trim()),
     }
+}
+
+fn web_interface_text_how(text: &str) -> String {
+    format!("I hear someone on my web interface type: {}", text.trim())
 }
 
 fn heartbeat_node(heartbeat: &Heartbeat, id: &str, occurred_at: String) -> Value {

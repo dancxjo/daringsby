@@ -329,7 +329,7 @@ async fn handle_request(request: WsPayload, state: &FaceState, audio_lines: &mut
                 "text received by face capture server"
             );
             let occurred_at = parse_ws_at(at.as_deref()).unwrap_or_else(Utc::now);
-            let sensation = Sensation::heard_user_voice_at(text, occurred_at);
+            let sensation = Sensation::web_interface_text_at(text, occurred_at);
             state.graph.observe_sensation(&sensation).await;
         }
         WsPayload::Echo { text, at } => {

@@ -170,6 +170,28 @@ async fn stores_audio_sensation_without_transcript_as_something_heard() {
 }
 
 #[tokio::test]
+async fn stores_web_interface_text_with_typed_input_wording() {
+    let graph = Arc::new(MockGraph::default());
+    let observer = SensationGraphObserver::new(graph.clone());
+    let occurred_at = Utc::now();
+
+    observer
+        .observe_sensation(&Sensation::web_interface_text_at("hello pete", occurred_at))
+        .await;
+
+    let stored = graph.0.lock().unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0]["nodes"][0]["kind"], "web_interface_text");
+    assert_eq!(
+        stored[0]["nodes"][0]["how"],
+        "I hear someone on my web interface type: hello pete."
+    );
+    assert_eq!(stored[0]["nodes"][1]["label"], "WebInterfaceText");
+    assert_eq!(stored[0]["nodes"][1]["text"], "hello pete");
+    assert_eq!(stored[0]["relationships"][0]["type"], "OBSERVED");
+}
+
+#[tokio::test]
 async fn stores_combobulation_summary_as_sensation() {
     let graph = Arc::new(MockGraph::default());
     let observer = SensationGraphObserver::new(graph.clone());

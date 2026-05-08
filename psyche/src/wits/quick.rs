@@ -78,6 +78,10 @@ impl Quick {
         match s {
             Sensation::HeardOwnVoice { text, .. } => Some(format!("I said \"{}\"", text)),
             Sensation::HeardUserVoice { text, .. } => Some(format!("User said \"{}\"", text)),
+            Sensation::WebInterfaceText { text, .. } => Some(format!(
+                "I hear someone on my web interface type: {}",
+                text.trim()
+            )),
             Sensation::Of { payload, .. } => {
                 if let Some(_f) = payload.downcast_ref::<crate::sensors::face::FaceInfo>() {
                     Some(crate::prompt::face_count_sensation_text(1))

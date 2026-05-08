@@ -41,6 +41,7 @@
   const witDebugContainer = document.getElementById("wit-debug");
   let playing = false;
   let currentSpeechText = null;
+  let resumeSpeechPlayback = null;
 
   function animateDetails(details) {
     const summary = details.querySelector("summary");
@@ -187,6 +188,21 @@
     }
   }
 
+  function waitForSpeechGesture(resume) {
+    if (resumeSpeechPlayback) return;
+    resumeSpeechPlayback = () => {
+      const fn = resumeSpeechPlayback;
+      resumeSpeechPlayback = null;
+      document.removeEventListener("pointerdown", fn);
+      document.removeEventListener("keydown", fn);
+      document.removeEventListener("click", fn);
+      resume();
+    };
+    document.addEventListener("pointerdown", resumeSpeechPlayback, { once: true });
+    document.addEventListener("keydown", resumeSpeechPlayback, { once: true });
+    document.addEventListener("click", resumeSpeechPlayback, { once: true });
+  }
+
   function playNext() {
     const next = audioQueue.shift();
     if (!next) {
@@ -234,15 +250,30 @@
     };
     const onEnded = () => done("Finished");
     const onError = () => done("Interrupted");
+    const tryAudioPlayback = () => {
+      if (settled) return;
+      player.play().then(onStarted).catch((err) => {
+        if (err?.name === "NotAllowedError") {
+          console.warn("audio autoplay blocked; speech remains queued", err);
+          waitForSpeechGesture(tryAudioPlayback);
+          return;
+        }
+        console.error("audio", err);
+        done("Interrupted");
+      });
+    };
 
     if (next.audio) {
       player.src = `data:audio/wav;base64,${next.audio}`;
       player.addEventListener("ended", onEnded, { once: true });
       player.addEventListener("error", onError, { once: true });
-      player.play().then(onStarted).catch((err) => {
-        console.error("audio", err);
-        done("Interrupted");
-      });
+      tryAudioPlayback();
+    } else if ("speechSynthesis" in window && "SpeechSynthesisUtterance" in window) {
+      const utterance = new SpeechSynthesisUtterance(next.text || "");
+      utterance.onstart = onStarted;
+      utterance.onend = onEnded;
+      utterance.onerror = onError;
+      window.speechSynthesis.speak(utterance);
     } else {
       onStarted();
       done("Finished");

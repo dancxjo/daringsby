@@ -135,7 +135,8 @@ impl crate::traits::wit::Wit for EntityWit {
     async fn observe(&self, sensation: Self::Input) {
         let source_id = sensation.id();
         match sensation {
-            Sensation::HeardUserVoice { text, occurred_at } => {
+            Sensation::HeardUserVoice { text, occurred_at }
+            | Sensation::WebInterfaceText { text, occurred_at } => {
                 self.names.lock().unwrap().push(Stimulus {
                     what: text,
                     timestamp: occurred_at,
@@ -286,6 +287,10 @@ impl crate::traits::observer::SensationObserver for EntityWit {
             match sensation {
                 Sensation::HeardUserVoice { text, occurred_at } => {
                     self.observe(Sensation::heard_user_voice_at(text.clone(), *occurred_at))
+                        .await;
+                }
+                Sensation::WebInterfaceText { text, occurred_at } => {
+                    self.observe(Sensation::web_interface_text_at(text.clone(), *occurred_at))
                         .await;
                 }
                 Sensation::HeardOwnVoice { text, occurred_at } => {

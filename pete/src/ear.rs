@@ -84,6 +84,20 @@ impl Ear for ChannelEar {
             "user",
         );
     }
+
+    async fn hear_web_interface_type(&self, text: &str) {
+        self.hear_web_interface_type_at(text, Utc::now()).await;
+    }
+
+    async fn hear_web_interface_type_at(&self, text: &str, occurred_at: DateTime<Utc>) {
+        info!(%text, "ear heard web interface text");
+        trace!("ear heard web interface text queued");
+        self.voice.permit(None);
+        self.queue_sensation(
+            Sensation::web_interface_text_at(text.to_string(), occurred_at),
+            "web interface",
+        );
+    }
 }
 
 /// [`Ear`] implementation that ignores all input.

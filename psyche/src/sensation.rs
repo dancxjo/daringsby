@@ -44,6 +44,11 @@ pub enum Sensation {
         text: String,
         occurred_at: DateTime<Utc>,
     },
+    /// Someone typed text into the web interface.
+    WebInterfaceText {
+        text: String,
+        occurred_at: DateTime<Utc>,
+    },
     /// Arbitrary input that the assistant can process
     Of {
         payload: Box<dyn std::any::Any + Send + Sync>,
@@ -78,6 +83,19 @@ impl Sensation {
         }
     }
 
+    /// Record text typed into the web interface at the moment it occurred.
+    pub fn web_interface_text(text: impl Into<String>) -> Self {
+        Self::web_interface_text_at(text, Utc::now())
+    }
+
+    /// Record text typed into the web interface with an externally supplied occurrence time.
+    pub fn web_interface_text_at(text: impl Into<String>, occurred_at: DateTime<Utc>) -> Self {
+        Self::WebInterfaceText {
+            text: text.into(),
+            occurred_at,
+        }
+    }
+
     /// Record arbitrary sensory data at the moment it occurred.
     pub fn of<T>(payload: T) -> Self
     where
@@ -102,6 +120,7 @@ impl Sensation {
         match self {
             Self::HeardOwnVoice { occurred_at, .. }
             | Self::HeardUserVoice { occurred_at, .. }
+            | Self::WebInterfaceText { occurred_at, .. }
             | Self::Of { occurred_at, .. } => *occurred_at,
         }
     }
@@ -116,6 +135,10 @@ impl Sensation {
             Self::HeardUserVoice { text, occurred_at } => {
                 let utterance_id = format!("utterance:user:{}:{text}", occurred_at.to_rfc3339());
                 sensation_id("utterance", &utterance_id, occurred_at)
+            }
+            Self::WebInterfaceText { text, occurred_at } => {
+                let typed_id = format!("web-interface-text:{}:{text}", occurred_at.to_rfc3339());
+                sensation_id("web_interface_text", &typed_id, occurred_at)
             }
             Self::Of {
                 payload,
@@ -199,6 +222,10 @@ impl Clone for Sensation {
                 occurred_at: *occurred_at,
             },
             Self::HeardUserVoice { text, occurred_at } => Self::HeardUserVoice {
+                text: text.clone(),
+                occurred_at: *occurred_at,
+            },
+            Self::WebInterfaceText { text, occurred_at } => Self::WebInterfaceText {
                 text: text.clone(),
                 occurred_at: *occurred_at,
             },

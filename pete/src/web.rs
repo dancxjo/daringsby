@@ -208,7 +208,10 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                                 WsRequest::Text { text: message, at } => {
                                     let occurred_at = parse_ws_at(at.as_deref());
                                     debug!(text_len = message.len(), "user message received");
-                                    state.ear.hear_user_say_at(&message, occurred_at).await;
+                                    state
+                                        .ear
+                                        .hear_web_interface_type_at(&message, occurred_at)
+                                        .await;
                                     let entry = ConvEntry {
                                         role: "user".into(),
                                         content: message,
