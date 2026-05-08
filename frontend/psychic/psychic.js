@@ -141,7 +141,9 @@
     "occurred_at",
     "observed_at",
     "captured_at",
-    "transcribed_at",
+    "source_started_at",
+    "source_captured_at",
+    "source_ended_at",
     "timestamp",
   ];
   let selected = null;
@@ -625,7 +627,7 @@
       )
       .on("click", (event, node) => {
         event.stopPropagation();
-        selectItem({ kind: "node", value: node });
+        selectItem({ kind: "node", value: node }, { playMedia: true });
       });
 
     entered.append("circle");
@@ -852,7 +854,7 @@
     clip.style.setProperty("--timeline-clip-color", styleForNode(item.node).color);
     clip.title = `${nodeKind(item.node)}: ${nodeLabel(item.node)}`;
     clip.classList.toggle("selected", selected?.kind === "node" && selected.value.id === item.node.id);
-    clip.addEventListener("click", () => selectItem({ kind: "node", value: item.node }));
+    clip.addEventListener("click", () => selectItem({ kind: "node", value: item.node }, { playMedia: true }));
 
     if (media.base64 && media.mime.startsWith("image/")) {
       const image = document.createElement("img");
@@ -1475,6 +1477,15 @@
         text = document.createElement("span");
         el.className = "present-speech-segment";
         el.dataset.segmentId = id;
+        el.role = "button";
+        el.tabIndex = 0;
+        el.addEventListener("click", () => selectItem({ kind: "node", value: segment.node }, { playMedia: true }));
+        el.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            selectItem({ kind: "node", value: segment.node }, { playMedia: true });
+          }
+        });
         el.append(text);
       }
 
@@ -1868,7 +1879,11 @@
       inspectorTitle.textContent = nodeLabel(node);
       inspectorKind.textContent = `${nodeKind(node)} node`;
       renderProperties({ id: node.id, labels: node.labels, ...(node.properties || {}) });
-      loadNodeDetails(node);
+      const speechSegment = nodeKind(node) === "SpeechSegment";
+      if (speechSegment) {
+        renderMediaPreview(node, { autoplay: options.playMedia === true });
+      }
+      loadNodeDetails(node, { preserveMediaPreview: speechSegment });
     } else {
       const rel = item.value;
       inspectorIcon.textContent = "→";
@@ -1897,7 +1912,7 @@
     renderTimeline();
   }
 
-  async function loadNodeDetails(node) {
+  async function loadNodeDetails(node, options = {}) {
     const requestId = ++detailRequestId;
     try {
       const details = await fetchNodeDetails(node.id, { requireComplete: true });
@@ -1914,7 +1929,7 @@
       (selected.value.relationships || []).forEach((rel) => mergeGraphRelationship(rel));
       materializeFullGraph();
       scheduleGraphCacheSave();
-      renderMediaPreview(selected.value);
+      renderMediaPreview(selected.value, { preserveExisting: options.preserveMediaPreview });
       renderProperties(propertiesForNodeDetails(selected.value));
       renderTimeline();
     } catch (err) {
@@ -1924,7 +1939,14 @@
     }
   }
 
-  function renderMediaPreview(node) {
+  function renderMediaPreview(node, options = {}) {
+    if (options.preserveExisting && nodeKind(node) === "SpeechSegment") {
+      const existing = existingSpeechSegmentPreview(node.id);
+      if (existing) {
+        inspectorMedia.hidden = false;
+        return;
+      }
+    }
     clearMediaPreview();
     const props = node.properties || {};
     const media = mediaForNode(node);
@@ -1938,6 +1960,7 @@
       preview = document.createElement("audio");
       preview.controls = true;
       preview.preload = "metadata";
+      preview.dataset.speechSegmentId = node.id;
       preview.src = speechSegmentAudioSrc(node);
     } else if (base64 && mime.startsWith("image/")) {
       preview = document.createElement("img");
@@ -1965,14 +1988,27 @@
     }
     inspectorMedia.hidden = false;
     inspectorMedia.append(preview);
+    if (options.autoplay && typeof preview.play === "function") {
+      preview.play().catch(() => {});
+    }
   }
 
   function clearMediaPreview() {
+    inspectorMedia.querySelectorAll("audio, video").forEach((media) => {
+      media.pause();
+      media.removeAttribute("src");
+      if (typeof media.load === "function") media.load();
+    });
     if (mediaObjectUrl) {
       URL.revokeObjectURL(mediaObjectUrl);
       mediaObjectUrl = "";
     }
     inspectorMedia.replaceChildren();
+  }
+
+  function existingSpeechSegmentPreview(id) {
+    return Array.from(inspectorMedia.querySelectorAll("audio[data-speech-segment-id]"))
+      .find((audio) => audio.dataset.speechSegmentId === id) || null;
   }
 
   function propertiesForNodeDetails(node) {
@@ -2151,10 +2187,6 @@
   }
 
   function temporalLayoutKeys(node) {
-    if (nodeKind(node) === "Sensation") return ["source_ended_at", "observed_at", "occurred_at", "captured_at", "timestamp"];
-    if (nodeKind(node) === "AudioClip") return ["captured_at", "occurred_at", "observed_at", "timestamp"];
-    if (nodeKind(node) === "Image") return ["captured_at", "occurred_at", "observed_at", "timestamp"];
-    if (nodeKind(node) === "Transcription") return ["source_started_at", "source_captured_at", "occurred_at", "source_ended_at", "captured_at", "timestamp", "transcribed_at"];
     return temporalLayoutPropertyKeys;
   }
 

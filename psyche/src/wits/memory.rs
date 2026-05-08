@@ -2283,18 +2283,16 @@ impl Neo4jClient {
                 statement: r#"
                     MATCH (n:GraphNode)
                     WHERE EXISTS { MATCH (n)--(:GraphNode) }
-                    WITH n
-                    ORDER BY coalesce(
-                        n.occurred_at,
-                        n.source_started_at,
-                        n.source_captured_at,
-                        n.source_ended_at,
-                        n.observed_at,
-                        n.captured_at,
-                        n.timestamp,
-                        n.transcribed_at,
-                        ""
-                    ) DESC, n.id
+                    OPTIONAL MATCH (n)-[:HAS_STIMULUS]->(stimulus:GraphNode:Stimulus)
+                    WITH n, max(stimulus.timestamp) AS stimulus_occurred_at
+                    WITH n,
+                        CASE
+                            WHEN n:Impression THEN coalesce(stimulus_occurred_at, n.occurred_at, n.timestamp, "")
+                            WHEN n:Transcription THEN coalesce(n.source_started_at, n.source_captured_at, n.occurred_at, n.source_ended_at, n.captured_at, n.timestamp, "")
+                            WHEN n:Sensation THEN coalesce(n.source_ended_at, n.source_started_at, n.source_captured_at, n.observed_at, n.captured_at, n.occurred_at, n.timestamp, "")
+                            ELSE coalesce(n.occurred_at, n.observed_at, n.captured_at, n.timestamp, n.source_started_at, n.source_captured_at, n.source_ended_at, "")
+                        END AS event_at
+                    ORDER BY event_at DESC, n.id
                     LIMIT $limit
                     WITH collect(n) AS anchors
                     UNWIND anchors AS anchor
@@ -2303,15 +2301,28 @@ impl Neo4jClient {
                     WITH anchors + [neighbor IN neighbors WHERE NOT neighbor IN anchors] AS candidate_nodes
                     WITH candidate_nodes[..$limit] AS nodes
                     UNWIND nodes AS n
+                    OPTIONAL MATCH (n)-[:HAS_STIMULUS]->(stimulus:GraphNode:Stimulus)
+                    WITH nodes, n, max(stimulus.timestamp) AS stimulus_occurred_at
+                    WITH nodes, n,
+                        CASE
+                            WHEN n:Impression THEN coalesce(stimulus_occurred_at, n.occurred_at, n.timestamp, "")
+                            WHEN n:Transcription THEN coalesce(n.source_started_at, n.source_captured_at, n.occurred_at, n.source_ended_at, n.captured_at, n.timestamp, "")
+                            WHEN n:Sensation THEN coalesce(n.source_ended_at, n.source_started_at, n.source_captured_at, n.observed_at, n.captured_at, n.occurred_at, n.timestamp, "")
+                            ELSE coalesce(n.occurred_at, n.observed_at, n.captured_at, n.timestamp, n.source_started_at, n.source_captured_at, n.source_ended_at, "")
+                        END AS event_at
                     OPTIONAL MATCH (n)-[r]-(m:GraphNode)
                     WHERE m IN nodes
-                    WITH nodes, collect(DISTINCT r) AS relationships
+                    WITH collect(DISTINCT {
+                            id: n.id,
+                            labels: labels(n),
+                            properties: properties(n) + CASE
+                                WHEN event_at = "" THEN {}
+                                ELSE {occurred_at: event_at}
+                            END
+                        }) AS node_rows,
+                        collect(DISTINCT r) AS relationships
                     RETURN
-                        [node IN nodes | {
-                            id: node.id,
-                            labels: labels(node),
-                            properties: properties(node)
-                        }],
+                        node_rows,
                         [rel IN relationships WHERE rel IS NOT NULL | {
                             id: elementId(rel),
                             source: startNode(rel).id,
@@ -2345,12 +2356,24 @@ impl Neo4jClient {
             CypherStatement {
                 statement: r#"
                     MATCH (n:GraphNode {id: $id})
+                    OPTIONAL MATCH (n)-[:HAS_STIMULUS]->(stimulus:GraphNode:Stimulus)
+                    WITH n, max(stimulus.timestamp) AS stimulus_occurred_at
+                    WITH n,
+                        CASE
+                            WHEN n:Impression THEN coalesce(stimulus_occurred_at, n.occurred_at, n.timestamp, "")
+                            WHEN n:Transcription THEN coalesce(n.source_started_at, n.source_captured_at, n.occurred_at, n.source_ended_at, n.captured_at, n.timestamp, "")
+                            WHEN n:Sensation THEN coalesce(n.source_ended_at, n.source_started_at, n.source_captured_at, n.observed_at, n.captured_at, n.occurred_at, n.timestamp, "")
+                            ELSE coalesce(n.occurred_at, n.observed_at, n.captured_at, n.timestamp, n.source_started_at, n.source_captured_at, n.source_ended_at, "")
+                        END AS event_at
                     OPTIONAL MATCH (n)-[r]-(m:GraphNode)
                     RETURN
                         {
                             id: n.id,
                             labels: labels(n),
-                            properties: properties(n)
+                            properties: properties(n) + CASE
+                                WHEN event_at = "" THEN {}
+                                ELSE {occurred_at: event_at}
+                            END
                         },
                         [rel IN collect(DISTINCT r) WHERE rel IS NOT NULL | {
                             id: elementId(rel),
@@ -3103,7 +3126,12 @@ impl Neo4jClient {
         let client = reqwest::Client::new();
         self.ensure_constraint(&client, &endpoint).await?;
         let transcribed_at = chrono::Utc::now().to_rfc3339();
-        let transcription_occurred_at = source_captured_at.unwrap_or(&transcribed_at);
+        let segment_started_at = segments
+            .iter()
+            .find_map(|segment| segment.occurred_at.as_deref());
+        let transcription_occurred_at = source_captured_at
+            .or(segment_started_at)
+            .unwrap_or(&transcribed_at);
         let source_ended_at = segments
             .iter()
             .rev()
@@ -3131,7 +3159,7 @@ impl Neo4jClient {
                 "text": transcript,
                 "transcribed_at": transcribed_at,
                 "source_captured_at": source_captured_at,
-                "source_started_at": source_captured_at,
+                "source_started_at": source_captured_at.or(segment_started_at),
                 "source_ended_at": source_ended_at,
                 "occurred_at": transcription_occurred_at,
             }),
@@ -5908,15 +5936,17 @@ fn impression_graph_record(
     embedding: Option<&GraphEmbeddingFields>,
 ) -> Result<Value> {
     let impression_id = impression_id(impression)?;
+    let occurred_at = impression_occurred_at(impression).to_rfc3339();
+    let formed_at = impression.timestamp.to_rfc3339();
     let mut impression_node = json!({
         "label": "Impression",
         "id": impression_id,
         "summary": impression.summary,
         "how": impression.summary,
         "emoji": impression.emoji,
-        "timestamp": impression.timestamp.to_rfc3339(),
-        "occurred_at": impression.timestamp.to_rfc3339(),
-        "how_formed_at": impression.timestamp.to_rfc3339(),
+        "timestamp": formed_at,
+        "occurred_at": occurred_at,
+        "how_formed_at": formed_at,
         "source_sensation_ids": impression.source_sensation_ids.clone(),
     });
     if let Some(embedding) = embedding {
@@ -5959,6 +5989,15 @@ fn impression_graph_record(
         "nodes": nodes,
         "relationships": relationships,
     }))
+}
+
+fn impression_occurred_at<T>(impression: &Impression<T>) -> chrono::DateTime<chrono::Utc> {
+    impression
+        .stimuli
+        .iter()
+        .map(|stimulus| stimulus.timestamp)
+        .max()
+        .unwrap_or(impression.timestamp)
 }
 
 fn stimulus_target(stimulus: &Stimulus<Value>) -> Result<GraphStimulusTarget> {
@@ -6462,5 +6501,38 @@ pub struct NoopMemory;
 impl Memory for NoopMemory {
     async fn store(&self, _impression: &Impression<Value>) -> Result<()> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{DateTime, Utc};
+
+    fn utc(value: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(value)
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn impression_graph_record_uses_source_occurrence_time() {
+        let impression = Impression {
+            stimuli: vec![
+                Stimulus::at(json!("first"), utc("2026-05-07T12:00:00Z")),
+                Stimulus::at(json!("second"), utc("2026-05-07T12:00:03Z")),
+            ],
+            source_sensation_ids: Vec::new(),
+            summary: "Something happened.".into(),
+            emoji: None,
+            timestamp: utc("2026-05-07T12:00:10Z"),
+        };
+
+        let graph = impression_graph_record(&impression, &[], None).unwrap();
+        let node = &graph["nodes"][0];
+
+        assert_eq!(node["occurred_at"], "2026-05-07T12:00:03+00:00");
+        assert_eq!(node["timestamp"], "2026-05-07T12:00:10+00:00");
+        assert_eq!(node["how_formed_at"], "2026-05-07T12:00:10+00:00");
     }
 }

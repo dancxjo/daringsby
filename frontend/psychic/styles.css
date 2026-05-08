@@ -668,9 +668,16 @@ button.active {
   border-radius: 3px;
   background: transparent;
   color: inherit;
+  cursor: pointer;
+  pointer-events: auto;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.65);
   white-space: normal;
   animation: present-speech-pop 140ms ease-out;
+}
+
+.present-speech-segment:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .present-speech-segment.active {
