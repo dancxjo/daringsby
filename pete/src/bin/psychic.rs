@@ -21,7 +21,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::Parser;
 use dotenvy::dotenv;
 use pete::{EventBus, init_logging, movie};
-use psyche::{GraphSnapshot, GraphSpeechSegmentAudio, Neo4jClient};
+use psyche::{AudioClip, GraphNodeDetails, GraphSnapshot, GraphSpeechSegmentAudio, Neo4jClient};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tokio::time::interval;
@@ -131,6 +131,7 @@ fn app(state: PsychicState) -> Router {
         .route("/movie-index", get(movie_index))
         .route("/movie", post(request_movie))
         .route("/graph/node/{id}", get(graph_node_details))
+        .route("/graph/audio-clip/{id}/audio.wav", get(audio_clip_audio))
         .route(
             "/graph/speech-segment/{id}/audio.wav",
             get(speech_segment_audio),
@@ -339,6 +340,45 @@ async fn graph_node_details(
     }
 }
 
+async fn audio_clip_audio(
+    Path(id): Path<String>,
+    State(state): State<PsychicState>,
+) -> impl IntoResponse {
+    let lookup_id = decoded_path_id(&id);
+    match load_audio_clip(&state, &id, lookup_id.as_deref()).await {
+        Ok(Some(clip)) => match audio_clip_wav(&clip) {
+            Ok(wav) => ([(header::CONTENT_TYPE, "audio/wav")], wav).into_response(),
+            Err(err) => {
+                error!(%err, id = %id, "failed to create audio clip WAV");
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(PsychicMessage::Error {
+                        message: err.to_string(),
+                    }),
+                )
+                    .into_response()
+            }
+        },
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(PsychicMessage::Error {
+                message: format!("audio clip not found: {id}"),
+            }),
+        )
+            .into_response(),
+        Err(err) => {
+            error!(%err, id = %id, "failed to load audio clip");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(PsychicMessage::Error {
+                    message: err.to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
 async fn speech_segment_audio(
     Path(id): Path<String>,
     State(state): State<PsychicState>,
@@ -376,6 +416,39 @@ async fn speech_segment_audio(
                 .into_response()
         }
     }
+}
+
+async fn load_audio_clip(
+    state: &PsychicState,
+    id: &str,
+    decoded_id: Option<&str>,
+) -> anyhow::Result<Option<AudioClip>> {
+    if let Some(clip) = load_audio_clip_by_id(state, id).await? {
+        return Ok(Some(clip));
+    }
+    let Some(decoded_id) = decoded_id.filter(|decoded_id| *decoded_id != id) else {
+        return Ok(None);
+    };
+    load_audio_clip_by_id(state, decoded_id).await
+}
+
+async fn load_audio_clip_by_id(
+    state: &PsychicState,
+    id: &str,
+) -> anyhow::Result<Option<AudioClip>> {
+    let Some(details) = state.graph.graph_node_details(id).await? else {
+        return Ok(None);
+    };
+    audio_clip_from_details(details)
+}
+
+fn audio_clip_from_details(details: GraphNodeDetails) -> anyhow::Result<Option<AudioClip>> {
+    if !details.labels.iter().any(|label| label == "AudioClip") {
+        return Ok(None);
+    }
+    serde_json::from_value(details.properties)
+        .map(Some)
+        .map_err(|err| anyhow::anyhow!("failed to decode audio clip properties: {err}"))
 }
 
 async fn load_speech_segment_audio(
@@ -479,6 +552,18 @@ fn speech_segment_wav(segment: &GraphSpeechSegmentAudio) -> anyhow::Result<Vec<u
     apply_edge_fades(&mut pcm, source.channels, fade_frames);
     Ok(encode_wav_pcm_s16le(
         &pcm,
+        source.sample_rate,
+        source.channels,
+    ))
+}
+
+fn audio_clip_wav(clip: &AudioClip) -> anyhow::Result<Vec<u8>> {
+    let source_bytes = BASE64_STANDARD
+        .decode(clip.base64.trim().as_bytes())
+        .map_err(|err| anyhow::anyhow!("failed to decode audio clip base64: {err}"))?;
+    let source = decode_source_audio(&clip.mime, &source_bytes, clip.sample_rate, clip.channels)?;
+    Ok(encode_wav_pcm_s16le(
+        &source.bytes,
         source.sample_rate,
         source.channels,
     ))
@@ -725,6 +810,29 @@ mod tests {
 
         assert_eq!(u32::from_le_bytes(wav[40..44].try_into().unwrap()), 8);
         assert_eq!(pcm_i16_samples(&wav[44..]), vec![0, 1, 2, 0]);
+    }
+
+    #[test]
+    fn audio_clip_wav_wraps_raw_pcm() {
+        let pcm = [1i16, -2, 3, -4]
+            .into_iter()
+            .flat_map(i16::to_le_bytes)
+            .collect::<Vec<_>>();
+        let clip = AudioClip {
+            mime: "audio/pcm;format=s16le;rate=1000".into(),
+            base64: BASE64_STANDARD.encode(&pcm),
+            sample_rate: 1000,
+            channels: 1,
+            transcript: None,
+            captured_at: None,
+        };
+
+        let wav = audio_clip_wav(&clip).unwrap();
+
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
+        assert_eq!(u32::from_le_bytes(wav[40..44].try_into().unwrap()), 8);
+        assert_eq!(pcm_i16_samples(&wav[44..]), vec![1, -2, 3, -4]);
     }
 
     #[test]

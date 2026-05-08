@@ -13,7 +13,11 @@ assert(script.includes('loadNodeDetails(node, { preserveMediaPreview: playableMe
 assert(script.includes('preserveExisting: options.preserveMediaPreview,'));
 assert(script.includes('autoplay: options.autoplayMedia === true,'));
 assert(script.includes('preview.dataset.speechSegmentId = node.id;'));
+assert(script.includes('preview.dataset.audioClipId = node.id;'));
 assert(script.includes('preview.dataset.mediaNodeId = node.id;'));
+assert(script.includes('preview.src = audioClipAudioSrc(node);'));
+assert(script.includes('function audioClipAudioSrc(node)'));
+assert(script.includes('return `/graph/audio-clip/${encodeURIComponent(node.id)}/audio.wav`;'));
 assert(script.includes('preview.play().catch(() => {});'));
 assert(script.includes('function existingSpeechSegmentPreview(id)'));
 assert(script.includes('function existingMediaPreview(node)'));

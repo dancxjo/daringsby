@@ -750,16 +750,15 @@
     return graph.nodes
       .map((node) => {
         const row = timelineRowForNode(node);
-        const start = nodeTimestamp(node);
-        if (!row || start === null) return null;
-        const duration = timelineDurationMs(node);
+        const range = timelineRangeForNode(node);
+        if (!row || !range) return null;
         return {
           node,
           kind: nodeKind(node),
           rowId: row.id,
-          start,
-          end: start + duration,
-          duration,
+          start: range.start,
+          end: range.end,
+          duration: range.duration,
         };
       })
       .filter(Boolean)
@@ -839,17 +838,16 @@
       const speechDuration = speechSegmentDurationMs(props);
       if (speechDuration !== null) return speechDuration;
     }
+    if (nodeKind(node) === "AudioClip") {
+      const audioDuration = audioClipDurationMs(node);
+      if (audioDuration !== null) return audioDuration;
+    }
     const duration = numericProperty(props, "duration_ms") ?? numericProperty(props, "clip_duration_ms");
     if (duration !== null && duration > 0) return Math.max(duration, timelineMinClipMs);
     const startMs = numericProperty(props, "start_ms");
     const endMs = numericProperty(props, "end_ms");
     if (startMs !== null && endMs !== null && endMs > startMs) {
       return Math.max(endMs - startMs, timelineMinClipMs);
-    }
-    const media = mediaForNode(node);
-    if (media.base64 && media.mime && nodeKind(node) === "AudioClip") {
-      const audioDuration = audioDurationFromProperties(props, media);
-      if (audioDuration !== null) return Math.max(audioDuration, timelineMinClipMs);
     }
     return nodeKind(node) === "AudioClip" ? timelineDefaultClipMs : timelineMinClipMs;
   }
@@ -860,6 +858,174 @@
     if (startMs !== null && endMs !== null && endMs > startMs) return endMs - startMs;
     const duration = numericProperty(props, "duration_ms") ?? numericProperty(props, "clip_duration_ms");
     return duration !== null && duration > 0 ? duration : null;
+  }
+
+  function timelineRangeForNode(node) {
+    if (nodeKind(node) === "Transcription") {
+      const transcriptionRange = transcriptionTimelineRangeMs(node);
+      if (transcriptionRange) return transcriptionRange;
+    }
+    const start = timelineStartMs(node);
+    if (start === null) return null;
+    const duration = timelineDurationMs(node);
+    return { start, end: start + duration, duration };
+  }
+
+  function timelineStartMs(node) {
+    if (nodeKind(node) === "AudioClip") {
+      const audioStart = audioClipStartMs(node);
+      if (audioStart !== null) return audioStart;
+    }
+    if (nodeKind(node) === "SpeechSegment") {
+      const speechStart = speechSegmentTimelineStartMs(node);
+      if (speechStart !== null) return speechStart;
+    }
+    return nodeTimestamp(node);
+  }
+
+  function transcriptionTimelineRangeMs(node) {
+    const props = node.properties || {};
+    const start = timestampProperty(props, "source_started_at") ?? timestampProperty(props, "source_captured_at") ?? nodeTimestamp(node);
+    const explicitEnd = timestampProperty(props, "source_ended_at");
+    if (start === null) return null;
+    if (explicitEnd !== null && explicitEnd > start) {
+      return { start, end: explicitEnd, duration: explicitEnd - start };
+    }
+    const relationshipRange = transcriptionRelationshipRangeMs(node, start);
+    if (relationshipRange) return relationshipRange;
+    const duration = timelineDurationMs(node);
+    return { start, end: start + duration, duration };
+  }
+
+  function transcriptionRelationshipRangeMs(node, fallbackStart) {
+    const spans = fullGraph.relationships
+      .filter((rel) => rel.type === "HAS_BIG_TRANSCRIPTION" || rel.type === "DERIVED_FROM_AUDIO")
+      .filter((rel) => relationshipEndpoint(rel.source) === node.id || relationshipEndpoint(rel.target) === node.id)
+      .map((rel) => {
+        const props = rel.properties || {};
+        const occurredAt = timestampProperty(props, "occurred_at");
+        const endedAt = timestampProperty(props, "ended_at");
+        if (occurredAt !== null && endedAt !== null && endedAt > occurredAt) {
+          return { start: occurredAt, end: endedAt };
+        }
+        const startMs = numericProperty(props, "start_ms");
+        const endMs = numericProperty(props, "end_ms");
+        if (startMs !== null && endMs !== null && endMs > startMs) {
+          return { start: fallbackStart + startMs, end: fallbackStart + endMs };
+        }
+        return null;
+      })
+      .filter(Boolean);
+    if (!spans.length) return null;
+    const start = Math.min(...spans.map((span) => span.start));
+    const end = Math.max(...spans.map((span) => span.end));
+    return end > start ? { start, end, duration: end - start } : null;
+  }
+
+  function audioClipStartMs(node) {
+    const props = node.properties || {};
+    return timestampProperty(props, "captured_at")
+      ?? timestampProperty(props, "source_started_at")
+      ?? timestampProperty(props, "source_captured_at")
+      ?? nodeTimestamp(node);
+  }
+
+  function audioClipDurationMs(node) {
+    const props = node.properties || {};
+    const duration = numericProperty(props, "duration_ms") ?? numericProperty(props, "clip_duration_ms");
+    if (duration !== null && duration > 0) return duration;
+    const media = mediaForNode(node);
+    if (media.base64 && media.mime) {
+      const mediaDuration = audioDurationFromProperties(props, media);
+      if (mediaDuration !== null) return mediaDuration;
+    }
+    const relationshipDuration = audioClipRelationshipDurationMs(node);
+    if (relationshipDuration !== null) return relationshipDuration;
+    return speechSegmentsForAudioClip(node.id)
+      .map((segment) => numericProperty(segment.properties || {}, "end_ms"))
+      .filter((endMs) => endMs !== null)
+      .sort((left, right) => right - left)[0] ?? null;
+  }
+
+  function audioClipRelationshipDurationMs(node) {
+    const durations = fullGraph.relationships
+      .filter((rel) => relationshipEndpoint(rel.source) === node.id || relationshipEndpoint(rel.target) === node.id)
+      .filter((rel) => rel.type === "HAS_BIG_TRANSCRIPTION" || rel.type === "HAS_CONSOLIDATED_AUDIO")
+      .map((rel) => {
+        const props = rel.properties || {};
+        const duration = numericProperty(props, "duration_ms") ?? numericProperty(props, "clip_duration_ms");
+        if (duration !== null && duration > 0) return duration;
+        const startMs = numericProperty(props, "start_ms");
+        const endMs = numericProperty(props, "end_ms");
+        return startMs !== null && endMs !== null && endMs > startMs ? endMs - startMs : null;
+      })
+      .filter((duration) => duration !== null)
+      .sort((left, right) => right - left);
+    return durations[0] ?? null;
+  }
+
+  function speechSegmentsForAudioClip(audioClipId) {
+    return fullGraph.nodes.filter((node) => {
+      if (nodeKind(node) !== "SpeechSegment") return false;
+      const props = node.properties || {};
+      if (props.audio_clip_id === audioClipId) return true;
+      return fullGraph.relationships.some(
+        (rel) =>
+          rel.type === "DERIVED_FROM_AUDIO"
+          && relationshipEndpoint(rel.source) === node.id
+          && relationshipEndpoint(rel.target) === audioClipId,
+      );
+    });
+  }
+
+  function speechSegmentTimelineStartMs(node) {
+    const anchors = speechSegmentAudioAnchors(node);
+    const starts = anchors
+      .map((anchor) => {
+        const audioNode = findFullGraphNode(anchor.audioClipId) || findGraphNode(anchor.audioClipId);
+        const audioStart = audioNode ? nodeTimestamp(audioNode) : null;
+        return audioStart === null ? null : audioStart + anchor.offsetMs;
+      })
+      .filter((start) => start !== null)
+      .sort((left, right) => left - right);
+    return starts[0] ?? null;
+  }
+
+  function speechSegmentAudioAnchors(node) {
+    const nodeId = node.id;
+    const directAnchors = fullGraph.relationships
+      .filter((rel) => rel.type === "DERIVED_FROM_AUDIO")
+      .filter((rel) => relationshipEndpoint(rel.source) === nodeId || relationshipEndpoint(rel.target) === nodeId)
+      .map((rel) => speechSegmentAudioAnchorFromRelationship(nodeId, rel))
+      .filter(Boolean);
+    if (directAnchors.length) return directAnchors.sort(speechSegmentAudioAnchorSort);
+
+    const props = node.properties || {};
+    const audioClipId = typeof props.audio_clip_id === "string" ? props.audio_clip_id : "";
+    const offsetMs = numericProperty(props, "start_ms");
+    return audioClipId && offsetMs !== null ? [{ audioClipId, offsetMs, sourceIndex: 0 }] : [];
+  }
+
+  function speechSegmentAudioAnchorFromRelationship(nodeId, rel) {
+    const source = relationshipEndpoint(rel.source);
+    const target = relationshipEndpoint(rel.target);
+    const audioClipId = source === nodeId ? target : source;
+    const audioNode = findFullGraphNode(audioClipId) || findGraphNode(audioClipId);
+    if (!audioNode || nodeKind(audioNode) !== "AudioClip") return null;
+    const props = rel.properties || {};
+    const offsetMs = numericProperty(props, "clip_start_ms") ?? numericProperty(props, "start_ms");
+    if (offsetMs === null) return null;
+    return {
+      audioClipId,
+      offsetMs,
+      sourceIndex: numericProperty(props, "source_index") ?? 0,
+    };
+  }
+
+  function speechSegmentAudioAnchorSort(left, right) {
+    return left.sourceIndex - right.sourceIndex
+      || left.offsetMs - right.offsetMs
+      || left.audioClipId.localeCompare(right.audioClipId);
   }
 
   function audioDurationFromProperties(props, media) {
@@ -931,7 +1097,7 @@
 
   function timelineClipWidthPercent(item, left = timelineFullPercent(item.start)) {
     const width = timelineFullPercent(item.end) - left;
-    if (nodeKind(item.node) === "SpeechSegment") return Math.max(width, 0);
+    if (["AudioClip", "SpeechSegment", "Transcription"].includes(nodeKind(item.node))) return Math.max(width, 0);
     return Math.max(width, 0.15);
   }
 
@@ -1163,6 +1329,7 @@
     if (kind === "Image" || kind === "FaceInstance") return "images";
     if (kind === "AudioClip") return "audio";
     if (kind === "SpeechSegment") return "speech";
+    if (kind === "Transcription") return "transcription";
     return "event";
   }
 
@@ -1792,9 +1959,9 @@
     return graph.nodes
       .filter((node) => nodeKind(node) === "SpeechSegment")
       .map((node) => {
-        const start = nodeTimestamp(node);
-        if (start === null) return null;
-        return { node, start, end: start + timelineDurationMs(node) };
+        const range = timelineRangeForNode(node);
+        if (!range) return null;
+        return { node, start: range.start, end: range.end };
       })
       .filter(Boolean)
       .filter((segment) => segment.start <= timelineCursor)
@@ -2264,6 +2431,12 @@
       preview.preload = "metadata";
       preview.dataset.speechSegmentId = node.id;
       preview.src = speechSegmentAudioSrc(node);
+    } else if (nodeKind(node) === "AudioClip") {
+      preview = document.createElement("audio");
+      preview.controls = true;
+      preview.preload = "metadata";
+      preview.dataset.audioClipId = node.id;
+      preview.src = audioClipAudioSrc(node);
     } else if (base64 && mime.startsWith("image/")) {
       preview = document.createElement("img");
       preview.alt = nodeLabel(node);
@@ -2580,6 +2753,14 @@
     return Number.isFinite(number) ? number : null;
   }
 
+  function timestampProperty(properties, key) {
+    const value = properties?.[key];
+    if (value === null || value === undefined || value === "") return null;
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+
   function clamp01(value) {
     return Math.max(0, Math.min(1, value));
   }
@@ -2696,6 +2877,10 @@
 
   function speechSegmentAudioSrc(node) {
     return `/graph/speech-segment/${encodeURIComponent(node.id)}/audio.wav`;
+  }
+
+  function audioClipAudioSrc(node) {
+    return `/graph/audio-clip/${encodeURIComponent(node.id)}/audio.wav`;
   }
 
   function base64ToBytes(base64) {

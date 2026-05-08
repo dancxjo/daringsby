@@ -571,16 +571,27 @@ button.active {
 }
 
 .timeline-clip-audio {
+  box-sizing: border-box;
+  min-width: 0;
   background:
     repeating-linear-gradient(90deg, rgba(255, 209, 102, 0.45) 0 2px, transparent 2px 8px),
     #3b2f19;
 }
 
 .timeline-clip-speech {
+  box-sizing: border-box;
   min-width: 0;
   background:
     repeating-linear-gradient(90deg, rgba(248, 160, 107, 0.42) 0 3px, transparent 3px 12px),
     #3b241a;
+}
+
+.timeline-clip-transcription {
+  box-sizing: border-box;
+  min-width: 0;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--timeline-clip-color, #f78fb3) 44%, transparent), transparent),
+    #321827;
 }
 
 .timeline-clip-event {
