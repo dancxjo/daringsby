@@ -835,6 +835,10 @@
 
   function timelineDurationMs(node) {
     const props = node.properties || {};
+    if (nodeKind(node) === "SpeechSegment") {
+      const speechDuration = speechSegmentDurationMs(props);
+      if (speechDuration !== null) return speechDuration;
+    }
     const duration = numericProperty(props, "duration_ms") ?? numericProperty(props, "clip_duration_ms");
     if (duration !== null && duration > 0) return Math.max(duration, timelineMinClipMs);
     const startMs = numericProperty(props, "start_ms");
@@ -848,6 +852,14 @@
       if (audioDuration !== null) return Math.max(audioDuration, timelineMinClipMs);
     }
     return nodeKind(node) === "AudioClip" ? timelineDefaultClipMs : timelineMinClipMs;
+  }
+
+  function speechSegmentDurationMs(props) {
+    const startMs = numericProperty(props, "start_ms");
+    const endMs = numericProperty(props, "end_ms");
+    if (startMs !== null && endMs !== null && endMs > startMs) return endMs - startMs;
+    const duration = numericProperty(props, "duration_ms") ?? numericProperty(props, "clip_duration_ms");
+    return duration !== null && duration > 0 ? duration : null;
   }
 
   function audioDurationFromProperties(props, media) {
@@ -867,7 +879,7 @@
     const media = mediaForNode(item.node);
     const iconLabel = timelineSensationIconLabel(item.node);
     const left = timelineFullPercent(item.start);
-    const width = Math.max(timelineFullPercent(item.end) - left, 0.15);
+    const width = timelineClipWidthPercent(item, left);
     clip.type = "button";
     clip.className = `timeline-clip timeline-clip-${timelineClipClass(item.node)}`;
     clip.style.left = `${left}%`;
@@ -877,17 +889,14 @@
     clip.classList.toggle("selected", selected?.kind === "node" && selected.value.id === item.node.id);
     clip.addEventListener("click", (event) => selectTimelineClip(item, event));
 
-    if (iconLabel) {
+    if (isTimelineImageNode(item.node)) {
+      clip.append(timelineImagePreviewElement(item.node, media));
+    } else if (iconLabel) {
       const label = document.createElement("span");
       label.className = "timeline-sensation-icon";
       label.textContent = iconLabel.icon;
       label.setAttribute("aria-label", iconLabel.label);
       clip.append(label);
-    } else if (media.base64 && media.mime.startsWith("image/")) {
-      const image = document.createElement("img");
-      image.alt = nodeLabel(item.node);
-      image.src = dataUrl(media.mime, media.base64);
-      clip.append(image);
     } else if (nodeKind(item.node) === "AudioClip") {
       clip.append(timelineAudioWaveformElement(item.node, media));
     } else {
@@ -896,6 +905,34 @@
       clip.append(label);
     }
     return clip;
+  }
+
+  function isTimelineImageNode(node) {
+    const kind = nodeKind(node);
+    return kind === "Image" || kind === "FaceInstance";
+  }
+
+  function timelineImagePreviewElement(node, media = mediaForNode(node)) {
+    const src = media.base64 && media.mime.startsWith("image/")
+      ? timelineImageSrcForNode(node) || dataUrl(media.mime, media.base64)
+      : "";
+    if (src) {
+      const image = document.createElement("img");
+      image.alt = nodeLabel(node);
+      image.src = src;
+      return image;
+    }
+    const placeholder = document.createElement("span");
+    placeholder.className = "timeline-image-placeholder";
+    placeholder.setAttribute("role", "img");
+    placeholder.setAttribute("aria-label", `${nodeKind(node)} preview loading`);
+    return placeholder;
+  }
+
+  function timelineClipWidthPercent(item, left = timelineFullPercent(item.start)) {
+    const width = timelineFullPercent(item.end) - left;
+    if (nodeKind(item.node) === "SpeechSegment") return Math.max(width, 0);
+    return Math.max(width, 0.15);
   }
 
   function selectTimelineClip(item, event) {
@@ -1794,17 +1831,22 @@
 
   function hydrateTimelineMedia(items) {
     const visibleImageItems = items
-      .filter((item) => (item.kind === "Image" || item.kind === "FaceInstance"))
+      .filter((item) => isTimelineImageNode(item.node))
       .filter(timelineItemVisible);
     const visibleMediaItems = items
-      .filter((item) => item.kind === "Image" || item.kind === "FaceInstance" || item.kind === "AudioClip")
+      .filter((item) => isTimelineImageNode(item.node) || item.kind === "AudioClip")
       .filter(timelineItemVisible);
     pruneTimelineImagePreloadCache(new Set(visibleImageItems.map((item) => item.node.id)));
     visibleImageItems.forEach((item) => preloadTimelineImageNode(item.node));
 
-    const loadable = visibleMediaItems
+    const loadableImageItems = visibleImageItems
       .filter((item) => !mediaForNode(item.node).base64)
-      .filter((item) => !timelineDetailLoadingIds.has(item.node.id))
+      .filter((item) => !timelineDetailLoadingIds.has(item.node.id));
+    const loadableAudioItems = visibleMediaItems
+      .filter((item) => item.kind === "AudioClip")
+      .filter((item) => !mediaForNode(item.node).base64)
+      .filter((item) => !timelineDetailLoadingIds.has(item.node.id));
+    const loadable = [...loadableImageItems, ...loadableAudioItems]
       .slice(0, timelineDetailLoadLimit);
     if (!loadable.length) return;
 
@@ -1812,7 +1854,7 @@
       timelineDetailLoadingIds.add(item.node.id);
       try {
         const details = await fetchNodeDetails(item.node.id, { requireComplete: true });
-        if (item.kind === "Image" || item.kind === "FaceInstance") preloadTimelineImageNode(details);
+        if (isTimelineImageNode(details)) preloadTimelineImageNode(details);
         return true;
       } catch (_err) {
         return false;
