@@ -234,7 +234,7 @@ impl CombobulationProcessor {
         window_seconds: u64,
     ) -> anyhow::Result<GraphAwareness> {
         let prompt = combobulation_prompt(window, window_seconds);
-        let text = self
+        let raw_text = self
             .doer
             .follow(LlmInstruction {
                 command: prompt,
@@ -243,6 +243,13 @@ impl CombobulationProcessor {
             .await?
             .trim()
             .to_string();
+        let (text_without_emoji, emojis) = psyche::extract_emojis(&raw_text);
+        let emoji = emojis.last().cloned();
+        let text = if text_without_emoji.is_empty() {
+            raw_text
+        } else {
+            text_without_emoji
+        };
         anyhow::ensure!(!text.is_empty(), "combobulation model returned empty text");
 
         let embedding = self
@@ -266,6 +273,7 @@ impl CombobulationProcessor {
         Ok(GraphAwareness {
             awareness_id,
             text,
+            emoji,
             vector_id,
             embedding_len: embedding.len(),
         })
@@ -277,7 +285,7 @@ fn combobulation_prompt(window: &GraphTimelineWindow, window_seconds: u64) -> St
     with_default_system_prompt(format!(
         "The following entries are a chronological timeline of your sensations during the last {window_seconds} seconds. Each entry is already a compact summary of one source sensation, such as hearing, seeing, feeling, locating, or thinking a combobulation thought.\n\
          Treat these sensations as fragmentary, possibly contradictory, fleeting evidence about the actual situation, not as the topic to describe. Try to infer what is going on in the real world from those fragments. Some entries may be your own prior combobulation summaries looping back in as sensations; treat those as provisional, possibly stale self-context, not as fresh external evidence.\n\
-         {SENSOR_GROUNDING_RULES} What is going on right now? Summarize your current awareness in one or two grounded first-person sentences. Keep it compact: compress repeated low-level records into the real-world gist. Do not say that you are observing a timeline, sensations, recordings, entries, a previous summary, or a shift in conversation. Do not mention graph ids, hashes, timestamps, edges, or per-detection details unless they are directly relevant.\n\n\
+         {SENSOR_GROUNDING_RULES} What is going on right now? Summarize your current awareness in one or two grounded first-person sentences, then end with exactly one emoji that reflects the tone of the moment. Keep it compact: compress repeated low-level records into the real-world gist. Do not say that you are observing a timeline, sensations, recordings, entries, a previous summary, or a shift in conversation. Do not mention graph ids, hashes, timestamps, edges, or per-detection details unless they are directly relevant.\n\n\
          Timeline:\n{timeline}"
     ))
 }
@@ -374,6 +382,7 @@ mod tests {
         assert!(prompt.contains("amount, density, cadence, or mix of input modalities"));
         assert!(prompt.contains("I cannot tell what is happening yet"));
         assert!(prompt.contains("Do not say that you are observing a timeline"));
+        assert!(prompt.contains("end with exactly one emoji"));
         assert!(prompt.contains("Keep it compact"));
         assert!(prompt.contains("per-detection details"));
         assert!(prompt.contains("Timeline:"));

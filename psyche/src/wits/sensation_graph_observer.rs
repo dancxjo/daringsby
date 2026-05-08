@@ -673,6 +673,7 @@ fn combobulation_summary_node(
         "id": id,
         "text": summary.text,
         "summary": summary.text,
+        "emoji": summary.emoji,
         "created_at": summary.created_at,
         "occurred_at": occurred_at,
         "source_sensation_ids": summary.source_sensation_ids,

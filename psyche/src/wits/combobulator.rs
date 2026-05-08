@@ -1,7 +1,7 @@
 use crate::prompt::PromptFragment;
 use crate::topics::{Topic, TopicBus};
 use crate::traits::Doer;
-use crate::{CombobulationSummary, ImageData, Impression, Sensation, Stimulus, wit::Wit};
+use crate::{CombobulationSummary, Event, ImageData, Impression, Sensation, Stimulus, wit::Wit};
 use async_trait::async_trait;
 use chrono::Utc;
 use futures::StreamExt;
@@ -22,6 +22,7 @@ pub struct Combobulator {
     prompt: crate::prompt::CombobulatorPrompt,
     bus: Option<TopicBus>,
     tx: Option<broadcast::Sender<crate::WitReport>>,
+    events: Option<broadcast::Sender<Event>>,
     buffer: Arc<Mutex<Vec<Impression<String>>>>,
     last_caption_time: Mutex<Instant>,
     latest_image: Arc<Mutex<Option<ImageData>>>,
@@ -82,11 +83,18 @@ impl Combobulator {
             prompt: crate::prompt::CombobulatorPrompt,
             bus,
             tx,
+            events: None,
             buffer,
             last_caption_time: Mutex::new(Instant::now() - Duration::from_secs(30)),
             latest_image: Arc::new(Mutex::new(None)),
             llm_semaphore: Arc::new(Semaphore::new(2)),
         }
+    }
+
+    /// Return this combobulator with UI event broadcasting enabled.
+    pub fn with_events(mut self, events: broadcast::Sender<Event>) -> Self {
+        self.events = Some(events);
+        self
     }
 
     /// Replace the prompt builder.
@@ -169,13 +177,23 @@ impl Combobulator {
             images: Vec::new(),
         };
         let resp = self.doer.follow(instruction.clone()).await?;
-        let summary = resp.trim().to_string();
+        let raw_summary = resp.trim().to_string();
+        let (summary, emojis) = crate::extract_emojis(&raw_summary);
+        let emoji = emojis.last().cloned();
+        let summary = if summary.is_empty() {
+            raw_summary.clone()
+        } else {
+            summary
+        };
+        if let (Some(events), Some(emoji)) = (&self.events, &emoji) {
+            let _ = events.send(Event::EmotionChanged(emoji.clone()));
+        }
         if let Some(tx) = &self.tx {
             if crate::debug::debug_enabled(Self::LABEL).await {
                 let _ = tx.send(crate::WitReport {
                     name: Self::LABEL.into(),
                     prompt: instruction.command.clone(),
-                    output: summary.clone(),
+                    output: raw_summary.clone(),
                 });
             }
         }
@@ -184,7 +202,7 @@ impl Combobulator {
         let imp = Impression::new(
             vec![Stimulus::from_impressions(summary.clone(), inputs)],
             summary.clone(),
-            None::<String>,
+            emoji.clone(),
         );
         if let Some(bus) = &self.bus {
             bus.publish(Topic::Moment, imp.clone());
@@ -194,6 +212,7 @@ impl Combobulator {
                 Sensation::of_at(
                     CombobulationSummary {
                         text: summary,
+                        emoji,
                         created_at: Some(now.to_rfc3339()),
                         source_sensation_ids,
                     },

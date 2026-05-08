@@ -1533,10 +1533,21 @@ pub struct GraphAwareness {
     pub awareness_id: String,
     /// Natural-language awareness summary.
     pub text: String,
+    /// Optional emoji reflecting the awareness tone.
+    pub emoji: Option<String>,
     /// Qdrant point id for the summary embedding.
     pub vector_id: String,
     /// Text embedding dimension.
     pub embedding_len: usize,
+}
+
+/// Latest combobulation emotion suitable for mirroring onto the face.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphCombobulationEmotion {
+    /// Graph node id that supplied this emotion.
+    pub id: String,
+    /// Emoji to display.
+    pub emoji: String,
 }
 
 /// Human-readable graph item related to one vector-cluster member.
@@ -2899,6 +2910,39 @@ impl Neo4jClient {
         graph_timeline_window_from_rows(&rows)
     }
 
+    /// Return the newest emoji produced by an offline combobulation run.
+    pub async fn latest_combobulation_emotion(&self) -> Result<Option<GraphCombobulationEmotion>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (n:GraphNode)
+                    WHERE n:Awareness
+                       OR n:CombobulationSummary
+                       OR (n:Sensation AND n.kind = "combobulation_summary")
+                    WITH n,
+                        coalesce(n.emoji, "") AS emoji,
+                        coalesce(n.text, n.summary, n.how, "") AS text,
+                        coalesce(n.created_at, n.how_formed_at, n.occurred_at, "") AS formed_at
+                    WHERE formed_at <> ""
+                      AND (emoji <> "" OR text <> "")
+                    RETURN n.id, emoji, text
+                    ORDER BY datetime(formed_at) DESC, n.id DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest combobulation emotion",
+        )
+        .await?;
+        Ok(rows.first().and_then(graph_combobulation_emotion_from_row))
+    }
+
     /// Return impression-bearing graph nodes in chronological order.
     pub async fn impression_timeline(
         &self,
@@ -4135,6 +4179,7 @@ impl Neo4jClient {
                 "id": awareness.awareness_id,
                 "summary": awareness.text,
                 "text": awareness.text,
+                "emoji": awareness.emoji,
                 "model": llm_model,
                 "embedding_model": embedding_model,
                 "occurred_at": source_ended_at,
@@ -4147,6 +4192,7 @@ impl Neo4jClient {
                 "derived": true,
                 "occurred_at": sensation_occurred_at,
                 "how": awareness.text,
+                "emoji": awareness.emoji,
                 "how_formed_at": processed_at,
                 "created_at": processed_at,
                 "combobulation_run_id": run_id,
@@ -5396,6 +5442,19 @@ fn graph_timeline_item_from_row(row: &Value) -> Result<GraphTimelineItem> {
         text: row_string(values, 5, "timeline item text")?,
         occurred_at: row_string(values, 6, "timeline item timestamp")?,
     })
+}
+
+fn graph_combobulation_emotion_from_row(row: &Value) -> Option<GraphCombobulationEmotion> {
+    let values = row.as_array()?;
+    let id = values.first()?.as_str()?.to_string();
+    let explicit = values.get(1).and_then(Value::as_str).unwrap_or("").trim();
+    let emoji = if explicit.is_empty() {
+        let text = values.get(2).and_then(Value::as_str).unwrap_or("");
+        crate::extract_emojis(text).1.last().cloned()?
+    } else {
+        explicit.to_string()
+    };
+    Some(GraphCombobulationEmotion { id, emoji })
 }
 
 fn graph_impression_timeline_item_from_row(row: &Value) -> Result<GraphImpressionTimelineItem> {

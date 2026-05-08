@@ -145,6 +145,8 @@ pub struct AudioClip {
 pub struct CombobulationSummary {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub source_sensation_ids: Vec<String>,

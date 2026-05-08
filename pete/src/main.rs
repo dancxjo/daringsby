@@ -155,11 +155,14 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?),
         Some(wit_tx.clone()),
     )));
-    psyche.register_typed_wit(Arc::new(Combobulator::with_bus_and_debug(
-        psyche.topic_bus(),
-        Arc::new(ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?),
-        Some(wit_tx.clone()),
-    )));
+    psyche.register_typed_wit(Arc::new(
+        Combobulator::with_bus_and_debug(
+            psyche.topic_bus(),
+            Arc::new(ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?),
+            Some(wit_tx.clone()),
+        )
+        .with_events(psyche.event_sender()),
+    ));
     psyche.register_typed_wit(Arc::new(Will::with_debug(
         psyche.topic_bus(),
         Arc::new(ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?),

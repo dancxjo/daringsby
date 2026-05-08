@@ -179,6 +179,7 @@ async fn stores_combobulation_summary_as_sensation() {
         .observe_sensation(&Sensation::of_at(
             CombobulationSummary {
                 text: "I may be hearing someone nearby.".into(),
+                emoji: None,
                 created_at: Some(occurred_at.to_rfc3339()),
                 source_sensation_ids: vec!["sensation:audio:1".into()],
             },

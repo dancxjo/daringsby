@@ -22,6 +22,16 @@ struct CapturingDoer {
     command: Arc<Mutex<Option<String>>>,
 }
 
+#[derive(Clone)]
+struct EmojiDoer;
+
+#[async_trait]
+impl Doer for EmojiDoer {
+    async fn follow(&self, _: LlmInstruction) -> anyhow::Result<String> {
+        Ok("I hear someone nearby. 🙂".to_string())
+    }
+}
+
 #[async_trait]
 impl Doer for CapturingDoer {
     async fn follow(&self, instruction: LlmInstruction) -> anyhow::Result<String> {
@@ -43,6 +53,27 @@ async fn returns_awareness_impression() {
         .unwrap();
     assert_eq!(imp.stimuli[0].what, "All clear.");
     assert_eq!(imp.summary, "All clear.");
+}
+
+#[tokio::test]
+async fn routes_final_emoji_to_impression_and_events() {
+    let (events, mut rx) = tokio::sync::broadcast::channel(8);
+    let combo = Combobulator::new(Arc::new(EmojiDoer)).with_events(events);
+    let imp = combo
+        .digest(&[Impression::new(
+            vec![Stimulus::new("Pete heard a voice.".to_string())],
+            "",
+            None::<String>,
+        )])
+        .await
+        .unwrap();
+
+    assert_eq!(imp.summary, "I hear someone nearby.");
+    assert_eq!(imp.emoji.as_deref(), Some("🙂"));
+    assert_eq!(
+        rx.recv().await.unwrap(),
+        psyche::Event::EmotionChanged("🙂".into())
+    );
 }
 
 #[tokio::test]
@@ -77,6 +108,7 @@ async fn prompt_frames_inputs_as_real_world_events() {
     assert!(prompt.contains("Do not say that you are observing a timeline"));
     assert!(prompt.contains("Compress repeated or low-level records"));
     assert!(prompt.contains("do not enumerate ids"));
+    assert!(prompt.contains("end with exactly one emoji"));
 }
 
 #[tokio::test]
@@ -115,5 +147,6 @@ async fn bus_backed_digest_loops_summary_back_as_sensation() {
     assert_eq!(*occurred_at, source_occurred_at);
     let summary = payload.downcast_ref::<CombobulationSummary>().unwrap();
     assert_eq!(summary.text, "All clear.");
+    assert_eq!(summary.emoji, None);
     assert_eq!(summary.source_sensation_ids, vec!["sensation:audio:1"]);
 }

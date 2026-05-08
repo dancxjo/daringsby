@@ -2580,6 +2580,7 @@ async fn neo4j_client_attaches_combobulation() {
             &GraphAwareness {
                 awareness_id: "awareness:speech:2".into(),
                 text: "I hear someone greeting me.".into(),
+                emoji: None,
                 vector_id: "point-1".into(),
                 embedding_len: 768,
             },
@@ -2589,6 +2590,31 @@ async fn neo4j_client_attaches_combobulation() {
 
     constraint.assert_async().await;
     update.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_loads_latest_combobulation_emotion() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("CombobulationSummary");
+            then.status(200).body(
+                r#"{"results":[{"data":[{"row":["awareness:1","","I think someone is nearby. 🙂"]}]}],"errors":[]}"#,
+            );
+        })
+        .await;
+
+    let emotion = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .latest_combobulation_emotion()
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(emotion.id, "awareness:1");
+    assert_eq!(emotion.emoji, "🙂");
+    query.assert_async().await;
 }
 
 #[tokio::test]

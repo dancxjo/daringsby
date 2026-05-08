@@ -3,7 +3,7 @@ use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicU64, AtomicUsize, Ordering},
     },
     time::Duration,
@@ -75,12 +75,21 @@ struct Cli {
     /// Maximum buffered audio before forced flush.
     #[arg(long, env = "FACE_AUDIO_MAX_MS", default_value_t = 8000)]
     audio_max_ms: u64,
+    /// Poll interval for reflecting the latest combobulation emoji on the face.
+    #[arg(
+        long,
+        env = "FACE_COMBOBULATION_EMOTION_POLL_MS",
+        default_value_t = 1000
+    )]
+    combobulation_emotion_poll_ms: u64,
 }
 
 #[derive(Clone)]
 struct FaceState {
     graph: Arc<SensationGraphObserver>,
     ipc: broadcast::Sender<MediaEvent>,
+    emotes: broadcast::Sender<WsPayload>,
+    latest_emote: Arc<Mutex<Option<String>>>,
     image_sequence: Arc<AtomicU64>,
     audio_line_sequence: Arc<AtomicU64>,
     audio_config: AudioLineConfig,
@@ -107,9 +116,13 @@ async fn main() -> anyhow::Result<()> {
         cli.neo4j_user.clone(),
         cli.neo4j_pass.clone(),
     ));
+    let emotes = broadcast::channel(64).0;
+    let latest_emote = Arc::new(Mutex::new(None));
     let state = FaceState {
-        graph: Arc::new(SensationGraphObserver::new(graph_store)),
+        graph: Arc::new(SensationGraphObserver::new(graph_store.clone())),
         ipc: broadcast::channel(1024).0,
+        emotes,
+        latest_emote,
         image_sequence: Arc::new(AtomicU64::new(0)),
         audio_line_sequence: Arc::new(AtomicU64::new(0)),
         audio_config: AudioLineConfig {
@@ -121,6 +134,12 @@ async fn main() -> anyhow::Result<()> {
         connections: Arc::new(AtomicUsize::new(0)),
     };
 
+    spawn_combobulation_emote_poller(
+        graph_store,
+        state.emotes.clone(),
+        state.latest_emote.clone(),
+        Duration::from_millis(cli.combobulation_emotion_poll_ms.max(100)),
+    );
     spawn_ipc_server(cli.ipc.clone(), state.ipc.clone()).await?;
     let app = app(state);
     let addr: SocketAddr = cli.addr.parse()?;
@@ -161,23 +180,49 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<FaceState>) -> imp
 async fn handle_socket(mut socket: WebSocket, state: FaceState) {
     state.connections.fetch_add(1, Ordering::SeqCst);
     let mut audio_lines = AudioLineBuffer::new(state.audio_config.clone());
+    let mut emotes = state.emotes.subscribe();
     info!(
         active = state.connections.load(Ordering::SeqCst),
         "face websocket connected"
     );
 
-    while let Some(msg) = socket.recv().await {
-        match msg {
-            Ok(WsMessage::Text(text)) => {
-                if let Some(request) = parse_ws_request(&text) {
-                    handle_request(request, &state, &mut audio_lines).await;
+    let latest_emote = { state.latest_emote.lock().unwrap().clone() };
+    if let Some(emoji) = latest_emote {
+        let payload = serde_json::to_string(&WsPayload::Emote(emoji)).unwrap();
+        if socket.send(WsMessage::Text(payload.into())).await.is_err() {
+            state.connections.fetch_sub(1, Ordering::SeqCst);
+            return;
+        }
+    }
+
+    loop {
+        tokio::select! {
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(WsMessage::Text(text))) => {
+                        if let Some(request) = parse_ws_request(&text) {
+                            handle_request(request, &state, &mut audio_lines).await;
+                        }
+                    }
+                    Some(Ok(WsMessage::Close(_))) | None => break,
+                    Some(Ok(_)) => {}
+                    Some(Err(err)) => {
+                        warn!(%err, "face websocket receive failed");
+                        break;
+                    }
                 }
             }
-            Ok(WsMessage::Close(_)) => break,
-            Ok(_) => {}
-            Err(err) => {
-                warn!(%err, "face websocket receive failed");
-                break;
+            emote = emotes.recv() => {
+                match emote {
+                    Ok(payload) => {
+                        let payload = serde_json::to_string(&payload).unwrap();
+                        if socket.send(WsMessage::Text(payload.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
             }
         }
     }
@@ -496,6 +541,29 @@ fn rms(samples: impl Iterator<Item = i16>) -> f32 {
 fn is_pcm_mime(mime: &str) -> bool {
     let lower = mime.to_ascii_lowercase();
     lower.starts_with("audio/pcm") || lower.starts_with("audio/l16") || lower.contains("format=s16")
+}
+
+fn spawn_combobulation_emote_poller(
+    graph: Arc<Neo4jClient>,
+    tx: broadcast::Sender<WsPayload>,
+    latest: Arc<Mutex<Option<String>>>,
+    poll_interval: Duration,
+) {
+    tokio::spawn(async move {
+        let mut last_id: Option<String> = None;
+        loop {
+            match graph.latest_combobulation_emotion().await {
+                Ok(Some(emotion)) if last_id.as_deref() != Some(emotion.id.as_str()) => {
+                    last_id = Some(emotion.id);
+                    *latest.lock().unwrap() = Some(emotion.emoji.clone());
+                    let _ = tx.send(WsPayload::Emote(emotion.emoji));
+                }
+                Ok(_) => {}
+                Err(err) => warn!(%err, "failed polling latest combobulation emotion"),
+            }
+            tokio::time::sleep(poll_interval).await;
+        }
+    });
 }
 
 async fn spawn_ipc_server(path: PathBuf, tx: broadcast::Sender<MediaEvent>) -> anyhow::Result<()> {
