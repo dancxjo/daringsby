@@ -2697,6 +2697,43 @@ impl Neo4jClient {
         seconds: u64,
         limit: usize,
     ) -> Result<Option<GraphTimelineWindow>> {
+        self.timeline_window_for_combobulation(
+            seconds,
+            limit,
+            None,
+            "finding latest timeline window for combobulation",
+        )
+        .await
+    }
+
+    /// Return the next older graph timeline for an offline combobulation pass.
+    ///
+    /// This lets the combobulator backfill historical gaps even while newer
+    /// sensations keep arriving. The anchor is the newest uncombobulated event
+    /// before `before`, and the returned window includes that anchor plus
+    /// earlier events from the requested lookback period.
+    pub async fn previous_timeline_window_for_combobulation(
+        &self,
+        seconds: u64,
+        limit: usize,
+        before: &str,
+    ) -> Result<Option<GraphTimelineWindow>> {
+        self.timeline_window_for_combobulation(
+            seconds,
+            limit,
+            Some(before),
+            "finding previous timeline window for combobulation",
+        )
+        .await
+    }
+
+    async fn timeline_window_for_combobulation(
+        &self,
+        seconds: u64,
+        limit: usize,
+        before: Option<&str>,
+        action: &str,
+    ) -> Result<Option<GraphTimelineWindow>> {
         let endpoint = self.http_endpoint()?;
         let rows = query_neo4j_rows(
             &reqwest::Client::new(),
@@ -2707,6 +2744,7 @@ impl Neo4jClient {
                 statement: r#"
                     MATCH (anchor:GraphNode:Sensation)
                     WHERE coalesce(anchor.occurred_at, "") <> ""
+                      AND ($before IS NULL OR datetime(anchor.occurred_at) < datetime($before))
                       AND NOT (anchor)-[:INCLUDED_IN_COMBOBULATION]->(:GraphNode:CombobulationRun)
                     WITH anchor, anchor.occurred_at AS anchor_at
                     ORDER BY datetime(anchor_at) DESC, anchor.id
@@ -2797,11 +2835,12 @@ impl Neo4jClient {
                 "#
                 .into(),
                 parameters: json!({
+                    "before": before,
                     "seconds": i64::try_from(seconds.max(1)).unwrap_or(i64::MAX),
                     "limit": i64::try_from(limit.max(1)).unwrap_or(i64::MAX),
                 }),
             },
-            "finding latest timeline window for combobulation",
+            action,
         )
         .await?;
         graph_timeline_window_from_rows(&rows)

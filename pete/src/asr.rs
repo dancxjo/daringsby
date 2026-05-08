@@ -823,10 +823,6 @@ impl SilenceTracker {
         }
     }
 
-    fn has_boundary(&self) -> bool {
-        self.boundary_sample.is_some()
-    }
-
     fn boundary_sample(&self) -> Option<usize> {
         self.boundary_sample
     }

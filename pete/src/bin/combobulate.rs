@@ -123,11 +123,17 @@ async fn process_next_window(
     window_limit: usize,
 ) -> anyhow::Result<()> {
     let mut processed = false;
+    let mut backfill_before = None;
     if let Some(window) = graph
         .latest_timeline_window_for_combobulation(window_seconds, window_limit)
         .await
         .context("failed to load latest timeline window")?
     {
+        backfill_before = window
+            .items
+            .first()
+            .map(|item| item.occurred_at.clone())
+            .or_else(|| Some(window.anchor_at.clone()));
         process_window(graph, qdrant, processor, window_seconds, window).await?;
         processed = true;
     }
@@ -139,6 +145,17 @@ async fn process_next_window(
     {
         process_window(graph, qdrant, processor, window_seconds, window).await?;
         processed = true;
+    }
+
+    if let Some(before) = backfill_before {
+        if let Some(window) = graph
+            .previous_timeline_window_for_combobulation(window_seconds, window_limit, &before)
+            .await
+            .context("failed to load previous timeline window")?
+        {
+            process_window(graph, qdrant, processor, window_seconds, window).await?;
+            processed = true;
+        }
     }
 
     if !processed {

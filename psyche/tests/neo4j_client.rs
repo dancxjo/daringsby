@@ -2262,6 +2262,67 @@ async fn neo4j_client_loads_latest_timeline_window_for_combobulation() {
 }
 
 #[tokio::test]
+async fn neo4j_client_loads_previous_timeline_window_for_combobulation() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (anchor:GraphNode:Sensation)")
+                .body_contains("datetime(anchor.occurred_at) < datetime($before)")
+                .body_contains("INCLUDED_IN_COMBOBULATION")
+                .body_contains("duration({seconds: $seconds})")
+                .body_contains("ORDER BY datetime(anchor_at) DESC, anchor.id")
+                .body_contains("ORDER BY datetime(occurred_at) ASC, timeline_order ASC, n.id")
+                .body_contains("RETURN anchor.id, anchor_at, n.id, event_id, labels(n), text, occurred_at")
+                .body_contains("\"before\":\"2026-05-05T12:34:56Z\"")
+                .body_contains("\"seconds\":30")
+                .body_contains("\"limit\":80");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["anchor.id", "anchor_at", "n.id", "event_id", "labels(n)", "text", "occurred_at"],
+                    "data": [
+                        {"row": [
+                            "sensation:audio:0",
+                            "2026-05-05T12:34:30Z",
+                            "sensation:audio:-1",
+                            "audio:-1",
+                            ["GraphNode", "Sensation"],
+                            "audio sensation; transcript: earlier",
+                            "2026-05-05T12:34:20Z"
+                        ]},
+                        {"row": [
+                            "sensation:audio:0",
+                            "2026-05-05T12:34:30Z",
+                            "sensation:audio:0",
+                            "audio:0",
+                            ["GraphNode", "Sensation"],
+                            "audio sensation; transcript: before",
+                            "2026-05-05T12:34:30Z"
+                        ]}
+                    ]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let window = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .previous_timeline_window_for_combobulation(30, 80, "2026-05-05T12:34:56Z")
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(window.anchor_id, "sensation:audio:0");
+    assert_eq!(window.anchor_at, "2026-05-05T12:34:30Z");
+    assert_eq!(window.items.len(), 2);
+    assert_eq!(window.items[0].id, "sensation:audio:-1");
+    assert_eq!(window.items[1].event_id, "audio:0");
+    assert_eq!(window.items[1].text, "audio sensation; transcript: before");
+    query.assert_async().await;
+}
+
+#[tokio::test]
 async fn neo4j_client_loads_impression_timeline_with_sensation_order() {
     let server = MockServer::start_async().await;
     let query = server
