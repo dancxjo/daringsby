@@ -21,6 +21,22 @@
   const allPredicateFiltersEl = document.getElementById("all-predicate-filters");
   const labelFiltersEl = document.getElementById("label-filters");
   const predicateFiltersEl = document.getElementById("predicate-filters");
+  const allLabelFilterEls = [
+    allLabelFiltersEl,
+    document.getElementById("timeline-all-label-filters"),
+  ].filter(Boolean);
+  const allPredicateFilterEls = [
+    allPredicateFiltersEl,
+    document.getElementById("timeline-all-predicate-filters"),
+  ].filter(Boolean);
+  const labelFilterEls = [
+    labelFiltersEl,
+    document.getElementById("timeline-label-filters"),
+  ].filter(Boolean);
+  const predicateFilterEls = [
+    predicateFiltersEl,
+    document.getElementById("timeline-predicate-filters"),
+  ].filter(Boolean);
   const timelineRowsEl = document.getElementById("timeline-rows");
   const timelineBoardEl = document.getElementById("timeline-board");
   const timelineRulerEl = document.getElementById("timeline-ruler");
@@ -102,11 +118,25 @@
   const headMovieRequestDurationMs = 90000;
   const headMovieRequestBucketMs = 30000;
   const movieIndexRefreshMs = 30000;
-  const timelineRows = [
-    { id: "images", label: "Images", kinds: ["Image", "FaceInstance"] },
-    { id: "audio", label: "Audio Clips", kinds: ["AudioClip"] },
-    { id: "speech", label: "Speech Segments", kinds: ["SpeechSegment"] },
+  const timelineRowPriority = [
+    "Image",
+    "FaceInstance",
+    "AudioClip",
+    "SpeechSegment",
+    "Sensation",
+    "Impression",
+    "Transcription",
+    "Geolocation",
+    "Heartbeat",
+    "ObjectObservation",
   ];
+  const timelineRowLabels = new Map([
+    ["Image", "Images"],
+    ["FaceInstance", "Face Instances"],
+    ["AudioClip", "Audio Clips"],
+    ["SpeechSegment", "Speech Segments"],
+    ["ObjectObservation", "Object Observations"],
+  ]);
   const temporalLayoutPropertyKeys = [
     "occurred_at",
     "observed_at",
@@ -361,8 +391,8 @@
     filters.predicates.clear();
     nodeCountEl.textContent = "0";
     relationshipCountEl.textContent = "0";
-    labelFiltersEl?.replaceChildren();
-    predicateFiltersEl?.replaceChildren();
+    labelFilterEls.forEach((container) => container.replaceChildren());
+    predicateFilterEls.forEach((container) => container.replaceChildren());
     syncFilterGroupControl("labels");
     syncFilterGroupControl("predicates");
     clearSelection({ updateUrl: false });
@@ -462,8 +492,8 @@
     const signature = stableStringify({ labels, predicates });
     if (signature !== lastFilterOptionsSignature) {
       lastFilterOptionsSignature = signature;
-      renderFilterGroup(labelFiltersEl, "labels", labels);
-      renderFilterGroup(predicateFiltersEl, "predicates", predicates);
+      renderFilterGroups("labels", labels);
+      renderFilterGroups("predicates", predicates);
     }
     syncFilterGroupControl("labels");
     syncFilterGroupControl("predicates");
@@ -477,7 +507,7 @@
     if (!container) return;
     container.replaceChildren(
       ...values.map((value) => {
-        const id = filterControlId(kind, value);
+        const id = filterControlId(kind, value, container.id);
         const wrapper = document.createElement("label");
         const input = document.createElement("input");
         const text = document.createElement("span");
@@ -489,6 +519,7 @@
         input.addEventListener("change", () => {
           filterGroup(kind).set(value, input.checked);
           saveStoredFilters();
+          renderFilterGroups(kind, sortedUnique([...filterGroup(kind).keys()]));
           syncFilterGroupControl(kind);
           applyGraphFilters(true);
         });
@@ -666,10 +697,11 @@
   function renderTimeline() {
     if (!timelineRowsEl || !timelineRulerEl || !timelinePlayheadEl || !timelineScrubEl) return;
     const items = timelineItems();
+    const rows = timelineRowsForItems(items);
     updateTimelineExtent(items);
     timelineRowsEl.replaceChildren();
 
-    timelineRows.forEach((row) => {
+    rows.forEach((row) => {
       const rowEl = document.createElement("div");
       const label = document.createElement("div");
       const track = document.createElement("div");
@@ -716,7 +748,42 @@
 
   function timelineRowForNode(node) {
     const kind = nodeKind(node);
-    return timelineRows.find((row) => row.kinds.includes(kind)) || null;
+    return {
+      id: timelineRowId(kind),
+      kind,
+      label: timelineRowLabel(kind),
+    };
+  }
+
+  function timelineRowsForItems(items) {
+    const rows = new Map();
+    items.forEach((item) => {
+      if (!rows.has(item.rowId)) {
+        rows.set(item.rowId, timelineRowForNode(item.node));
+      }
+    });
+    return [...rows.values()].sort(timelineRowSort);
+  }
+
+  function timelineRowId(kind) {
+    const encoded = Array.from(String(kind || "GraphNode")).map((char) =>
+      char.charCodeAt(0).toString(16).padStart(2, "0"),
+    ).join("");
+    return `kind-${encoded || "graph-node"}`;
+  }
+
+  function timelineRowLabel(kind) {
+    if (timelineRowLabels.has(kind)) return timelineRowLabels.get(kind);
+    const words = String(kind || "GraphNode").replace(/([a-z])([A-Z])/g, "$1 $2");
+    return words.endsWith("s") ? words : `${words}s`;
+  }
+
+  function timelineRowSort(left, right) {
+    const leftPriority = timelineRowPriority.indexOf(left.kind);
+    const rightPriority = timelineRowPriority.indexOf(right.kind);
+    const leftRank = leftPriority === -1 ? Number.MAX_SAFE_INTEGER : leftPriority;
+    const rightRank = rightPriority === -1 ? Number.MAX_SAFE_INTEGER : rightPriority;
+    return leftRank - rightRank || left.label.localeCompare(right.label);
   }
 
   function updateTimelineExtent(items) {
@@ -779,9 +846,10 @@
     const left = timelinePercent(visibleStart);
     const width = Math.max(timelinePercent(visibleEnd) - left, 0.15);
     clip.type = "button";
-    clip.className = `timeline-clip timeline-clip-${item.rowId}`;
+    clip.className = `timeline-clip timeline-clip-${timelineClipClass(item.node)}`;
     clip.style.left = `${left}%`;
     clip.style.width = `${width}%`;
+    clip.style.setProperty("--timeline-clip-color", styleForNode(item.node).color);
     clip.title = `${nodeKind(item.node)}: ${nodeLabel(item.node)}`;
     clip.classList.toggle("selected", selected?.kind === "node" && selected.value.id === item.node.id);
     clip.addEventListener("click", () => selectItem({ kind: "node", value: item.node }));
@@ -807,6 +875,14 @@
     if (nodeKind(node) === "AudioClip") return "audio";
     if (nodeKind(node) === "SpeechSegment") return "speech";
     return nodeLabel(node);
+  }
+
+  function timelineClipClass(node) {
+    const kind = nodeKind(node);
+    if (kind === "Image" || kind === "FaceInstance") return "images";
+    if (kind === "AudioClip") return "audio";
+    if (kind === "SpeechSegment") return "speech";
+    return "event";
   }
 
   function renderTimelineRuler() {
@@ -1559,29 +1635,33 @@
   }
 
   function syncFilterGroupControl(kind) {
-    const control = allFilterControl(kind);
-    if (!control) return;
     const values = [...filterGroup(kind).values()];
     const checkedCount = values.filter(Boolean).length;
-    control.checked = values.length > 0 && checkedCount === values.length;
-    control.indeterminate = checkedCount > 0 && checkedCount < values.length;
+    allFilterControls(kind).forEach((control) => {
+      control.checked = values.length > 0 && checkedCount === values.length;
+      control.indeterminate = checkedCount > 0 && checkedCount < values.length;
+    });
   }
 
   function setFilterGroup(kind, checked) {
     const group = filterGroup(kind);
     group.forEach((_value, key) => group.set(key, checked));
     saveStoredFilters();
-    renderFilterGroup(filterContainer(kind), kind, sortedUnique([...group.keys()]));
+    renderFilterGroups(kind, sortedUnique([...group.keys()]));
     syncFilterGroupControl(kind);
     applyGraphFilters(true);
   }
 
-  function allFilterControl(kind) {
-    return kind === "labels" ? allLabelFiltersEl : allPredicateFiltersEl;
+  function renderFilterGroups(kind, values) {
+    filterContainers(kind).forEach((container) => renderFilterGroup(container, kind, values));
   }
 
-  function filterContainer(kind) {
-    return kind === "labels" ? labelFiltersEl : predicateFiltersEl;
+  function allFilterControls(kind) {
+    return kind === "labels" ? allLabelFilterEls : allPredicateFilterEls;
+  }
+
+  function filterContainers(kind) {
+    return kind === "labels" ? labelFilterEls : predicateFilterEls;
   }
 
   function loadStoredFilters() {
@@ -1620,11 +1700,11 @@
     return [...new Set(values)].sort((left, right) => left.localeCompare(right));
   }
 
-  function filterControlId(kind, value) {
+  function filterControlId(kind, value, scope = "graph") {
     const encoded = Array.from(String(value || "")).map((char) =>
       char.charCodeAt(0).toString(16).padStart(2, "0"),
     ).join("");
-    return `filter-${kind}-${encoded || "empty"}`;
+    return `filter-${scope || "graph"}-${kind}-${encoded || "empty"}`;
   }
 
   function embeddingNeighborRelationships(nodes, relationships) {
@@ -2399,8 +2479,8 @@
       }
       if (filtersChanged) {
         saveStoredFilters();
-        renderFilterGroup(labelFiltersEl, "labels", sortedUnique([...filters.labels.keys()]));
-        renderFilterGroup(predicateFiltersEl, "predicates", sortedUnique([...filters.predicates.keys()]));
+        renderFilterGroups("labels", sortedUnique([...filters.labels.keys()]));
+        renderFilterGroups("predicates", sortedUnique([...filters.predicates.keys()]));
         syncFilterGroupControl("labels");
         syncFilterGroupControl("predicates");
       } else {
@@ -2712,10 +2792,12 @@
   document.getElementById("zoom-in").addEventListener("click", () => zoomBy(1.25));
   document.getElementById("zoom-out").addEventListener("click", () => zoomBy(0.8));
   document.getElementById("zoom-fit").addEventListener("click", fitGraph);
-  allLabelFiltersEl?.addEventListener("change", () => setFilterGroup("labels", allLabelFiltersEl.checked));
-  allPredicateFiltersEl?.addEventListener("change", () =>
-    setFilterGroup("predicates", allPredicateFiltersEl.checked),
-  );
+  allLabelFilterEls.forEach((control) => {
+    control.addEventListener("change", () => setFilterGroup("labels", control.checked));
+  });
+  allPredicateFilterEls.forEach((control) => {
+    control.addEventListener("change", () => setFilterGroup("predicates", control.checked));
+  });
   window.addEventListener("resize", resize);
   window.addEventListener("popstate", () => {
     const target = targetFromLocation();

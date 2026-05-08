@@ -145,6 +145,7 @@ h1 {
 
 .timeline-shell {
   --timeline-label-width: 132px;
+  position: relative;
   min-width: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -268,6 +269,14 @@ h1 {
   font-size: 0.78rem;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.timeline-filter-panel {
+  top: 4.45rem;
+  right: 1rem;
+  left: auto;
+  z-index: 6;
+  max-height: calc(100% - 5.45rem);
 }
 
 .filter-list {
@@ -477,7 +486,7 @@ button.active {
   padding: 0;
   border: 1px solid rgba(238, 243, 247, 0.22);
   border-radius: 7px;
-  background: #1d2630;
+  background: color-mix(in srgb, var(--timeline-clip-color, #c9d4de) 28%, #121820);
   color: var(--text);
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24);
 }
@@ -522,6 +531,12 @@ button.active {
   background:
     repeating-linear-gradient(90deg, rgba(248, 160, 107, 0.42) 0 3px, transparent 3px 12px),
     #3b241a;
+}
+
+.timeline-clip-event {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--timeline-clip-color, #c9d4de) 42%, transparent), transparent),
+    #1d2630;
 }
 
 .timeline-playhead {
@@ -879,6 +894,13 @@ button.active {
 
   .filter-panel {
     max-height: min(45vh, calc(100% - 5.5rem));
+  }
+
+  .timeline-filter-panel {
+    right: 0.75rem;
+    left: 0.75rem;
+    width: auto;
+    max-height: min(34vh, calc(100% - 5.5rem));
   }
 
   .timeline-shell {

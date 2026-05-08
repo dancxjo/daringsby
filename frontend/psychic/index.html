@@ -86,6 +86,24 @@
           <input id="timeline-scrub" type="range" min="0" max="1000" value="0" step="1" />
         </div>
       </div>
+      <div class="filter-panel timeline-filter-panel" id="timeline-filters" aria-label="Timeline filters">
+        <details open>
+          <summary>Nodes</summary>
+          <label class="filter-option filter-all">
+            <input id="timeline-all-label-filters" type="checkbox" />
+            <span>Select all nodes</span>
+          </label>
+          <div class="filter-list" id="timeline-label-filters" aria-label="Timeline node label filters"></div>
+        </details>
+        <details open>
+          <summary>Edges</summary>
+          <label class="filter-option filter-all">
+            <input id="timeline-all-predicate-filters" type="checkbox" />
+            <span>Select all edges</span>
+          </label>
+          <div class="filter-list" id="timeline-predicate-filters" aria-label="Timeline relationship predicate filters"></div>
+        </details>
+      </div>
       <div class="timeline-board" id="timeline-board">
         <div class="timeline-ruler" id="timeline-ruler" aria-hidden="true"></div>
         <div class="timeline-selection" id="timeline-selection" aria-hidden="true" hidden></div>
