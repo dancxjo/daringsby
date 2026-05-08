@@ -80,7 +80,7 @@ impl Quick {
             Sensation::HeardUserVoice { text, .. } => Some(format!("User said \"{}\"", text)),
             Sensation::Of { payload, .. } => {
                 if let Some(_f) = payload.downcast_ref::<crate::sensors::face::FaceInfo>() {
-                    Some("I saw a face".to_string())
+                    Some(crate::prompt::face_count_sensation_text(1))
                 } else if payload.downcast_ref::<crate::ImageEmbedding>().is_some() {
                     Some("I recognized the whole camera frame visually".to_string())
                 } else if payload.downcast_ref::<crate::GeoEmbedding>().is_some() {

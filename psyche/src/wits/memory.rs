@@ -6221,18 +6221,11 @@ fn stable_bytes_id(prefix: &str, bytes: &[u8]) -> String {
 }
 
 fn face_recognition_how(face_count: usize) -> String {
-    match face_count {
-        0 => "I don't see any faces.".into(),
-        1 => "I see a face.".into(),
-        _ => format!("I see {face_count} faces."),
-    }
+    crate::prompt::face_count_sensation_text(face_count)
 }
 
 fn face_identity_how(recognition: Option<&GraphFaceMatch>) -> String {
-    match recognition {
-        Some(_) => "I've seen this face before.".into(),
-        None => "I've never seen this face before.".into(),
-    }
+    crate::prompt::face_familiarity_sensation_text(recognition.is_some()).into()
 }
 
 fn face_match_key(recognition: Option<&GraphFaceMatch>) -> String {

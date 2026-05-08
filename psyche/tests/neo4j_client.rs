@@ -1414,8 +1414,14 @@ async fn neo4j_client_attaches_face_recognition() {
                 .body_contains("\"face_count\":1")
                 .body_contains("\"kind\":\"face_recognition\"")
                 .body_contains("\"derived\":true")
-                .body_contains("\"how\":\"I see a face.\"")
-                .body_contains("\"how\":\"I've never seen this face before.\"")
+                .body_contains(format!(
+                    "\"how\":\"{}\"",
+                    psyche::face_count_sensation_text(1)
+                ))
+                .body_contains(format!(
+                    "\"how\":\"{}\"",
+                    psyche::face_familiarity_sensation_text(false)
+                ))
                 .body_contains("\"embedding_len\":512")
                 .body_contains("\"detector\":\"face_id\"");
             then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
@@ -1475,7 +1481,10 @@ async fn neo4j_client_attaches_face_recognition_sensation_for_zero_faces() {
                 .body_contains("\"face_count\":0")
                 .body_contains("\"kind\":\"face_recognition\"")
                 .body_contains("\"derived\":true")
-                .body_contains("\"how\":\"I don't see any faces.\"")
+                .body_contains(format!(
+                    "\"how\":\"{}\"",
+                    psyche::face_count_sensation_text(0)
+                ))
                 .body_contains("\"detector\":\"face_id\"");
             then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
         })
@@ -1519,7 +1528,10 @@ async fn neo4j_client_attaches_per_face_identity_sensation() {
             when.method(POST)
                 .path("/db/neo4j/tx/commit")
                 .body_contains("\"kind\":\"face_identity\"")
-                .body_contains("\"how\":\"I've seen this face before.\"")
+                .body_contains(format!(
+                    "\"how\":\"{}\"",
+                    psyche::face_familiarity_sensation_text(true)
+                ))
                 .body_contains("\"matched_face_id\":\"cluster:face:1\"")
                 .body_contains("\"identity_name\":\"Anna\"")
                 .body_contains("\"nearest_face_vector_id\":\"known-point\"")
@@ -2246,6 +2258,71 @@ async fn neo4j_client_loads_latest_timeline_window_for_combobulation() {
     assert_eq!(window.items[0].event_id, "audio:1");
     assert_eq!(window.items[0].labels, ["GraphNode", "Sensation"]);
     assert_eq!(window.items[1].text, "audio sensation; transcript: there");
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_loads_impression_timeline_with_sensation_order() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (n:GraphNode)")
+                .body_contains("timeline_order")
+                .body_contains("ORDER BY datetime(occurred_at) DESC, timeline_order DESC, n.id DESC")
+                .body_contains("RETURN row.id, row.labels, row.kind, row.text, row.occurred_at, row.formed_at")
+                .body_contains("\"limit\":20");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["row.id", "row.labels", "row.kind", "row.text", "row.occurred_at", "row.formed_at"],
+                    "data": [
+                        {"row": [
+                            "sensation:image:1",
+                            ["GraphNode", "Sensation"],
+                            "image",
+                            psyche::IMAGE_SENSATION_TEXT,
+                            "2026-05-05T12:34:56Z",
+                            "2026-05-05T12:34:56Z"
+                        ]},
+                        {"row": [
+                            "sensation:face_recognition:1",
+                            ["GraphNode", "Sensation"],
+                            "face_recognition",
+                            psyche::face_count_sensation_text(1),
+                            "2026-05-05T12:34:56Z",
+                            "2026-05-05T12:34:57Z"
+                        ]},
+                        {"row": [
+                            "sensation:face_identity:1",
+                            ["GraphNode", "Sensation"],
+                            "face_identity",
+                            psyche::face_familiarity_sensation_text(false),
+                            "2026-05-05T12:34:56Z",
+                            "2026-05-05T12:34:57Z"
+                        ]}
+                    ]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let end = chrono::DateTime::parse_from_rfc3339("2026-05-05T12:35:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let items = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .impression_timeline(None, end, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(items.len(), 3);
+    assert_eq!(items[0].text, psyche::IMAGE_SENSATION_TEXT);
+    assert_eq!(items[1].text, psyche::face_count_sensation_text(1));
+    assert_eq!(
+        items[2].text,
+        psyche::face_familiarity_sensation_text(false)
+    );
     query.assert_async().await;
 }
 

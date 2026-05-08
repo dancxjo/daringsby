@@ -120,8 +120,9 @@ pub use model::{Experience, Impression, Stimulus};
 pub use pending_turn::PendingTurn;
 pub use plain_mouth::PlainMouth;
 pub use prompt::{
-    CombobulatorPrompt, ContextualPrompt, IMAGE_CAPTION_PROMPT, PromptFragment,
-    SENSOR_GROUNDING_RULES, VoicePrompt, WillPrompt,
+    CombobulatorPrompt, ContextualPrompt, IMAGE_CAPTION_PROMPT, IMAGE_SENSATION_TEXT,
+    PromptFragment, SENSOR_GROUNDING_RULES, VoicePrompt, WillPrompt, face_count_sensation_text,
+    face_familiarity_sensation_text,
 };
 pub use topics::{Topic, TopicBus, TopicMessage};
 pub use trim_mouth::TrimMouth;

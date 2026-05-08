@@ -85,7 +85,7 @@ impl SensationObserver for SensationGraphObserver {
                             &sensation_id,
                             "image",
                             occurred_at.to_rfc3339(),
-                            "I'm looking.",
+                            crate::prompt::IMAGE_SENSATION_TEXT,
                         ),
                         image_node(image, &id, occurred_at.to_rfc3339()),
                     ],
@@ -230,7 +230,7 @@ impl SensationObserver for SensationGraphObserver {
                                 &sensation_id,
                                 "face",
                                 occurred_at.to_rfc3339(),
-                                "I see a face.",
+                                &crate::prompt::face_count_sensation_text(1),
                             ),
                             {
                                 "label": "Image",

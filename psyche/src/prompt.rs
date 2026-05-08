@@ -14,6 +14,24 @@ pub const IMAGE_CAPTION_PROMPT: &str = "Describe only what you see from your vie
 
 pub const SENSOR_GROUNDING_RULES: &str = "Describe the real-world scene or event, not the sensor stream. Interpret images, audio, motion, location, heartbeat, and other sensor-derived entries as Pete's own vision, hearing, body sense, position sense, and other senses, not as media files or external sensor artifacts. Do not summarize the amount, density, cadence, or mix of input modalities as if that were the situation. Repeated camera frames, repeated faces, image embeddings, pending audio clips, and heartbeats are usually evidence to compress or ignore, not events to report. If the evidence does not reveal what is happening, say that I cannot tell what is happening yet. Do not infer emotional tone or words like chaotic, intense, overwhelming, anxious, or ominous from sensor volume alone.";
 
+pub const IMAGE_SENSATION_TEXT: &str = "I'm looking.";
+
+pub fn face_count_sensation_text(face_count: usize) -> String {
+    match face_count {
+        0 => "I don't see any faces.".into(),
+        1 => "I see a face.".into(),
+        _ => format!("I see {face_count} faces."),
+    }
+}
+
+pub fn face_familiarity_sensation_text(seen_before: bool) -> &'static str {
+    if seen_before {
+        "I've seen this face before."
+    } else {
+        "I've never seen this face before."
+    }
+}
+
 /// Prompt builder for the `Voice` subagent.
 #[derive(Clone, Default)]
 pub struct VoicePrompt;
