@@ -42,7 +42,7 @@ fn prompt_list_items_include_localized_timestamps() {
         .with_timezone(&Utc);
     let expected = timestamp
         .with_timezone(&Local)
-        .format("%Y-%m-%d %H:%M:%S %Z")
+        .format("%Y-%m-%d %H:%M:%S %:z")
         .to_string();
     let stim = Stimulus {
         what: "hi",

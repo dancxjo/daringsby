@@ -79,6 +79,12 @@ impl Doer for OllamaProvider {
             image_count = images.len(),
             "ollama follow"
         );
+        debug!(
+            model = %self.model,
+            prompt = %command,
+            image_count = images.len(),
+            "ollama follow request"
+        );
         trace!(%command, image_count = images.len(), "ollama follow request");
 
         let mut msg = ChatMessage::user(command);
@@ -91,6 +97,11 @@ impl Doer for OllamaProvider {
         }
         let req = ChatMessageRequest::new(self.model.clone(), vec![msg]);
         let res = self.client().send_chat_messages(req).await?;
+        debug!(
+            model = %self.model,
+            response = %res.message.content,
+            "ollama follow response"
+        );
         trace!(response = %res.message.content, "ollama follow response");
         Ok(res.message.content)
     }
@@ -120,23 +131,31 @@ impl Chatter for OllamaProvider {
             prompt_len = prompt.len(),
             "ollama chat"
         );
+        debug!(
+            model = %self.model,
+            prompt = %prompt,
+            history = ?history,
+            "ollama chat request"
+        );
         trace!(%prompt, ?history, "ollama chat request");
         let req = ChatMessageRequest::new(self.model.clone(), msgs);
-        let stream = self
-            .client()
-            .send_chat_messages_stream(req)
-            .await?
-            .map(|res| match res {
-                Ok(r) => {
-                    let chunk = r.message.content;
-                    trace!(%chunk, "ollama chat chunk");
-                    Ok(chunk)
-                }
-                Err(e) => {
-                    warn!(error = ?e, "ollama stream error");
-                    Err(anyhow!("ollama stream error"))
-                }
-            });
+        let model = self.model.clone();
+        let stream =
+            self.client()
+                .send_chat_messages_stream(req)
+                .await?
+                .map(move |res| match res {
+                    Ok(r) => {
+                        let chunk = r.message.content;
+                        debug!(model = %model, chunk = %chunk, "ollama chat chunk");
+                        trace!(%chunk, "ollama chat chunk");
+                        Ok(chunk)
+                    }
+                    Err(e) => {
+                        warn!(error = ?e, "ollama stream error");
+                        Err(anyhow!("ollama stream error"))
+                    }
+                });
         Ok(Box::pin(stream))
     }
 }

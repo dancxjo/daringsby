@@ -2670,6 +2670,34 @@ async fn neo4j_client_loads_latest_presentable_face_emotion() {
 }
 
 #[tokio::test]
+async fn neo4j_client_loads_latest_pending_speech_intention() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("I ought to say: ")
+                .body_contains("I start saying: ")
+                .body_contains("RETURN n.id, words, formed_at");
+            then.status(200).body(
+                r#"{"results":[{"data":[{"row":["impression:1","Hello there.","2026-05-07T12:00:00Z"]}]}],"errors":[]}"#,
+            );
+        })
+        .await;
+
+    let intention = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .latest_pending_speech_intention()
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(intention.id, "impression:1");
+    assert_eq!(intention.text, "Hello there.");
+    assert_eq!(intention.formed_at, "2026-05-07T12:00:00Z");
+    query.assert_async().await;
+}
+
+#[tokio::test]
 async fn neo4j_client_attaches_voice_recognition() {
     let server = MockServer::start_async().await;
     let constraint = server

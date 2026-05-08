@@ -40,6 +40,7 @@
   const witDetails = {};
   const witDebugContainer = document.getElementById("wit-debug");
   let playing = false;
+  let currentSpeechText = null;
 
   function animateDetails(details) {
     const summary = details.querySelector("summary");
@@ -190,33 +191,61 @@
     const next = audioQueue.shift();
     if (!next) {
       playing = false;
+      currentSpeechText = null;
       face.classList.remove("playing");
       startSpeechRecognition();
       return;
     }
     playing = true;
+    currentSpeechText = next.text || null;
     face.classList.add("playing");
     stopSpeechRecognition();
 
-    const done = () => {
-      player.removeEventListener("ended", done);
-      player.removeEventListener("error", done);
-      if (next.text) {
+    let started = false;
+    let settled = false;
+    const reportPlayback = (status) => {
+      if (!next.text) return;
+      safeSend(JSON.stringify({
+        type: "SpeechPlayback",
+        text: next.text,
+        status,
+        at: new Date().toISOString(),
+      }));
+    };
+    const done = (status) => {
+      if (settled) return;
+      settled = true;
+      player.removeEventListener("ended", onEnded);
+      player.removeEventListener("error", onError);
+      if (!started && status === "Finished") {
+        reportPlayback("Started");
+      }
+      reportPlayback(status);
+      if (status === "Finished" && next.text) {
         safeSend(JSON.stringify({ type: "Echo", text: next.text, at: new Date().toISOString() }));
       }
+      currentSpeechText = null;
       playNext();
     };
+    const onStarted = () => {
+      if (started || settled) return;
+      started = true;
+      reportPlayback("Started");
+    };
+    const onEnded = () => done("Finished");
+    const onError = () => done("Interrupted");
 
     if (next.audio) {
       player.src = `data:audio/wav;base64,${next.audio}`;
-      player.addEventListener("ended", done, { once: true });
-      player.addEventListener("error", done, { once: true });
-      player.play().catch((err) => {
+      player.addEventListener("ended", onEnded, { once: true });
+      player.addEventListener("error", onError, { once: true });
+      player.play().then(onStarted).catch((err) => {
         console.error("audio", err);
-        done();
+        done("Interrupted");
       });
     } else {
-      done();
+      onStarted();
+      done("Finished");
     }
   }
 
@@ -547,6 +576,14 @@
 
       window.onbeforeunload = () => {
         try {
+          if (currentSpeechText) {
+            safeSend(JSON.stringify({
+              type: "SpeechPlayback",
+              text: currentSpeechText,
+              status: "Interrupted",
+              at: new Date().toISOString(),
+            }));
+          }
           processor.disconnect();
           source.disconnect();
           audioContext.close();

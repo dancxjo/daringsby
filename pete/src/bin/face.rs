@@ -25,12 +25,16 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use dotenvy::dotenv;
+#[cfg(feature = "tts")]
+use futures::StreamExt;
+#[cfg(feature = "tts")]
+use pete::{CoquiTts, Tts};
 use pete::{EventBus, MediaEvent, init_logging, parse_data_url};
 use psyche::{
     AudioClip, ImageData, Impression, Neo4jClient, Sensation, SensationGraphObserver,
     SensationObserver, Stimulus, image_content_id,
 };
-use shared::WsPayload;
+use shared::{SpeechPlaybackStatus, WsPayload};
 use tokio::{io::AsyncWriteExt, net::UnixListener, sync::broadcast};
 use tower_http::services::ServeDir;
 use tracing::{error, info, trace, warn};
@@ -82,6 +86,22 @@ struct Cli {
         default_value_t = 1000
     )]
     combobulation_emotion_poll_ms: u64,
+    /// Poll interval for speech intentions chosen by Will.
+    #[arg(long, env = "FACE_SPEECH_POLL_MS", default_value_t = 1000)]
+    speech_poll_ms: u64,
+    /// URL of the Coqui TTS server used for Will speech.
+    #[arg(
+        long,
+        env = "COQUI_URL",
+        default_value = "http://localhost:5002/api/tts"
+    )]
+    tts_url: String,
+    /// Speaker ID for the TTS voice.
+    #[arg(long, env = "SPEAKER", default_value = "p123")]
+    tts_speaker_id: String,
+    /// Language ID for the TTS voice.
+    #[arg(long, default_value = "en")]
+    tts_language_id: String,
 }
 
 #[derive(Clone)]
@@ -135,11 +155,20 @@ async fn main() -> anyhow::Result<()> {
     };
 
     spawn_combobulation_emote_poller(
-        graph_store,
+        graph_store.clone(),
         state.graph.clone(),
         state.emotes.clone(),
         state.latest_emote.clone(),
         Duration::from_millis(cli.combobulation_emotion_poll_ms.max(100)),
+    );
+    spawn_speech_intention_poller(
+        graph_store,
+        state.emotes.clone(),
+        state.connections.clone(),
+        Duration::from_millis(cli.speech_poll_ms.max(100)),
+        cli.tts_url,
+        Some(cli.tts_speaker_id),
+        Some(cli.tts_language_id),
     );
     spawn_ipc_server(cli.ipc.clone(), state.ipc.clone()).await?;
     let app = app(state);
@@ -311,6 +340,15 @@ async fn handle_request(request: WsPayload, state: &FaceState, audio_lines: &mut
             let occurred_at = parse_ws_at(at.as_deref()).unwrap_or_else(Utc::now);
             let sensation = Sensation::heard_own_voice_at(text, occurred_at);
             state.graph.observe_sensation(&sensation).await;
+        }
+        WsPayload::SpeechPlayback { text, status, at } => {
+            trace!(
+                text_len = text.len(),
+                ?status,
+                "speech playback event received by face capture server"
+            );
+            let occurred_at = parse_ws_at(at.as_deref()).unwrap_or_else(Utc::now);
+            store_speech_playback_sensation(&state.graph, &text, status, occurred_at).await;
         }
         WsPayload::Geolocate { mut data, at } => {
             let received_at = Utc::now();
@@ -584,6 +622,99 @@ async fn store_face_report_sensation(observer: &SensationGraphObserver, emoji: &
     observer.observe_sensation(&sensation).await;
 }
 
+fn spawn_speech_intention_poller(
+    graph: Arc<Neo4jClient>,
+    tx: broadcast::Sender<WsPayload>,
+    connections: Arc<AtomicUsize>,
+    poll_interval: Duration,
+    tts_url: String,
+    speaker_id: Option<String>,
+    language_id: Option<String>,
+) {
+    tokio::spawn(async move {
+        let mut last_id: Option<String> = None;
+        #[cfg(feature = "tts")]
+        let tts = CoquiTts::new(tts_url, speaker_id, language_id);
+        #[cfg(not(feature = "tts"))]
+        let tts = {
+            let _ = (tts_url, speaker_id, language_id);
+            ()
+        };
+        loop {
+            if connections.load(Ordering::SeqCst) == 0 {
+                tokio::time::sleep(poll_interval).await;
+                continue;
+            }
+            match graph.latest_pending_speech_intention().await {
+                Ok(Some(intention)) if last_id.as_deref() != Some(intention.id.as_str()) => {
+                    last_id = Some(intention.id);
+                    let audio = speech_audio(&intention.text, &tts).await;
+                    let _ = tx.send(WsPayload::Say {
+                        words: intention.text,
+                        audio,
+                    });
+                }
+                Ok(_) => {}
+                Err(err) => warn!(%err, "failed polling latest speech intention"),
+            }
+            tokio::time::sleep(poll_interval).await;
+        }
+    });
+}
+
+#[cfg(feature = "tts")]
+async fn speech_audio(text: &str, tts: &CoquiTts) -> Option<String> {
+    match tts.stream_wav(text).await {
+        Ok(mut stream) => {
+            let mut buf = Vec::new();
+            while let Some(chunk) = stream.next().await {
+                match chunk {
+                    Ok(bytes) if !bytes.is_empty() => buf.extend(bytes),
+                    Ok(_) => {}
+                    Err(err) => {
+                        warn!(%err, "tts streaming failed for will speech");
+                        break;
+                    }
+                }
+            }
+            (!buf.is_empty()).then(|| BASE64_STANDARD.encode(buf))
+        }
+        Err(err) => {
+            warn!(%err, "tts request failed for will speech");
+            None
+        }
+    }
+}
+
+#[cfg(not(feature = "tts"))]
+async fn speech_audio(_text: &str, _tts: &()) -> Option<String> {
+    None
+}
+
+async fn store_speech_playback_sensation(
+    observer: &SensationGraphObserver,
+    text: &str,
+    status: SpeechPlaybackStatus,
+    occurred_at: DateTime<Utc>,
+) {
+    let verb = match status {
+        SpeechPlaybackStatus::Started => "start",
+        SpeechPlaybackStatus::Finished => "finish",
+        SpeechPlaybackStatus::Interrupted => "stop",
+    };
+    let summary = format!("I {verb} saying: {}", text.trim());
+    let impression = Impression::new(
+        vec![Stimulus::at(
+            format!("speech playback {verb}: {}", text.trim()),
+            occurred_at,
+        )],
+        summary,
+        None::<String>,
+    );
+    let sensation = Sensation::of_at(impression, occurred_at);
+    observer.observe_sensation(&sensation).await;
+}
+
 async fn spawn_ipc_server(path: PathBuf, tx: broadcast::Sender<MediaEvent>) -> anyhow::Result<()> {
     remove_stale_socket(&path)?;
     let listener = UnixListener::bind(&path)?;
@@ -651,6 +782,15 @@ fn parse_flat_ws_request(text: &str) -> Option<WsPayload> {
                 .and_then(|at| at.as_str())
                 .map(ToString::to_string);
             Some(WsPayload::Echo { text, at })
+        }
+        "SpeechPlayback" => {
+            let text = value.get("text")?.as_str()?.to_string();
+            let status = serde_json::from_value(value.get("status")?.clone()).ok()?;
+            let at = value
+                .get("at")
+                .and_then(|at| at.as_str())
+                .map(ToString::to_string);
+            Some(WsPayload::SpeechPlayback { text, status, at })
         }
         "See" => {
             let data = value.get("data")?.as_str()?.to_string();

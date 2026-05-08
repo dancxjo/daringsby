@@ -71,6 +71,9 @@ assert(script.includes('function placeholderAudioWaveformLevels(bucketCount = 32
 assert(script.includes('function timelineSensationIconLabel(node)'));
 assert(script.includes('combobulation_summary: { icon: "💭", label: "Combobulation sensation" }'));
 assert(script.includes('function renderTimelineRuler()'));
+assert(script.includes('function formatTimelineOffset(date)'));
+assert(script.includes('return `${localTime} ${formatTimelineOffset(date)}`;'));
+assert(script.includes('const offsetMinutes = -date.getTimezoneOffset();'));
 assert(script.includes('function updateTimelinePlayhead()'));
 assert(script.includes('function hydrateTimelineMedia(items)'));
 assert(script.includes('let timelineFullExtent = null;'));

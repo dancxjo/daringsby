@@ -9,5 +9,9 @@ assert(script.includes('const audioClipSamples = Math.round((targetSampleRate * 
 assert(script.includes('while (queuedAudioSamples >= audioClipSamples)'));
 assert(script.includes('at: capturedAt.toISOString()'));
 assert(script.includes('setupAudio();'));
+assert(script.includes('type: "SpeechPlayback"'));
+assert(script.includes('reportPlayback("Started")'));
+assert(script.includes('done("Finished")'));
+assert(script.includes('done("Interrupted")'));
 assert(!script.includes('if (navigator.mediaDevices?.getUserMedia) {\n    setupAudio();\n  }\n  setupSpeechRecognition();'));
 console.log('audio-after-open ok');

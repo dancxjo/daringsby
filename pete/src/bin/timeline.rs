@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use clap::Parser;
 use dotenvy::dotenv;
 use pete::{EventBus, init_logging};
-use psyche::{GraphImpressionTimelineItem, Neo4jClient};
+use psyche::{GraphImpressionTimelineItem, Neo4jClient, model::localized_timestamp};
 use std::collections::HashSet;
 use tokio::time::{Duration as TokioDuration, MissedTickBehavior, interval};
 
@@ -77,7 +77,7 @@ async fn follow_timeline(graph: &Neo4jClient, cli: &Cli) -> anyhow::Result<()> {
             .context("failed to load impression timeline")?;
         for item in items {
             if seen.insert(item.id.clone()) {
-                println!("[{}] {}", item.occurred_at, item.text);
+                println!("[{}] {}", timeline_timestamp(&item.occurred_at), item.text);
             }
         }
     }
@@ -108,14 +108,41 @@ fn print_timeline(
     items: &[GraphImpressionTimelineItem],
 ) {
     let from = from
-        .map(|value| value.to_rfc3339())
+        .map(localized_timestamp)
         .unwrap_or_else(|| "forever".to_string());
-    println!("Impression timeline {} to {}", from, to.to_rfc3339());
+    println!(
+        "Impression timeline {} to {}",
+        from,
+        localized_timestamp(to)
+    );
     if items.is_empty() {
         println!("(no impressions)");
         return;
     }
     for item in items {
-        println!("[{}] {}", item.occurred_at, item.text);
+        println!("[{}] {}", timeline_timestamp(&item.occurred_at), item.text);
+    }
+}
+
+fn timeline_timestamp(value: &str) -> String {
+    DateTime::parse_from_rfc3339(value)
+        .map(|timestamp| localized_timestamp(timestamp.with_timezone(&Utc)))
+        .unwrap_or_else(|_| value.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::timeline_timestamp;
+    use chrono::Local;
+
+    #[test]
+    fn timeline_timestamp_prints_local_time_with_offset() {
+        let timestamp = chrono::DateTime::parse_from_rfc3339("2026-05-05T12:34:56Z").unwrap();
+        let expected = timestamp
+            .with_timezone(&Local)
+            .format("%Y-%m-%d %H:%M:%S %:z")
+            .to_string();
+
+        assert_eq!(timeline_timestamp("2026-05-05T12:34:56Z"), expected);
     }
 }

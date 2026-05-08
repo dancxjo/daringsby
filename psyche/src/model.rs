@@ -181,7 +181,7 @@ impl<T> Experience<T> {
 pub fn localized_timestamp(timestamp: DateTime<Utc>) -> String {
     timestamp
         .with_timezone(&Local)
-        .format("%Y-%m-%d %H:%M:%S %Z")
+        .format("%Y-%m-%d %H:%M:%S %:z")
         .to_string()
 }
 

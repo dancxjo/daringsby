@@ -1563,6 +1563,17 @@ pub struct GraphLatestCombobulation {
     pub formed_at: String,
 }
 
+/// Latest Will speech intention that has not started playback yet.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphSpeechIntention {
+    /// Graph node id for the intention-bearing node.
+    pub id: String,
+    /// Words Will chose to speak aloud.
+    pub text: String,
+    /// When the intention was formed.
+    pub formed_at: String,
+}
+
 /// Human-readable graph item related to one vector-cluster member.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GraphClusterItem {
@@ -3035,6 +3046,59 @@ impl Neo4jClient {
         )
         .await?;
         Ok(rows.first().and_then(graph_combobulation_emotion_from_row))
+    }
+
+    /// Return the newest Will speech intention that has not started playback.
+    pub async fn latest_pending_speech_intention(&self) -> Result<Option<GraphSpeechIntention>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (n:GraphNode)
+                    WHERE n:Impression
+                       OR (n:Sensation AND n.kind = "impression")
+                    WITH n,
+                        coalesce(n.summary, n.how, "") AS summary,
+                        coalesce(n.timestamp, n.how_formed_at, n.occurred_at, "") AS formed_at
+                    WHERE formed_at <> ""
+                      AND summary STARTS WITH "I ought to say: "
+                    WITH n, summary, formed_at,
+                        substring(summary, size("I ought to say: ")) AS words
+                    WHERE trim(words) <> ""
+                      AND NOT EXISTS {
+                        MATCH (later:GraphNode)
+                        WHERE later:Impression
+                           OR (later:Sensation AND later.kind = "impression")
+                        WITH later,
+                            coalesce(later.summary, later.how, "") AS later_summary,
+                            coalesce(later.timestamp, later.how_formed_at, later.occurred_at, "") AS later_formed_at,
+                            words,
+                            formed_at
+                        WHERE later_formed_at <> ""
+                          AND datetime(later_formed_at) >= datetime(formed_at)
+                          AND (
+                            later_summary = "I start saying: " + words
+                            OR later_summary = "I finish saying: " + words
+                            OR later_summary = "I stop saying: " + words
+                          )
+                      }
+                    RETURN n.id, words, formed_at
+                    ORDER BY datetime(formed_at) DESC, n.id DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest pending speech intention",
+        )
+        .await?;
+        rows.first()
+            .map(graph_speech_intention_from_row)
+            .transpose()
     }
 
     /// Return impression-bearing graph nodes in chronological order.
@@ -5567,6 +5631,17 @@ fn graph_latest_combobulation_from_row(row: &Value) -> Result<GraphLatestCombobu
         text,
         emoji,
         formed_at: row_string(values, 3, "latest combobulation formed_at")?,
+    })
+}
+
+fn graph_speech_intention_from_row(row: &Value) -> Result<GraphSpeechIntention> {
+    let values = row
+        .as_array()
+        .context("Neo4j speech intention row was not an array")?;
+    Ok(GraphSpeechIntention {
+        id: row_string(values, 0, "speech intention id")?,
+        text: row_string(values, 1, "speech intention text")?,
+        formed_at: row_string(values, 2, "speech intention formed_at")?,
     })
 }
 

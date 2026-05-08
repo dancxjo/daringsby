@@ -39,6 +39,12 @@ pub enum WsPayload {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         at: Option<String>,
     },
+    SpeechPlayback {
+        text: String,
+        status: SpeechPlaybackStatus,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<String>,
+    },
     See {
         data: String,
         at: Option<String>,
@@ -85,6 +91,15 @@ pub struct AudioData {
     pub sample_rate: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channels: Option<u32>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub enum SpeechPlaybackStatus {
+    Started,
+    Finished,
+    Interrupted,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

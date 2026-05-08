@@ -1652,19 +1652,30 @@
   function formatTimelineInstant(timestamp) {
     const date = new Date(timestamp);
     if (!Number.isFinite(date.getTime())) return "";
-    return date.toLocaleString([], {
+    const localTime = date.toLocaleString([], {
       month: "short",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
     });
+    return `${localTime} ${formatTimelineOffset(date)}`;
   }
 
   function formatTimelineTick(timestamp) {
     const date = new Date(timestamp);
     if (!Number.isFinite(date.getTime())) return "";
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const localTime = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    return `${localTime} ${formatTimelineOffset(date)}`;
+  }
+
+  function formatTimelineOffset(date) {
+    const offsetMinutes = -date.getTimezoneOffset();
+    const sign = offsetMinutes >= 0 ? "+" : "-";
+    const absoluteMinutes = Math.abs(offsetMinutes);
+    const hours = String(Math.floor(absoluteMinutes / 60)).padStart(2, "0");
+    const minutes = String(absoluteMinutes % 60).padStart(2, "0");
+    return `${sign}${hours}:${minutes}`;
   }
 
   function renderPresentInstant() {
