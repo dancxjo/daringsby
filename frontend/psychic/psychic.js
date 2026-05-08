@@ -158,10 +158,12 @@
   let timelineFullExtent = null;
   let temporalExtent = null;
   let timelineExtent = null;
+  let timelineZoomSpan = null;
   let timelineCursor = null;
   let timelinePlaying = false;
   let timelinePlaybackFrame = 0;
   let timelinePlaybackLastTick = 0;
+  let timelineScrollFrame = 0;
   let presentImageNodeId = "";
   let presentImageLoadingId = "";
   let movieIndex = [];
@@ -352,6 +354,10 @@
       window.clearTimeout(graphCacheSaveTimer);
       graphCacheSaveTimer = 0;
     }
+    if (timelineScrollFrame) {
+      cancelAnimationFrame(timelineScrollFrame);
+      timelineScrollFrame = 0;
+    }
     try {
       window.localStorage.removeItem(filterStorageKey);
       window.localStorage.removeItem(timelineModeStorageKey);
@@ -375,6 +381,7 @@
     timelineFullExtent = null;
     temporalExtent = null;
     timelineExtent = null;
+    timelineZoomSpan = null;
     timelineCursor = null;
     presentImageNodeId = "";
     presentImageLoadingId = "";
@@ -454,8 +461,19 @@
 
   function compactCachedProperties(properties) {
     return Object.fromEntries(
-      Object.entries(properties).filter(([key]) => !largeMediaProperty(key)),
+      Object.entries(properties)
+        .filter(([key]) => !largeMediaProperty(key))
+        .map(([key, value]) => [key, key === "face_images" ? compactCachedFaceImages(value) : value]),
     );
+  }
+
+  function compactCachedFaceImages(value) {
+    if (!Array.isArray(value)) return value;
+    return value.map((faceImage) => {
+      if (!faceImage || typeof faceImage !== "object") return faceImage;
+      const { base64, ...compact } = faceImage;
+      return compact;
+    });
   }
 
   function materializeFullGraph() {
@@ -638,6 +656,7 @@
     const mergedNodes = entered.merge(nodes);
     mergedNodes
       .classed("selected", (node) => selected?.kind === "node" && selected.value.id === node.id)
+      .classed("embedding-node", isEmbeddingNode)
       .select("circle")
       .attr("r", nodeRadius)
       .attr("fill", (node) => styleForNode(node).color);
@@ -715,7 +734,6 @@
 
       items
         .filter((item) => item.rowId === row.id)
-        .filter(timelineItemVisible)
         .forEach((item) => track.append(timelineClipElement(item)));
 
       rowEl.append(label, track);
@@ -792,23 +810,27 @@
     if (!items.length) {
       timelineFullExtent = null;
       timelineExtent = null;
+      timelineZoomSpan = null;
       timelineCursor = null;
       pauseTimeline();
+      updateTimelineContentWidth();
       timelineRangeEl.textContent = "No timed media";
       return;
     }
     const min = Math.min(...items.map((item) => item.start));
     const max = Math.max(...items.map((item) => item.end), min + timelineDefaultClipMs);
     timelineFullExtent = { min, max };
-    if (!timelineExtent || timelineExtent.max <= min || timelineExtent.min >= max) {
-      timelineExtent = { min, max };
-    } else {
-      timelineExtent = clampTimelineWindow(timelineExtent.min, timelineExtent.max);
+    const fullSpan = Math.max(max - min, timelineMinClipMs);
+    if (!timelineZoomSpan || timelineZoomSpan > fullSpan) {
+      timelineZoomSpan = fullSpan;
     }
-    if (timelineCursor === null || timelineCursor < timelineExtent.min || timelineCursor > timelineExtent.max) {
-      timelineCursor = timelineExtent.min;
+    timelineZoomSpan = Math.max(timelineMinClipMs, Math.min(timelineZoomSpan, fullSpan));
+    updateTimelineContentWidth();
+    updateTimelineViewportFromScroll();
+    if (timelineCursor === null || timelineCursor < min || timelineCursor > max) {
+      timelineCursor = timelineExtent?.min ?? min;
     }
-    timelineRangeEl.textContent = `${formatTimelineInstant(timelineExtent.min)} to ${formatTimelineInstant(timelineExtent.max)}`;
+    updateTimelineRangeLabel();
   }
 
   function timelineDurationMs(node) {
@@ -843,10 +865,9 @@
   function timelineClipElement(item) {
     const clip = document.createElement("button");
     const media = mediaForNode(item.node);
-    const visibleStart = Math.max(item.start, timelineExtent.min);
-    const visibleEnd = Math.min(item.end, timelineExtent.max);
-    const left = timelinePercent(visibleStart);
-    const width = Math.max(timelinePercent(visibleEnd) - left, 0.15);
+    const iconLabel = timelineSensationIconLabel(item.node);
+    const left = timelineFullPercent(item.start);
+    const width = Math.max(timelineFullPercent(item.end) - left, 0.15);
     clip.type = "button";
     clip.className = `timeline-clip timeline-clip-${timelineClipClass(item.node)}`;
     clip.style.left = `${left}%`;
@@ -854,13 +875,21 @@
     clip.style.setProperty("--timeline-clip-color", styleForNode(item.node).color);
     clip.title = `${nodeKind(item.node)}: ${nodeLabel(item.node)}`;
     clip.classList.toggle("selected", selected?.kind === "node" && selected.value.id === item.node.id);
-    clip.addEventListener("click", () => selectItem({ kind: "node", value: item.node }, { playMedia: true }));
+    clip.addEventListener("click", (event) => selectTimelineClip(item, event));
 
-    if (media.base64 && media.mime.startsWith("image/")) {
+    if (iconLabel) {
+      const label = document.createElement("span");
+      label.className = "timeline-sensation-icon";
+      label.textContent = iconLabel.icon;
+      label.setAttribute("aria-label", iconLabel.label);
+      clip.append(label);
+    } else if (media.base64 && media.mime.startsWith("image/")) {
       const image = document.createElement("img");
       image.alt = nodeLabel(item.node);
       image.src = dataUrl(media.mime, media.base64);
       clip.append(image);
+    } else if (nodeKind(item.node) === "AudioClip") {
+      clip.append(timelineAudioWaveformElement(item.node, media));
     } else {
       const label = document.createElement("span");
       label.textContent = timelineClipLabel(item.node);
@@ -869,8 +898,221 @@
     return clip;
   }
 
+  function selectTimelineClip(item, event) {
+    jumpTimelineHeadToItem(item, event);
+    selectItem({ kind: "node", value: item.node }, { playMedia: true });
+  }
+
+  function jumpTimelineHeadToItem(item, event) {
+    if (!timelineFullExtent || item.start === null) return;
+    const timestamp = event ? timestampAtTimelineClientX(event.clientX) : item.start;
+    timelineCursor = Math.max(timelineFullExtent.min, Math.min(timestamp ?? item.start, timelineFullExtent.max));
+    syncTimelineScrubber();
+  }
+
+  function timelineAudioWaveformElement(node, media = mediaForNode(node)) {
+    const waveform = document.createElement("div");
+    const levels = audioWaveformLevels(node.properties || {}, media) || placeholderAudioWaveformLevels();
+    waveform.className = "timeline-waveform";
+    waveform.setAttribute("role", "img");
+    waveform.setAttribute("aria-label", "Audio waveform");
+    levels.forEach((level) => {
+      const bar = document.createElement("i");
+      bar.style.height = `${Math.round(18 + clamp01(level) * 74)}%`;
+      waveform.append(bar);
+    });
+    return waveform;
+  }
+
+  function audioWaveformLevels(props, media, bucketCount = 48) {
+    if (!media.base64 || !media.mime) return null;
+    try {
+      const samples = audioSamplesForWaveform(props, media);
+      if (!samples?.length) return null;
+      return waveformLevelsFromSamples(samples, bucketCount);
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function audioSamplesForWaveform(props, media) {
+    const bytes = base64ToBytes(media.base64);
+    if (media.mime.startsWith("audio/wav") || media.mime.startsWith("audio/x-wav")) {
+      return wavPcmS16Samples(bytes);
+    }
+    if (media.mime.includes("format=s16") || media.mime.startsWith("audio/pcm") || media.mime.startsWith("audio/l16")) {
+      return pcmS16Samples(bytes, Number(props.channels || 1));
+    }
+    return null;
+  }
+
+  function wavPcmS16Samples(bytes) {
+    if (bytes.byteLength < 44 || asciiBytes(bytes, 0, 4) !== "RIFF" || asciiBytes(bytes, 8, 4) !== "WAVE") {
+      return null;
+    }
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let offset = 12;
+    let channels = 1;
+    let bitsPerSample = 0;
+    let audioFormat = 0;
+    let dataOffset = 0;
+    let dataLength = 0;
+    while (offset + 8 <= bytes.byteLength) {
+      const chunkId = asciiBytes(bytes, offset, 4);
+      const chunkSize = view.getUint32(offset + 4, true);
+      const chunkStart = offset + 8;
+      if (chunkId === "fmt " && chunkStart + 16 <= bytes.byteLength) {
+        audioFormat = view.getUint16(chunkStart, true);
+        channels = view.getUint16(chunkStart + 2, true);
+        bitsPerSample = view.getUint16(chunkStart + 14, true);
+      } else if (chunkId === "data") {
+        dataOffset = chunkStart;
+        dataLength = Math.min(chunkSize, bytes.byteLength - chunkStart);
+      }
+      offset = chunkStart + chunkSize + (chunkSize % 2);
+    }
+    if (audioFormat !== 1 || bitsPerSample !== 16 || dataLength <= 0) return null;
+    return pcmS16Samples(bytes, channels, dataOffset, dataLength);
+  }
+
+  function pcmS16Samples(bytes, channels = 1, offset = 0, length = bytes.byteLength - offset) {
+    if (!Number.isFinite(channels) || channels < 1) return null;
+    const view = new DataView(bytes.buffer, bytes.byteOffset + offset, Math.max(0, length));
+    const frameSize = channels * 2;
+    const frameCount = Math.floor(view.byteLength / frameSize);
+    if (frameCount <= 0) return null;
+    const samples = new Float32Array(frameCount);
+    for (let frame = 0; frame < frameCount; frame += 1) {
+      let value = 0;
+      const frameOffset = frame * frameSize;
+      for (let channel = 0; channel < channels; channel += 1) {
+        value += view.getInt16(frameOffset + channel * 2, true) / 32768;
+      }
+      samples[frame] = value / channels;
+    }
+    return samples;
+  }
+
+  function waveformLevelsFromSamples(samples, bucketCount) {
+    const peaks = Array.from({ length: bucketCount }, (_item, index) => {
+      const start = Math.floor((samples.length * index) / bucketCount);
+      const end = Math.max(start + 1, Math.floor((samples.length * (index + 1)) / bucketCount));
+      let peak = 0;
+      for (let sample = start; sample < end && sample < samples.length; sample += 1) {
+        peak = Math.max(peak, Math.abs(samples[sample]));
+      }
+      return peak;
+    });
+    const maxPeak = Math.max(...peaks, 0.01);
+    return peaks.map((peak) => peak / maxPeak);
+  }
+
+  function placeholderAudioWaveformLevels(bucketCount = 32) {
+    return Array.from({ length: bucketCount }, (_item, index) => {
+      const phase = index / Math.max(bucketCount - 1, 1);
+      return 0.18 + Math.abs(Math.sin(phase * Math.PI * 5)) * 0.42 + Math.abs(Math.sin(phase * Math.PI * 13)) * 0.18;
+    });
+  }
+
+  function asciiBytes(bytes, offset, length) {
+    return Array.from(bytes.slice(offset, offset + length), (byte) => String.fromCharCode(byte)).join("");
+  }
+
+  function timelineSensationIconLabel(node) {
+    if (nodeKind(node) !== "Sensation") return null;
+    const kind = String(node.properties?.kind || "").toLowerCase();
+    const labels = {
+      audio: { icon: "👂", label: "Audio sensation" },
+      browser_motion: { icon: "🧭", label: "Motion sensation" },
+      combobulation_summary: { icon: "💭", label: "Combobulation sensation" },
+      face: { icon: "👁️", label: "Face sensation" },
+      geolocation: { icon: "📍", label: "Location sensation" },
+      geolocation_embedding: { icon: "📍", label: "Location embedding sensation" },
+      heartbeat: { icon: "❤️", label: "Heartbeat sensation" },
+      image: { icon: "👁️", label: "Vision sensation" },
+      image_embedding: { icon: "👁️", label: "Vision embedding sensation" },
+      impression: { icon: "✨", label: "Impression sensation" },
+      json: { icon: "{}", label: "Structured data sensation" },
+      object: { icon: "👁️", label: "Object sensation" },
+      utterance: { icon: "👂", label: "Utterance sensation" },
+      voice: { icon: "👂", label: "Voice sensation" },
+    };
+    return labels[kind] || { icon: "?", label: "Unknown sensation" };
+  }
+
   function timelineItemVisible(item) {
     return !!timelineExtent && item.start <= timelineExtent.max && item.end >= timelineExtent.min;
+  }
+
+  function timelineFullSpan() {
+    return timelineFullExtent ? Math.max(timelineFullExtent.max - timelineFullExtent.min, 1) : 1;
+  }
+
+  function timelineZoomRatio() {
+    if (!timelineFullExtent || !timelineZoomSpan) return 1;
+    return Math.max(1, timelineFullSpan() / timelineZoomSpan);
+  }
+
+  function timelineViewportTrackWidth() {
+    const boardWidth = timelineBoardWidth();
+    const labelWidth = timelineLabelWidth();
+    return Math.max(1, boardWidth - labelWidth);
+  }
+
+  function timelineContentWidth() {
+    const labelWidth = timelineLabelWidth();
+    const trackWidth = timelineViewportTrackWidth() * timelineZoomRatio();
+    return Math.max(timelineBoardWidth(), 720, labelWidth + trackWidth);
+  }
+
+  function timelineTrackContentWidth() {
+    const labelWidth = timelineLabelWidth();
+    return Math.max(1, timelineContentWidth() - labelWidth);
+  }
+
+  function updateTimelineContentWidth() {
+    if (!timelineRowsEl || !timelineRulerEl) return;
+    if (!timelineFullExtent) {
+      timelineRowsEl.style.width = "";
+      timelineRulerEl.style.width = "";
+      return;
+    }
+    const width = `${timelineContentWidth()}px`;
+    timelineRowsEl.style.width = width;
+    timelineRulerEl.style.width = width;
+  }
+
+  function updateTimelineViewportFromScroll() {
+    if (!timelineFullExtent) {
+      timelineExtent = null;
+      return;
+    }
+    const fullMin = timelineFullExtent.min;
+    const fullMax = timelineFullExtent.max;
+    const fullSpan = timelineFullSpan();
+    const trackWidth = timelineTrackContentWidth();
+    const visibleSpan = Math.min(fullSpan, (timelineViewportTrackWidth() / trackWidth) * fullSpan);
+    const maxMin = fullMax - visibleSpan;
+    const min = Math.max(fullMin, Math.min(fullMin + (timelineBoardEl.scrollLeft / trackWidth) * fullSpan, maxMin));
+    timelineExtent = { min, max: Math.min(fullMax, min + visibleSpan) };
+    updateTimelineRangeLabel();
+  }
+
+  function updateTimelineRangeLabel() {
+    timelineRangeEl.textContent = timelineExtent
+      ? `${formatTimelineInstant(timelineExtent.min)} to ${formatTimelineInstant(timelineExtent.max)}`
+      : "No timed media";
+  }
+
+  function scrollTimelineToWindow(min, max) {
+    if (!timelineFullExtent) return;
+    updateTimelineContentWidth();
+    const center = min + (max - min) / 2;
+    const ratio = clamp01((center - timelineFullExtent.min) / timelineFullSpan());
+    const nextScrollLeft = ratio * timelineTrackContentWidth() - timelineViewportTrackWidth() / 2;
+    const maxScrollLeft = Math.max(0, timelineContentWidth() - timelineBoardWidth());
+    timelineBoardEl.scrollLeft = Math.max(0, Math.min(nextScrollLeft, maxScrollLeft));
+    updateTimelineViewportFromScroll();
   }
 
   function timelineClipLabel(node) {
@@ -902,7 +1144,7 @@
       const line = document.createElement("span");
       const text = document.createElement("small");
       mark.className = "timeline-tick";
-      mark.style.left = `${timelinePercent(tick)}%`;
+      mark.style.left = `${timelineFullPercent(tick)}%`;
       text.textContent = formatTimelineTick(tick);
       mark.append(line, text);
       track.append(mark);
@@ -914,7 +1156,7 @@
   function timelineTicks() {
     if (!timelineExtent) return [];
     const span = Math.max(timelineExtent.max - timelineExtent.min, 1);
-    const count = Math.min(7, Math.max(3, Math.floor(timelineRulerEl.getBoundingClientRect().width / 180)));
+    const count = Math.min(7, Math.max(3, Math.floor(timelineBoardWidth() / 180)));
     return Array.from({ length: count }, (_item, index) =>
       timelineExtent.min + (span * index) / Math.max(count - 1, 1),
     );
@@ -934,9 +1176,8 @@
       return;
     }
     timelinePlayheadEl.hidden = false;
-    const boardWidth = timelineBoardWidth();
     const labelWidth = timelineLabelWidth();
-    const x = labelWidth + (timelinePercent(timelineCursor) / 100) * Math.max(0, boardWidth - labelWidth);
+    const x = labelWidth + (timelineFullPercent(timelineCursor) / 100) * timelineTrackContentWidth();
     timelinePlayheadEl.style.left = `${x}px`;
   }
 
@@ -945,26 +1186,35 @@
     return clamp01((timestamp - timelineExtent.min) / (timelineExtent.max - timelineExtent.min)) * 100;
   }
 
+  function timelineFullPercent(timestamp) {
+    if (!timelineFullExtent || timelineFullExtent.max === timelineFullExtent.min) return 0;
+    return clamp01((timestamp - timelineFullExtent.min) / (timelineFullExtent.max - timelineFullExtent.min)) * 100;
+  }
+
   function timestampAtTimelineClientX(clientX) {
-    if (!timelineExtent) return null;
+    if (!timelineFullExtent) return null;
     const rect = timelineBoardEl.getBoundingClientRect();
     const labelWidth = timelineLabelWidth();
-    const trackWidth = Math.max(1, rect.width - labelWidth);
-    const x = clamp01((clientX - rect.left - labelWidth) / trackWidth);
-    return timelineExtent.min + x * (timelineExtent.max - timelineExtent.min);
+    const trackX = Math.max(0, Math.min(timelineTrackContentWidth(), timelineBoardEl.scrollLeft + clientX - rect.left - labelWidth));
+    return timelineFullExtent.min + (trackX / timelineTrackContentWidth()) * timelineFullSpan();
   }
 
   function timelineTrackClientX(clientX) {
     const rect = timelineBoardEl.getBoundingClientRect();
     const labelWidth = timelineLabelWidth();
-    return Math.max(0, Math.min(rect.width - labelWidth, clientX - rect.left - labelWidth));
+    const trackX = timelineBoardEl.scrollLeft + clientX - rect.left - labelWidth;
+    return Math.max(0, Math.min(timelineTrackContentWidth(), trackX));
   }
 
   function zoomTimelineBy(factor) {
-    if (!timelineExtent || !timelineFullExtent) return;
-    const currentSpan = timelineExtent.max - timelineExtent.min;
+    if (!timelineFullExtent) return;
+    const currentSpan = timelineZoomSpan ?? timelineFullSpan();
     const nextSpan = currentSpan * factor;
-    zoomTimelineToSpan(nextSpan, timelineCursor ?? timelineExtent.min + currentSpan / 2);
+    const visibleCenter = timelineExtent
+      ? timelineExtent.min + (timelineExtent.max - timelineExtent.min) / 2
+      : timelineFullExtent.min + currentSpan / 2;
+    const center = timelineCursor ?? visibleCenter;
+    zoomTimelineToSpan(nextSpan, center);
   }
 
   function zoomTimelineToSpan(span, center) {
@@ -977,15 +1227,18 @@
 
   function setTimelineWindow(min, max) {
     if (!timelineFullExtent || max <= min) return;
-    timelineExtent = clampTimelineWindow(min, max);
-    timelineCursor = Math.max(timelineExtent.min, Math.min(timelineCursor ?? timelineExtent.min, timelineExtent.max));
+    const next = clampTimelineWindow(min, max);
+    timelineZoomSpan = next.max - next.min;
+    scrollTimelineToWindow(next.min, next.max);
+    timelineCursor = Math.max(timelineFullExtent.min, Math.min(timelineCursor ?? next.min, timelineFullExtent.max));
     renderTimeline();
   }
 
   function resetTimelineZoom() {
     if (!timelineFullExtent) return;
-    timelineExtent = { ...timelineFullExtent };
-    timelineCursor = Math.max(timelineExtent.min, Math.min(timelineCursor ?? timelineExtent.min, timelineExtent.max));
+    timelineZoomSpan = timelineFullSpan();
+    scrollTimelineToWindow(timelineFullExtent.min, timelineFullExtent.max);
+    timelineCursor = Math.max(timelineFullExtent.min, Math.min(timelineCursor ?? timelineFullExtent.min, timelineFullExtent.max));
     renderTimeline();
   }
 
@@ -1100,10 +1353,10 @@
   function syncTimelineZoomControls() {
     const hasTimeline = !!timelineExtent && !!timelineFullExtent;
     const fullSpan = hasTimeline ? timelineFullExtent.max - timelineFullExtent.min : 0;
-    const visibleSpan = hasTimeline ? timelineExtent.max - timelineExtent.min : 0;
-    timelineZoomInEl.disabled = !hasTimeline || visibleSpan <= timelineMinClipMs;
-    timelineZoomOutEl.disabled = !hasTimeline || visibleSpan >= fullSpan;
-    timelineZoomResetEl.disabled = !hasTimeline || visibleSpan >= fullSpan;
+    const zoomSpan = hasTimeline ? timelineZoomSpan ?? fullSpan : 0;
+    timelineZoomInEl.disabled = !hasTimeline || zoomSpan <= timelineMinClipMs;
+    timelineZoomOutEl.disabled = !hasTimeline || zoomSpan >= fullSpan;
+    timelineZoomResetEl.disabled = !hasTimeline || zoomSpan >= fullSpan;
     syncTimelinePlaybackControls();
   }
 
@@ -1133,21 +1386,19 @@
     }
 
     const delta = Math.abs(endX - startX);
-    const rect = timelineBoardEl.getBoundingClientRect();
-    const labelWidth = timelineLabelWidth();
     if (delta < 12) {
       timelineCursor = timestampAtTimelineClientX(event.clientX);
       syncTimelineScrubber();
       return;
     }
 
-    const trackWidth = Math.max(1, rect.width - labelWidth);
+    const trackWidth = timelineTrackContentWidth();
     const leftRatio = Math.min(startX, endX) / trackWidth;
     const rightRatio = Math.max(startX, endX) / trackWidth;
-    const span = timelineExtent.max - timelineExtent.min;
+    const span = timelineFullSpan();
     setTimelineWindow(
-      timelineExtent.min + leftRatio * span,
-      timelineExtent.min + rightRatio * span,
+      timelineFullExtent.min + leftRatio * span,
+      timelineFullExtent.min + rightRatio * span,
     );
   }
 
@@ -1545,10 +1796,13 @@
     const visibleImageItems = items
       .filter((item) => (item.kind === "Image" || item.kind === "FaceInstance"))
       .filter(timelineItemVisible);
+    const visibleMediaItems = items
+      .filter((item) => item.kind === "Image" || item.kind === "FaceInstance" || item.kind === "AudioClip")
+      .filter(timelineItemVisible);
     pruneTimelineImagePreloadCache(new Set(visibleImageItems.map((item) => item.node.id)));
     visibleImageItems.forEach((item) => preloadTimelineImageNode(item.node));
 
-    const loadable = visibleImageItems
+    const loadable = visibleMediaItems
       .filter((item) => !mediaForNode(item.node).base64)
       .filter((item) => !timelineDetailLoadingIds.has(item.node.id))
       .slice(0, timelineDetailLoadLimit);
@@ -1558,7 +1812,7 @@
       timelineDetailLoadingIds.add(item.node.id);
       try {
         const details = await fetchNodeDetails(item.node.id, { requireComplete: true });
-        preloadTimelineImageNode(details);
+        if (item.kind === "Image" || item.kind === "FaceInstance") preloadTimelineImageNode(details);
         return true;
       } catch (_err) {
         return false;
@@ -1879,11 +2133,11 @@
       inspectorTitle.textContent = nodeLabel(node);
       inspectorKind.textContent = `${nodeKind(node)} node`;
       renderProperties({ id: node.id, labels: node.labels, ...(node.properties || {}) });
-      const speechSegment = nodeKind(node) === "SpeechSegment";
-      if (speechSegment) {
+      const playableMedia = nodeHasPlayableMedia(node);
+      if (playableMedia) {
         renderMediaPreview(node, { autoplay: options.playMedia === true });
       }
-      loadNodeDetails(node, { preserveMediaPreview: speechSegment });
+      loadNodeDetails(node, { preserveMediaPreview: playableMedia, autoplayMedia: options.playMedia === true });
     } else {
       const rel = item.value;
       inspectorIcon.textContent = "→";
@@ -1929,7 +2183,10 @@
       (selected.value.relationships || []).forEach((rel) => mergeGraphRelationship(rel));
       materializeFullGraph();
       scheduleGraphCacheSave();
-      renderMediaPreview(selected.value, { preserveExisting: options.preserveMediaPreview });
+      renderMediaPreview(selected.value, {
+        preserveExisting: options.preserveMediaPreview,
+        autoplay: options.autoplayMedia === true,
+      });
       renderProperties(propertiesForNodeDetails(selected.value));
       renderTimeline();
     } catch (err) {
@@ -1940,10 +2197,13 @@
   }
 
   function renderMediaPreview(node, options = {}) {
-    if (options.preserveExisting && nodeKind(node) === "SpeechSegment") {
-      const existing = existingSpeechSegmentPreview(node.id);
+    if (options.preserveExisting) {
+      const existing = existingMediaPreview(node);
       if (existing) {
         inspectorMedia.hidden = false;
+        if (options.autoplay && typeof existing.play === "function") {
+          existing.play().catch(() => {});
+        }
         return;
       }
     }
@@ -1986,6 +2246,7 @@
       inspectorMedia.hidden = true;
       return;
     }
+    preview.dataset.mediaNodeId = node.id;
     inspectorMedia.hidden = false;
     inspectorMedia.append(preview);
     if (options.autoplay && typeof preview.play === "function") {
@@ -2009,6 +2270,19 @@
   function existingSpeechSegmentPreview(id) {
     return Array.from(inspectorMedia.querySelectorAll("audio[data-speech-segment-id]"))
       .find((audio) => audio.dataset.speechSegmentId === id) || null;
+  }
+
+  function existingMediaPreview(node) {
+    if (nodeKind(node) === "SpeechSegment") return existingSpeechSegmentPreview(node.id);
+    return Array.from(inspectorMedia.querySelectorAll("audio[data-media-node-id], video[data-media-node-id]"))
+      .find((media) => media.dataset.mediaNodeId === node.id) || null;
+  }
+
+  function nodeHasPlayableMedia(node) {
+    if (nodeKind(node) === "SpeechSegment") return true;
+    if (nodeKind(node) === "AudioClip") return true;
+    const media = mediaForNode(node);
+    return media.mime.startsWith("audio/") || media.mime.startsWith("video/");
   }
 
   function propertiesForNodeDetails(node) {
@@ -2037,11 +2311,55 @@
         dt.textContent = key;
         if (key === "relationships" && Array.isArray(value)) {
           renderRelationshipLinks(dd, value);
+        } else if (key === "face_images" && Array.isArray(value)) {
+          renderFaceImageList(dd, value);
         } else {
           dd.textContent = formatPropertyValue(key, value);
         }
         inspectorProperties.append(dt, dd);
       });
+  }
+
+  function renderFaceImageList(container, faceImages) {
+    const list = document.createElement("ul");
+    list.className = "face-image-list";
+    faceImages
+      .filter((faceImage) => faceImage && typeof faceImage === "object")
+      .forEach((faceImage) => {
+        const item = document.createElement("li");
+        const target = faceImage.id ? { nodeId: faceImage.id } : null;
+        const frame = target ? document.createElement("a") : document.createElement("div");
+        const mime = String(faceImage.mime || "").toLowerCase();
+        const base64 = typeof faceImage.base64 === "string" ? faceImage.base64.trim() : "";
+        frame.className = "face-image-link";
+        if (target) {
+          frame.href = graphTargetHref(target);
+          frame.addEventListener("click", (event) => {
+            event.preventDefault();
+            navigateToGraphTarget(target, { updateUrl: true }).catch((err) => {
+              statusEl.textContent = err.message || "Face image unavailable";
+            });
+          });
+        }
+        if (mime.startsWith("image/") && base64) {
+          const image = document.createElement("img");
+          image.alt = faceImage.id || "Linked face image";
+          image.src = dataUrl(mime, base64);
+          frame.append(image);
+        }
+        const caption = document.createElement("span");
+        caption.textContent = faceImageCaption(faceImage);
+        frame.append(caption);
+        item.append(frame);
+        list.append(item);
+      });
+    container.append(list);
+  }
+
+  function faceImageCaption(faceImage) {
+    const occurredAt = faceImage.occurred_at || faceImage.captured_at;
+    const timestamp = occurredAt ? formatTimelineInstant(occurredAt) : "";
+    return timestamp || faceImage.source_image_id || faceImage.id || "Face image";
   }
 
   function renderRelationshipLinks(container, relationships) {
@@ -2124,6 +2442,7 @@
   }
 
   function nodeRadius(node) {
+    if (isEmbeddingNode(node)) return 5;
     if (nodeKind(node) === "Theme") return 35;
     if (hasNodeLabel(node, "Cluster")) return 31;
     if (nodeKind(node) === "Impression") return 24;
@@ -2645,6 +2964,9 @@
   function cachedNodeDetailsComplete(node) {
     const media = mediaForNode(node);
     if (nodeKind(node) === "SpeechSegment") return true;
+    if (nodeKind(node) === "Face" && Array.isArray(node.properties?.face_images)) {
+      return node.properties.face_images.every((faceImage) => typeof faceImage?.base64 === "string" && faceImage.base64.trim());
+    }
     return !media.mime || !!media.base64;
   }
 
@@ -2769,8 +3091,22 @@
     simulation.force("theme-y").y(rect.height / 2);
     simulation.force("time-x").x(temporalX);
     simulation.alpha(0.3).restart();
+    updateTimelineContentWidth();
+    updateTimelineViewportFromScroll();
     updateTimelinePlayhead();
     renderTimelineRuler();
+  }
+
+  function handleTimelineScroll() {
+    if (timelineScrollFrame) return;
+    timelineScrollFrame = requestAnimationFrame(() => {
+      timelineScrollFrame = 0;
+      if (viewMode !== "timeline" || !timelineFullExtent) return;
+      updateTimelineViewportFromScroll();
+      renderTimelineRuler();
+      syncTimelineScrubber();
+      hydrateTimelineMedia(timelineItems());
+    });
   }
 
   function zoomBy(factor) {
@@ -2821,6 +3157,7 @@
   timelineBoardEl.addEventListener("pointermove", moveTimelineSelection);
   timelineBoardEl.addEventListener("pointerup", finishTimelineSelection);
   timelineBoardEl.addEventListener("pointercancel", cancelTimelineSelection);
+  timelineBoardEl.addEventListener("scroll", handleTimelineScroll);
   document.getElementById("zoom-in").addEventListener("click", () => zoomBy(1.25));
   document.getElementById("zoom-out").addEventListener("click", () => zoomBy(0.8));
   document.getElementById("zoom-fit").addEventListener("click", fitGraph);

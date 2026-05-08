@@ -960,6 +960,65 @@ async fn neo4j_client_loads_graph_node_details_with_media_payload() {
 }
 
 #[tokio::test]
+async fn neo4j_client_loads_face_node_details_with_linked_face_images() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("face_images")
+                .body_contains("HAS_FACE_VECTOR")
+                .body_contains("MATCHED_FACE")
+                .body_contains("\"id\":\"face:known\"");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["node", "relationships"],
+                    "data": [{
+                        "row": [
+                            {
+                                "id": "face:known",
+                                "labels": ["GraphNode", "Cluster", "Face"],
+                                "properties": {
+                                    "id": "face:known",
+                                    "kind": "face",
+                                    "face_images": [{
+                                        "id": "face-instance:1",
+                                        "source_image_id": "image:1",
+                                        "mime": "image/png",
+                                        "base64": "iVBORw0KGgo=",
+                                        "captured_at": "2026-05-07T12:00:00Z"
+                                    }]
+                                }
+                            },
+                            []
+                        ]
+                    }]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let details = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .graph_node_details("face:known")
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(details.id, "face:known");
+    assert_eq!(details.labels, vec!["GraphNode", "Cluster", "Face"]);
+    assert_eq!(
+        details.properties["face_images"][0]["id"],
+        "face-instance:1"
+    );
+    assert_eq!(
+        details.properties["face_images"][0]["base64"],
+        "iVBORw0KGgo="
+    );
+    query.assert_async().await;
+}
+
+#[tokio::test]
 async fn neo4j_client_loads_movie_export_media() {
     let server = MockServer::start_async().await;
     let latest_query = server

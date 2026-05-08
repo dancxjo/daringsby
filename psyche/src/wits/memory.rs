@@ -2365,14 +2365,41 @@ impl Neo4jClient {
                             WHEN n:Sensation THEN coalesce(n.source_ended_at, n.source_started_at, n.source_captured_at, n.observed_at, n.captured_at, n.occurred_at, n.timestamp, "")
                             ELSE coalesce(n.occurred_at, n.observed_at, n.captured_at, n.timestamp, n.source_started_at, n.source_captured_at, n.source_ended_at, "")
                         END AS event_at
+                    WITH n, event_at,
+                        CASE WHEN n:Face THEN
+                            [(n)-[:HAS_CLUSTER_MEMBER|MEMBER_OF_CLUSTER]-(face_vector:GraphNode:Vector)<-[:HAS_FACE_VECTOR]-(cluster_face:GraphNode:FaceInstance) | cluster_face] +
+                            [(matched_face:GraphNode:FaceInstance)-[:MATCHED_FACE]->(n) | matched_face]
+                        ELSE [] END AS linked_face_instances
+                    WITH n, event_at,
+                        reduce(unique_faces = [], face_instance IN linked_face_instances |
+                            CASE
+                                WHEN face_instance IS NULL OR any(existing IN unique_faces WHERE existing.id = face_instance.id)
+                                    THEN unique_faces
+                                ELSE unique_faces + face_instance
+                            END
+                        ) AS face_instances
+                    WITH n, event_at, face_instances,
+                        CASE
+                            WHEN event_at = "" THEN properties(n)
+                            ELSE n {.*, occurred_at: event_at}
+                        END AS detail_properties
                     OPTIONAL MATCH (n)-[r]-(m:GraphNode)
                     RETURN
                         {
                             id: n.id,
                             labels: labels(n),
                             properties: CASE
-                                WHEN event_at = "" THEN properties(n)
-                                ELSE n {.*, occurred_at: event_at}
+                                WHEN size(face_instances) = 0 THEN detail_properties
+                                ELSE detail_properties + {
+                                    face_images: [face_instance IN face_instances | {
+                                        id: face_instance.id,
+                                        source_image_id: face_instance.source_image_id,
+                                        mime: face_instance.crop_mime,
+                                        base64: face_instance.crop_base64,
+                                        captured_at: face_instance.captured_at,
+                                        occurred_at: face_instance.occurred_at
+                                    }]
+                                }
                             END
                         },
                         [rel IN collect(DISTINCT r) WHERE rel IS NOT NULL | {
