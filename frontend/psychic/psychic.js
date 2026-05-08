@@ -1117,7 +1117,7 @@
 
   function timelineClipLabel(node) {
     if (nodeKind(node) === "AudioClip") return "audio";
-    if (nodeKind(node) === "SpeechSegment") return "speech";
+    if (nodeKind(node) === "SpeechSegment") return speechSegmentText(node);
     return nodeLabel(node);
   }
 

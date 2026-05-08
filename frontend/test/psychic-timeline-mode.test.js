@@ -73,6 +73,7 @@ assert(script.includes('fetch("/movie", {'));
 assert(script.includes('function movieForTimelineCursor()'));
 assert(script.includes('function scrubTextTrackCues(track)'));
 assert(script.includes('function stripTranscriptionTimeTags(value)'));
+assert(script.includes('if (nodeKind(node) === "SpeechSegment") return speechSegmentText(node);'));
 assert(script.includes('stripTranscriptionTimeTags(String(props.text || props.transcript || props.summary || nodeLabel(node)))'));
 assert(script.includes('const maxHeadMovieDurationMs = 180000;'));
 assert(script.includes('const headMovieRequestDurationMs = 90000;'));
