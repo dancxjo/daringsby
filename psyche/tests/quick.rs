@@ -160,7 +160,7 @@ async fn describes_faces_in_first_person() {
     let out = quick.tick().await;
 
     assert_eq!(out.len(), 1);
-    assert_eq!(out[0].stimuli[0].what, "I saw a face");
+    assert_eq!(out[0].stimuli[0].what, psyche::face_count_sensation_text(1));
 }
 
 #[tokio::test]

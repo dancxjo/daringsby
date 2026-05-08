@@ -85,6 +85,25 @@ fn one_shot_prompt_includes_default_prompt() {
 }
 
 #[test]
+fn sensory_prompt_phrases_match_graph_sensation_text() {
+    assert_eq!(psyche::IMAGE_SENSATION_TEXT, "I'm looking.");
+    assert_eq!(
+        psyche::face_count_sensation_text(0),
+        "I don't see any faces."
+    );
+    assert_eq!(psyche::face_count_sensation_text(1), "I see a face.");
+    assert_eq!(psyche::face_count_sensation_text(2), "I see 2 faces.");
+    assert_eq!(
+        psyche::face_familiarity_sensation_text(true),
+        "I've seen this face before."
+    );
+    assert_eq!(
+        psyche::face_familiarity_sensation_text(false),
+        "I've never seen this face before."
+    );
+}
+
+#[test]
 fn senses_are_described() {
     let mouth = std::sync::Arc::new(Dummy::default());
     let ear = mouth.clone();
