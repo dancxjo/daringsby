@@ -832,6 +832,7 @@ async fn neo4j_client_loads_graph_snapshot() {
                 .body_contains("MATCH (anchor)--(neighbor:GraphNode)")
                 .body_contains("LIMIT $limit")
                 .body_contains("candidate_nodes[..$limit] AS nodes")
+                .body_contains("ELSE n {.*, occurred_at: event_at}")
                 .body_contains("\"limit\":25");
             then.status(200).json_body(json!({
                 "results": [{
@@ -910,6 +911,7 @@ async fn neo4j_client_loads_graph_node_details_with_media_payload() {
             when.method(POST)
                 .path("/db/neo4j/tx/commit")
                 .body_contains("MATCH (n:GraphNode {id: $id})")
+                .body_contains("ELSE n {.*, occurred_at: event_at}")
                 .body_contains("\"id\":\"image:1\"");
             then.status(200).json_body(json!({
                 "results": [{

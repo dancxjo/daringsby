@@ -2315,9 +2315,9 @@ impl Neo4jClient {
                     WITH collect(DISTINCT {
                             id: n.id,
                             labels: labels(n),
-                            properties: properties(n) + CASE
-                                WHEN event_at = "" THEN {}
-                                ELSE {occurred_at: event_at}
+                            properties: CASE
+                                WHEN event_at = "" THEN properties(n)
+                                ELSE n {.*, occurred_at: event_at}
                             END
                         }) AS node_rows,
                         collect(DISTINCT r) AS relationships
@@ -2370,9 +2370,9 @@ impl Neo4jClient {
                         {
                             id: n.id,
                             labels: labels(n),
-                            properties: properties(n) + CASE
-                                WHEN event_at = "" THEN {}
-                                ELSE {occurred_at: event_at}
+                            properties: CASE
+                                WHEN event_at = "" THEN properties(n)
+                                ELSE n {.*, occurred_at: event_at}
                             END
                         },
                         [rel IN collect(DISTINCT r) WHERE rel IS NOT NULL | {
