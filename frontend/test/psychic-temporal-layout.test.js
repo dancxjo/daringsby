@@ -14,6 +14,7 @@ assert(script.includes('function temporalX(node)'));
 assert(script.includes('function nodeTimestamp(node)'));
 assert(script.includes('function temporalLayoutKeys(node)'));
 assert(script.includes('["source_ended_at", "observed_at", "occurred_at", "captured_at", "timestamp"]'));
+assert(script.includes('["source_started_at", "source_captured_at", "occurred_at", "source_ended_at", "captured_at", "timestamp", "transcribed_at"]'));
 assert(script.includes('if (typeof value === "number" && Number.isFinite(value)) return value;'));
 assert(script.includes('return left + clamp01(ratio) * (right - left);'));
 assert(script.includes('simulation.force("time-x").x(temporalX);'));

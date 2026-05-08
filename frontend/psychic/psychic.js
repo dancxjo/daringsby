@@ -2154,7 +2154,7 @@
     if (nodeKind(node) === "Sensation") return ["source_ended_at", "observed_at", "occurred_at", "captured_at", "timestamp"];
     if (nodeKind(node) === "AudioClip") return ["captured_at", "occurred_at", "observed_at", "timestamp"];
     if (nodeKind(node) === "Image") return ["captured_at", "occurred_at", "observed_at", "timestamp"];
-    if (nodeKind(node) === "Transcription") return ["transcribed_at", "occurred_at", "captured_at", "timestamp"];
+    if (nodeKind(node) === "Transcription") return ["source_started_at", "source_captured_at", "occurred_at", "source_ended_at", "captured_at", "timestamp", "transcribed_at"];
     return temporalLayoutPropertyKeys;
   }
 

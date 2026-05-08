@@ -2286,10 +2286,13 @@ impl Neo4jClient {
                     WITH n
                     ORDER BY coalesce(
                         n.occurred_at,
+                        n.source_started_at,
+                        n.source_captured_at,
+                        n.source_ended_at,
                         n.observed_at,
                         n.captured_at,
-                        n.transcribed_at,
                         n.timestamp,
+                        n.transcribed_at,
                         ""
                     ) DESC, n.id
                     LIMIT $limit
@@ -3100,6 +3103,11 @@ impl Neo4jClient {
         let client = reqwest::Client::new();
         self.ensure_constraint(&client, &endpoint).await?;
         let transcribed_at = chrono::Utc::now().to_rfc3339();
+        let transcription_occurred_at = source_captured_at.unwrap_or(&transcribed_at);
+        let source_ended_at = segments
+            .iter()
+            .rev()
+            .find_map(|segment| segment.ended_at.as_deref());
         let transcription_id = stable_bytes_id(
             "transcription",
             format!("{audio_clip_id}:{transcribed_at}").as_bytes(),
@@ -3123,6 +3131,9 @@ impl Neo4jClient {
                 "text": transcript,
                 "transcribed_at": transcribed_at,
                 "source_captured_at": source_captured_at,
+                "source_started_at": source_captured_at,
+                "source_ended_at": source_ended_at,
+                "occurred_at": transcription_occurred_at,
             }),
         ];
         let mut relationships = vec![
@@ -3228,6 +3239,9 @@ impl Neo4jClient {
         let client = reqwest::Client::new();
         self.ensure_constraint(&client, &endpoint).await?;
         let transcribed_at = chrono::Utc::now().to_rfc3339();
+        let transcription_occurred_at = source_started_at
+            .or(source_ended_at)
+            .unwrap_or(&transcribed_at);
         let source_ids = sources
             .iter()
             .map(|source| source.audio_clip_id.clone())
@@ -3247,6 +3261,7 @@ impl Neo4jClient {
             "transcribed_at": transcribed_at,
             "source_started_at": source_started_at,
             "source_ended_at": source_ended_at,
+            "occurred_at": transcription_occurred_at,
         })];
         let mut relationships = Vec::new();
         for source in sources {
