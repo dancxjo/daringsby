@@ -86,12 +86,15 @@ async fn bus_backed_digest_loops_summary_back_as_sensation() {
     let sensations = sensation_bus.subscribe(Topic::Sensation);
     futures::pin_mut!(sensations);
     let combo = Combobulator::with_bus(bus, Arc::new(Dummy));
+    let source_occurred_at = chrono::DateTime::parse_from_rfc3339("2026-05-05T12:34:56Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
 
     combo
         .digest(&[Impression::new(
             vec![Stimulus::with_source_sensation_ids(
                 "I heard a voice nearby.".to_string(),
-                chrono::Utc::now(),
+                source_occurred_at,
                 ["sensation:audio:1"],
             )],
             "",
@@ -102,9 +105,14 @@ async fn bus_backed_digest_loops_summary_back_as_sensation() {
 
     let payload = sensations.next().await.unwrap();
     let sensation = payload.downcast_ref::<Sensation>().unwrap();
-    let Sensation::Of { payload, .. } = sensation else {
+    let Sensation::Of {
+        payload,
+        occurred_at,
+    } = sensation
+    else {
         panic!("expected combobulation sensation");
     };
+    assert_eq!(*occurred_at, source_occurred_at);
     let summary = payload.downcast_ref::<CombobulationSummary>().unwrap();
     assert_eq!(summary.text, "All clear.");
     assert_eq!(summary.source_sensation_ids, vec!["sensation:audio:1"]);

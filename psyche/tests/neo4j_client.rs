@@ -2474,6 +2474,8 @@ async fn neo4j_client_attaches_combobulation() {
                 .body_contains("\"embedding_model\":\"embed-test\"")
                 .body_contains("\"source_count\":2")
                 .body_contains("\"source_event_ids\":[\"audio:1\",\"audio:1\"]")
+                .body_contains("\"source_started_at\":\"2026-05-05T12:34:56Z\"")
+                .body_contains("\"source_ended_at\":\"2026-05-05T12:35:00Z\"")
                 .body_contains("\"source_texts\":[\"speech: hello\",\"speech: there\"]");
             then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
         })

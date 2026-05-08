@@ -180,6 +180,7 @@ impl Combobulator {
             }
         }
         let source_sensation_ids = crate::model::source_sensation_ids_from(inputs);
+        let source_occurred_at = latest_input_timestamp(inputs).unwrap_or_else(Utc::now);
         let imp = Impression::new(
             vec![Stimulus::from_impressions(summary.clone(), inputs)],
             summary.clone(),
@@ -196,7 +197,7 @@ impl Combobulator {
                         created_at: Some(now.to_rfc3339()),
                         source_sensation_ids,
                     },
-                    now,
+                    source_occurred_at,
                 ),
             );
         }
@@ -227,4 +228,12 @@ impl Combobulator {
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
     }
+}
+
+fn latest_input_timestamp(inputs: &[Impression<String>]) -> Option<chrono::DateTime<Utc>> {
+    let latest_stimulus = inputs
+        .iter()
+        .flat_map(|impression| impression.stimuli.iter().map(|stimulus| stimulus.timestamp))
+        .max();
+    latest_stimulus.or_else(|| inputs.iter().map(|impression| impression.timestamp).max())
 }
