@@ -2720,7 +2720,7 @@ async fn neo4j_client_attaches_voice_recognition() {
                 .body_contains("qdrant:voices:point-1")
                 .body_contains("sensation:audio:1")
                 .body_contains("\"kind\":\"voice_identity\"")
-                .body_contains("\"how\":\"I hear a voice I've never heard before.\"")
+                .body_contains("\"how\":\"I don't think I recognize this voice.\"")
                 .body_contains("fundamental_frequency")
                 .body_contains("quality_score")
                 .body_contains("\"model\":\"voxudio\"");

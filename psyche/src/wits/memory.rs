@@ -6621,7 +6621,7 @@ fn voice_identity_how(recognition: Option<&GraphVoiceMatch>) -> String {
             ..
         }) if !name.trim().is_empty() => format!("I recognize {}'s voice.", name.trim()),
         Some(_) => "I recognize the voice, but I don't know who it is.".into(),
-        None => "I hear a voice I've never heard before.".into(),
+        None => "I don't think I recognize this voice.".into(),
     }
 }
 
