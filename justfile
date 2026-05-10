@@ -8,6 +8,8 @@ default:
 run:
     #!/usr/bin/env bash
     set -euo pipefail
+    bins=()
+    pids=()
 
     if [[ -x /usr/local/cuda/bin/nvcc ]]; then
         export PATH="/usr/local/cuda/bin:$PATH"
@@ -20,7 +22,6 @@ run:
     mkdir -p "$run_log_dir"
     printf 'writing program logs to %s\n' "$run_log_dir"
 
-    bins=()
     for path in pete/src/bin/*.rs; do
         bin="${path##*/}"
         bin="${bin%.rs}"
@@ -33,7 +34,6 @@ run:
         fi
         bins+=("$bin")
     done
-    pids=()
 
     kill_matches() {
         local pattern="$1"

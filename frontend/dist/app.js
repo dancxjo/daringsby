@@ -40,6 +40,8 @@
   const witDetails = {};
   const witDebugContainer = document.getElementById("wit-debug");
   let playing = false;
+  let logAtBottom = true;
+  let wordsAtBottom = true;
   let currentSpeechText = null;
   let resumeSpeechPlayback = null;
 
@@ -156,10 +158,13 @@
           mien.textContent = m.data;
           break;
         case "Say": {
-          const atBottom = words.scrollTop + words.clientHeight >= words.scrollHeight - 10;
+          const atBottom = wordsAtBottom || words.scrollTop + words.clientHeight >= words.scrollHeight - 10;
           words.textContent += "\n" + m.data.words;
           if (atBottom) {
             words.scrollTop = words.scrollHeight;
+            wordsAtBottom = true;
+          } else {
+            wordsAtBottom = false;
           }
           enqueueAudio({ audio: m.data.audio || null, text: m.data.words });
           break;
@@ -855,6 +860,7 @@
     }
     const container = conversationLog.closest(".scroll-well") || conversationLog;
     const atBottom =
+      logAtBottom ||
       container.scrollTop + container.clientHeight >=
       container.scrollHeight - 10;
     conversationLog.textContent = conversationMsgs
@@ -866,6 +872,9 @@
       .join("\n");
     if (atBottom) {
       container.scrollTop = container.scrollHeight;
+      logAtBottom = true;
+    } else {
+      logAtBottom = false;
     }
   }
 

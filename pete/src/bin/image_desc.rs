@@ -8,8 +8,8 @@ use dotenvy::dotenv;
 use lingproc::{ImageData as LImageData, LlmInstruction, Vectorizer};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
-    Doer, GraphImageDescription, GraphImageFrame, IMAGE_CAPTION_PROMPT, Neo4jClient, QdrantClient,
-    with_default_system_prompt,
+    Doer, GraphImageDescription, GraphImageFrame, GraphLatestCombobulation, IMAGE_CAPTION_PROMPT,
+    Neo4jClient, QdrantClient, with_default_system_prompt,
 };
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{error, info, trace, warn};
@@ -118,9 +118,11 @@ async fn process_next_frame(
         return Ok(());
     };
 
+    let combobulation = graph.latest_combobulation().await.unwrap_or(None);
+
     info!(image_id = %frame.id, "describing image frame");
     let description = processor
-        .describe(&frame, qdrant)
+        .describe(&frame, qdrant, combobulation.as_ref())
         .await
         .with_context(|| format!("failed to describe image {}", frame.id))?;
     graph
@@ -154,6 +156,7 @@ impl ImageDescriptionProcessor {
         &self,
         frame: &GraphImageFrame,
         qdrant: &QdrantClient,
+        combobulation: Option<&GraphLatestCombobulation>,
     ) -> anyhow::Result<GraphImageDescription> {
         if !frame.image.mime.to_ascii_lowercase().starts_with("image/") {
             bail!("unsupported image MIME type {}", frame.image.mime);
@@ -170,9 +173,15 @@ impl ImageDescriptionProcessor {
                 image_bytes,
                 "including image payload in Ollama request"
             );
+            let command = if let Some(comb) = combobulation {
+                let context = format!("\n\nThe current situation you understand is:\n{}", comb.text.trim());
+                with_default_system_prompt(format!("{IMAGE_CAPTION_PROMPT}{context}"))
+            } else {
+                with_default_system_prompt(IMAGE_CAPTION_PROMPT)
+            };
             self.describer
                 .follow(LlmInstruction {
-                    command: with_default_system_prompt(IMAGE_CAPTION_PROMPT),
+                    command,
                     images: vec![LImageData {
                         mime: frame.image.mime.clone(),
                         base64,
