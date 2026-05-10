@@ -26,9 +26,7 @@ use chrono::{DateTime, Utc};
 use clap::Parser;
 use dotenvy::dotenv;
 #[cfg(feature = "tts")]
-use futures::StreamExt;
-#[cfg(feature = "tts")]
-use pete::{CoquiTts, Tts};
+use pete::{CoquiTts, synthesize_speech_audio};
 use pete::{EventBus, MediaEvent, init_logging, parse_data_url};
 use psyche::{
     AudioClip, ImageData, Impression, Neo4jClient, Sensation, SensationGraphObserver,
@@ -97,7 +95,7 @@ struct Cli {
     )]
     tts_url: String,
     /// Speaker ID for the TTS voice.
-    #[arg(long, env = "SPEAKER", default_value = "p123")]
+    #[arg(long, env = "SPEAKER", default_value = "p228")]
     tts_speaker_id: String,
     /// Language ID for the TTS voice.
     #[arg(long, default_value = "en")]
@@ -664,21 +662,8 @@ fn spawn_speech_intention_poller(
 
 #[cfg(feature = "tts")]
 async fn speech_audio(text: &str, tts: &CoquiTts) -> Option<String> {
-    match tts.stream_wav(text).await {
-        Ok(mut stream) => {
-            let mut buf = Vec::new();
-            while let Some(chunk) = stream.next().await {
-                match chunk {
-                    Ok(bytes) if !bytes.is_empty() => buf.extend(bytes),
-                    Ok(_) => {}
-                    Err(err) => {
-                        warn!(%err, "tts streaming failed for will speech");
-                        break;
-                    }
-                }
-            }
-            (!buf.is_empty()).then(|| BASE64_STANDARD.encode(buf))
-        }
+    match synthesize_speech_audio(tts, text).await {
+        Ok(audio) => audio,
         Err(err) => {
             warn!(%err, "tts request failed for will speech");
             None

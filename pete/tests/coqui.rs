@@ -34,7 +34,7 @@ async fn coqui_defaults_voice() {
             when.method(GET)
                 .path("/api/tts")
                 .query_param("text", "hi")
-                .query_param("speaker_id", "p123")
+                .query_param("speaker_id", "p228")
                 .query_param("style_wav", "")
                 .query_param("language_id", "");
             then.status(200).body("abcd");
@@ -46,5 +46,25 @@ async fn coqui_defaults_voice() {
     while let Some(chunk) = stream.next().await {
         chunk.unwrap();
     }
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn coqui_rejects_http_errors() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/api/tts");
+            then.status(500).body("not audio");
+        })
+        .await;
+
+    let tts = CoquiTts::new(server.url("/api/tts"), None, None);
+    let err = match tts.stream_wav("hi").await {
+        Ok(_) => panic!("expected HTTP error"),
+        Err(err) => err,
+    };
+
+    assert!(err.to_string().contains("500"));
     mock.assert_async().await;
 }

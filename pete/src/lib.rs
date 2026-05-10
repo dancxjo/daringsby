@@ -77,7 +77,7 @@ pub use sensor::motion::MotionSensor;
 pub use simulator::Simulator;
 pub use tts::default_mouth;
 #[cfg(feature = "tts")]
-pub use tts::{CoquiTts, TtsMouth};
+pub use tts::{CoquiTts, TtsMouth, speech_text_for_tts, synthesize_speech_audio};
 pub use web::{
     Body, WsRequest, app, conversation_log, index, listen_user_input, log_ws_handler,
     parse_data_url, psyche_debug, toggle_wit_debug, wit_debug_page, ws_handler,

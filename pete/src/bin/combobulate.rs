@@ -47,14 +47,14 @@ struct Cli {
     /// Model name to use for awareness text embeddings.
     #[arg(long, env = "EMBEDDINGS_MODEL", default_value = "embeddinggemma")]
     embeddings_model: String,
-    /// Number of seconds of graph history to show the LLM.
-    #[arg(long, env = "COMBOBULATION_WINDOW_SECONDS", default_value_t = 30)]
+    /// Number of seconds of graph history to include in one FIFO combobulation chunk.
+    #[arg(long, env = "COMBOBULATION_WINDOW_SECONDS", default_value_t = 600)]
     window_seconds: u64,
-    /// Maximum timeline items to include in one LLM prompt.
-    #[arg(long, env = "COMBOBULATION_WINDOW_LIMIT", default_value_t = 80)]
+    /// Maximum timeline items to include in one LLM prompt; 0 includes all sensations in the window.
+    #[arg(long, env = "COMBOBULATION_WINDOW_LIMIT", default_value_t = 0)]
     window_limit: usize,
     /// Delay between graph polling attempts.
-    #[arg(long, env = "COMBOBULATION_POLL_MS", default_value_t = 1000)]
+    #[arg(long, env = "COMBOBULATION_POLL_MS", default_value_t = 100)]
     poll_ms: u64,
     /// Process at most one window and exit.
     #[arg(long)]
@@ -122,50 +122,25 @@ async fn process_next_window(
     window_seconds: u64,
     window_limit: usize,
 ) -> anyhow::Result<()> {
-    let mut processed = false;
-    let mut backfill_before = None;
+    let latest_combobulation_sensation_at = graph
+        .latest_combobulation_sensation_at()
+        .await
+        .context("failed to load latest combobulation sensation timestamp")?;
     if let Some(window) = graph
         .latest_timeline_window_for_combobulation(window_seconds, window_limit)
         .await
-        .context("failed to load latest timeline window")?
+        .context("failed to load next timeline window")?
     {
-        backfill_before = window
-            .items
-            .first()
-            .map(|item| item.occurred_at.clone())
-            .or_else(|| Some(window.anchor_at.clone()));
-        process_window(graph, qdrant, processor, window_seconds, window).await?;
-        processed = true;
-    }
-
-    if let Some(window) = graph
-        .latest_revisitable_timeline_window_for_combobulation(window_limit)
-        .await
-        .context("failed to load revisitable timeline window")?
-    {
-        if backfill_before.is_none() {
-            backfill_before = window
-                .items
-                .first()
-                .map(|item| item.occurred_at.clone())
-                .or_else(|| Some(window.anchor_at.clone()));
-        }
-        process_window(graph, qdrant, processor, window_seconds, window).await?;
-        processed = true;
-    }
-
-    if let Some(before) = backfill_before {
-        if let Some(window) = graph
-            .previous_timeline_window_for_combobulation(window_seconds, window_limit, &before)
-            .await
-            .context("failed to load previous timeline window")?
-        {
-            process_window(graph, qdrant, processor, window_seconds, window).await?;
-            processed = true;
-        }
-    }
-
-    if !processed {
+        process_window(
+            graph,
+            qdrant,
+            processor,
+            window_seconds,
+            latest_combobulation_sensation_at,
+            window,
+        )
+        .await?;
+    } else {
         trace!("no timeline windows found for combobulation");
     }
     Ok(())
@@ -176,6 +151,7 @@ async fn process_window(
     qdrant: &QdrantClient,
     processor: &CombobulationProcessor,
     window_seconds: u64,
+    latest_combobulation_sensation_at: Option<String>,
     window: GraphTimelineWindow,
 ) -> anyhow::Result<()> {
     if window.items.is_empty() {
@@ -192,7 +168,12 @@ async fn process_window(
         "combobulating timeline window"
     );
     let awareness = processor
-        .combobulate(&window, qdrant, window_seconds)
+        .combobulate(
+            &window,
+            qdrant,
+            window_seconds,
+            latest_combobulation_sensation_at.as_deref(),
+        )
         .await
         .with_context(|| format!("failed to combobulate timeline {}", window.anchor_id))?;
     graph
@@ -232,8 +213,10 @@ impl CombobulationProcessor {
         window: &GraphTimelineWindow,
         qdrant: &QdrantClient,
         window_seconds: u64,
+        latest_combobulation_sensation_at: Option<&str>,
     ) -> anyhow::Result<GraphAwareness> {
-        let prompt = combobulation_prompt(window, window_seconds);
+        let prompt =
+            combobulation_prompt(window, window_seconds, latest_combobulation_sensation_at);
         let raw_text = self
             .doer
             .follow(LlmInstruction {
@@ -280,10 +263,22 @@ impl CombobulationProcessor {
     }
 }
 
-fn combobulation_prompt(window: &GraphTimelineWindow, window_seconds: u64) -> String {
+fn combobulation_prompt(
+    window: &GraphTimelineWindow,
+    window_seconds: u64,
+    latest_combobulation_sensation_at: Option<&str>,
+) -> String {
     let timeline = timeline_prompt(window);
+    let latest_combobulation_note = match latest_combobulation_sensation_at {
+        Some(occurred_at) => {
+            format!("The last recorded combobulation sensation occurred at {occurred_at}.")
+        }
+        None => "There is no recorded prior combobulation sensation.".to_string(),
+    };
     with_default_system_prompt(format!(
-        "The following entries are a chronological timeline of your sensations during the last {window_seconds} seconds. Each entry is already a compact summary of one source sensation, such as hearing, seeing, feeling, locating, or thinking a combobulation thought.\n\
+        "The following entries are a chronological timeline of your next uncombobulated sensations, selected FIFO from the oldest pending sensation and bounded to {window_seconds} seconds. Each entry is already a compact summary of one source sensation, such as hearing, seeing, feeling, locating, or thinking a combobulation thought.\n\
+         If there are no sensations in the timeline, infer that you must be asleep.\n\
+         {latest_combobulation_note}\n\
          Treat these sensations as fragmentary, possibly contradictory, fleeting evidence about the actual situation, not as the topic to describe. Try to infer what is going on in the real world from those fragments. Some entries may be your own prior combobulation summaries looping back in as sensations; treat those as provisional, possibly stale self-context, not as fresh external evidence.\n\
          {SENSOR_GROUNDING_RULES} What is going on right now? Summarize your current awareness in one or two grounded first-person sentences, then end with exactly one emoji that reflects the tone of the moment. Keep it compact: compress repeated low-level records into the real-world gist. Do not say that you are observing a timeline, sensations, recordings, entries, a previous summary, or a shift in conversation. Do not mention graph ids, hashes, timestamps, edges, or per-detection details unless they are directly relevant.\n\n\
          Timeline:\n{timeline}"
@@ -296,16 +291,18 @@ fn timeline_prompt(window: &GraphTimelineWindow) -> String {
         .first()
         .map(|item| item.occurred_at.as_str())
         .unwrap_or(window.anchor_at.as_str());
+    let to = window
+        .items
+        .last()
+        .map(|item| item.occurred_at.as_str())
+        .unwrap_or(window.anchor_at.as_str());
     let entries = window
         .items
         .iter()
         .map(timeline_prompt_item)
         .collect::<Vec<_>>()
         .join("\n");
-    format!(
-        "Impression timeline {} to {}\n{}",
-        from, window.anchor_at, entries
-    )
+    format!("Sensation timeline {} to {}\n{}", from, to, entries)
 }
 
 fn timeline_prompt_item(item: &GraphTimelineItem) -> String {
@@ -370,11 +367,17 @@ mod tests {
             }],
         };
 
-        let prompt = combobulation_prompt(&window, 30);
+        let prompt = combobulation_prompt(&window, 600, Some("2026-05-05T12:30:00Z"));
 
         assert!(prompt.contains("You are PETE"));
-        assert!(prompt.contains("last 30 seconds"));
-        assert!(prompt.contains("chronological timeline of your sensations"));
+        assert!(prompt.contains("next uncombobulated sensations"));
+        assert!(prompt.contains("selected FIFO from the oldest pending sensation"));
+        assert!(prompt.contains("bounded to 600 seconds"));
+        assert!(prompt.contains("If there are no sensations in the timeline"));
+        assert!(prompt.contains(
+            "The last recorded combobulation sensation occurred at 2026-05-05T12:30:00Z."
+        ));
+        assert!(prompt.contains("chronological timeline of your next uncombobulated sensations"));
         assert!(prompt.contains("fragmentary, possibly contradictory, fleeting evidence"));
         assert!(prompt.contains("prior combobulation summaries looping back in as sensations"));
         assert!(prompt.contains("not as the topic to describe"));
@@ -387,7 +390,7 @@ mod tests {
         assert!(prompt.contains("per-detection details"));
         assert!(prompt.contains("Timeline:"));
         assert!(prompt.contains(
-            "Impression timeline 2026-05-05T12:34:56Z to 2026-05-05T12:34:56Z\n[2026-05-05T12:34:56Z] audio sensation; transcript: hello"
+            "Sensation timeline 2026-05-05T12:34:56Z to 2026-05-05T12:34:56Z\n[2026-05-05T12:34:56Z] audio sensation; transcript: hello"
         ));
     }
 
@@ -416,7 +419,7 @@ mod tests {
 
         assert_eq!(
             timeline_prompt(&window),
-            "Impression timeline 2026-05-05T12:34:56Z to 2026-05-05T12:34:57Z\n[2026-05-05T12:34:56Z] audio sensation; transcript: hello\n[2026-05-05T12:34:57Z] combobulation sensation; I may be hearing a greeting."
+            "Sensation timeline 2026-05-05T12:34:56Z to 2026-05-05T12:34:57Z\n[2026-05-05T12:34:56Z] audio sensation; transcript: hello\n[2026-05-05T12:34:57Z] combobulation sensation; I may be hearing a greeting."
         );
     }
 }

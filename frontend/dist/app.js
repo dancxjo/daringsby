@@ -217,8 +217,10 @@
     face.classList.add("playing");
     stopSpeechRecognition();
 
+    let audioUrl = null;
     let started = false;
     let settled = false;
+    let usingSpeechSynthesis = false;
     const reportPlayback = (status) => {
       if (!next.text) return;
       safeSend(JSON.stringify({
@@ -228,11 +230,19 @@
         at: new Date().toISOString(),
       }));
     };
+    const cleanupAudioUrl = () => {
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+        audioUrl = null;
+      }
+    };
     const done = (status) => {
       if (settled) return;
       settled = true;
       player.removeEventListener("ended", onEnded);
       player.removeEventListener("error", onError);
+      player.removeEventListener("error", speakWithBrowserVoice);
+      cleanupAudioUrl();
       if (!started && status === "Finished") {
         reportPlayback("Started");
       }
@@ -250,6 +260,23 @@
     };
     const onEnded = () => done("Finished");
     const onError = () => done("Interrupted");
+    const speakWithBrowserVoice = () => {
+      if (settled || usingSpeechSynthesis) return;
+      usingSpeechSynthesis = true;
+      player.removeEventListener("ended", onEnded);
+      player.removeEventListener("error", onError);
+      cleanupAudioUrl();
+      if ("speechSynthesis" in window && "SpeechSynthesisUtterance" in window) {
+        const utterance = new SpeechSynthesisUtterance(next.text || "");
+        utterance.onstart = onStarted;
+        utterance.onend = onEnded;
+        utterance.onerror = onError;
+        window.speechSynthesis.speak(utterance);
+      } else {
+        onStarted();
+        done("Interrupted");
+      }
+    };
     const tryAudioPlayback = () => {
       if (settled) return;
       player.play().then(onStarted).catch((err) => {
@@ -259,14 +286,15 @@
           return;
         }
         console.error("audio", err);
-        done("Interrupted");
+        speakWithBrowserVoice();
       });
     };
 
     if (next.audio) {
-      player.src = `data:audio/wav;base64,${next.audio}`;
+      audioUrl = audioObjectUrl(next.audio);
+      player.src = audioUrl || `data:audio/wav;base64,${next.audio}`;
       player.addEventListener("ended", onEnded, { once: true });
-      player.addEventListener("error", onError, { once: true });
+      player.addEventListener("error", speakWithBrowserVoice, { once: true });
       tryAudioPlayback();
     } else if ("speechSynthesis" in window && "SpeechSynthesisUtterance" in window) {
       const utterance = new SpeechSynthesisUtterance(next.text || "");
@@ -277,6 +305,21 @@
     } else {
       onStarted();
       done("Finished");
+    }
+  }
+
+  function audioObjectUrl(base64) {
+    if (!("Blob" in window) || !URL.createObjectURL) return null;
+    try {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
+    } catch (err) {
+      console.warn("audio decode", err);
+      return null;
     }
   }
 

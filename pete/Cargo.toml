@@ -84,7 +84,7 @@ path = "src/bin/psychic.rs"
 [[bin]]
 name = "transcription"
 path = "src/bin/transcription.rs"
-required-features = ["asr"]
+required-features = ["asr-cuda"]
 
 [[bin]]
 name = "frecog"

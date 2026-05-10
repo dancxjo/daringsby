@@ -64,7 +64,7 @@ struct Cli {
     )]
     tts_url: String,
     /// Speaker ID for the TTS voice
-    #[arg(long, env = "SPEAKER", default_value = "p123")]
+    #[arg(long, env = "SPEAKER", default_value = "p228")]
     tts_speaker_id: String,
     /// Language ID for the TTS voice
     #[arg(long, default_value = "en")]

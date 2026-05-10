@@ -167,7 +167,7 @@ impl Combobulator {
     ) -> anyhow::Result<Impression<String>> {
         let combined = inputs
             .iter()
-            .filter_map(|imp| imp.stimuli.first().map(Stimulus::prompt_list_item))
+            .flat_map(|imp| imp.stimuli.iter().map(Stimulus::prompt_list_item))
             .collect::<Vec<_>>()
             .join("\n- ");
         let instruction = LlmInstruction {

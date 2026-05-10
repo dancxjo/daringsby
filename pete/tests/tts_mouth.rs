@@ -1,6 +1,6 @@
 #![cfg(feature = "tts")]
 use futures::stream;
-use pete::{Tts, TtsMouth, TtsStream};
+use pete::{Tts, TtsMouth, TtsStream, speech_text_for_tts};
 use psyche::Event;
 use psyche::traits::Mouth;
 use std::sync::{Arc, atomic::AtomicBool};
@@ -34,4 +34,13 @@ async fn emits_audio_events() {
         }
         other => panic!("unexpected event: {:?}", other),
     }
+}
+
+#[test]
+fn speech_text_for_tts_strips_emoji() {
+    assert_eq!(
+        speech_text_for_tts("Hello there. 🙂").as_deref(),
+        Some("Hello there.")
+    );
+    assert_eq!(speech_text_for_tts("🙂"), None);
 }

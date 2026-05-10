@@ -120,6 +120,6 @@ async fn memory_graph_links_impression_and_stimulus_to_source_sensation() {
     let logs = store.0.lock().unwrap().clone();
     assert_eq!(logs.len(), 1);
     assert!(logs[0].contains("\"source_sensation_ids\":[\"sensation:utterance:1\"]"));
-    assert!(logs[0].contains("\"label\":\"Sensation\",\"id\":\"sensation:utterance:1\""));
+    assert!(logs[0].contains("\"label\":\"SourceSensationRef\",\"id\":\"sensation:utterance:1\""));
     assert!(logs[0].contains("\"type\":\"DERIVED_FROM\""));
 }

@@ -2280,11 +2280,19 @@ async fn neo4j_client_loads_latest_timeline_window_for_combobulation() {
             when.method(POST)
                 .path("/db/neo4j/tx/commit")
                 .body_contains("MATCH (anchor:GraphNode:Sensation)")
+                .body_contains("combobulation_summary")
+                .body_contains("coalesce(anchor.how")
                 .body_contains("INCLUDED_IN_COMBOBULATION")
+                .body_contains("ORDER BY datetime(anchor_at) ASC, anchor.id ASC")
                 .body_contains("duration({seconds: $seconds})")
+                .body_contains("coalesce(n.occurred_at")
+                .body_contains("coalesce(n.how")
+                .body_contains("datetime(occurred_at) >= datetime(anchor_at)")
+                .body_contains("datetime(occurred_at) <= datetime(anchor_at) + duration({seconds: $seconds})")
+                .body_contains("NOT (n)-[:INCLUDED_IN_COMBOBULATION]")
                 .body_contains("timeline_order")
-                .body_contains("ORDER BY datetime(occurred_at) ASC, timeline_order ASC, n.id")
-                .body_contains("RETURN anchor.id, anchor_at, n.id, event_id, labels(n), text, occurred_at")
+                .body_contains("ORDER BY datetime(occurred_at) ASC, timeline_order ASC, n.id ASC")
+                .body_contains("RETURN anchor.id, anchor_at, row.id, row.event_id, row.labels, row.text, row.occurred_at")
                 .body_contains("\"seconds\":30")
                 .body_contains("\"limit\":80");
             then.status(200).json_body(json!({
@@ -2340,12 +2348,13 @@ async fn neo4j_client_loads_previous_timeline_window_for_combobulation() {
             when.method(POST)
                 .path("/db/neo4j/tx/commit")
                 .body_contains("MATCH (anchor:GraphNode:Sensation)")
-                .body_contains("datetime(anchor.occurred_at) < datetime($before)")
+                .body_contains("datetime(anchor_at) < datetime($before)")
                 .body_contains("INCLUDED_IN_COMBOBULATION")
                 .body_contains("duration({seconds: $seconds})")
-                .body_contains("ORDER BY datetime(anchor_at) DESC, anchor.id")
-                .body_contains("ORDER BY datetime(occurred_at) ASC, timeline_order ASC, n.id")
-                .body_contains("RETURN anchor.id, anchor_at, n.id, event_id, labels(n), text, occurred_at")
+                .body_contains("coalesce(n.how")
+                .body_contains("ORDER BY datetime(anchor_at) ASC, anchor.id ASC")
+                .body_contains("ORDER BY datetime(occurred_at) ASC, timeline_order ASC, n.id ASC")
+                .body_contains("RETURN anchor.id, anchor_at, row.id, row.event_id, row.labels, row.text, row.occurred_at")
                 .body_contains("\"before\":\"2026-05-05T12:34:56Z\"")
                 .body_contains("\"seconds\":30")
                 .body_contains("\"limit\":80");
@@ -2394,13 +2403,14 @@ async fn neo4j_client_loads_previous_timeline_window_for_combobulation() {
 }
 
 #[tokio::test]
-async fn neo4j_client_loads_impression_timeline_with_sensation_order() {
+async fn neo4j_client_loads_sensation_timeline_with_sensation_order() {
     let server = MockServer::start_async().await;
     let query = server
         .mock_async(|when, then| {
             when.method(POST)
                 .path("/db/neo4j/tx/commit")
-                .body_contains("MATCH (n:GraphNode)")
+                .body_contains("MATCH (n:GraphNode:Sensation)")
+                .body_contains("coalesce(n.how")
                 .body_contains("timeline_order")
                 .body_contains("ORDER BY datetime(occurred_at) DESC, timeline_order DESC, n.id DESC")
                 .body_contains("RETURN row.id, row.labels, row.kind, row.text, row.occurred_at, row.formed_at")
@@ -2444,7 +2454,7 @@ async fn neo4j_client_loads_impression_timeline_with_sensation_order() {
         .unwrap()
         .with_timezone(&Utc);
     let items = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
-        .impression_timeline(None, end, 20)
+        .sensation_timeline(None, end, 20)
         .await
         .unwrap();
 
@@ -2470,7 +2480,7 @@ async fn neo4j_client_loads_revisitable_timeline_window_for_combobulation() {
                 .body_contains("current_source_texts")
                 .body_contains("size(run.source_ids) <= $limit")
                 .body_contains("NOT EXISTS")
-                .body_contains("HAS_TRANSCRIPTION|HAS_BIG_TRANSCRIPTION")
+                .body_contains("coalesce(n.how")
                 .body_contains("RETURN run.anchor_id, run.anchor_at, item.id, item.event_id, item.labels, item.text, item.occurred_at")
                 .body_contains("\"limit\":80");
             then.status(200).json_body(json!({
@@ -2539,6 +2549,7 @@ async fn neo4j_client_attaches_combobulation() {
                 .body_contains("qdrant:memories:point-1")
                 .body_contains("\"kind\":\"combobulation_summary\"")
                 .body_contains("\"derived\":true")
+                .body_contains("\"occurred_at\":\"2026-05-05T12:34:56Z\"")
                 .body_contains("\"how\":\"I hear someone greeting me.\"")
                 .body_contains("\"combobulation_run_id\"")
                 .body_contains("\"awareness_id\":\"awareness:speech:2\"")
@@ -2641,6 +2652,32 @@ async fn neo4j_client_loads_latest_combobulation() {
     assert_eq!(latest.text, "I think someone is nearby. 🙂");
     assert_eq!(latest.emoji.as_deref(), Some("🙂"));
     assert_eq!(latest.formed_at, "2026-05-07T12:00:00Z");
+    query.assert_async().await;
+}
+
+#[tokio::test]
+async fn neo4j_client_loads_latest_combobulation_sensation_at() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (n:GraphNode:Sensation)")
+                .body_contains("combobulation_summary")
+                .body_contains("RETURN occurred_at")
+                .body_contains("ORDER BY datetime(occurred_at) DESC");
+            then.status(200)
+                .body(r#"{"results":[{"data":[{"row":["2026-05-07T12:00:00Z"]}]}],"errors":[]}"#);
+        })
+        .await;
+
+    let occurred_at = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .latest_combobulation_sensation_at()
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(occurred_at, "2026-05-07T12:00:00Z");
     query.assert_async().await;
 }
 

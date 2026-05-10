@@ -112,6 +112,31 @@ async fn prompt_frames_inputs_as_real_world_events() {
 }
 
 #[tokio::test]
+async fn prompt_includes_every_stimulus_from_the_current_window() {
+    let doer = CapturingDoer::default();
+    let captured = doer.command.clone();
+    let combo = Combobulator::new(Arc::new(doer));
+
+    combo
+        .digest(&[Impression::new(
+            vec![
+                Stimulus::new("I heard a voice.".to_string()),
+                Stimulus::new("I felt a heartbeat.".to_string()),
+                Stimulus::new("I sensed structured data.".to_string()),
+            ],
+            "",
+            None::<String>,
+        )])
+        .await
+        .unwrap();
+
+    let prompt = captured.lock().unwrap().clone().unwrap();
+    assert!(prompt.contains("I heard a voice."));
+    assert!(prompt.contains("I felt a heartbeat."));
+    assert!(prompt.contains("I sensed structured data."));
+}
+
+#[tokio::test]
 async fn bus_backed_digest_loops_summary_back_as_sensation() {
     let bus = TopicBus::new(8);
     let sensation_bus = bus.clone();

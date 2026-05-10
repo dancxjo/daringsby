@@ -3,12 +3,12 @@ use chrono::{DateTime, Utc};
 use clap::Parser;
 use dotenvy::dotenv;
 use pete::{EventBus, init_logging};
-use psyche::{GraphImpressionTimelineItem, Neo4jClient, model::localized_timestamp};
+use psyche::{GraphSensationTimelineItem, Neo4jClient, model::localized_timestamp};
 use std::collections::HashSet;
 use tokio::time::{Duration as TokioDuration, MissedTickBehavior, interval};
 
 #[derive(Parser)]
-#[command(author, version, about = "Print a text timeline of impressions")]
+#[command(author, version, about = "Print a text timeline of sensations")]
 struct Cli {
     /// Neo4j bolt or HTTP URI.
     #[arg(long, env = "NEO4J_URI", default_value = "bolt://localhost:7687")]
@@ -25,10 +25,10 @@ struct Cli {
     /// Inclusive end time, as RFC3339, e.g. 2026-05-07T12:01:30Z.
     #[arg(long)]
     to: Option<String>,
-    /// Maximum impression items to print.
-    #[arg(long, default_value_t = 200)]
+    /// Maximum sensation items to print; 0 prints all items in the time window.
+    #[arg(long, default_value_t = 0)]
     limit: usize,
-    /// Keep polling and print newly observed impressions.
+    /// Keep polling and print newly observed sensations.
     #[arg(long)]
     follow: bool,
     /// Poll delay for --follow.
@@ -55,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
 
     let (from, to) = time_range(&cli)?;
     let items = graph
-        .impression_timeline(from, to, cli.limit)
+        .sensation_timeline(from, to, cli.limit)
         .await
         .context("failed to load impression timeline")?;
 
@@ -72,7 +72,7 @@ async fn follow_timeline(graph: &Neo4jClient, cli: &Cli) -> anyhow::Result<()> {
         ticker.tick().await;
         let (from, to) = time_range(cli)?;
         let items = graph
-            .impression_timeline(from, to, cli.limit)
+            .sensation_timeline(from, to, cli.limit)
             .await
             .context("failed to load impression timeline")?;
         for item in items {
@@ -105,18 +105,14 @@ fn parse_time(value: &str) -> anyhow::Result<DateTime<Utc>> {
 fn print_timeline(
     from: Option<DateTime<Utc>>,
     to: DateTime<Utc>,
-    items: &[GraphImpressionTimelineItem],
+    items: &[GraphSensationTimelineItem],
 ) {
     let from = from
         .map(localized_timestamp)
         .unwrap_or_else(|| "forever".to_string());
-    println!(
-        "Impression timeline {} to {}",
-        from,
-        localized_timestamp(to)
-    );
+    println!("Sensation timeline {} to {}", from, localized_timestamp(to));
     if items.is_empty() {
-        println!("(no impressions)");
+        println!("(no sensations)");
         return;
     }
     for item in items {

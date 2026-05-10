@@ -4,8 +4,6 @@ use crate::EventBus;
 #[cfg(feature = "tts")]
 use async_trait::async_trait;
 #[cfg(feature = "tts")]
-use futures::StreamExt;
-#[cfg(feature = "tts")]
 use lingproc::segment_text_into_sentences;
 use psyche::traits::Mouth;
 #[cfg(feature = "tts")]
@@ -24,6 +22,8 @@ use tracing::{error, info};
 use anyhow::Result;
 #[cfg(feature = "tts")]
 use base64::{Engine as _, engine::general_purpose};
+#[cfg(feature = "tts")]
+use futures::StreamExt;
 #[cfg(feature = "tts")]
 use reqwest::{Client, Url};
 
@@ -69,17 +69,42 @@ impl Tts for CoquiTts {
             qp.append_pair("text", text);
             // Always include speaker_id, style_wav and language_id parameters
             // providing defaults when values are not configured
-            qp.append_pair("speaker_id", self.speaker_id.as_deref().unwrap_or("p123"));
+            qp.append_pair("speaker_id", self.speaker_id.as_deref().unwrap_or("p228"));
             qp.append_pair("style_wav", "");
             qp.append_pair("language_id", self.language_id.as_deref().unwrap_or(""));
         }
         info!(%url, "requesting TTS");
-        let resp = self.client.get(url).send().await?;
+        let resp = self.client.get(url).send().await?.error_for_status()?;
         let stream = resp
             .bytes_stream()
             .map(|b| b.map(|bytes| bytes.to_vec()).map_err(|e| e.into()));
         Ok(Box::pin(stream))
     }
+}
+
+#[cfg(feature = "tts")]
+pub fn speech_text_for_tts(text: &str) -> Option<String> {
+    let (clean, _) = psyche::extract_emojis(text);
+    let clean = clean.trim();
+    (!clean.is_empty()).then(|| clean.to_string())
+}
+
+#[cfg(feature = "tts")]
+pub async fn synthesize_speech_audio(tts: &dyn Tts, text: &str) -> Result<Option<String>> {
+    let Some(clean) = speech_text_for_tts(text) else {
+        return Ok(None);
+    };
+
+    let mut stream = tts.stream_wav(&clean).await?;
+    let mut buf = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let bytes = chunk?;
+        if !bytes.is_empty() {
+            buf.extend(bytes);
+        }
+    }
+
+    Ok((!buf.is_empty()).then(|| general_purpose::STANDARD.encode(buf)))
 }
 
 /// [`Mouth`] implementation that streams audio via [`Tts`] and forwards it as
@@ -117,41 +142,25 @@ impl Mouth for TtsMouth {
             if sent.is_empty() {
                 continue;
             }
-            let (clean, _emo) = psyche::extract_emojis(sent);
-            match self.tts.stream_wav(&clean).await {
-                Ok(mut stream) => {
-                    let mut buf = Vec::new();
-                    while let Some(chunk) = stream.next().await {
-                        match chunk {
-                            Ok(bytes) if !bytes.is_empty() => buf.extend(bytes),
-                            Ok(_) => {}
-                            Err(e) => {
-                                error!(?e, "tts streaming failed");
-                                break;
-                            }
-                        }
-                    }
-                    if !buf.is_empty() {
-                        let b64 = general_purpose::STANDARD.encode(buf);
-                        if self
-                            .events
-                            .send(Event::Speech {
-                                text: sent.to_string(),
-                                audio: Some(b64),
-                            })
-                            .is_err()
-                        {
-                            error!("failed sending speech chunk");
-                        }
-                    } else {
-                        let _ = self.events.send(Event::Speech {
+            match synthesize_speech_audio(self.tts.as_ref(), sent).await {
+                Ok(audio) => {
+                    if self
+                        .events
+                        .send(Event::Speech {
                             text: sent.to_string(),
-                            audio: None,
-                        });
+                            audio,
+                        })
+                        .is_err()
+                    {
+                        error!("failed sending speech chunk");
                     }
                 }
                 Err(e) => {
                     error!(?e, "tts request failed");
+                    let _ = self.events.send(Event::Speech {
+                        text: sent.to_string(),
+                        audio: None,
+                    });
                 }
             }
         }

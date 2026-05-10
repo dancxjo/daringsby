@@ -1501,30 +1501,33 @@ pub struct GraphTimelineItem {
 /// Ordered timeline window selected for offline combobulation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GraphTimelineWindow {
-    /// The newest source event that had not yet been included in a combobulation run.
+    /// The first source event in the selected combobulation chunk.
     pub anchor_id: String,
-    /// Anchor timestamp.
+    /// Timestamp for the first source event in the chunk.
     pub anchor_at: String,
     /// Source events in chronological order.
     pub items: Vec<GraphTimelineItem>,
 }
 
-/// One human-readable impression selected for a textual timeline.
+/// One human-readable sensation selected for a textual timeline.
 #[derive(Clone, Debug, PartialEq)]
-pub struct GraphImpressionTimelineItem {
-    /// Stable graph node id for the impression-bearing node.
+pub struct GraphSensationTimelineItem {
+    /// Stable graph node id for the sensation-bearing node.
     pub id: String,
     /// Neo4j labels attached to the node.
     pub labels: Vec<String>,
     /// Node kind when present, otherwise the primary label.
     pub kind: String,
-    /// Human-readable impression sentence.
+    /// Human-readable first-person sensation sentence.
     pub text: String,
     /// When the source event occurred.
     pub occurred_at: String,
-    /// When the impression sentence was formed, when known.
+    /// When the sensation sentence was formed, when known.
     pub formed_at: Option<String>,
 }
+
+/// Backward-compatible name for callers that still refer to the old timeline API.
+pub type GraphImpressionTimelineItem = GraphSensationTimelineItem;
 
 /// LLM awareness summary ready to be linked into the graph.
 #[derive(Clone, Debug, PartialEq)]
@@ -2775,11 +2778,11 @@ impl Neo4jClient {
             .unwrap_or(false))
     }
 
-    /// Return a recent graph timeline for an offline combobulation pass.
+    /// Return the next FIFO graph timeline chunk for an offline combobulation pass.
     ///
-    /// The anchor is the newest displayable graph event that has not already
+    /// The anchor is the oldest displayable graph event that has not already
     /// been included in a combobulation run. The returned window includes that
-    /// anchor plus earlier events from the requested lookback period.
+    /// anchor plus later uncombobulated events from the requested chunk span.
     pub async fn latest_timeline_window_for_combobulation(
         &self,
         seconds: u64,
@@ -2789,17 +2792,16 @@ impl Neo4jClient {
             seconds,
             limit,
             None,
-            "finding latest timeline window for combobulation",
+            "finding next FIFO timeline window for combobulation",
         )
         .await
     }
 
-    /// Return the next older graph timeline for an offline combobulation pass.
+    /// Return an older FIFO graph timeline chunk for an offline combobulation pass.
     ///
-    /// This lets the combobulator backfill historical gaps even while newer
-    /// sensations keep arriving. The anchor is the newest uncombobulated event
-    /// before `before`, and the returned window includes that anchor plus
-    /// earlier events from the requested lookback period.
+    /// The anchor is the oldest uncombobulated event before `before`, and the
+    /// returned window includes that anchor plus later uncombobulated events
+    /// from the requested chunk span.
     pub async fn previous_timeline_window_for_combobulation(
         &self,
         seconds: u64,
@@ -2831,31 +2833,34 @@ impl Neo4jClient {
             CypherStatement {
                 statement: r#"
                     MATCH (anchor:GraphNode:Sensation)
-                    WHERE coalesce(anchor.occurred_at, "") <> ""
-                      AND ($before IS NULL OR datetime(anchor.occurred_at) < datetime($before))
+                    WITH anchor,
+                        CASE coalesce(anchor.kind, "")
+                            WHEN "combobulation_summary" THEN coalesce(anchor.occurred_at, anchor.source_started_at, anchor.source_ended_at, anchor.observed_at, anchor.captured_at, anchor.timestamp, "")
+                            ELSE coalesce(anchor.source_ended_at, anchor.source_started_at, anchor.source_captured_at, anchor.observed_at, anchor.captured_at, anchor.occurred_at, anchor.timestamp, "")
+                        END AS anchor_at,
+                        coalesce(anchor.how, "") AS anchor_how
+                    WHERE anchor_how <> ""
+                      AND anchor_at <> ""
+                      AND ($before IS NULL OR datetime(anchor_at) < datetime($before))
                       AND NOT (anchor)-[:INCLUDED_IN_COMBOBULATION]->(:GraphNode:CombobulationRun)
-                    WITH anchor, anchor.occurred_at AS anchor_at
-                    ORDER BY datetime(anchor_at) DESC, anchor.id
+                    ORDER BY datetime(anchor_at) ASC, anchor.id ASC
                     LIMIT 1
                     MATCH (n:GraphNode:Sensation)
-                    WHERE coalesce(n.occurred_at, "") <> ""
-                    WITH anchor, anchor_at, n, n.occurred_at AS occurred_at
-                    WHERE datetime(occurred_at) >= datetime(anchor_at) - duration({seconds: $seconds})
-                      AND datetime(occurred_at) <= datetime(anchor_at)
+                    WITH anchor, anchor_at, n,
+                        CASE coalesce(n.kind, "")
+                            WHEN "combobulation_summary" THEN coalesce(n.occurred_at, n.source_started_at, n.source_ended_at, n.observed_at, n.captured_at, n.timestamp, "")
+                            ELSE coalesce(n.source_ended_at, n.source_started_at, n.source_captured_at, n.observed_at, n.captured_at, n.occurred_at, n.timestamp, "")
+                        END AS occurred_at,
+                        coalesce(n.how, "") AS text
+                    WHERE text <> ""
+                      AND occurred_at <> ""
+                      AND datetime(occurred_at) >= datetime(anchor_at)
+                      AND datetime(occurred_at) <= datetime(anchor_at) + duration({seconds: $seconds})
+                      AND NOT (n)-[:INCLUDED_IN_COMBOBULATION]->(:GraphNode:CombobulationRun)
                     OPTIONAL MATCH (n)-[:OBSERVED|PRODUCED]->(artifact:GraphNode)
-                    OPTIONAL MATCH (artifact)-[:HAS_TRANSCRIPTION|HAS_BIG_TRANSCRIPTION]->(attached_transcription:GraphNode:Transcription)
-                    OPTIONAL MATCH (artifact)-[:HAS_IMAGE_DESCRIPTION]->(attached_description:GraphNode:ImageDescription)
-                    WITH anchor, anchor_at, n, occurred_at,
-                        collect(DISTINCT artifact) AS artifacts,
-                        head([t IN collect(DISTINCT attached_transcription)
-                            WHERE coalesce(t.text, t.transcript, "") <> "" |
-                            coalesce(t.text, t.transcript, "")
-                        ]) AS attached_transcript,
-                        head([d IN collect(DISTINCT attached_description)
-                            WHERE coalesce(d.text, "") <> "" |
-                            d.text
-                        ]) AS image_description
-                    WITH anchor, anchor_at, n, occurred_at,
+                    WITH anchor, anchor_at, n, occurred_at, text,
+                        collect(DISTINCT artifact) AS artifacts
+                    WITH anchor, anchor_at, n, occurred_at, text,
                         head([a IN artifacts WHERE a:AudioClip | a]) AS audio,
                         head([a IN artifacts WHERE a:Image | a]) AS image,
                         head([a IN artifacts WHERE a:Geolocation | a]) AS geolocation,
@@ -2864,11 +2869,8 @@ impl Neo4jClient {
                         head([a IN artifacts WHERE a:Utterance | a]) AS utterance,
                         head([a IN artifacts WHERE a:CombobulationSummary | a]) AS combobulation,
                         head([a IN artifacts WHERE a:JsonSensation | a]) AS json_sensation,
-                        head([a IN artifacts WHERE a:Transcription | a]) AS transcription,
-                        attached_transcript,
-                        image_description,
-                        coalesce(n.how, n.summary, n.text, "") AS impression_text
-                    WITH anchor, anchor_at, n, occurred_at,
+                        head([a IN artifacts WHERE a:Transcription | a]) AS transcription
+                    WITH anchor, anchor_at, n, occurred_at, text,
                     coalesce(
                         audio.id,
                         image.id,
@@ -2880,35 +2882,7 @@ impl Neo4jClient {
                         json_sensation.id,
                         transcription.id,
                         n.id
-                    ) AS event_id,
-                    CASE
-                        WHEN impression_text <> "" THEN impression_text
-                        WHEN audio IS NOT NULL THEN
-                            CASE
-                                WHEN attached_transcript IS NOT NULL AND attached_transcript <> "" THEN
-                                    "audio sensation; transcript: " + attached_transcript
-                                WHEN audio.transcript IS NULL OR audio.transcript = "" THEN
-                                    "audio sensation; transcript pending"
-                                ELSE "audio sensation; transcript: " + audio.transcript
-                            END
-                        WHEN image_description IS NOT NULL AND image_description <> "" THEN
-                            "visual sensation; " + image_description
-                        WHEN image IS NOT NULL THEN "visual sensation; image captured"
-                        WHEN geolocation IS NOT NULL THEN
-                            "geolocation sensation; " + toString(geolocation.latitude) + ", " + toString(geolocation.longitude)
-                        WHEN heartbeat IS NOT NULL THEN "heartbeat sensation"
-                        WHEN object IS NOT NULL THEN
-                            "object sensation; " + coalesce(object.object_label, "unknown")
-                        WHEN utterance IS NOT NULL THEN
-                            "speech sensation; " + coalesce(utterance.speaker, "someone") + " said: " + coalesce(utterance.text, "")
-                        WHEN combobulation IS NOT NULL THEN
-                            "combobulation sensation; " + coalesce(combobulation.text, combobulation.summary, "")
-                        WHEN json_sensation IS NOT NULL THEN "structured sensation"
-                        WHEN transcription IS NOT NULL THEN
-                            coalesce(n.how, "transcription sensation; transcript: " + coalesce(transcription.text, transcription.transcript, ""))
-                        ELSE coalesce(n.how, n.summary, n.kind, "sensation")
-                    END AS text
-                    WHERE text <> ""
+                    ) AS event_id
                     WITH anchor, anchor_at, n, occurred_at, event_id, text,
                         CASE coalesce(n.kind, "")
                             WHEN "image" THEN 0
@@ -2917,15 +2891,29 @@ impl Neo4jClient {
                             WHEN "face_identity" THEN 2
                             ELSE 10
                         END AS timeline_order
-                    ORDER BY datetime(occurred_at) ASC, timeline_order ASC, n.id
+                    ORDER BY datetime(occurred_at) ASC, timeline_order ASC, n.id ASC
                     LIMIT $limit
-                    RETURN anchor.id, anchor_at, n.id, event_id, labels(n), text, occurred_at
+                    WITH anchor, anchor_at, collect({
+                        id: n.id,
+                        event_id: event_id,
+                        labels: labels(n),
+                        text: text,
+                        occurred_at: occurred_at
+                    }) AS rows
+                    UNWIND CASE rows WHEN [] THEN [] ELSE range(0, size(rows) - 1) END AS idx
+                    WITH anchor, anchor_at, rows[idx] AS row, idx
+                    RETURN anchor.id, anchor_at, row.id, row.event_id, row.labels, row.text, row.occurred_at
+                    ORDER BY idx
                 "#
                 .into(),
                 parameters: json!({
                     "before": before,
                     "seconds": i64::try_from(seconds.max(1)).unwrap_or(i64::MAX),
-                    "limit": i64::try_from(limit.max(1)).unwrap_or(i64::MAX),
+                    "limit": if limit == 0 {
+                        i64::MAX
+                    } else {
+                        i64::try_from(limit).unwrap_or(i64::MAX)
+                    },
                 }),
             },
             action,
@@ -2999,6 +2987,42 @@ impl Neo4jClient {
         .await?;
         rows.first()
             .map(graph_latest_combobulation_from_row)
+            .transpose()
+    }
+
+    /// Return the newest combobulation summary sensation timestamp.
+    pub async fn latest_combobulation_sensation_at(&self) -> Result<Option<String>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (n:GraphNode:Sensation)
+                    WHERE n.kind = "combobulation_summary"
+                    WITH n,
+                        coalesce(n.occurred_at, n.source_started_at, n.source_ended_at, n.how_formed_at, n.created_at, "") AS occurred_at
+                    WHERE occurred_at <> ""
+                    RETURN occurred_at
+                    ORDER BY datetime(occurred_at) DESC, n.id DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest combobulation sensation timestamp",
+        )
+        .await?;
+        rows.first()
+            .map(|row| {
+                row.as_array()
+                    .context("Neo4j latest combobulation sensation row was not an array")
+                    .and_then(|values| {
+                        row_string(values, 0, "latest combobulation sensation timestamp")
+                    })
+            })
             .transpose()
     }
 
@@ -3101,13 +3125,13 @@ impl Neo4jClient {
             .transpose()
     }
 
-    /// Return impression-bearing graph nodes in chronological order.
-    pub async fn impression_timeline(
+    /// Return sensation graph nodes with first-person `how` text in chronological order.
+    pub async fn sensation_timeline(
         &self,
         start: Option<chrono::DateTime<chrono::Utc>>,
         end: chrono::DateTime<chrono::Utc>,
         limit: usize,
-    ) -> Result<Vec<GraphImpressionTimelineItem>> {
+    ) -> Result<Vec<GraphSensationTimelineItem>> {
         let endpoint = self.http_endpoint()?;
         let rows = query_neo4j_rows(
             &reqwest::Client::new(),
@@ -3116,11 +3140,10 @@ impl Neo4jClient {
             &self.pass,
             CypherStatement {
                 statement: r#"
-                    MATCH (n:GraphNode)
-                    WHERE (n:Sensation OR n:Impression OR n:Awareness OR n:ImageDescription OR n:CombobulationSummary)
+                    MATCH (n:GraphNode:Sensation)
                     WITH n,
-                        coalesce(n.how, n.summary, n.text, "") AS text,
-                        coalesce(n.occurred_at, n.timestamp, n.created_at, "") AS occurred_at,
+                        coalesce(n.how, "") AS text,
+                        coalesce(n.source_ended_at, n.source_started_at, n.source_captured_at, n.observed_at, n.captured_at, n.occurred_at, n.timestamp, "") AS occurred_at,
                         coalesce(n.how_formed_at, n.timestamp, n.created_at, n.occurred_at, "") AS formed_at
                     WHERE text <> ""
                       AND occurred_at <> ""
@@ -3139,7 +3162,7 @@ impl Neo4jClient {
                     WITH collect({
                         id: n.id,
                         labels: labels,
-                        kind: coalesce(n.kind, head([label IN labels WHERE label <> "GraphNode"]), "impression"),
+                        kind: coalesce(n.kind, head([label IN labels WHERE label <> "GraphNode"]), "sensation"),
                         text: text,
                         occurred_at: occurred_at,
                         formed_at: formed_at
@@ -3153,24 +3176,36 @@ impl Neo4jClient {
                 parameters: json!({
                     "start": start.map(|value| value.to_rfc3339()),
                     "end": end.to_rfc3339(),
-                    "limit": i64::try_from(limit.max(1)).unwrap_or(i64::MAX),
+                    "limit": if limit == 0 {
+                        i64::MAX
+                    } else {
+                        i64::try_from(limit).unwrap_or(i64::MAX)
+                    },
                 }),
             },
-            "loading impression timeline",
+            "loading sensation timeline",
         )
         .await?;
         rows.iter()
-            .map(graph_impression_timeline_item_from_row)
+            .map(graph_sensation_timeline_item_from_row)
             .collect()
+    }
+
+    /// Return sensation graph nodes with first-person `how` text in chronological order.
+    pub async fn impression_timeline(
+        &self,
+        start: Option<chrono::DateTime<chrono::Utc>>,
+        end: chrono::DateTime<chrono::Utc>,
+        limit: usize,
+    ) -> Result<Vec<GraphImpressionTimelineItem>> {
+        self.sensation_timeline(start, end, limit).await
     }
 
     /// Return the latest previously combobulated timeline whose rendered source text changed.
     ///
-    /// This catches graph events such as audio sensations that were summarized
-    /// while their transcript was still pending, then gained transcription
-    /// details after the combobulation run was attached. The query filters for
-    /// changed source details before selecting one run so repeated calls can
-    /// work backward through older changed runs.
+    /// The source text is the current `how` of each source sensation. The query
+    /// filters for changed source text before selecting one run so repeated
+    /// calls can work backward through older changed runs.
     pub async fn latest_revisitable_timeline_window_for_combobulation(
         &self,
         limit: usize,
@@ -3191,24 +3226,18 @@ impl Neo4jClient {
                       AND coalesce(run.anchor_at, "") <> ""
                     MATCH (n:GraphNode:Sensation)
                     WHERE n.id IN run.source_ids
-                      AND coalesce(n.occurred_at, "") <> ""
+                    WITH run, n,
+                        coalesce(n.source_ended_at, n.source_started_at, n.source_captured_at, n.observed_at, n.captured_at, n.occurred_at, n.timestamp, "") AS occurred_at,
+                        coalesce(n.how, "") AS text
+                    WHERE text <> ""
+                      AND occurred_at <> ""
                     OPTIONAL MATCH (n)-[:OBSERVED|PRODUCED]->(artifact:GraphNode)
-                    OPTIONAL MATCH (artifact)-[:HAS_TRANSCRIPTION|HAS_BIG_TRANSCRIPTION]->(attached_transcription:GraphNode:Transcription)
-                    OPTIONAL MATCH (artifact)-[:HAS_IMAGE_DESCRIPTION]->(attached_description:GraphNode:ImageDescription)
-                    WITH run, n, n.occurred_at AS occurred_at,
+                    WITH run, n, occurred_at, text,
                         head([idx IN range(0, size(run.source_ids) - 1)
                             WHERE run.source_ids[idx] = n.id | idx
                         ]) AS source_index,
-                        collect(DISTINCT artifact) AS artifacts,
-                        head([t IN collect(DISTINCT attached_transcription)
-                            WHERE coalesce(t.text, t.transcript, "") <> "" |
-                            coalesce(t.text, t.transcript, "")
-                        ]) AS attached_transcript,
-                        head([d IN collect(DISTINCT attached_description)
-                            WHERE coalesce(d.text, "") <> "" |
-                            d.text
-                        ]) AS image_description
-                    WITH run, n, occurred_at, source_index,
+                        collect(DISTINCT artifact) AS artifacts
+                    WITH run, n, occurred_at, text, source_index,
                         head([a IN artifacts WHERE a:AudioClip | a]) AS audio,
                         head([a IN artifacts WHERE a:Image | a]) AS image,
                         head([a IN artifacts WHERE a:Geolocation | a]) AS geolocation,
@@ -3217,11 +3246,8 @@ impl Neo4jClient {
                         head([a IN artifacts WHERE a:Utterance | a]) AS utterance,
                         head([a IN artifacts WHERE a:CombobulationSummary | a]) AS combobulation,
                         head([a IN artifacts WHERE a:JsonSensation | a]) AS json_sensation,
-                        head([a IN artifacts WHERE a:Transcription | a]) AS transcription,
-                        attached_transcript,
-                        image_description,
-                        coalesce(n.how, n.summary, n.text, "") AS impression_text
-                    WITH run, n, occurred_at, source_index,
+                        head([a IN artifacts WHERE a:Transcription | a]) AS transcription
+                    WITH run, n, occurred_at, text, source_index,
                     coalesce(
                         audio.id,
                         image.id,
@@ -3233,35 +3259,8 @@ impl Neo4jClient {
                         json_sensation.id,
                         transcription.id,
                         n.id
-                    ) AS event_id,
-                    CASE
-                        WHEN impression_text <> "" THEN impression_text
-                        WHEN audio IS NOT NULL THEN
-                            CASE
-                                WHEN attached_transcript IS NOT NULL AND attached_transcript <> "" THEN
-                                    "audio sensation; transcript: " + attached_transcript
-                                WHEN audio.transcript IS NULL OR audio.transcript = "" THEN
-                                    "audio sensation; transcript pending"
-                                ELSE "audio sensation; transcript: " + audio.transcript
-                            END
-                        WHEN image_description IS NOT NULL AND image_description <> "" THEN
-                            "visual sensation; " + image_description
-                        WHEN image IS NOT NULL THEN "visual sensation; image captured"
-                        WHEN geolocation IS NOT NULL THEN
-                            "geolocation sensation; " + toString(geolocation.latitude) + ", " + toString(geolocation.longitude)
-                        WHEN heartbeat IS NOT NULL THEN "heartbeat sensation"
-                        WHEN object IS NOT NULL THEN
-                            "object sensation; " + coalesce(object.object_label, "unknown")
-                        WHEN utterance IS NOT NULL THEN
-                            "speech sensation; " + coalesce(utterance.speaker, "someone") + " said: " + coalesce(utterance.text, "")
-                        WHEN combobulation IS NOT NULL THEN
-                            "combobulation sensation; " + coalesce(combobulation.text, combobulation.summary, "")
-                        WHEN json_sensation IS NOT NULL THEN "structured sensation"
-                        WHEN transcription IS NOT NULL THEN
-                            coalesce(n.how, "transcription sensation; transcript: " + coalesce(transcription.text, transcription.transcript, ""))
-                        ELSE coalesce(n.how, n.summary, n.kind, "sensation")
-                    END AS text
-                    WHERE text <> "" AND source_index IS NOT NULL
+                    ) AS event_id
+                    WHERE source_index IS NOT NULL
                     WITH run, n, occurred_at, source_index, event_id, text
                     ORDER BY run.id, source_index
                     WITH run,
@@ -3294,7 +3293,11 @@ impl Neo4jClient {
                 "#
                 .into(),
                 parameters: json!({
-                    "limit": i64::try_from(limit.max(1)).unwrap_or(i64::MAX),
+                    "limit": if limit == 0 {
+                        i64::MAX
+                    } else {
+                        i64::try_from(limit).unwrap_or(i64::MAX)
+                    },
                 }),
             },
             "finding revisitable timeline window for combobulation",
@@ -4307,7 +4310,7 @@ impl Neo4jClient {
             .collect::<Vec<_>>();
         let source_started_at = window.items.first().map(|item| item.occurred_at.clone());
         let source_ended_at = window.items.last().map(|item| item.occurred_at.clone());
-        let sensation_occurred_at = source_ended_at
+        let sensation_occurred_at = source_started_at
             .clone()
             .unwrap_or_else(|| processed_at.clone());
         let vector_id = qdrant_vector_node_id(MEMORY_COLLECTION, &awareness.vector_id);
@@ -5645,16 +5648,16 @@ fn graph_speech_intention_from_row(row: &Value) -> Result<GraphSpeechIntention> 
     })
 }
 
-fn graph_impression_timeline_item_from_row(row: &Value) -> Result<GraphImpressionTimelineItem> {
+fn graph_sensation_timeline_item_from_row(row: &Value) -> Result<GraphSensationTimelineItem> {
     let values = row
         .as_array()
-        .context("Neo4j impression timeline row was not an array")?;
-    Ok(GraphImpressionTimelineItem {
-        id: row_string(values, 0, "impression timeline id")?,
+        .context("Neo4j sensation timeline row was not an array")?;
+    Ok(GraphSensationTimelineItem {
+        id: row_string(values, 0, "sensation timeline id")?,
         labels: row_string_vec(values, 1),
-        kind: row_string(values, 2, "impression timeline kind")?,
-        text: row_string(values, 3, "impression timeline text")?,
-        occurred_at: row_string(values, 4, "impression timeline occurred_at")?,
+        kind: row_string(values, 2, "sensation timeline kind")?,
+        text: row_string(values, 3, "sensation timeline text")?,
+        occurred_at: row_string(values, 4, "sensation timeline occurred_at")?,
         formed_at: row_optional_string(values, 5),
     })
 }
@@ -6392,7 +6395,7 @@ fn payload_target_node(
 
 fn source_sensation_ref_node(source_id: &str) -> Value {
     json!({
-        "label": "Sensation",
+        "label": "SourceSensationRef",
         "id": source_id,
     })
 }

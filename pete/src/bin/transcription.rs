@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{env, process::Command, time::Duration};
 
 use anyhow::Context;
 use chrono::{DateTime, Utc};
@@ -35,6 +35,7 @@ async fn main() -> anyhow::Result<()> {
     let (bus, _user_rx) = EventBus::new();
     init_logging(bus.log_sender());
     dotenv().ok();
+    ensure_whisper_gpu_enabled()?;
 
     let cli = Cli::parse();
     let Some(asr) = AsrService::from_env()? else {
@@ -54,6 +55,93 @@ async fn main() -> anyhow::Result<()> {
             error!(error = %err, "transcription loop iteration failed");
         }
     }
+}
+
+fn ensure_whisper_gpu_enabled() -> anyhow::Result<()> {
+    validate_asr_use_gpu(env::var("ASR_USE_GPU").ok().as_deref())?;
+    ensure_cuda_runtime_supported()
+}
+
+fn validate_asr_use_gpu(value: Option<&str>) -> anyhow::Result<()> {
+    let use_gpu = value
+        .unwrap_or("true")
+        .parse::<bool>()
+        .context("invalid ASR_USE_GPU")?;
+    anyhow::ensure!(
+        use_gpu,
+        "transcription requires Whisper GPU acceleration; unset ASR_USE_GPU or set ASR_USE_GPU=true"
+    );
+    Ok(())
+}
+
+fn ensure_cuda_runtime_supported() -> anyhow::Result<()> {
+    let driver_cuda = nvidia_driver_cuda_version()?;
+    let runtime_cuda = cuda_runtime_version()?;
+    anyhow::ensure!(
+        runtime_cuda <= driver_cuda,
+        "transcription requires CUDA GPU execution, but CUDA runtime {runtime_cuda} is newer than the NVIDIA driver supports ({driver_cuda}); upgrade the NVIDIA driver or use a CUDA {driver_cuda}-compatible toolkit/runtime"
+    );
+    Ok(())
+}
+
+fn nvidia_driver_cuda_version() -> anyhow::Result<CudaVersion> {
+    let output = command_stdout(&mut Command::new("nvidia-smi"))
+        .context("failed to run nvidia-smi; transcription requires an NVIDIA GPU")?;
+    parse_nvidia_smi_cuda_version(&output)
+        .context("failed to read supported CUDA version from nvidia-smi")
+}
+
+fn cuda_runtime_version() -> anyhow::Result<CudaVersion> {
+    let output = command_stdout(Command::new("nvcc").arg("--version"))
+        .context("failed to run nvcc; transcription requires the CUDA toolkit/runtime")?;
+    parse_nvcc_cuda_version(&output).context("failed to read CUDA runtime version from nvcc")
+}
+
+fn command_stdout(command: &mut Command) -> anyhow::Result<String> {
+    let output = command.output()?;
+    anyhow::ensure!(
+        output.status.success(),
+        "command exited with status {}",
+        output.status
+    );
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct CudaVersion {
+    major: u32,
+    minor: u32,
+}
+
+impl std::fmt::Display for CudaVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}", self.major, self.minor)
+    }
+}
+
+fn parse_nvidia_smi_cuda_version(output: &str) -> Option<CudaVersion> {
+    output
+        .split_once("CUDA Version:")?
+        .1
+        .split_whitespace()
+        .find_map(parse_cuda_version)
+}
+
+fn parse_nvcc_cuda_version(output: &str) -> Option<CudaVersion> {
+    output
+        .split_once("release ")?
+        .1
+        .split(|ch: char| ch.is_whitespace() || ch == ',')
+        .find_map(parse_cuda_version)
+}
+
+fn parse_cuda_version(value: &str) -> Option<CudaVersion> {
+    let value = value.trim_matches(|ch: char| !ch.is_ascii_digit() && ch != '.');
+    let (major, minor) = value.split_once('.')?;
+    Some(CudaVersion {
+        major: major.parse().ok()?,
+        minor: minor.parse().ok()?,
+    })
 }
 
 async fn transcribe_next_clip(graph: &Neo4jClient, asr: &AsrService) -> anyhow::Result<()> {
@@ -171,6 +259,45 @@ mod tests {
         DateTime::parse_from_rfc3339("2026-05-05T12:34:56Z")
             .unwrap()
             .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn transcription_allows_default_gpu_setting() {
+        validate_asr_use_gpu(None).unwrap();
+        validate_asr_use_gpu(Some("true")).unwrap();
+    }
+
+    #[test]
+    fn transcription_rejects_disabled_gpu_setting() {
+        let err = validate_asr_use_gpu(Some("false")).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("transcription requires Whisper GPU acceleration")
+        );
+    }
+
+    #[test]
+    fn parses_nvidia_smi_cuda_version() {
+        let output = "| NVIDIA-SMI 570.195.03 Driver Version: 570.195.03 CUDA Version: 12.8 |";
+        assert_eq!(
+            parse_nvidia_smi_cuda_version(output),
+            Some(CudaVersion {
+                major: 12,
+                minor: 8
+            })
+        );
+    }
+
+    #[test]
+    fn parses_nvcc_cuda_version() {
+        let output = "Cuda compilation tools, release 13.2, V13.2.78";
+        assert_eq!(
+            parse_nvcc_cuda_version(output),
+            Some(CudaVersion {
+                major: 13,
+                minor: 2
+            })
+        );
     }
 
     #[test]
