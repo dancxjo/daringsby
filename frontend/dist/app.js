@@ -155,11 +155,15 @@
         case "Emote":
           mien.textContent = m.data;
           break;
-        case "Say":
+        case "Say": {
+          const atBottom = words.scrollTop + words.clientHeight >= words.scrollHeight - 10;
           words.textContent += "\n" + m.data.words;
-          words.scrollTop = words.scrollHeight;
+          if (atBottom) {
+            words.scrollTop = words.scrollHeight;
+          }
           enqueueAudio({ audio: m.data.audio || null, text: m.data.words });
           break;
+        }
         case "Think":
           handleThink(m);
           break;
@@ -849,9 +853,10 @@
     if (system && conversationMsgs.length) {
       system.textContent = conversationMsgs[0].content;
     }
+    const container = conversationLog.closest(".scroll-well") || conversationLog;
     const atBottom =
-      conversationLog.scrollTop + conversationLog.clientHeight >=
-      conversationLog.scrollHeight - 5;
+      container.scrollTop + container.clientHeight >=
+      container.scrollHeight - 10;
     conversationLog.textContent = conversationMsgs
       .slice(1)
       .map((m) => {
@@ -860,7 +865,7 @@
       })
       .join("\n");
     if (atBottom) {
-      conversationLog.scrollTop = conversationLog.scrollHeight;
+      container.scrollTop = container.scrollHeight;
     }
   }
 

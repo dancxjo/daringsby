@@ -1,23 +1,25 @@
 const assert = require('assert');
 
-function updateConversation(log, msgs) {
+function updateConversation(log, msgs, container) {
   const atBottom =
-    log.scrollTop + log.clientHeight >= log.scrollHeight - 5;
+    container.scrollTop + container.clientHeight >= container.scrollHeight - 10;
   log.textContent = msgs.join('\n');
-  log.scrollHeight = log.textContent.length; // simple mock
+  container.scrollHeight = log.textContent.length + 10; // simple mock (10 for label)
   if (atBottom) {
-    log.scrollTop = log.scrollHeight;
+    container.scrollTop = container.scrollHeight;
   }
 }
 
 // starts at bottom
-const log = {scrollTop: 100, clientHeight: 20, scrollHeight: 100, textContent: ''};
-updateConversation(log, ['a', 'b', 'c']);
-assert.strictEqual(log.scrollTop, log.scrollHeight);
+const log = {textContent: ''};
+const container = {scrollTop: 90, clientHeight: 20, scrollHeight: 100};
+updateConversation(log, ['a', 'b', 'c'], container);
+assert.strictEqual(container.scrollTop, container.scrollHeight);
 
 // user scrolled up
-const log2 = {scrollTop: 0, clientHeight: 20, scrollHeight: 100, textContent: ''};
-updateConversation(log2, ['a', 'b']);
-assert.strictEqual(log2.scrollTop, 0);
+const log2 = {textContent: ''};
+const container2 = {scrollTop: 0, clientHeight: 20, scrollHeight: 100};
+updateConversation(log2, ['a', 'b'], container2);
+assert.strictEqual(container2.scrollTop, 0);
 
 console.log('ok');
