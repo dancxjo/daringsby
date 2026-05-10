@@ -29,8 +29,8 @@ use dotenvy::dotenv;
 use pete::{CoquiTts, synthesize_speech_audio};
 use pete::{EventBus, MediaEvent, init_logging, parse_data_url};
 use psyche::{
-    AudioClip, ConversationEntry, ImageData, Impression, Neo4jClient, Sensation,
-    SensationGraphObserver, SensationObserver, Stimulus, WillContext, WitReport, image_content_id,
+    AudioClip, ImageData, Impression, Neo4jClient, Sensation,
+    SensationGraphObserver, SensationObserver, Stimulus, WillContext, image_content_id,
 };
 use shared::{SpeechPlaybackStatus, WsPayload};
 use tokio::{io::AsyncWriteExt, net::UnixListener, sync::broadcast};
