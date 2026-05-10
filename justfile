@@ -78,7 +78,7 @@ run:
         log_file="${run_log_dir}/${bin}.log"
         printf 'starting %-18s -> %s\n' "$bin" "$log_file"
         args=()
-        if [[ "$bin" == "timeline" ]]; then
+        if [[ "$bin" == "timeline" || "$bin" == "conversation" ]]; then
             args+=(--follow)
         fi
         "./target/debug/$bin" "${args[@]}" >"$log_file" 2>&1 &
