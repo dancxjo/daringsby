@@ -255,31 +255,48 @@ impl WillProcessor {
     }
 }
 
+fn strip_utterance_content(text: &str) -> Option<(String, bool)> {
+    // Returns (content, is_assistant)
+    if let Some(rest) = text.strip_prefix("I heard: ") {
+        return Some((rest.to_string(), false));
+    }
+    if text == "I hear silence." {
+        return Some(("I hear silence.".to_string(), false));
+    }
+    if let Some(rest) = text.strip_prefix("I hear the user saying \"") {
+        if let Some(end) = rest.rfind("\".") {
+            return Some((rest[..end].to_string(), false));
+        }
+    }
+    if let Some(rest) = text.strip_prefix("I hear myself saying \"") {
+        if let Some(end) = rest.rfind("\".") {
+            return Some((rest[..end].to_string(), true));
+        }
+    }
+    if let Some(rest) = text.strip_prefix("I finish saying \"") {
+        if let Some(end) = rest.rfind("\".") {
+            return Some((rest[..end].to_string(), true));
+        }
+    }
+    if let Some(rest) = text.strip_prefix("I finish saying: ") {
+        return Some((rest.to_string(), true));
+    }
+    if let Some(rest) = text.strip_prefix("I say: ") {
+        return Some((rest.to_string(), true));
+    }
+    None
+}
+
 fn map_conversation_to_entries(items: Vec<GraphSensationTimelineItem>) -> Vec<ConversationEntry> {
     items
         .into_iter()
         .filter_map(|item| {
-            if item.text.starts_with("I heard: ") {
-                Some(ConversationEntry {
-                    role: "user".into(),
-                    content: item.text["I heard: ".len()..].into(),
-                    timestamp: item.occurred_at,
-                })
-            } else if item.text.starts_with("I finish saying: ") {
-                Some(ConversationEntry {
-                    role: "assistant".into(),
-                    content: item.text["I finish saying: ".len()..].into(),
-                    timestamp: item.occurred_at,
-                })
-            } else if item.text.starts_with("I say: ") {
-                Some(ConversationEntry {
-                    role: "assistant".into(),
-                    content: item.text["I say: ".len()..].into(),
-                    timestamp: item.occurred_at,
-                })
-            } else {
-                None
-            }
+            let (content, is_assistant) = strip_utterance_content(&item.text)?;
+            Some(ConversationEntry {
+                role: if is_assistant { "assistant" } else { "user" }.into(),
+                content,
+                timestamp: item.occurred_at,
+            })
         })
         .collect()
 }
@@ -288,14 +305,11 @@ fn map_conversation_to_messages(items: Vec<GraphSensationTimelineItem>) -> Vec<M
     items
         .into_iter()
         .filter_map(|item| {
-            if item.text.starts_with("I heard: ") {
-                Some(Message::user(&item.text["I heard: ".len()..]))
-            } else if item.text.starts_with("I finish saying: ") {
-                Some(Message::assistant(&item.text["I finish saying: ".len()..]))
-            } else if item.text.starts_with("I say: ") {
-                Some(Message::assistant(&item.text["I say: ".len()..]))
+            let (content, is_assistant) = strip_utterance_content(&item.text)?;
+            if is_assistant {
+                Some(Message::assistant(&content))
             } else {
-                None
+                Some(Message::user(&content))
             }
         })
         .collect()
@@ -365,21 +379,39 @@ struct FunctionCall {
 fn extract_functions(text: &mut String) -> Vec<FunctionCall> {
     let mut functions = Vec::new();
     while let Some(start) = text.find("<function") {
-        if let Some(end) = text[start..].find("</function>") {
-            let full_end = start + end + "</function>".len();
-            let tag_content = &text[start..full_end];
+        if let Some(tag_end_rel) = text[start..].find('>') {
+            let opening_tag_end = start + tag_end_rel + 1;
+            let tag_content = &text[start..opening_tag_end];
             
-            let name = extract_attr(tag_content, "name").unwrap_or_default();
-            let file = extract_attr(tag_content, "file");
-            let page = extract_attr(tag_content, "page").and_then(|p| p.parse().ok());
-            
-            if !name.is_empty() {
-                functions.push(FunctionCall { name, file, page });
+            if tag_content.ends_with("/>") {
+                let name = extract_attr(tag_content, "name").unwrap_or_default();
+                let file = extract_attr(tag_content, "file");
+                let page = extract_attr(tag_content, "page").and_then(|p| p.parse().ok());
+                if !name.is_empty() {
+                    functions.push(FunctionCall { name, file, page });
+                }
+                text.replace_range(start..opening_tag_end, "");
+                continue;
             }
             
-            text.replace_range(start..full_end, "");
+            if let Some(end_tag_start_rel) = text[opening_tag_end..].find("</function>") {
+                let full_end = opening_tag_end + end_tag_start_rel + "</function>".len();
+                let full_tag = &text[start..full_end];
+                
+                let name = extract_attr(full_tag, "name").unwrap_or_default();
+                let file = extract_attr(full_tag, "file");
+                let page = extract_attr(full_tag, "page").and_then(|p| p.parse().ok());
+                if !name.is_empty() {
+                    functions.push(FunctionCall { name, file, page });
+                }
+                text.replace_range(start..full_end, "");
+            } else {
+                // Unclosed tag: remove the opening part to avoid infinite loop
+                text.replace_range(start..opening_tag_end, "");
+            }
         } else {
-            break;
+            // Malformed: remove the prefix
+            text.replace_range(start..start + 9, "");
         }
     }
     functions
@@ -399,24 +431,25 @@ fn extract_attr(tag: &str, attr: &str) -> Option<String> {
 fn parse_will_action(raw: &str) -> anyhow::Result<WillAction> {
     let mut rest = raw.to_string();
     let functions = extract_functions(&mut rest);
-    let mut thought = None;
+    let mut thoughts = Vec::new();
 
-    if let Some(start) = rest.find("<thought>") {
-        if let Some(end) = rest.find("</thought>") {
-            if start < end {
-                thought = Some(rest[start + 9..end].trim().to_string());
-                rest = format!("{} {}", &rest[..start], &rest[end + 10..]);
-            } else {
-                // Malformed: end tag before start tag?
-                thought = Some(rest[start + 9..].trim().to_string());
-                rest = rest[..start].to_string();
-            }
+    while let Some(start) = rest.find("<thought>") {
+        if let Some(end_rel) = rest[start..].find("</thought>") {
+            let full_end = start + end_rel + "</thought>".len();
+            thoughts.push(rest[start + 9..start + end_rel].trim().to_string());
+            rest.replace_range(start..full_end, " ");
         } else {
-            // Unclosed tag: assume everything from <thought> to end is thought.
-            thought = Some(rest[start + 9..].trim().to_string());
-            rest = rest[..start].to_string();
+            thoughts.push(rest[start + 9..].trim().to_string());
+            rest.replace_range(start.., "");
+            break;
         }
     }
+
+    let thought = if thoughts.is_empty() {
+        None
+    } else {
+        Some(thoughts.join(" "))
+    };
 
     let emoji = match normalize_emoji(&rest) {
         Some(e) => e,
@@ -593,5 +626,17 @@ mod tests {
         assert_eq!(action.emoji, "😐");
         assert_eq!(action.say.as_deref(), Some("Hello!"));
         assert_eq!(action.thought.as_deref(), Some("I forgot to close this"));
+    }
+    #[test]
+    fn parses_multiple_thoughts_and_functions() {
+        let raw = "<thought> T1 </thought> <function name=\"list_source\"></function> Hello! <thought> T2 </thought> <function name=\"read_source\" file=\"a.rs\"></function> 🙂";
+        let action = parse_will_action(raw).unwrap();
+        assert_eq!(action.emoji, "🙂");
+        assert_eq!(action.say.as_deref(), Some("Hello!"));
+        assert_eq!(action.thought.as_deref(), Some("T1 T2"));
+        assert_eq!(action.functions.len(), 2);
+        assert_eq!(action.functions[0].name, "list_source");
+        assert_eq!(action.functions[1].name, "read_source");
+        assert_eq!(action.functions[1].file.as_deref(), Some("a.rs"));
     }
 }

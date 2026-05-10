@@ -3326,6 +3326,7 @@ impl Neo4jClient {
                       AND ($start IS NULL OR datetime(occurred_at) >= datetime($start))
                       AND datetime(occurred_at) <= datetime($end)
                       AND (
+                          text = "I hear silence." OR
                           text STARTS WITH "I heard: " OR
                           text STARTS WITH "I start saying: " OR
                           text STARTS WITH "I finish saying: " OR
@@ -3496,8 +3497,12 @@ impl Neo4jClient {
             format!("{source_sensation_id}:{transcription_id}").as_bytes(),
         );
         let occurred_at = source_captured_at.unwrap_or(transcribed_at);
-        let mut how = format!("I heard: {transcript}");
-        if !matches!(how.chars().last(), Some('.') | Some('!') | Some('?')) {
+        let mut how = if transcript == "[BLANK_AUDIO]." {
+            "I hear silence.".to_string()
+        } else {
+            format!("I heard: {transcript}")
+        };
+        if !how.ends_with('.') && !matches!(how.chars().last(), Some('.') | Some('!') | Some('?')) {
             how.push('.');
         }
         Some(TranscriptSensationNode {

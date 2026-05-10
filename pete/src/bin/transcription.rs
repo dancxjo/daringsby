@@ -166,6 +166,8 @@ async fn transcribe_next_clip(graph: &Neo4jClient, asr: &AsrService) -> anyhow::
             .map(|item| {
                 if let Some(stripped) = item.text.strip_prefix("I heard: ") {
                     stripped
+                } else if item.text == "I hear silence." {
+                    "silence"
                 } else if let Some(stripped) = item.text.strip_prefix("I say: ") {
                     stripped
                 } else if let Some(stripped) = item.text.strip_prefix("I finish saying: ") {
