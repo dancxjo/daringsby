@@ -154,9 +154,34 @@ async fn transcribe_next_clip(graph: &Neo4jClient, asr: &AsrService) -> anyhow::
         return Ok(());
     };
 
+    let history = graph
+        .conversation_timeline(None, Utc::now(), 20)
+        .await
+        .unwrap_or_default();
+    let initial_prompt = if history.is_empty() {
+        None
+    } else {
+        let text = history
+            .iter()
+            .map(|item| {
+                if let Some(stripped) = item.text.strip_prefix("I heard: ") {
+                    stripped
+                } else if let Some(stripped) = item.text.strip_prefix("I say: ") {
+                    stripped
+                } else if let Some(stripped) = item.text.strip_prefix("I finish saying: ") {
+                    stripped
+                } else {
+                    &item.text
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        Some(text)
+    };
+
     info!(clip_id = %audio.id, "transcribing audio clip");
     let transcription = asr
-        .transcribe_clip(&audio.clip)
+        .transcribe_clip(&audio.clip, initial_prompt.as_deref())
         .await
         .with_context(|| format!("failed to transcribe audio clip {}", audio.id))?;
     let source_started_at = audio_timestamp(&audio);

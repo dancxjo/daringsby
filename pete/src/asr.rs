@@ -24,7 +24,7 @@ use psyche::{AudioClip, Sensation, Topic, TopicBus};
 #[cfg(feature = "voice")]
 use psyche::{QdrantClient, VoiceInfo, audio_clip_id};
 
-pub const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-small.en.bin";
+pub const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-large-v3.bin";
 pub const LEGACY_FAST_MODEL_PATH: &str = "models/whisper/ggml-base.en.bin";
 pub const HIGH_QUALITY_MULTILINGUAL_MODEL_PATH: &str = "models/whisper/ggml-large-v3.bin";
 #[cfg(feature = "voice")]
@@ -229,10 +229,10 @@ impl AsrService {
     ///
     /// Stored clips are expected to be 16-bit little-endian PCM or WAV audio at
     /// the service sample rate. Multi-channel clips are downmixed to mono.
-    pub async fn transcribe_clip(&self, clip: &AudioClip) -> Result<ClipTranscription> {
+    pub async fn transcribe_clip(&self, clip: &AudioClip, initial_prompt: Option<&str>) -> Result<ClipTranscription> {
         anyhow::ensure!(self.has_whisper_model(), "Whisper model not configured");
         let audio = decode_audio_clip_samples(clip, self.sample_rate)?;
-        let segments = self.transcribe(audio).await?;
+        let segments = self.transcribe(audio, initial_prompt).await?;
         let text = join_segments(&segments);
         Ok(ClipTranscription {
             text,
@@ -244,8 +244,8 @@ impl AsrService {
     }
 
     /// Transcribe a stored audio clip and return Whisper's joined text.
-    pub async fn transcribe_clip_text(&self, clip: &AudioClip) -> Result<String> {
-        Ok(self.transcribe_clip(clip).await?.text)
+    pub async fn transcribe_clip_text(&self, clip: &AudioClip, initial_prompt: Option<&str>) -> Result<String> {
+        Ok(self.transcribe_clip(clip, initial_prompt).await?.text)
     }
 
     /// Transcribe several stored clips as one continuous audio buffer.
@@ -274,7 +274,7 @@ impl AsrService {
         }
 
         anyhow::ensure!(!audio.is_empty(), "audio clips contained no samples");
-        let segments = self.transcribe(audio).await?;
+        let segments = self.transcribe(audio, None).await?;
         let text = join_segments(&segments);
         Ok(MultiClipTranscription {
             text,
@@ -327,10 +327,11 @@ impl AsrService {
         (pcm_tx, transcript_rx)
     }
 
-    async fn transcribe(&self, audio: Vec<f32>) -> Result<Vec<SegmentInternal>> {
+    async fn transcribe(&self, audio: Vec<f32>, initial_prompt: Option<&str>) -> Result<Vec<SegmentInternal>> {
         let Some(ctx) = self.context.clone() else {
             return Ok(Vec::new());
         };
+        let prompt = initial_prompt.map(|s| s.to_string());
         Ok(tokio::task::spawn_blocking(move || {
             let guard = ctx
                 .lock()
@@ -348,6 +349,9 @@ impl AsrService {
             params.set_no_context(true);
             params.set_single_segment(false);
             params.set_n_threads(std::cmp::max(1, num_cpus::get() as i32 - 1));
+            if let Some(p) = prompt.as_deref() {
+                params.set_initial_prompt(p);
+            }
 
             state
                 .full(params, &audio)
@@ -757,7 +761,7 @@ async fn process_utterance(
         return;
     }
 
-    match service.transcribe(trimmed_audio).await {
+    match service.transcribe(trimmed_audio, None).await {
         Ok(segments) => {
             emit_transcript(
                 segments,

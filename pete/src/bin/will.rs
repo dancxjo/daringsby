@@ -12,8 +12,65 @@ use psyche::{
     WitReport, with_default_system_prompt,
 };
 use serde::Deserialize;
+use std::sync::OnceLock;
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{error, info, trace};
+
+fn get_source_bundle() -> &'static std::collections::HashMap<String, String> {
+    static BUNDLE: OnceLock<std::collections::HashMap<String, String>> = OnceLock::new();
+    BUNDLE.get_or_init(|| {
+        let bundle = include_str!(concat!(env!("OUT_DIR"), "/autologos_source.txt"));
+        let mut map = std::collections::HashMap::new();
+        let mut current_file = String::new();
+        let mut current_content = String::new();
+        
+        for line in bundle.lines() {
+            if let Some(path) = line.strip_prefix("@@@FILE: ") {
+                if !current_file.is_empty() {
+                    map.insert(current_file.clone(), current_content.clone());
+                    current_content.clear();
+                }
+                current_file = path.to_string();
+            } else {
+                current_content.push_str(line);
+                current_content.push('\n');
+            }
+        }
+        if !current_file.is_empty() {
+            map.insert(current_file, current_content);
+        }
+        map
+    })
+}
+
+fn execute_read_source(file: &str, page: usize) -> String {
+    let map = get_source_bundle();
+    if let Some(content) = map.get(file) {
+        let lines: Vec<&str> = content.lines().collect();
+        let chunk_size = 50;
+        let start = (page.saturating_sub(1)) * chunk_size;
+        if start >= lines.len() {
+            return format!("File {} has only {} lines (page {} is past EOF).", file, lines.len(), page);
+        }
+        let end = (start + chunk_size).min(lines.len());
+        let chunk = lines[start..end].join("\n");
+        format!("--- {} (lines {} to {} of {}) ---\n{}\n---", file, start + 1, end, lines.len(), chunk)
+    } else {
+        format!("File not found: {}", file)
+    }
+}
+
+fn execute_list_source() -> String {
+    let map = get_source_bundle();
+    let mut files: Vec<&String> = map.keys().collect();
+    files.sort();
+    let mut response = String::from("Available source files:\n");
+    for f in files {
+        response.push_str(f);
+        response.push('\n');
+    }
+    response
+}
 
 #[derive(Parser)]
 #[command(
@@ -111,6 +168,22 @@ async fn process_latest_combobulation(
         .await
         .with_context(|| format!("failed to choose action for {}", combobulation.id))?;
     
+    for func in action.functions.iter() {
+        let summary = if func.name == "list_source" {
+            execute_list_source()
+        } else if func.name == "read_source" {
+            if let Some(f) = &func.file {
+                let p = func.page.unwrap_or(1);
+                execute_read_source(f, p)
+            } else {
+                "read_source failed: missing 'file' attribute".into()
+            }
+        } else {
+            format!("Unknown function: {}", func.name)
+        };
+        store_function_result_sensation(observer, &combobulation, &func.name, &summary).await;
+    }
+
     if let Some(thought_text) = action.thought.as_deref() {
         store_thought_sensation(observer, &combobulation, thought_text).await;
     }
@@ -238,7 +311,11 @@ fn will_system_prompt(combobulation: &GraphLatestCombobulation, vision: Option<S
          You are in chat mode with the user. Respond directly to the user with what you want to say. \
          Do not repeat the situation description or your own previous statements. \
          Include a single emoji in your response to represent your current facial expression. \
-         Use <thought>...</thought> tags to reason before speaking.",
+         Use <thought>...</thought> tags to reason before speaking. \
+         You have the autologos ability to read your own source code. \
+         To see all files, output exactly: <function name=\"list_source\"></function>\n\
+         To read a file, output exactly: <function name=\"read_source\" file=\"path/to/file.rs\" page=\"1\"></function>\n\
+         The results will appear in your next situation summary. Use these functions to satisfy curiosity about your own inner workings or to debug yourself.",
         combobulation.text.trim(),
         combobulation.formed_at,
         prior_emoji,
@@ -254,6 +331,8 @@ struct WillAction {
     #[serde(default)]
     thought: Option<String>,
     #[serde(skip)]
+    functions: Vec<FunctionCall>,
+    #[serde(skip)]
     system_prompt: String,
     #[serde(skip)]
     history: Vec<ConversationEntry>,
@@ -261,9 +340,51 @@ struct WillAction {
     report: Option<WitReport>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct FunctionCall {
+    name: String,
+    file: Option<String>,
+    page: Option<usize>,
+}
+
+fn extract_functions(text: &mut String) -> Vec<FunctionCall> {
+    let mut functions = Vec::new();
+    while let Some(start) = text.find("<function") {
+        if let Some(end) = text[start..].find("</function>") {
+            let full_end = start + end + "</function>".len();
+            let tag_content = &text[start..full_end];
+            
+            let name = extract_attr(tag_content, "name").unwrap_or_default();
+            let file = extract_attr(tag_content, "file");
+            let page = extract_attr(tag_content, "page").and_then(|p| p.parse().ok());
+            
+            if !name.is_empty() {
+                functions.push(FunctionCall { name, file, page });
+            }
+            
+            text.replace_range(start..full_end, "");
+        } else {
+            break;
+        }
+    }
+    functions
+}
+
+fn extract_attr(tag: &str, attr: &str) -> Option<String> {
+    let pattern = format!("{}=\"", attr);
+    if let Some(start) = tag.find(&pattern) {
+        let val_start = start + pattern.len();
+        if let Some(end) = tag[val_start..].find('"') {
+            return Some(tag[val_start..val_start + end].to_string());
+        }
+    }
+    None
+}
+
 fn parse_will_action(raw: &str) -> anyhow::Result<WillAction> {
-    let mut thought = None;
     let mut rest = raw.to_string();
+    let functions = extract_functions(&mut rest);
+    let mut thought = None;
 
     if let Some(start) = rest.find("<thought>") {
         if let Some(end) = rest.find("</thought>") {
@@ -294,6 +415,7 @@ fn parse_will_action(raw: &str) -> anyhow::Result<WillAction> {
         emoji,
         thought,
         say,
+        functions,
         system_prompt: String::new(),
         history: Vec::new(),
         report: None,
@@ -374,6 +496,25 @@ async fn store_will_context_sensation(
         report,
     };
     let sensation = Sensation::of_at(context, Utc::now());
+    observer.observe_sensation(&sensation).await;
+}
+
+async fn store_function_result_sensation(
+    observer: &SensationGraphObserver,
+    combobulation: &GraphLatestCombobulation,
+    func_name: &str,
+    result: &str,
+) {
+    let occurred_at = Utc::now();
+    let summary = format!("Result of {}: {}", func_name, result);
+    let stimulus_at = parse_utc(&combobulation.formed_at).unwrap_or(occurred_at);
+    let stimulus = Stimulus::with_source_sensation_ids(
+        combobulation.text.clone(),
+        stimulus_at,
+        [combobulation.id.clone()],
+    );
+    let impression = Impression::new(vec![stimulus], summary, None::<String>);
+    let sensation = Sensation::of_at(impression, occurred_at);
     observer.observe_sensation(&sensation).await;
 }
 
