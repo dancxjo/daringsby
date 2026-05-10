@@ -6,12 +6,14 @@ use ollama_rs::{
     generation::chat::{ChatMessage, request::ChatMessageRequest},
     generation::embeddings::request::{EmbeddingsInput, GenerateEmbeddingsRequest},
 };
+use rand::Rng;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_stream::StreamExt;
 use tracing::{debug, info, trace, warn};
+use ollama_rs::models::ModelOptions;
 
 /// Provider backed by one or more Ollama servers.
 #[derive(Clone)]
@@ -95,7 +97,9 @@ impl Doer for OllamaProvider {
                 .collect();
             msg = msg.with_images(imgs);
         }
-        let req = ChatMessageRequest::new(self.model.clone(), vec![msg]);
+        let temperature = 0.8 + (rand::thread_rng().gen_range(-0.05..0.05));
+        let options = ModelOptions::default().temperature(temperature);
+        let req = ChatMessageRequest::new(self.model.clone(), vec![msg]).options(options);
         let res = self.client().send_chat_messages(req).await?;
         debug!(
             model = %self.model,
@@ -138,7 +142,9 @@ impl Chatter for OllamaProvider {
             "ollama chat request"
         );
         trace!(%prompt, ?history, "ollama chat request");
-        let req = ChatMessageRequest::new(self.model.clone(), msgs);
+        let temperature = 0.8 + (rand::thread_rng().gen_range(-0.05..0.05));
+        let options = ModelOptions::default().temperature(temperature);
+        let req = ChatMessageRequest::new(self.model.clone(), msgs).options(options);
         let model = self.model.clone();
         let stream =
             self.client()
