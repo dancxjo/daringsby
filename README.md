@@ -41,8 +41,8 @@ Pete's face expression is intentionally driven through two overlapping paths:
   awareness.
 * **Will expression**: the standalone `will` binary polls the latest
   combobulation text, prompts with Pete's system prompt without a timeline, and
-  asks for strict JSON of the form `{"emoji":"🙂"}`. It stores the active
-  decision as an impression sensation: `I turn my face into a $EMOJI.`
+  asks for a chat-formatted response including `<thought>` tags and an emoji. It stores the active
+  decision as impression sensations: `I think: ...`, `I ought to say: ...`, and `I turn my face into a $EMOJI.`
 * **Face proprioception**: whenever the `face` binary actually emits an emoji
   to the browser, it also stores a redundant impression sensation:
   `I feel my face turn into a $EMOJI.`

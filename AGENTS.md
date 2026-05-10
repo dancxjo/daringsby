@@ -20,7 +20,7 @@ Responsible for Pete's internal thinking and memory.
   * `Combobulator`: Summarizes immediate `Impression`s into broader awareness.
   * `Memory`: Stores remembered `Experience<T>` records in Neo4j and Qdrant.
   * `Heart`: Detects emotional tone (emoji) from recent experience.
-  * `Will`: Chooses actions based on situation, emits tagged commands (e.g. `<pounce>`).
+  * `Will`: Chooses actions based on situation, emits chat-formatted responses with `<thought>` tags, and tagged commands (e.g. `<pounce>`).
   * `Voice`: Generates natural language dialogue (when permitted).
 
 * **Other Components**:
@@ -61,7 +61,7 @@ Provides LLM and embedding utilities.
 
 2. **Integration**
 
-   * `Combobulator` describes the current situation in a single sentence.
+   * `Combobulator` processes a compressed timeline of concurrent events to describe the current situation in a single sentence.
    * `Memory` links this impression to past context, updating long-term memory.
 
 3. **Emotion**
@@ -74,8 +74,8 @@ Provides LLM and embedding utilities.
    * `Will` considers the current situation and emotional tone.
    * May emit behavioral instructions (e.g., `<say>`, `<pounce>`, `<move>`).
    * The standalone `will` binary also reads the latest combobulation without
-     a timeline and chooses a structured face emoji, recording
-     `I turn my face into a $EMOJI.` as an impression sensation.
+     a timeline and generates a chat-formatted response with `<thought>` tags and an emoji. It records
+     `I think: ...`, `I ought to say: ...`, and `I turn my face into a $EMOJI.` as impression sensations.
 
 5. **Speech**
 

@@ -4,11 +4,11 @@ use anyhow::Context;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use dotenvy::dotenv;
-use lingproc::{Doer, LlmInstruction};
+use lingproc::{Chatter, Message};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
-    GraphLatestCombobulation, Impression, Neo4jClient, Sensation, SensationGraphObserver,
-    SensationObserver, Stimulus, with_default_system_prompt,
+    GraphLatestCombobulation, GraphSensationTimelineItem, Impression, Neo4jClient, Sensation,
+    SensationGraphObserver, SensationObserver, Stimulus, with_default_system_prompt,
 };
 use serde::Deserialize;
 use tokio::time::{MissedTickBehavior, interval};
@@ -58,7 +58,7 @@ async fn main() -> anyhow::Result<()> {
     ));
     let observer = SensationGraphObserver::new(graph.clone());
     let doer = ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?;
-    let processor = WillProcessor { doer };
+    let processor = WillProcessor { chatter: doer, graph: graph.clone() };
 
     if cli.once {
         process_latest_combobulation(&graph, &observer, &processor, None).await?;
@@ -128,7 +128,8 @@ async fn process_latest_combobulation(
 }
 
 struct WillProcessor {
-    doer: lingproc::OllamaProvider,
+    chatter: lingproc::OllamaProvider,
+    graph: std::sync::Arc<Neo4jClient>,
 }
 
 impl WillProcessor {
@@ -136,34 +137,65 @@ impl WillProcessor {
         &self,
         combobulation: &GraphLatestCombobulation,
     ) -> anyhow::Result<WillAction> {
-        let prompt = will_prompt(combobulation);
-        let raw = self
-            .doer
-            .follow(LlmInstruction {
-                command: prompt,
-                images: Vec::new(),
-            })
-            .await?
-            .trim()
-            .to_string();
-        parse_will_action(&raw)
+        let vision = self.graph.latest_image_description().await.unwrap_or(None);
+        let system_prompt = will_system_prompt(combobulation, vision);
+
+        let history = self
+            .graph
+            .conversation_timeline(None, Utc::now(), 20)
+            .await
+            .unwrap_or_default();
+        let messages = map_conversation_to_messages(history);
+
+        let mut stream = self.chatter.chat(&system_prompt, &messages).await?;
+        let mut raw = String::new();
+        use tokio_stream::StreamExt;
+        while let Some(chunk) = stream.next().await {
+            raw.push_str(&chunk?);
+        }
+        parse_will_action(raw.trim())
     }
 }
 
-fn will_prompt(combobulation: &GraphLatestCombobulation) -> String {
+fn map_conversation_to_messages(items: Vec<GraphSensationTimelineItem>) -> Vec<Message> {
+    items
+        .into_iter()
+        .filter_map(|item| {
+            if item.text.starts_with("I heard: ") {
+                Some(Message::user(&item.text["I heard: ".len()..]))
+            } else if item.text.starts_with("I finish saying: ") {
+                Some(Message::assistant(&item.text["I finish saying: ".len()..]))
+            } else if item.text.starts_with("I say: ") {
+                Some(Message::assistant(&item.text["I say: ".len()..]))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn will_system_prompt(combobulation: &GraphLatestCombobulation, vision: Option<String>) -> String {
     let prior_emoji = combobulation
         .emoji
         .as_deref()
         .map(|emoji| format!("\nPrior combobulation emoji: {emoji}"))
         .unwrap_or_default();
+    let vision_context = vision
+        .map(|v| format!("\nVision (what you see): {v}"))
+        .unwrap_or_default();
+
     with_default_system_prompt(format!(
         "This is the situation as you understand it:\n\
          {}\n\
-         Formed at: {}{}\n\n\
-         You are in chat mode with the user. Respond directly to the user with what you want to say. Include a single emoji in your response to represent your current facial expression. Use <thought>...</thought> tags to reason before speaking.",
+         Formed at: {}{}{}\n\n\
+         You are in chat mode with the user. Respond directly to the user with what you want to say. \
+         Do not repeat the situation description or your own previous statements. \
+         Include a single emoji in your response to represent your current facial expression. \
+         Use <thought>...</thought> tags to reason before speaking.",
         combobulation.text.trim(),
         combobulation.formed_at,
-        prior_emoji
+        prior_emoji,
+        vision_context
     ))
 }
 
@@ -185,7 +217,15 @@ fn parse_will_action(raw: &str) -> anyhow::Result<WillAction> {
             if start < end {
                 thought = Some(rest[start + 9..end].trim().to_string());
                 rest = format!("{} {}", &rest[..start], &rest[end + 10..]);
+            } else {
+                // Malformed: end tag before start tag?
+                thought = Some(rest[start + 9..].trim().to_string());
+                rest = rest[..start].to_string();
             }
+        } else {
+            // Unclosed tag: assume everything from <thought> to end is thought.
+            thought = Some(rest[start + 9..].trim().to_string());
+            rest = rest[..start].to_string();
         }
     }
 
@@ -283,7 +323,7 @@ mod tests {
 
     #[test]
     fn will_prompt_uses_latest_combobulation_without_timeline() {
-        let prompt = will_prompt(&latest());
+        let prompt = will_system_prompt(&latest(), None);
 
         assert!(prompt.contains("You are PETE"));
         assert!(prompt.contains("This is the situation as you understand it"));
@@ -314,5 +354,13 @@ mod tests {
         assert_eq!(action.emoji, "😐");
         assert_eq!(action.say.as_deref(), Some("Hi"));
         assert_eq!(action.thought.as_deref(), Some("thinking"));
+    }
+
+    #[test]
+    fn parses_chat_response_with_unclosed_thought() {
+        let action = parse_will_action("Hello! <thought> I forgot to close this").unwrap();
+        assert_eq!(action.emoji, "😐");
+        assert_eq!(action.say.as_deref(), Some("Hello!"));
+        assert_eq!(action.thought.as_deref(), Some("I forgot to close this"));
     }
 }

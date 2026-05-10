@@ -2990,6 +2990,34 @@ impl Neo4jClient {
             .transpose()
     }
 
+    /// Return the newest image description text.
+    pub async fn latest_image_description(&self) -> Result<Option<String>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (n:GraphNode:ImageDescription)
+                    WITH n,
+                        coalesce(n.text, "") AS text,
+                        coalesce(n.created_at, n.timestamp, n.occurred_at, "") AS formed_at
+                    WHERE text <> "" AND formed_at <> ""
+                    RETURN text
+                    ORDER BY datetime(formed_at) DESC, n.id DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest image description",
+        )
+        .await?;
+        Ok(rows.first().and_then(|r| r.get(0).and_then(|v| v.as_str()).map(|s| s.to_string())))
+    }
+
     /// Return the newest combobulation summary sensation timestamp.
     pub async fn latest_combobulation_sensation_at(&self) -> Result<Option<String>> {
         let endpoint = self.http_endpoint()?;
