@@ -162,6 +162,7 @@ impl crate::traits::wit::Wit for EntityWit {
                     });
                 }
             }
+            Sensation::StartedSpeaking { .. } | Sensation::FinishedSpeaking { .. } => {}
         }
     }
 
@@ -309,6 +310,7 @@ impl crate::traits::observer::SensationObserver for EntityWit {
                             .await;
                     }
                 }
+                Sensation::StartedSpeaking { .. } | Sensation::FinishedSpeaking { .. } => {}
             }
         }
     }

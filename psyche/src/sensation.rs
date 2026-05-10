@@ -54,6 +54,16 @@ pub enum Sensation {
         payload: Box<dyn std::any::Any + Send + Sync>,
         occurred_at: DateTime<Utc>,
     },
+    /// The frontend started playing speech.
+    StartedSpeaking {
+        text: String,
+        occurred_at: DateTime<Utc>,
+    },
+    /// The frontend finished playing speech.
+    FinishedSpeaking {
+        text: String,
+        occurred_at: DateTime<Utc>,
+    },
 }
 
 impl Sensation {
@@ -121,7 +131,9 @@ impl Sensation {
             Self::HeardOwnVoice { occurred_at, .. }
             | Self::HeardUserVoice { occurred_at, .. }
             | Self::WebInterfaceText { occurred_at, .. }
-            | Self::Of { occurred_at, .. } => *occurred_at,
+            | Self::Of { occurred_at, .. }
+            | Self::StartedSpeaking { occurred_at, .. }
+            | Self::FinishedSpeaking { occurred_at, .. } => *occurred_at,
         }
     }
 
@@ -139,6 +151,14 @@ impl Sensation {
             Self::WebInterfaceText { text, occurred_at } => {
                 let typed_id = format!("web-interface-text:{}:{text}", occurred_at.to_rfc3339());
                 sensation_id("web_interface_text", &typed_id, occurred_at)
+            }
+            Self::StartedSpeaking { text, occurred_at } => {
+                let id = format!("started-speaking:{}:{text}", occurred_at.to_rfc3339());
+                sensation_id("started_speaking", &id, occurred_at)
+            }
+            Self::FinishedSpeaking { text, occurred_at } => {
+                let id = format!("finished-speaking:{}:{text}", occurred_at.to_rfc3339());
+                sensation_id("finished_speaking", &id, occurred_at)
             }
             Self::Of {
                 payload,
@@ -231,6 +251,14 @@ impl Clone for Sensation {
             },
             Self::Of { occurred_at, .. } => Self::Of {
                 payload: Box::new(()),
+                occurred_at: *occurred_at,
+            },
+            Self::StartedSpeaking { text, occurred_at } => Self::StartedSpeaking {
+                text: text.clone(),
+                occurred_at: *occurred_at,
+            },
+            Self::FinishedSpeaking { text, occurred_at } => Self::FinishedSpeaking {
+                text: text.clone(),
                 occurred_at: *occurred_at,
             },
         }

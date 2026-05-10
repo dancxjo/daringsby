@@ -29,8 +29,8 @@ use dotenvy::dotenv;
 use pete::{CoquiTts, synthesize_speech_audio};
 use pete::{EventBus, MediaEvent, init_logging, parse_data_url};
 use psyche::{
-    AudioClip, ImageData, Impression, Neo4jClient, Sensation, SensationGraphObserver,
-    SensationObserver, Stimulus, image_content_id,
+    AudioClip, ConversationEntry, ImageData, Impression, Neo4jClient, Sensation,
+    SensationGraphObserver, SensationObserver, Stimulus, WillContext, WitReport, image_content_id,
 };
 use shared::{SpeechPlaybackStatus, WsPayload};
 use tokio::{io::AsyncWriteExt, net::UnixListener, sync::broadcast};
@@ -160,13 +160,25 @@ async fn main() -> anyhow::Result<()> {
         Duration::from_millis(cli.combobulation_emotion_poll_ms.max(100)),
     );
     spawn_speech_intention_poller(
-        graph_store,
+        graph_store.clone(),
         state.emotes.clone(),
         state.connections.clone(),
         Duration::from_millis(cli.speech_poll_ms.max(100)),
         cli.tts_url,
         Some(cli.tts_speaker_id),
         Some(cli.tts_language_id),
+    );
+    spawn_will_context_poller(
+        graph_store.clone(),
+        state.emotes.clone(),
+        state.connections.clone(),
+        Duration::from_millis(cli.speech_poll_ms.max(250)),
+    );
+    spawn_will_context_poller(
+        graph_store,
+        state.emotes.clone(),
+        state.connections.clone(),
+        Duration::from_millis(cli.speech_poll_ms.max(250)),
     );
     spawn_ipc_server(cli.ipc.clone(), state.ipc.clone()).await?;
     let app = app(state);
@@ -654,6 +666,48 @@ fn spawn_speech_intention_poller(
                 }
                 Ok(_) => {}
                 Err(err) => warn!(%err, "failed polling latest speech intention"),
+            }
+            tokio::time::sleep(poll_interval).await;
+        }
+    });
+}
+
+fn spawn_will_context_poller(
+    graph: Arc<Neo4jClient>,
+    tx: broadcast::Sender<WsPayload>,
+    connections: Arc<AtomicUsize>,
+    poll_interval: Duration,
+) {
+    tokio::spawn(async move {
+        let mut last_id: Option<String> = None;
+        loop {
+            if connections.load(Ordering::SeqCst) == 0 {
+                tokio::time::sleep(poll_interval).await;
+                continue;
+            }
+            match graph.latest_will_context().await {
+                Ok(Some(context)) => {
+                    // We use the hash of the system prompt + history as an ID to detect changes.
+                    use sha2::Digest;
+                    let current_id = format!(
+                        "{:x}",
+                        sha2::Sha256::digest(
+                            format!("{}{:?}", context.system_prompt, context.history).as_bytes()
+                        )
+                    );
+                    if last_id.as_deref() != Some(current_id.as_str()) {
+                        last_id = Some(current_id);
+                        let _ = tx.send(WsPayload::SystemPrompt(context.system_prompt));
+                        for entry in context.history {
+                            let _ = tx.send(WsPayload::ConversationEntry(entry));
+                        }
+                        if let Some(report) = context.report {
+                            let _ = tx.send(WsPayload::Think(report));
+                        }
+                    }
+                }
+                Ok(None) => {}
+                Err(err) => warn!(%err, "failed polling latest will context"),
             }
             tokio::time::sleep(poll_interval).await;
         }

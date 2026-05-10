@@ -19,6 +19,10 @@ pub trait Ear: Send + Sync {
     async fn hear_web_interface_type(&self, text: &str) {
         self.hear_user_say(text).await;
     }
+    /// Notifies the ear that Pete started speaking `text` at a known occurrence time.
+    async fn started_speaking(&self, _text: &str, _occurred_at: DateTime<Utc>) {}
+    /// Notifies the ear that Pete finished speaking `text` at a known occurrence time.
+    async fn finished_speaking(&self, _text: &str, _occurred_at: DateTime<Utc>) {}
     /// Notifies the ear that someone typed `text` into the web interface at a known occurrence time.
     async fn hear_web_interface_type_at(&self, text: &str, occurred_at: DateTime<Utc>) {
         self.hear_user_say_at(text, occurred_at).await;

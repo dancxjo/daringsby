@@ -528,7 +528,11 @@ impl Psyche {
 
     /// Returns `true` if speech has been dispatched but not yet echoed.
     pub fn speaking(&self) -> bool {
-        self.is_speaking.load(Ordering::SeqCst)
+        if self.is_speaking.load(Ordering::SeqCst) {
+            return true;
+        }
+        let mouth = { self.voice.mouth() };
+        mouth.speaking()
     }
 
     /// Enable or disable waiting for user input before speaking.
@@ -624,7 +628,9 @@ impl Psyche {
                         }
                         self.speak_policy.received_user_message();
                     }
-                    Sensation::Of { .. } => {
+                    Sensation::Of { .. }
+                    | Sensation::StartedSpeaking { .. }
+                    | Sensation::FinishedSpeaking { .. } => {
                         self.sensation_buffer.lock().await.push_back(arc.clone());
                     }
                 }
@@ -681,7 +687,9 @@ impl Psyche {
                         .await;
                         continue;
                     }
-                    Some(s @ Sensation::Of { .. }) => {
+                    Some(s @ Sensation::StartedSpeaking { .. })
+                    | Some(s @ Sensation::FinishedSpeaking { .. })
+                    | Some(s @ Sensation::Of { .. }) => {
                         trace!("received non-voice sensation while waiting");
                         self.notify_observers(&s).await;
                         self.sensation_buffer.lock().await.push_back(Arc::new(s));
@@ -692,6 +700,12 @@ impl Psyche {
             }
 
             if let Some(extra) = self.pending_turn.take() {
+                if self.speaking() {
+                    trace!("still speaking; deferring turn");
+                    self.pending_turn.set(extra);
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    continue;
+                }
                 debug!(extra_len = extra.len(), "pending_turn being processed");
                 let (history, mut prompt) = {
                     let pb = self.prompt_builder.lock().await;
@@ -748,7 +762,9 @@ impl Psyche {
                                 }
                                 self.speak_policy.received_user_message();
                             }
-                            Sensation::Of { .. } => {
+                            Sensation::Of { .. }
+                            | Sensation::StartedSpeaking { .. }
+                            | Sensation::FinishedSpeaking { .. } => {
                                 self.sensation_buffer.lock().await.push_back(arc.clone());
                             }
                         }

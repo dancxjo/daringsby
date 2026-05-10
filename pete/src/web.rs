@@ -259,6 +259,18 @@ async fn handle_socket(mut socket: WebSocket, state: Body) {
                                     data.observed_at = at;
                                     state.motion.sense(data).await;
                                 }
+                                WsRequest::SpeechPlayback { text, status, at } => {
+                                    let occurred_at = parse_ws_at(at.as_deref());
+                                    match status {
+                                        shared::SpeechPlaybackStatus::Started => {
+                                            state.ear.started_speaking(&text, occurred_at).await;
+                                        }
+                                        shared::SpeechPlaybackStatus::Finished
+                                        | shared::SpeechPlaybackStatus::Interrupted => {
+                                            state.ear.finished_speaking(&text, occurred_at).await;
+                                        }
+                                    }
+                                }
                                 WsRequest::Sense { .. } => {
                                     trace!("sense event received");
                                 }
@@ -341,6 +353,15 @@ fn parse_flat_ws_request(text: &str) -> Option<WsRequest> {
         "Sense" => Some(WsRequest::Sense {
             data: value.get("data")?.clone(),
         }),
+        "SpeechPlayback" => {
+            let text = value.get("text")?.as_str()?.to_string();
+            let status = serde_json::from_value(value.get("status")?.clone()).ok()?;
+            let at = value
+                .get("at")
+                .and_then(|at| at.as_str())
+                .map(ToString::to_string);
+            Some(WsRequest::SpeechPlayback { text, status, at })
+        }
         _ => None,
     }
 }

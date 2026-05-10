@@ -59,6 +59,10 @@ impl Voice {
         *self.will.lock().unwrap() = Some(will);
     }
 
+    pub fn mouth(&self) -> Arc<dyn Mouth + Send + Sync> {
+        self.mouth.lock().unwrap().clone()
+    }
+
     pub fn set_prompt<P>(&self, prompt: P)
     where
         P: crate::prompt::PromptFragment + Send + Sync + 'static,

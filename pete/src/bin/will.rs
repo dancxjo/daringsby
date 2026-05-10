@@ -8,7 +8,8 @@ use lingproc::{Chatter, Message};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
     GraphLatestCombobulation, GraphSensationTimelineItem, Impression, Neo4jClient, Sensation,
-    SensationGraphObserver, SensationObserver, Stimulus, with_default_system_prompt,
+    SensationGraphObserver, SensationObserver, Stimulus, WillContext, ConversationEntry,
+    WitReport, with_default_system_prompt,
 };
 use serde::Deserialize;
 use tokio::time::{MissedTickBehavior, interval};
@@ -124,6 +125,13 @@ async fn process_latest_combobulation(
         thought = action.thought.as_deref().unwrap_or(""),
         "will chose action"
     );
+    store_will_context_sensation(
+        observer,
+        action.system_prompt,
+        action.history,
+        action.report,
+    )
+    .await;
     Ok(Some(combobulation.id))
 }
 
@@ -145,7 +153,7 @@ impl WillProcessor {
             .conversation_timeline(None, Utc::now(), 20)
             .await
             .unwrap_or_default();
-        let messages = map_conversation_to_messages(history);
+        let messages = map_conversation_to_messages(history.clone());
 
         let mut stream = self.chatter.chat(&system_prompt, &messages).await?;
         let mut raw = String::new();
@@ -153,8 +161,47 @@ impl WillProcessor {
         while let Some(chunk) = stream.next().await {
             raw.push_str(&chunk?);
         }
-        parse_will_action(raw.trim())
+
+        let mut action = parse_will_action(raw.trim())?;
+        action.system_prompt = system_prompt.clone();
+        action.history = map_conversation_to_entries(history);
+        action.report = Some(WitReport {
+            name: "Will".into(),
+            prompt: system_prompt,
+            output: raw,
+        });
+
+        Ok(action)
     }
+}
+
+fn map_conversation_to_entries(items: Vec<GraphSensationTimelineItem>) -> Vec<ConversationEntry> {
+    items
+        .into_iter()
+        .filter_map(|item| {
+            if item.text.starts_with("I heard: ") {
+                Some(ConversationEntry {
+                    role: "user".into(),
+                    content: item.text["I heard: ".len()..].into(),
+                    timestamp: item.occurred_at,
+                })
+            } else if item.text.starts_with("I finish saying: ") {
+                Some(ConversationEntry {
+                    role: "assistant".into(),
+                    content: item.text["I finish saying: ".len()..].into(),
+                    timestamp: item.occurred_at,
+                })
+            } else if item.text.starts_with("I say: ") {
+                Some(ConversationEntry {
+                    role: "assistant".into(),
+                    content: item.text["I say: ".len()..].into(),
+                    timestamp: item.occurred_at,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 fn map_conversation_to_messages(items: Vec<GraphSensationTimelineItem>) -> Vec<Message> {
@@ -206,6 +253,12 @@ struct WillAction {
     say: Option<String>,
     #[serde(default)]
     thought: Option<String>,
+    #[serde(skip)]
+    system_prompt: String,
+    #[serde(skip)]
+    history: Vec<ConversationEntry>,
+    #[serde(skip)]
+    report: Option<WitReport>,
 }
 
 fn parse_will_action(raw: &str) -> anyhow::Result<WillAction> {
@@ -237,7 +290,14 @@ fn parse_will_action(raw: &str) -> anyhow::Result<WillAction> {
     let say_text = rest.replace(&emoji, "").trim().to_string();
     let say = if say_text.is_empty() { None } else { Some(say_text) };
 
-    Ok(WillAction { emoji, thought, say })
+    Ok(WillAction {
+        emoji,
+        thought,
+        say,
+        system_prompt: String::new(),
+        history: Vec::new(),
+        report: None,
+    })
 }
 
 fn normalize_emoji(value: &str) -> Option<String> {
@@ -299,6 +359,21 @@ async fn store_speech_intention_sensation(
     );
     let impression = Impression::new(vec![stimulus], summary, None::<String>);
     let sensation = Sensation::of_at(impression, occurred_at);
+    observer.observe_sensation(&sensation).await;
+}
+
+async fn store_will_context_sensation(
+    observer: &SensationGraphObserver,
+    system_prompt: String,
+    history: Vec<ConversationEntry>,
+    report: Option<WitReport>,
+) {
+    let context = WillContext {
+        system_prompt,
+        history,
+        report,
+    };
+    let sensation = Sensation::of_at(context, Utc::now());
     observer.observe_sensation(&sensation).await;
 }
 

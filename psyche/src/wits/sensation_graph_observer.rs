@@ -4,8 +4,8 @@ use crate::traits::observer::SensationObserver;
 use crate::wits::memory::GraphStore;
 use crate::{
     AudioClip, BrowserMotion, CombobulationSummary, GeoEmbedding, GeoLoc, Heartbeat, ImageData,
-    ImageEmbedding, Impression, ObjectInfo, Sensation, Topic, TopicBus, VoiceInfo, audio_clip_id,
-    browser_motion_content_id, geoloc_content_id, image_content_id,
+    ImageEmbedding, Impression, ObjectInfo, Sensation, Topic, TopicBus, VoiceInfo, WillContext,
+    audio_clip_id, browser_motion_content_id, geoloc_content_id, image_content_id,
 };
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -382,6 +382,35 @@ impl SensationObserver for SensationGraphObserver {
                     }),
                 )
                 .await;
+            } else if let Some(context) = payload.downcast_ref::<WillContext>() {
+                let occurred_at_str = occurred_at.to_rfc3339();
+                let sensation_id = sensation_id("will_context", "current", occurred_at_str.clone());
+                self.store_once(
+                    format!("will_context:{}", occurred_at_str),
+                    json!({
+                        "op": "merge_graph",
+                        "nodes": [
+                            sensation_node(
+                                &sensation_id,
+                                "will_context",
+                                occurred_at_str.clone(),
+                                "I reflect on my current context and system prompt.",
+                            ),
+                            {
+                                "label": "WillContext",
+                                "id": format!("will_context:{}", occurred_at_str),
+                                "data": serde_json::to_string(context).unwrap_or_default(),
+                                "occurred_at": occurred_at_str,
+                            }
+                        ],
+                        "relationships": [{
+                            "from": sensation_id,
+                            "to": format!("will_context:{}", occurred_at_str),
+                            "type": "OBSERVED",
+                        }],
+                    }),
+                )
+                .await;
             } else if let Some(summary) = payload.downcast_ref::<CombobulationSummary>() {
                 let id = combobulation_summary_id(summary, occurred_at.to_rfc3339());
                 let sensation_id =
@@ -468,6 +497,12 @@ async fn store_textual_sensation(observer: &SensationGraphObserver, sensation: &
         Sensation::WebInterfaceText { text, occurred_at } => {
             ("web_interface_text", text, occurred_at)
         }
+        Sensation::StartedSpeaking { text, occurred_at } => {
+            return store_spoken_sensation(observer, "started_speaking", text, occurred_at).await;
+        }
+        Sensation::FinishedSpeaking { text, occurred_at } => {
+            return store_spoken_sensation(observer, "finished_speaking", text, occurred_at).await;
+        }
         Sensation::Of { .. } => return,
     };
     let id = format!("web-interface-text:{}:{text}", occurred_at.to_rfc3339());
@@ -508,7 +543,7 @@ async fn store_spoken_sensation(
     occurred_at: &chrono::DateTime<chrono::Utc>,
 ) {
     let (speaker, text, occurred_at) = match speaker {
-        "self" | "user" => (speaker, text, occurred_at),
+        "self" | "user" | "started_speaking" | "finished_speaking" => (speaker, text, occurred_at),
         _ => return,
     };
     let utterance_id = format!("utterance:{speaker}:{}:{text}", occurred_at.to_rfc3339());
@@ -623,6 +658,8 @@ fn utterance_how(speaker: &str, text: &str) -> String {
     match speaker {
         "self" => format!("I hear myself saying \"{}\".", text.trim()),
         "user" => format!("I hear the user saying \"{}\".", text.trim()),
+        "started_speaking" => format!("I start saying \"{}\".", text.trim()),
+        "finished_speaking" => format!("I finish saying \"{}\".", text.trim()),
         _ => format!("I hear someone saying \"{}\".", text.trim()),
     }
 }

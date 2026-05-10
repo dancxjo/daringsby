@@ -200,3 +200,26 @@ pub struct Heartbeat {
     /// Moment of the heartbeat.
     pub timestamp: chrono::DateTime<chrono::Utc>,
 }
+/// A single entry in the conversation log, used for both graph storage and protocol sync.
+#[cfg_attr(feature = "ts", derive(TS))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ConversationEntry {
+    /// Role of the speaker: "system", "user", or "assistant".
+    pub role: String,
+    /// The message text content.
+    pub content: String,
+    /// RFC3339 timestamp when the message was processed.
+    pub timestamp: String,
+}
+
+/// The full context seen by the Will agent during a decision cycle.
+#[cfg_attr(feature = "ts", derive(TS))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WillContext {
+    /// The system prompt used for the LLM request.
+    pub system_prompt: String,
+    /// Recent message history used as context.
+    pub history: Vec<ConversationEntry>,
+    /// Optional debug report for the LLM interaction.
+    pub report: Option<crate::WitReport>,
+}

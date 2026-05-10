@@ -126,34 +126,41 @@ main {
   text-align: center;
 }
 
-.spoken-words {
+.speech-bubble {
+  position: relative;
   background-color: #fff;
-  color: var(--bs-secondary);
-  font-size: var(--bs-font-size-lg);
-  padding: 0.5em;
   border-radius: 1rem;
   box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.3);
-  max-width: 80vw;
-  max-height: 8rem;
-  overflow-y: auto;
-  overflow-wrap: anywhere;
-  white-space: normal;
   margin-top: 1rem;
-  box-sizing: border-box;
-  text-align: center;
-  position: relative;
+  overflow: visible;
+  max-width: 80vw;
+  display: flex;
+  flex-direction: column;
 }
 
-.spoken-words::before {
+.speech-bubble::before {
   content: '';
   position: absolute;
-  top: -20px;
+  top: -40px; /* Shifted up to be outside (20px triangle + 20px offset) */
   left: 50%;
   transform: translateX(-50%);
   width: 0;
   height: 0;
   border: 20px solid transparent;
   border-bottom-color: #fff;
+  z-index: 2;
+}
+
+.spoken-words {
+  color: var(--bs-secondary);
+  font-size: var(--bs-font-size-lg);
+  padding: 0.5em;
+  max-height: 8rem;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  box-sizing: border-box;
+  text-align: center;
 }
 
 .bottom-bar {
@@ -388,11 +395,14 @@ button:hover {
     display: none;
   }
 
-  .spoken-words {
+  .speech-bubble {
     max-width: 92vw;
+    border-radius: 0.75rem;
+  }
+
+  .spoken-words {
     max-height: 7rem;
     font-size: 1rem;
-    border-radius: 0.75rem;
   }
 
   .bottom-bar {

@@ -82,6 +82,12 @@ impl Quick {
                 "I hear someone on my web interface type: {}",
                 text.trim()
             )),
+            Sensation::StartedSpeaking { text, .. } => {
+                Some(format!("I start saying \"{}\"", text.trim()))
+            }
+            Sensation::FinishedSpeaking { text, .. } => {
+                Some(format!("I finish saying \"{}\"", text.trim()))
+            }
             Sensation::Of { payload, .. } => {
                 if let Some(_f) = payload.downcast_ref::<crate::sensors::face::FaceInfo>() {
                     Some(crate::prompt::face_count_sensation_text(1))

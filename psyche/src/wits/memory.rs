@@ -1,6 +1,6 @@
 use crate::{
     AudioClip, BrowserMotion, GeoLoc, Heartbeat, ImageData, Impression, ObjectInfo, Stimulus,
-    audio_clip_id, browser_motion_content_id, geoloc_content_id, image_content_id,
+    WillContext, audio_clip_id, browser_motion_content_id, geoloc_content_id, image_content_id,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
@@ -1615,6 +1615,7 @@ pub struct GraphFaceIdentityLabel {
 }
 
 /// LLM-generated human identity for one recurring voice cluster.
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct GraphVoiceIdentityLabel {
     /// Stable graph node id for the identity.
@@ -3098,6 +3099,44 @@ impl Neo4jClient {
         )
         .await?;
         Ok(rows.first().and_then(graph_combobulation_emotion_from_row))
+    }
+
+    /// Return the newest Will prompt context stored in the graph.
+    pub async fn latest_will_context(&self) -> Result<Option<WillContext>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (n:WillContext)
+                    RETURN n
+                    ORDER BY datetime(n.occurred_at) DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest will context",
+        )
+        .await?;
+
+        let Some(row) = rows.first() else {
+            return Ok(None);
+        };
+        let Some(node) = row.get(0).and_then(|v| v.as_object()) else {
+            return Ok(None);
+        };
+        let Some(properties) = node.get("properties") else {
+            return Ok(None);
+        };
+        let Some(data) = properties.get("data").and_then(|v| v.as_str()) else {
+            return Ok(None);
+        };
+
+        Ok(serde_json::from_str(data)?)
     }
 
     /// Return the newest Will speech intention that has not started playback.

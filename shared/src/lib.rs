@@ -1,4 +1,4 @@
-use psyche::{BrowserMotion, GeoLoc, WitReport};
+pub use psyche::{BrowserMotion, ConversationEntry, GeoLoc, WitReport, WillContext};
 use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -102,10 +102,3 @@ pub enum SpeechPlaybackStatus {
     Interrupted,
 }
 
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ConversationEntry {
-    pub role: String,
-    pub content: String,
-    pub timestamp: String,
-}

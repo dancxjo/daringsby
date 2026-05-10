@@ -98,6 +98,30 @@ impl Ear for ChannelEar {
             "web interface",
         );
     }
+
+    async fn started_speaking(&self, text: &str, occurred_at: DateTime<Utc>) {
+        trace!(%text, "ear heard self start speaking");
+        self.speaking.store(true, Ordering::SeqCst);
+        self.queue_sensation(
+            Sensation::StartedSpeaking {
+                text: text.to_string(),
+                occurred_at,
+            },
+            "started_speaking",
+        );
+    }
+
+    async fn finished_speaking(&self, text: &str, occurred_at: DateTime<Utc>) {
+        trace!(%text, "ear heard self finish speaking");
+        self.speaking.store(false, Ordering::SeqCst);
+        self.queue_sensation(
+            Sensation::FinishedSpeaking {
+                text: text.to_string(),
+                occurred_at,
+            },
+            "finished_speaking",
+        );
+    }
 }
 
 /// [`Ear`] implementation that ignores all input.
