@@ -6,7 +6,7 @@ use dotenvy::dotenv;
 use lingproc::{Doer, LlmInstruction, Vectorizer};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
-    GraphAwareness, GraphTimelineItem, GraphTimelineWindow, Neo4jClient, QdrantClient,
+    GraphAwareness, GraphTimelineWindow, Neo4jClient, QdrantClient,
     SENSOR_GROUNDING_RULES, with_default_system_prompt,
 };
 use tokio::time::{MissedTickBehavior, interval};
