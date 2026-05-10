@@ -4164,6 +4164,19 @@ impl Neo4jClient {
         let processed_at = chrono::Utc::now().to_rfc3339();
         let run_id = format!("image-description:{}", frame.id);
         let vector_id = qdrant_vector_node_id(IMAGE_DESCRIPTION_COLLECTION, &description.vector_id);
+        
+        let description_sensation_id = stable_bytes_id(
+            "sensation:image_description",
+            format!("{run_id}:{}", description.description_id).as_bytes(),
+        );
+        let description_occurred_at = frame
+            .image
+            .captured_at
+            .clone()
+            .or_else(|| frame.occurred_at.clone())
+            .unwrap_or_else(|| processed_at.clone());
+        let source_sensation_ids = frame.sensation_id.clone().into_iter().collect::<Vec<_>>();
+
         let mut nodes = vec![
             json!({
                 "label": "Image",
@@ -4197,6 +4210,18 @@ impl Neo4jClient {
                 "image_description",
                 Some(embedding_model),
             ),
+            json!({
+                "label": "Sensation",
+                "id": description_sensation_id,
+                "kind": "image_description",
+                "derived": true,
+                "occurred_at": description_occurred_at,
+                "how": description.text,
+                "how_formed_at": processed_at,
+                "source_image_id": frame.id,
+                "image_description_run_id": run_id,
+                "source_sensation_ids": source_sensation_ids,
+            }),
         ];
         let mut relationships = vec![
             json!({
@@ -4244,6 +4269,26 @@ impl Neo4jClient {
                 "to": vector_id,
                 "type": "PRODUCED",
             }),
+            json!({
+                "from": run_id,
+                "to": description_sensation_id,
+                "type": "PRODUCED",
+            }),
+            json!({
+                "from": description_sensation_id,
+                "to": run_id,
+                "type": "OBSERVED",
+            }),
+            json!({
+                "from": description_sensation_id,
+                "to": frame.id,
+                "type": "DERIVED_FROM",
+            }),
+            json!({
+                "from": description_sensation_id,
+                "to": description.description_id,
+                "type": "OBSERVED",
+            }),
         ];
 
         if let Some(sensation_id) = &frame.sensation_id {
@@ -4265,6 +4310,16 @@ impl Neo4jClient {
                 "from": sensation_id,
                 "to": vector_id,
                 "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": description_sensation_id,
+                "type": "PRODUCED",
+            }));
+            relationships.push(json!({
+                "from": description_sensation_id,
+                "to": sensation_id,
+                "type": "DERIVED_FROM",
             }));
         }
 

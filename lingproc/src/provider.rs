@@ -172,7 +172,7 @@ impl Vectorizer for OllamaProvider {
             let req =
                 GenerateEmbeddingsRequest::new(self.model.clone(), EmbeddingsInput::from(text));
             match timeout(
-                Duration::from_secs(5),
+                Duration::from_secs(60),
                 self.client().generate_embeddings(req),
             )
             .await
