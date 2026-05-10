@@ -3201,6 +3201,79 @@ impl Neo4jClient {
         self.sensation_timeline(start, end, limit).await
     }
 
+    /// Return conversation sensation graph nodes in chronological order.
+    pub async fn conversation_timeline(
+        &self,
+        start: Option<chrono::DateTime<chrono::Utc>>,
+        end: chrono::DateTime<chrono::Utc>,
+        limit: usize,
+    ) -> Result<Vec<GraphSensationTimelineItem>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (n:GraphNode:Sensation)
+                    WITH n,
+                        coalesce(n.how, "") AS text,
+                        coalesce(n.source_ended_at, n.source_started_at, n.source_captured_at, n.observed_at, n.captured_at, n.occurred_at, n.timestamp, "") AS occurred_at,
+                        coalesce(n.how_formed_at, n.timestamp, n.created_at, n.occurred_at, "") AS formed_at
+                    WHERE text <> ""
+                      AND occurred_at <> ""
+                      AND ($start IS NULL OR datetime(occurred_at) >= datetime($start))
+                      AND datetime(occurred_at) <= datetime($end)
+                      AND (
+                          text STARTS WITH "I heard: " OR
+                          text STARTS WITH "I start saying: " OR
+                          text STARTS WITH "I finish saying: " OR
+                          text STARTS WITH "I stop saying: " OR
+                          text STARTS WITH "I say: "
+                      )
+                    WITH n, labels(n) AS labels, text, occurred_at, formed_at,
+                        CASE coalesce(n.kind, "")
+                            WHEN "image" THEN 0
+                            WHEN "face" THEN 1
+                            WHEN "face_recognition" THEN 1
+                            WHEN "face_identity" THEN 2
+                            ELSE 10
+                        END AS timeline_order
+                    ORDER BY datetime(occurred_at) DESC, timeline_order DESC, n.id DESC
+                    LIMIT $limit
+                    WITH collect({
+                        id: n.id,
+                        labels: labels,
+                        kind: coalesce(n.kind, head([label IN labels WHERE label <> "GraphNode"]), "sensation"),
+                        text: text,
+                        occurred_at: occurred_at,
+                        formed_at: formed_at
+                    }) AS rows
+                    UNWIND CASE rows WHEN [] THEN [] ELSE range(0, size(rows) - 1) END AS idx
+                    WITH rows[size(rows) - 1 - idx] AS row, idx
+                    RETURN row.id, row.labels, row.kind, row.text, row.occurred_at, row.formed_at
+                    ORDER BY idx
+                "#
+                .into(),
+                parameters: json!({
+                    "start": start.map(|value| value.to_rfc3339()),
+                    "end": end.to_rfc3339(),
+                    "limit": if limit == 0 {
+                        i64::MAX
+                    } else {
+                        i64::try_from(limit).unwrap_or(i64::MAX)
+                    },
+                }),
+            },
+            "loading conversation timeline",
+        )
+        .await?;
+        rows.iter()
+            .map(graph_sensation_timeline_item_from_row)
+            .collect()
+    }
+
     /// Return the latest previously combobulated timeline whose rendered source text changed.
     ///
     /// The source text is the current `how` of each source sensation. The query

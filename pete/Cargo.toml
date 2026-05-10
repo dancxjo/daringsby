@@ -122,6 +122,10 @@ name = "timeline"
 path = "src/bin/timeline.rs"
 
 [[bin]]
+name = "conversation"
+path = "src/bin/conversation.rs"
+
+[[bin]]
 name = "movie"
 path = "src/bin/movie.rs"
 

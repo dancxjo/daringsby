@@ -60,7 +60,7 @@ impl PromptFragment for CombobulatorPrompt {
     fn build_prompt(&self, input: &str) -> String {
         format!(
             "The following entries are a timestamped timeline of Pete's internal representations of sensations and real-world events happening around or to him. Treat them as fragmentary, possibly contradictory, fleeting evidence about the actual situation, not as the topic to describe. Try to infer what is going on in the real world from those fragments. Some entries may be your own prior combobulation summaries looping back in as sensations; treat those as provisional, possibly stale self-context, not as fresh external evidence. When related entries describe an audio recording and the transcription derived from it, treat them as one real-world event. {SENSOR_GROUNDING_RULES} Do not say that you are observing a timeline, recordings, entries, a previous summary, or a shift in conversation. Compress repeated or low-level records into the real-world gist; do not enumerate ids, hashes, timestamps, edges, or detections unless they are the point.\n\n\
-             What is going on right now? Summarize Pete's current awareness in one or two grounded first-person sentences, then end with exactly one emoji that reflects the tone of the moment:\n{input}"
+             This summary will be used in prompts to the system as a basic understanding of what's going on, the current situation. Think of it as telling someone with amnesia as quickly as possible (a paragraph) but as thoroughly as needed for them to act reasonably. What is going on right now? Summarize Pete's current awareness in a grounded first-person paragraph, then end with exactly one emoji that reflects the tone of the moment:\n{input}"
         )
     }
 }

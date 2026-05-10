@@ -109,6 +109,10 @@ async fn process_latest_combobulation(
         .choose_action(&combobulation)
         .await
         .with_context(|| format!("failed to choose action for {}", combobulation.id))?;
+    
+    if let Some(thought_text) = action.thought.as_deref() {
+        store_thought_sensation(observer, &combobulation, thought_text).await;
+    }
     store_active_face_sensation(observer, &combobulation, &action.emoji).await;
     if let Some(words) = action.say.as_deref() {
         store_speech_intention_sensation(observer, &combobulation, words).await;
@@ -117,6 +121,7 @@ async fn process_latest_combobulation(
         combobulation_id = %combobulation.id,
         emoji = %action.emoji,
         say = action.say.as_deref().unwrap_or(""),
+        thought = action.thought.as_deref().unwrap_or(""),
         "will chose action"
     );
     Ok(Some(combobulation.id))
@@ -152,13 +157,10 @@ fn will_prompt(combobulation: &GraphLatestCombobulation) -> String {
         .map(|emoji| format!("\nPrior combobulation emoji: {emoji}"))
         .unwrap_or_default();
     with_default_system_prompt(format!(
-        "Here is your latest combobulation about your most recent experiences. This is not a timeline; use it as the current situation summary.\n\n\
-         Latest combobulation:\n{}\n\
+        "This is the situation as you understand it:\n\
+         {}\n\
          Formed at: {}{}\n\n\
-         Choose the single emoji your face may actively present to the world right now. You may also choose a short sentence to speak aloud to the user when speech is useful right now; otherwise set say to null. Return only strict JSON with this shape:\n\
-         {{\"emoji\":\"🙂\",\"say\":\"Hello.\"}}\n\
-         or:\n\
-         {{\"emoji\":\"🙂\",\"say\":null}}",
+         You are in chat mode with the user. Respond directly to the user with what you want to say. Include a single emoji in your response to represent your current facial expression. Use <thought>...</thought> tags to reason before speaking.",
         combobulation.text.trim(),
         combobulation.formed_at,
         prior_emoji
@@ -170,31 +172,32 @@ struct WillAction {
     emoji: String,
     #[serde(default)]
     say: Option<String>,
+    #[serde(default)]
+    thought: Option<String>,
 }
 
 fn parse_will_action(raw: &str) -> anyhow::Result<WillAction> {
-    if let Some(action) = parse_will_action_json(raw) {
-        return Ok(action);
-    }
-    if let Some(json) = first_json_object(raw)
-        && let Some(action) = parse_will_action_json(&json)
-    {
-        return Ok(action);
-    }
-    if let Some(emoji) = normalize_emoji(raw) {
-        return Ok(WillAction { emoji, say: None });
-    }
-    anyhow::bail!("will response did not contain an emoji");
-}
+    let mut thought = None;
+    let mut rest = raw.to_string();
 
-fn parse_will_action_json(raw: &str) -> Option<WillAction> {
-    let parsed = serde_json::from_str::<WillAction>(raw).ok()?;
-    let emoji = normalize_emoji(&parsed.emoji)?;
-    let say = parsed
-        .say
-        .map(|text| text.trim().to_string())
-        .filter(|text| !text.is_empty());
-    Some(WillAction { emoji, say })
+    if let Some(start) = rest.find("<thought>") {
+        if let Some(end) = rest.find("</thought>") {
+            if start < end {
+                thought = Some(rest[start + 9..end].trim().to_string());
+                rest = format!("{} {}", &rest[..start], &rest[end + 10..]);
+            }
+        }
+    }
+
+    let emoji = match normalize_emoji(&rest) {
+        Some(e) => e,
+        None => "😐".to_string(),
+    };
+
+    let say_text = rest.replace(&emoji, "").trim().to_string();
+    let say = if say_text.is_empty() { None } else { Some(say_text) };
+
+    Ok(WillAction { emoji, thought, say })
 }
 
 fn normalize_emoji(value: &str) -> Option<String> {
@@ -205,10 +208,22 @@ fn normalize_emoji(value: &str) -> Option<String> {
     psyche::extract_emojis(trimmed).1.last().cloned()
 }
 
-fn first_json_object(raw: &str) -> Option<String> {
-    let start = raw.find('{')?;
-    let end = raw.rfind('}')?;
-    (start <= end).then(|| raw[start..=end].to_string())
+async fn store_thought_sensation(
+    observer: &SensationGraphObserver,
+    combobulation: &GraphLatestCombobulation,
+    thought: &str,
+) {
+    let occurred_at = Utc::now();
+    let summary = format!("I think: {}", thought.trim());
+    let stimulus_at = parse_utc(&combobulation.formed_at).unwrap_or(occurred_at);
+    let stimulus = Stimulus::with_source_sensation_ids(
+        combobulation.text.clone(),
+        stimulus_at,
+        [combobulation.id.clone()],
+    );
+    let impression = Impression::new(vec![stimulus], summary, None::<String>);
+    let sensation = Sensation::of_at(impression, occurred_at);
+    observer.observe_sensation(&sensation).await;
 }
 
 async fn store_active_face_sensation(
@@ -271,32 +286,33 @@ mod tests {
         let prompt = will_prompt(&latest());
 
         assert!(prompt.contains("You are PETE"));
-        assert!(prompt.contains("latest combobulation about your most recent experiences"));
-        assert!(prompt.contains("This is not a timeline"));
+        assert!(prompt.contains("This is the situation as you understand it"));
         assert!(prompt.contains("I notice someone nearby."));
-        assert!(prompt.contains("{\"emoji\":\"🙂\",\"say\":\"Hello.\"}"));
+        assert!(prompt.contains("<thought>...</thought>"));
         assert!(!prompt.contains("Timeline:"));
     }
 
     #[test]
-    fn parses_strict_json_emoji() {
-        let action = parse_will_action(r#"{"emoji":"😐"}"#).unwrap();
+    fn parses_chat_response_with_thought_and_emoji() {
+        let action = parse_will_action("<thought> I should smile </thought> Hello there! 🙂").unwrap();
+        assert_eq!(action.emoji, "🙂");
+        assert_eq!(action.say.as_deref(), Some("Hello there!"));
+        assert_eq!(action.thought.as_deref(), Some("I should smile"));
+    }
+
+    #[test]
+    fn parses_chat_response_with_only_emoji() {
+        let action = parse_will_action("😐").unwrap();
         assert_eq!(action.emoji, "😐");
         assert_eq!(action.say, None);
+        assert_eq!(action.thought, None);
     }
 
     #[test]
-    fn parses_strict_json_speech() {
-        let action = parse_will_action(r#"{"emoji":"🙂","say":"Hello there."}"#).unwrap();
-        assert_eq!(action.emoji, "🙂");
-        assert_eq!(action.say.as_deref(), Some("Hello there."));
-    }
-
-    #[test]
-    fn parses_json_object_inside_model_chatter() {
-        let action =
-            parse_will_action("Here:\n```json\n{\"emoji\":\"🙂\",\"say\":null}\n```").unwrap();
-        assert_eq!(action.emoji, "🙂");
-        assert_eq!(action.say, None);
+    fn parses_chat_response_without_emoji_defaults_to_neutral() {
+        let action = parse_will_action("<thought> thinking </thought> Hi").unwrap();
+        assert_eq!(action.emoji, "😐");
+        assert_eq!(action.say.as_deref(), Some("Hi"));
+        assert_eq!(action.thought.as_deref(), Some("thinking"));
     }
 }
