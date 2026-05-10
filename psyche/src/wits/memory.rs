@@ -2991,6 +2991,42 @@ impl Neo4jClient {
             .transpose()
     }
 
+    /// Return the latest sensations containing function results for the Will.
+    pub async fn latest_function_results(&self, limit: usize) -> Result<Vec<String>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (n:GraphNode:Sensation)
+                    WHERE n.how STARTS WITH "Result of list_source:"
+                       OR n.how STARTS WITH "Result of read_source:"
+                    RETURN n.how
+                    ORDER BY datetime(coalesce(n.occurred_at, n.timestamp, "")) DESC
+                    LIMIT $limit
+                "#
+                .into(),
+                parameters: json!({
+                    "limit": i64::try_from(limit).unwrap_or(i64::MAX),
+                }),
+            },
+            "finding latest function results",
+        )
+        .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| {
+                row.as_array()
+                    .and_then(|values| values.first())
+                    .and_then(Value::as_str)
+                    .map(String::from)
+            })
+            .collect())
+    }
+
     /// Return the newest image description text.
     pub async fn latest_image_description(&self) -> Result<Option<String>> {
         let endpoint = self.http_endpoint()?;

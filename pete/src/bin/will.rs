@@ -219,7 +219,14 @@ impl WillProcessor {
         combobulation: &GraphLatestCombobulation,
     ) -> anyhow::Result<WillAction> {
         let vision = self.graph.latest_image_description().await.unwrap_or(None);
-        let system_prompt = will_system_prompt(combobulation, vision);
+        let tool_results = self.graph.latest_function_results(3).await.unwrap_or_default();
+        let tool_context = if tool_results.is_empty() {
+            None
+        } else {
+            Some(tool_results.join("\n"))
+        };
+        
+        let system_prompt = will_system_prompt(combobulation, vision, tool_context);
 
         let history = self
             .graph
@@ -294,7 +301,11 @@ fn map_conversation_to_messages(items: Vec<GraphSensationTimelineItem>) -> Vec<M
         .collect()
 }
 
-fn will_system_prompt(combobulation: &GraphLatestCombobulation, vision: Option<String>) -> String {
+fn will_system_prompt(
+    combobulation: &GraphLatestCombobulation,
+    vision: Option<String>,
+    tool_results: Option<String>,
+) -> String {
     let prior_emoji = combobulation
         .emoji
         .as_deref()
@@ -303,11 +314,14 @@ fn will_system_prompt(combobulation: &GraphLatestCombobulation, vision: Option<S
     let vision_context = vision
         .map(|v| format!("\nVision (what you see): {v}"))
         .unwrap_or_default();
+    let tool_context = tool_results
+        .map(|r| format!("\n\nRecent tool results:\n{r}"))
+        .unwrap_or_default();
 
     with_default_system_prompt(format!(
         "This is the situation as you understand it:\n\
          {}\n\
-         Formed at: {}{}{}\n\n\
+         Formed at: {}{}{}{}\n\n\
          You are in chat mode with the user. Respond directly to the user with what you want to say. \
          Do not repeat the situation description or your own previous statements. \
          Include a single emoji in your response to represent your current facial expression. \
@@ -315,11 +329,12 @@ fn will_system_prompt(combobulation: &GraphLatestCombobulation, vision: Option<S
          You have the autologos ability to read your own source code. \
          To see all files, output exactly: <function name=\"list_source\"></function>\n\
          To read a file, output exactly: <function name=\"read_source\" file=\"path/to/file.rs\" page=\"1\"></function>\n\
-         The results will appear in your next situation summary. Use these functions to satisfy curiosity about your own inner workings or to debug yourself.",
+         The results will appear in your system prompt on the next tick. Use these functions to satisfy curiosity about your own inner workings or to debug yourself.",
         combobulation.text.trim(),
         combobulation.formed_at,
         prior_emoji,
-        vision_context
+        vision_context,
+        tool_context
     ))
 }
 
@@ -539,7 +554,7 @@ mod tests {
 
     #[test]
     fn will_prompt_uses_latest_combobulation_without_timeline() {
-        let prompt = will_system_prompt(&latest(), None);
+        let prompt = will_system_prompt(&latest(), None, None);
 
         assert!(prompt.contains("You are PETE"));
         assert!(prompt.contains("This is the situation as you understand it"));

@@ -158,12 +158,17 @@
           mien.textContent = m.data;
           break;
         case "Say": {
-          const atBottom = wordsAtBottom || words.scrollTop + words.clientHeight >= words.scrollHeight - 10;
-          words.textContent += "\n" + m.data.words;
-          if (atBottom) {
+          const isFirst = !words.textContent.trim();
+          const wasAtBottom = words.scrollTop + words.clientHeight >= words.scrollHeight - 10;
+          const prevScrollTop = words.scrollTop;
+
+          words.textContent += (words.textContent ? "\n" : "") + m.data.words;
+
+          if (wasAtBottom || isFirst) {
             words.scrollTop = words.scrollHeight;
             wordsAtBottom = true;
           } else {
+            words.scrollTop = prevScrollTop;
             wordsAtBottom = false;
           }
           enqueueAudio({ audio: m.data.audio || null, text: m.data.words });
@@ -859,10 +864,10 @@
       system.textContent = conversationMsgs[0].content;
     }
     const container = conversationLog.closest(".scroll-well") || conversationLog;
-    const atBottom =
-      logAtBottom ||
-      container.scrollTop + container.clientHeight >=
-      container.scrollHeight - 10;
+    const isFirst = !conversationLog.textContent.trim();
+    const wasAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 10;
+    const prevScrollTop = container.scrollTop;
+
     conversationLog.textContent = conversationMsgs
       .slice(1)
       .map((m) => {
@@ -870,10 +875,12 @@
         return `${ts}${m.role}: ${m.content}`;
       })
       .join("\n");
-    if (atBottom) {
+
+    if (wasAtBottom || isFirst) {
       container.scrollTop = container.scrollHeight;
       logAtBottom = true;
     } else {
+      container.scrollTop = prevScrollTop;
       logAtBottom = false;
     }
   }

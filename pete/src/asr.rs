@@ -24,7 +24,7 @@ use psyche::{AudioClip, Sensation, Topic, TopicBus};
 #[cfg(feature = "voice")]
 use psyche::{QdrantClient, VoiceInfo, audio_clip_id};
 
-pub const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-large-v3.bin";
+pub const DEFAULT_MODEL_PATH: &str = "models/whisper/ggml-small.en.bin";
 pub const LEGACY_FAST_MODEL_PATH: &str = "models/whisper/ggml-base.en.bin";
 pub const HIGH_QUALITY_MULTILINGUAL_MODEL_PATH: &str = "models/whisper/ggml-large-v3.bin";
 #[cfg(feature = "voice")]
