@@ -75,9 +75,28 @@ async fn follow_timeline(graph: &Neo4jClient, cli: &Cli) -> anyhow::Result<()> {
             .sensation_timeline(from, to, cli.limit)
             .await
             .context("failed to load impression timeline")?;
+        let mut new_items = Vec::new();
         for item in items {
             if seen.insert(item.id.clone()) {
-                println!("[{}] {}", timeline_timestamp(&item.occurred_at), item.text);
+                new_items.push(item);
+            }
+        }
+        if !new_items.is_empty() {
+            let mut current_time = String::new();
+            let mut current_texts = Vec::new();
+            for item in new_items {
+                let ts = timeline_timestamp(&item.occurred_at);
+                if ts != current_time {
+                    if !current_texts.is_empty() {
+                        println!("[{}] {}", current_time, current_texts.join(" "));
+                    }
+                    current_time = ts;
+                    current_texts.clear();
+                }
+                current_texts.push(item.text);
+            }
+            if !current_texts.is_empty() {
+                println!("[{}] {}", current_time, current_texts.join(" "));
             }
         }
     }
@@ -115,8 +134,21 @@ fn print_timeline(
         println!("(no sensations)");
         return;
     }
+    let mut current_time = String::new();
+    let mut current_texts = Vec::new();
     for item in items {
-        println!("[{}] {}", timeline_timestamp(&item.occurred_at), item.text);
+        let ts = timeline_timestamp(&item.occurred_at);
+        if ts != current_time {
+            if !current_texts.is_empty() {
+                println!("[{}] {}", current_time, current_texts.join(" "));
+            }
+            current_time = ts;
+            current_texts.clear();
+        }
+        current_texts.push(item.text.clone());
+    }
+    if !current_texts.is_empty() {
+        println!("[{}] {}", current_time, current_texts.join(" "));
     }
 }
 

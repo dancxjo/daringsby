@@ -285,6 +285,12 @@ fn combobulation_prompt(
     ))
 }
 
+fn timeline_timestamp(value: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .map(|timestamp| psyche::model::localized_timestamp(timestamp.with_timezone(&chrono::Utc)))
+        .unwrap_or_else(|_| value.to_string())
+}
+
 fn timeline_prompt(window: &GraphTimelineWindow) -> String {
     let from = window
         .items
@@ -296,21 +302,28 @@ fn timeline_prompt(window: &GraphTimelineWindow) -> String {
         .last()
         .map(|item| item.occurred_at.as_str())
         .unwrap_or(window.anchor_at.as_str());
-    let entries = window
-        .items
-        .iter()
-        .map(timeline_prompt_item)
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!("Sensation timeline {} to {}\n{}", from, to, entries)
-}
 
-fn timeline_prompt_item(item: &GraphTimelineItem) -> String {
-    format!(
-        "[{}] {}",
-        item.occurred_at,
-        truncate_for_prompt(&item.text, 500)
-    )
+    let mut current_time = String::new();
+    let mut current_texts = Vec::new();
+    let mut entries = Vec::new();
+
+    for item in &window.items {
+        let ts = timeline_timestamp(&item.occurred_at);
+        if ts != current_time {
+            if !current_texts.is_empty() {
+                entries.push(format!("[{}] {}", current_time, current_texts.join(" ")));
+            }
+            current_time = ts;
+            current_texts.clear();
+        }
+        current_texts.push(truncate_for_prompt(&item.text, 500));
+    }
+    if !current_texts.is_empty() {
+        entries.push(format!("[{}] {}", current_time, current_texts.join(" ")));
+    }
+
+    let entries = entries.join("\n");
+    format!("Sensation timeline {} to {}\n{}", timeline_timestamp(from), timeline_timestamp(to), entries)
 }
 
 fn awareness_id(window: &GraphTimelineWindow) -> String {
@@ -338,18 +351,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn timeline_prompt_item_matches_timeline_binary_entry_format() {
-        let item = GraphTimelineItem {
-            id: "sensation:audio:1".into(),
-            event_id: "audio:1".into(),
-            labels: vec!["GraphNode".into(), "Sensation".into()],
-            text: "audio sensation; transcript: hello".into(),
-            occurred_at: "2026-05-05T12:34:56Z".into(),
+    fn timeline_prompt_groups_entries_by_timestamp() {
+        let window = GraphTimelineWindow {
+            anchor_id: "sensation:audio:2".into(),
+            anchor_at: "2026-05-05T12:34:56Z".into(),
+            items: vec![
+                GraphTimelineItem {
+                    id: "sensation:audio:1".into(),
+                    event_id: "audio:1".into(),
+                    labels: vec!["Sensation".into()],
+                    text: "audio sensation; transcript: hello".into(),
+                    occurred_at: "2026-05-05T12:34:56.123Z".into(),
+                },
+                GraphTimelineItem {
+                    id: "sensation:thought:1".into(),
+                    event_id: "combobulation-summary:1".into(),
+                    labels: vec!["Sensation".into()],
+                    text: "combobulation sensation; greeting.".into(),
+                    occurred_at: "2026-05-05T12:34:56.456Z".into(),
+                },
+            ],
         };
 
+        let prompt = timeline_prompt(&window);
+        let ts = timeline_timestamp("2026-05-05T12:34:56Z");
         assert_eq!(
-            timeline_prompt_item(&item),
-            "[2026-05-05T12:34:56Z] audio sensation; transcript: hello"
+            prompt,
+            format!("Sensation timeline {ts} to {ts}\n[{ts}] audio sensation; transcript: hello combobulation sensation; greeting.")
         );
     }
 
@@ -389,8 +417,9 @@ mod tests {
         assert!(prompt.contains("Keep it compact"));
         assert!(prompt.contains("per-detection details"));
         assert!(prompt.contains("Timeline:"));
+        let ts = timeline_timestamp("2026-05-05T12:34:56Z");
         assert!(prompt.contains(
-            "Sensation timeline 2026-05-05T12:34:56Z to 2026-05-05T12:34:56Z\n[2026-05-05T12:34:56Z] audio sensation; transcript: hello"
+            &format!("Sensation timeline {ts} to {ts}\n[{ts}] audio sensation; transcript: hello")
         ));
     }
 
@@ -417,9 +446,11 @@ mod tests {
             ],
         };
 
+        let ts1 = timeline_timestamp("2026-05-05T12:34:56Z");
+        let ts2 = timeline_timestamp("2026-05-05T12:34:57Z");
         assert_eq!(
             timeline_prompt(&window),
-            "Sensation timeline 2026-05-05T12:34:56Z to 2026-05-05T12:34:57Z\n[2026-05-05T12:34:56Z] audio sensation; transcript: hello\n[2026-05-05T12:34:57Z] combobulation sensation; I may be hearing a greeting."
+            format!("Sensation timeline {ts1} to {ts2}\n[{ts1}] audio sensation; transcript: hello\n[{ts2}] combobulation sensation; I may be hearing a greeting.")
         );
     }
 }
