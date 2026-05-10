@@ -12,6 +12,7 @@
   "type": "commonjs",
   "dependencies": {
     "assert": "^2.1.0",
-    "jsdom": "^26.1.0"
+    "jsdom": "^26.1.0",
+    "ws": "^8.20.0"
   }
 }

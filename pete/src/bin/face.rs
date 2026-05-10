@@ -108,6 +108,7 @@ struct FaceState {
     ipc: broadcast::Sender<MediaEvent>,
     emotes: broadcast::Sender<WsPayload>,
     latest_emote: Arc<Mutex<Option<String>>>,
+    latest_will_context: Arc<Mutex<Option<WillContext>>>,
     image_sequence: Arc<AtomicU64>,
     audio_line_sequence: Arc<AtomicU64>,
     audio_config: AudioLineConfig,
@@ -136,11 +137,13 @@ async fn main() -> anyhow::Result<()> {
     ));
     let emotes = broadcast::channel(64).0;
     let latest_emote = Arc::new(Mutex::new(None));
+    let latest_will_context = Arc::new(Mutex::new(None));
     let state = FaceState {
         graph: Arc::new(SensationGraphObserver::new(graph_store.clone())),
         ipc: broadcast::channel(1024).0,
         emotes,
         latest_emote,
+        latest_will_context,
         image_sequence: Arc::new(AtomicU64::new(0)),
         audio_line_sequence: Arc::new(AtomicU64::new(0)),
         audio_config: AudioLineConfig {
@@ -172,12 +175,7 @@ async fn main() -> anyhow::Result<()> {
         graph_store.clone(),
         state.emotes.clone(),
         state.connections.clone(),
-        Duration::from_millis(cli.speech_poll_ms.max(250)),
-    );
-    spawn_will_context_poller(
-        graph_store,
-        state.emotes.clone(),
-        state.connections.clone(),
+        state.latest_will_context.clone(),
         Duration::from_millis(cli.speech_poll_ms.max(250)),
     );
     spawn_ipc_server(cli.ipc.clone(), state.ipc.clone()).await?;
@@ -232,6 +230,29 @@ async fn handle_socket(mut socket: WebSocket, state: FaceState) {
         if socket.send(WsMessage::Text(payload.into())).await.is_err() {
             state.connections.fetch_sub(1, Ordering::SeqCst);
             return;
+        }
+    }
+
+    let latest_context = { state.latest_will_context.lock().unwrap().clone() };
+    if let Some(context) = latest_context {
+        let payload = serde_json::to_string(&WsPayload::SystemPrompt(context.system_prompt)).unwrap();
+        if socket.send(WsMessage::Text(payload.into())).await.is_err() {
+            state.connections.fetch_sub(1, Ordering::SeqCst);
+            return;
+        }
+        for entry in context.history {
+            let payload = serde_json::to_string(&WsPayload::ConversationEntry(entry)).unwrap();
+            if socket.send(WsMessage::Text(payload.into())).await.is_err() {
+                state.connections.fetch_sub(1, Ordering::SeqCst);
+                return;
+            }
+        }
+        if let Some(report) = context.report {
+            let payload = serde_json::to_string(&WsPayload::Think(report)).unwrap();
+            if socket.send(WsMessage::Text(payload.into())).await.is_err() {
+                state.connections.fetch_sub(1, Ordering::SeqCst);
+                return;
+            }
         }
     }
 
@@ -676,6 +697,7 @@ fn spawn_will_context_poller(
     graph: Arc<Neo4jClient>,
     tx: broadcast::Sender<WsPayload>,
     connections: Arc<AtomicUsize>,
+    latest_will_context: Arc<Mutex<Option<WillContext>>>,
     poll_interval: Duration,
 ) {
     tokio::spawn(async move {
@@ -697,6 +719,7 @@ fn spawn_will_context_poller(
                     );
                     if last_id.as_deref() != Some(current_id.as_str()) {
                         last_id = Some(current_id);
+                        *latest_will_context.lock().unwrap() = Some(context.clone());
                         let _ = tx.send(WsPayload::SystemPrompt(context.system_prompt));
                         for entry in context.history {
                             let _ = tx.send(WsPayload::ConversationEntry(entry));

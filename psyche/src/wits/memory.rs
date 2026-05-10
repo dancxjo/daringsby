@@ -3129,10 +3129,7 @@ impl Neo4jClient {
         let Some(node) = row.get(0).and_then(|v| v.as_object()) else {
             return Ok(None);
         };
-        let Some(properties) = node.get("properties") else {
-            return Ok(None);
-        };
-        let Some(data) = properties.get("data").and_then(|v| v.as_str()) else {
+        let Some(data) = node.get("data").and_then(|v| v.as_str()) else {
             return Ok(None);
         };
 
