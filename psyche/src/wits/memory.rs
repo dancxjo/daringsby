@@ -282,6 +282,53 @@ impl QdrantClient {
         self.store_vector_for_node(headline, None, vector).await
     }
 
+    /// Search a Qdrant vector collection and return nearest neighbors with payloads.
+    pub async fn search_vectors(
+        &self,
+        collection: &str,
+        vector: &[f32],
+        limit: usize,
+        threshold: Option<f32>,
+    ) -> Result<Vec<QdrantNearestNeighbor>> {
+        if vector.is_empty() {
+            bail!("refusing to search empty vector in Qdrant collection {collection}");
+        }
+
+        let mut body = Map::new();
+        body.insert("vector".into(), json!(vector));
+        body.insert(
+            "limit".into(),
+            json!(i64::try_from(limit.max(1)).unwrap_or(i64::MAX)),
+        );
+        body.insert("with_payload".into(), json!(true));
+        if let Some(threshold) = threshold {
+            body.insert("score_threshold".into(), json!(threshold));
+        }
+
+        let response = reqwest::Client::new()
+            .post(self.endpoint(&format!("collections/{collection}/points/search"))?)
+            .json(&Value::Object(body))
+            .timeout(QDRANT_REQUEST_TIMEOUT)
+            .send()
+            .await
+            .with_context(|| format!("failed to search Qdrant collection {collection}"))?;
+
+        if !response.status().is_success() {
+            return Err(unexpected_qdrant_response(
+                response,
+                &format!("searching collection {collection}"),
+            )
+            .await);
+        }
+
+        let body: Value = response
+            .json()
+            .await
+            .with_context(|| format!("failed to decode Qdrant search response for {collection}"))?;
+        qdrant_search_neighbors(&body)
+            .with_context(|| format!("Qdrant search response for {collection} was invalid"))
+    }
+
     /// Store a memory vector with an explicit Neo4j node back-reference.
     pub async fn store_vector_for_node(
         &self,
@@ -2460,6 +2507,83 @@ impl Neo4jClient {
         rows.first().map(graph_node_details_from_row).transpose()
     }
 
+    /// Return a compact graph snapshot around one node.
+    pub async fn graph_neighbors(
+        &self,
+        id: &str,
+        depth: usize,
+        limit: usize,
+    ) -> Result<GraphSnapshot> {
+        let endpoint = self.http_endpoint()?;
+        let depth = depth.clamp(1, 2);
+        let relationship_span = if depth == 1 { "*1..1" } else { "*1..2" };
+        let statement = format!(
+            r#"
+                MATCH (anchor:GraphNode {{id: $id}})
+                MATCH path=(anchor)-[{relationship_span}]-(n:GraphNode)
+                WITH path
+                LIMIT $path_limit
+                WITH collect(path) AS paths
+                UNWIND paths AS node_path
+                UNWIND nodes(node_path) AS n
+                WITH paths, collect(DISTINCT n) AS nodes
+                WITH paths, nodes[..$limit] AS nodes
+                UNWIND paths AS rel_path
+                UNWIND relationships(rel_path) AS r
+                WITH nodes, collect(DISTINCT r) AS relationships
+                UNWIND nodes AS n
+                OPTIONAL MATCH (n)-[:HAS_STIMULUS]->(stimulus:GraphNode:Stimulus)
+                WITH nodes, relationships, n, max(stimulus.timestamp) AS stimulus_occurred_at
+                WITH nodes, relationships, n,
+                    CASE
+                        WHEN n:Impression THEN coalesce(stimulus_occurred_at, n.occurred_at, n.timestamp, "")
+                        WHEN n:Transcription THEN coalesce(n.source_started_at, n.source_captured_at, n.occurred_at, n.source_ended_at, n.captured_at, n.timestamp, "")
+                        WHEN n:Sensation THEN coalesce(n.source_ended_at, n.source_started_at, n.source_captured_at, n.observed_at, n.captured_at, n.occurred_at, n.timestamp, "")
+                        ELSE coalesce(n.occurred_at, n.observed_at, n.captured_at, n.timestamp, n.source_started_at, n.source_captured_at, n.source_ended_at, "")
+                    END AS event_at
+                RETURN
+                    collect(DISTINCT {{
+                        id: n.id,
+                        labels: labels(n),
+                        properties: CASE
+                            WHEN event_at = "" THEN properties(n)
+                            ELSE n {{.*, occurred_at: event_at}}
+                        END
+                    }}),
+                    [rel IN relationships
+                        WHERE rel IS NOT NULL
+                          AND startNode(rel) IN nodes
+                          AND endNode(rel) IN nodes | {{
+                            id: elementId(rel),
+                            source: startNode(rel).id,
+                            target: endNode(rel).id,
+                            type: type(rel),
+                            properties: properties(rel)
+                        }}]
+            "#
+        );
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement,
+                parameters: json!({
+                    "id": id,
+                    "limit": i64::try_from(limit.max(1)).unwrap_or(i64::MAX),
+                    "path_limit": i64::try_from(limit.max(1).saturating_mul(4)).unwrap_or(i64::MAX),
+                }),
+            },
+            "loading graph neighbors",
+        )
+        .await?;
+        rows.first()
+            .map(graph_snapshot_from_row)
+            .transpose()
+            .map(|snapshot| snapshot.unwrap_or_default())
+    }
+
     /// Return the source audio and clip-local offsets for a speech segment.
     pub async fn graph_speech_segment_audio(
         &self,
@@ -3002,10 +3126,7 @@ impl Neo4jClient {
             CypherStatement {
                 statement: r#"
                     MATCH (n:GraphNode:Sensation)
-                    WHERE n.how STARTS WITH "Result of list_source:"
-                       OR n.how STARTS WITH "Result of read_source:"
-                       OR n.how STARTS WITH "Result of list_files:"
-                       OR n.how STARTS WITH "Result of read_source_file:"
+                    WHERE n.how STARTS WITH "Result of "
                     RETURN n.how
                     ORDER BY datetime(coalesce(n.occurred_at, n.timestamp, "")) DESC
                     LIMIT $limit
@@ -4361,7 +4482,7 @@ impl Neo4jClient {
         let processed_at = chrono::Utc::now().to_rfc3339();
         let run_id = format!("image-description:{}", frame.id);
         let vector_id = qdrant_vector_node_id(IMAGE_DESCRIPTION_COLLECTION, &description.vector_id);
-        
+
         let description_sensation_id = stable_bytes_id(
             "sensation:image_description",
             format!("{run_id}:{}", description.description_id).as_bytes(),
