@@ -55,10 +55,14 @@ pub fn parse_instructions(text: &str) -> Vec<HostInstruction> {
             Ok(Event::End(_)) => {
                 if let Some((name, attrs)) = current.take() {
                     match name.as_str() {
-                        "say" => out.push(HostInstruction::Say {
-                            voice: attrs.get("voice").cloned(),
-                            text: content.clone(),
-                        }),
+                        "say" => {
+                            if let Some(text) = common::non_empty_model_text(&content) {
+                                out.push(HostInstruction::Say {
+                                    voice: attrs.get("voice").cloned(),
+                                    text: text.to_string(),
+                                });
+                            }
+                        }
                         "emote" => out.push(HostInstruction::Emote(content.clone())),
                         "move" => out.push(HostInstruction::Move {
                             to: attrs.get("to").cloned().unwrap_or_default(),

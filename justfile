@@ -29,7 +29,7 @@ run:
             bin="forget-silence"
         fi
         # simulate is an ad hoc client utility that requires a subcommand.
-        if [[ "$bin" == "pete" || "$bin" == "simulate" || "$bin" == "raw_retention" || "$bin" == "movie" || "$bin" == "test_will" ]]; then
+        if [[ "$bin" == "pete" || "$bin" == "conversant" || "$bin" == "simulate" || "$bin" == "raw_retention" || "$bin" == "movie" || "$bin" == "test_will" ]]; then
             continue
         fi
         bins+=("$bin")

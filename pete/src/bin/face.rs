@@ -723,12 +723,16 @@ fn spawn_will_context_poller(
             }
             match graph.latest_will_context().await {
                 Ok(Some(context)) => {
-                    // We use the hash of the system prompt + history as an ID to detect changes.
+                    // We use a context hash as an ID to detect changes.
                     use sha2::Digest;
                     let current_id = format!(
                         "{:x}",
                         sha2::Sha256::digest(
-                            format!("{}{:?}", context.system_prompt, context.history).as_bytes()
+                            format!(
+                                "{}{:?}{:?}",
+                                context.system_prompt, context.history, context.report
+                            )
+                            .as_bytes()
                         )
                     );
                     if last_id.as_deref() != Some(current_id.as_str()) {

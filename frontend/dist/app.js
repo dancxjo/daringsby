@@ -182,8 +182,7 @@
           thought.textContent = m.data;
           break;
         case "SystemPrompt":
-          conversationMsgs.length = 0;
-          conversationMsgs.push({ role: "system", content: m.data, timestamp: "" });
+          setSystemPrompt(m.data);
           updateConversation();
           break;
         case "ConversationEntry":
@@ -191,9 +190,7 @@
           updateConversation();
           break;
         case "FullHistory":
-          conversationMsgs.length = 0;
-          conversationMsgs.push({ role: "system", content: m.data.system_prompt, timestamp: "" });
-          conversationMsgs.push(...m.data.history);
+          applyFullHistory(m.data);
           if (m.data.report) handleThink({ data: m.data.report });
           updateConversation();
           break;
@@ -901,6 +898,28 @@
     } else {
       container.scrollTop = prevScrollTop;
       logAtBottom = false;
+    }
+  }
+
+  function setSystemPrompt(content) {
+    const entry = { role: "system", content: content || "", timestamp: "" };
+    if (conversationMsgs[0]?.role === "system") {
+      conversationMsgs[0] = entry;
+    } else {
+      conversationMsgs.unshift(entry);
+    }
+  }
+
+  function hasVisibleConversation() {
+    return conversationMsgs.slice(1).some((m) => (m?.content || "").trim());
+  }
+
+  function applyFullHistory(data) {
+    const history = Array.isArray(data?.history) ? data.history : [];
+    setSystemPrompt(data?.system_prompt || conversationMsgs[0]?.content || "");
+    if (history.length || !hasVisibleConversation()) {
+      conversationMsgs.length = 1;
+      conversationMsgs.push(...history);
     }
   }
 

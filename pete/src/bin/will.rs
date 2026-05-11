@@ -292,8 +292,8 @@ fn will_instruction_prompt(
          say(text) - inserts speech into the queue.\n\
          list_files() - lists the extant source files.\n\
          read_source_file(path, page) - reads one source file page; page is optional and defaults to 1.\n\n\
-         Use an empty string for javascript when no action is needed. \
-         Do not call other functions, define functions, import modules, use markdown, or include text outside the JSON object. \
+         Use an empty string for javascript when no action is needed, but do try to keep yourself busy and prevent yourself from being idle. \
+         You may call other functions, define functions, or import modules, but do not use markdown, or include text outside the JSON object. \
          Seek to understand the world around you and improve your own system.",
         combobulation.text.trim(),
         combobulation.formed_at,
@@ -332,7 +332,9 @@ fn parse_will_action(raw: &str) -> anyhow::Result<WillAction> {
     let commands = execute_javascript_commands(&payload.javascript)?;
 
     Ok(WillAction {
-        thought: payload.thought.trim().to_string(),
+        thought: common::non_empty_model_text(&payload.thought)
+            .unwrap_or_default()
+            .to_string(),
         javascript: payload.javascript.trim().to_string(),
         commands,
         system_prompt: String::new(),
@@ -426,10 +428,8 @@ JSON.stringify(__daringsbyCommands);
     Ok(payloads
         .into_iter()
         .filter_map(|payload| match payload {
-            JavascriptCommandPayload::Say { text } => {
-                let text = text.trim();
-                (!text.is_empty()).then(|| JavascriptCommand::Say(text.to_string()))
-            }
+            JavascriptCommandPayload::Say { text } => common::non_empty_model_text(&text)
+                .map(|text| JavascriptCommand::Say(text.to_string())),
             JavascriptCommandPayload::ListFiles => Some(JavascriptCommand::ListFiles),
             JavascriptCommandPayload::ReadSourceFile { file, page } => {
                 let file = file.trim();
@@ -465,8 +465,11 @@ async fn store_speech_intention_sensation(
     combobulation: &GraphLatestCombobulation,
     words: &str,
 ) {
+    let Some(words) = common::non_empty_model_text(words) else {
+        return;
+    };
     let occurred_at = Utc::now();
-    let summary = format!("I ought to say: {}", words.trim());
+    let summary = format!("I ought to say: {words}");
     let stimulus_at = parse_utc(&combobulation.formed_at).unwrap_or(occurred_at);
     let stimulus = Stimulus::with_source_sensation_ids(
         combobulation.text.clone(),
@@ -612,5 +615,28 @@ mod tests {
         assert_eq!(action.thought, "Think about source navigation.");
         assert!(action.javascript.is_empty());
         assert!(action.commands.is_empty());
+    }
+
+    #[test]
+    fn quoted_empty_response_does_not_become_thought() {
+        let action = parse_will_action(r#""""#).unwrap();
+
+        assert!(action.thought.is_empty());
+        assert!(action.javascript.is_empty());
+        assert!(action.commands.is_empty());
+    }
+
+    #[test]
+    fn quoted_empty_speech_is_ignored() {
+        let action = parse_will_action(
+            r#"{"thought":"Wait.","javascript":"say(''); say('\"\"'); say('still here');"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(action.thought, "Wait.");
+        assert_eq!(
+            action.commands,
+            vec![JavascriptCommand::Say("still here".into())]
+        );
     }
 }

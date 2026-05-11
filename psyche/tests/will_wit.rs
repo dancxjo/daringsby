@@ -112,3 +112,27 @@ async fn empty_response_yields_nothing() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn quoted_empty_say_yields_nothing() {
+    let bus = TopicBus::new(8);
+    let wit = Will::new(bus.clone(), Arc::new(DummyDoer("<say>\"\"</say>")));
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    wit.observe(Impression::new(
+        vec![Stimulus::new("hi".to_string())],
+        "hi",
+        None::<String>,
+    ))
+    .await;
+
+    let out = wit.tick().await;
+    assert!(out.is_empty());
+    let sub = bus.subscribe(Topic::Instruction);
+    tokio::pin!(sub);
+    time::sleep(Duration::from_millis(20)).await;
+    assert!(
+        time::timeout(Duration::from_millis(10), sub.next())
+            .await
+            .is_err()
+    );
+}

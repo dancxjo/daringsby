@@ -1,13 +1,16 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
+use chrono::Utc;
 use clap::Parser;
 use dotenvy::dotenv;
 use lingproc::{Doer, LlmInstruction, Vectorizer};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
-    GraphAwareness, GraphTimelineWindow, Neo4jClient, QdrantClient,
-    SENSOR_GROUNDING_RULES, with_default_system_prompt,
+    ConversationEntry, GraphAwareness, GraphTimelineWindow, Neo4jClient, QdrantClient,
+    SENSOR_GROUNDING_RULES, Sensation, SensationGraphObserver, SensationObserver, WillContext,
+    WitReport, with_default_system_prompt,
 };
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{debug, error, info, trace};
@@ -68,7 +71,12 @@ async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
     let cli = Cli::parse();
-    let graph = Neo4jClient::new(cli.neo4j_uri, cli.neo4j_user, cli.neo4j_pass);
+    let graph = Arc::new(Neo4jClient::new(
+        cli.neo4j_uri,
+        cli.neo4j_user,
+        cli.neo4j_pass,
+    ));
+    let observer = SensationGraphObserver::new(graph.clone());
     let qdrant = QdrantClient::new(cli.qdrant_url);
     let doer = ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?;
     let vectorizer = ollama_provider_from_args(&cli.embeddings_host, &cli.embeddings_model)?;
@@ -83,6 +91,7 @@ async fn main() -> anyhow::Result<()> {
         process_next_window(
             &graph,
             &qdrant,
+            &observer,
             &processor,
             cli.window_seconds,
             cli.window_limit,
@@ -104,6 +113,7 @@ async fn main() -> anyhow::Result<()> {
         if let Err(err) = process_next_window(
             &graph,
             &qdrant,
+            &observer,
             &processor,
             cli.window_seconds,
             cli.window_limit,
@@ -118,6 +128,7 @@ async fn main() -> anyhow::Result<()> {
 async fn process_next_window(
     graph: &Neo4jClient,
     qdrant: &QdrantClient,
+    observer: &SensationGraphObserver,
     processor: &CombobulationProcessor,
     window_seconds: u64,
     window_limit: usize,
@@ -134,6 +145,7 @@ async fn process_next_window(
         process_window(
             graph,
             qdrant,
+            observer,
             processor,
             window_seconds,
             latest_combobulation_sensation_at,
@@ -149,6 +161,7 @@ async fn process_next_window(
 async fn process_window(
     graph: &Neo4jClient,
     qdrant: &QdrantClient,
+    observer: &SensationGraphObserver,
     processor: &CombobulationProcessor,
     window_seconds: u64,
     latest_combobulation_sensation_at: Option<String>,
@@ -167,7 +180,7 @@ async fn process_window(
         source_count = window.items.len(),
         "combobulating timeline window"
     );
-    let awareness = processor
+    let result = processor
         .combobulate(
             &window,
             qdrant,
@@ -176,6 +189,7 @@ async fn process_window(
         )
         .await
         .with_context(|| format!("failed to combobulate timeline {}", window.anchor_id))?;
+    let awareness = result.awareness;
     graph
         .attach_combobulation(
             &window,
@@ -190,6 +204,7 @@ async fn process_window(
                 window.anchor_id
             )
         })?;
+    store_combobulator_context_sensation(observer, result.report).await;
     info!(
         anchor_id = %window.anchor_id,
         awareness_id = %awareness.awareness_id,
@@ -207,6 +222,11 @@ struct CombobulationProcessor {
     embedding_model: String,
 }
 
+struct CombobulationResult {
+    awareness: GraphAwareness,
+    report: WitReport,
+}
+
 impl CombobulationProcessor {
     async fn combobulate(
         &self,
@@ -214,13 +234,13 @@ impl CombobulationProcessor {
         qdrant: &QdrantClient,
         window_seconds: u64,
         latest_combobulation_sensation_at: Option<&str>,
-    ) -> anyhow::Result<GraphAwareness> {
+    ) -> anyhow::Result<CombobulationResult> {
         let prompt =
             combobulation_prompt(window, window_seconds, latest_combobulation_sensation_at);
         let raw_text = self
             .doer
             .follow(LlmInstruction {
-                command: prompt,
+                command: prompt.clone(),
                 images: Vec::new(),
             })
             .await?
@@ -229,7 +249,7 @@ impl CombobulationProcessor {
         let (text_without_emoji, emojis) = psyche::extract_emojis(&raw_text);
         let emoji = emojis.last().cloned();
         let text = if text_without_emoji.is_empty() {
-            raw_text
+            raw_text.clone()
         } else {
             text_without_emoji
         };
@@ -253,14 +273,34 @@ impl CombobulationProcessor {
             .context("failed to store awareness vector")?
             .to_string();
 
-        Ok(GraphAwareness {
-            awareness_id,
-            text,
-            emoji,
-            vector_id,
-            embedding_len: embedding.len(),
+        Ok(CombobulationResult {
+            awareness: GraphAwareness {
+                awareness_id,
+                text,
+                emoji,
+                vector_id,
+                embedding_len: embedding.len(),
+            },
+            report: WitReport {
+                name: "Combobulator".into(),
+                prompt,
+                output: raw_text,
+            },
         })
     }
+}
+
+async fn store_combobulator_context_sensation(
+    observer: &SensationGraphObserver,
+    report: WitReport,
+) {
+    let context = WillContext {
+        system_prompt: report.prompt.clone(),
+        history: Vec::<ConversationEntry>::new(),
+        report: Some(report),
+    };
+    let sensation = Sensation::of_at(context, Utc::now());
+    observer.observe_sensation(&sensation).await;
 }
 
 fn combobulation_prompt(
@@ -323,7 +363,12 @@ fn timeline_prompt(window: &GraphTimelineWindow) -> String {
     }
 
     let entries = entries.join("\n");
-    format!("Sensation timeline {} to {}\n{}", timeline_timestamp(from), timeline_timestamp(to), entries)
+    format!(
+        "Sensation timeline {} to {}\n{}",
+        timeline_timestamp(from),
+        timeline_timestamp(to),
+        entries
+    )
 }
 
 fn awareness_id(window: &GraphTimelineWindow) -> String {
@@ -349,6 +394,7 @@ fn truncate_for_prompt(value: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use psyche::GraphTimelineItem;
 
     #[test]
     fn timeline_prompt_groups_entries_by_timestamp() {
@@ -377,7 +423,9 @@ mod tests {
         let ts = timeline_timestamp("2026-05-05T12:34:56Z");
         assert_eq!(
             prompt,
-            format!("Sensation timeline {ts} to {ts}\n[{ts}] audio sensation; transcript: hello combobulation sensation; greeting.")
+            format!(
+                "Sensation timeline {ts} to {ts}\n[{ts}] audio sensation; transcript: hello combobulation sensation; greeting."
+            )
         );
     }
 
@@ -418,9 +466,9 @@ mod tests {
         assert!(prompt.contains("per-detection details"));
         assert!(prompt.contains("Timeline:"));
         let ts = timeline_timestamp("2026-05-05T12:34:56Z");
-        assert!(prompt.contains(
-            &format!("Sensation timeline {ts} to {ts}\n[{ts}] audio sensation; transcript: hello")
-        ));
+        assert!(prompt.contains(&format!(
+            "Sensation timeline {ts} to {ts}\n[{ts}] audio sensation; transcript: hello"
+        )));
     }
 
     #[test]
@@ -450,7 +498,9 @@ mod tests {
         let ts2 = timeline_timestamp("2026-05-05T12:34:57Z");
         assert_eq!(
             timeline_prompt(&window),
-            format!("Sensation timeline {ts1} to {ts2}\n[{ts1}] audio sensation; transcript: hello\n[{ts2}] combobulation sensation; I may be hearing a greeting.")
+            format!(
+                "Sensation timeline {ts1} to {ts2}\n[{ts1}] audio sensation; transcript: hello\n[{ts2}] combobulation sensation; I may be hearing a greeting."
+            )
         );
     }
 }

@@ -2,6 +2,31 @@
 //!
 //! Currently provides basic mathematical helpers used by multiple crates.
 
+/// Return trimmed model text unless it is empty or an empty quoted literal.
+///
+/// Language models sometimes emit `""` or `''` when they mean "nothing"; those
+/// should not be treated as meaningful speech or thought.
+pub fn non_empty_model_text(text: &str) -> Option<&str> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || is_empty_quoted_literal(trimmed) {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+fn is_empty_quoted_literal(text: &str) -> bool {
+    let Some((open, close)) = text.chars().next().zip(text.chars().last()) else {
+        return false;
+    };
+    if !matches!((open, close), ('"', '"') | ('\'', '\'') | ('`', '`')) {
+        return false;
+    }
+    let inner_start = open.len_utf8();
+    let inner_end = text.len().saturating_sub(close.len_utf8());
+    inner_start <= inner_end && text[inner_start..inner_end].trim().is_empty()
+}
+
 /// Compute the cosine similarity between two vectors.
 ///
 /// Returns 0.0 if either vector is empty.
@@ -31,6 +56,17 @@ mod tests {
     fn zero_similarity_for_empty() {
         assert_eq!(cosine_similarity(&[], &[]), 0.0);
         assert_eq!(cosine_similarity(&[1.0], &[]), 0.0);
+    }
+
+    #[test]
+    fn filters_empty_model_text() {
+        assert_eq!(non_empty_model_text(""), None);
+        assert_eq!(non_empty_model_text("  "), None);
+        assert_eq!(non_empty_model_text(r#""""#), None);
+        assert_eq!(non_empty_model_text("'  '"), None);
+        assert_eq!(non_empty_model_text("` `"), None);
+        assert_eq!(non_empty_model_text(" hello "), Some("hello"));
+        assert_eq!(non_empty_model_text(r#""hello""#), Some(r#""hello""#));
     }
 
     #[test]
