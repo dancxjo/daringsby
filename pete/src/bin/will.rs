@@ -1301,6 +1301,39 @@ mod tests {
     }
 
     #[test]
+    fn parses_recent_will_todo_search_payloads() {
+        let first = parse_will_action(
+            r#"Will: {"thought":"I will scan the repository for TODO markers to spot unfinished work, and also peek at recent first-person sensations to stay aware of my own context. This helps me stay busy and keeps the system from idling.","javascript":"list_files(); grep_source('TODO', 10); read_recent_timeline(5);"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            first.commands,
+            vec![
+                JavascriptCommand::ListFiles,
+                JavascriptCommand::GrepSource {
+                    pattern: "TODO".into(),
+                    limit: 10
+                },
+                JavascriptCommand::ReadRecentTimeline { limit: 5 },
+            ]
+        );
+
+        let second = parse_will_action(
+            r#"Will: {"thought":"I want to find TODO markers in the source code to identify unfinished work. No speech needed.","javascript":"grep_source(\"TODO\", 10)"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            second.commands,
+            vec![JavascriptCommand::GrepSource {
+                pattern: "TODO".into(),
+                limit: 10
+            }]
+        );
+    }
+
+    #[test]
     fn unstructured_response_becomes_thought_without_commands() {
         let action = parse_will_action("Think about source navigation.").unwrap();
 

@@ -361,24 +361,30 @@ impl SensationObserver for SensationGraphObserver {
             } else if let Some(impression) = payload.downcast_ref::<Impression<String>>() {
                 let id = impression_sensation_payload_id(impression, occurred_at.to_rfc3339());
                 let sensation_id = sensation_id("impression", &id, occurred_at.to_rfc3339());
+                let mut sensation = sensation_node(
+                    &sensation_id,
+                    "impression",
+                    occurred_at.to_rfc3339(),
+                    &impression.summary,
+                );
+                sensation["how_formed_at"] = json!(impression.timestamp.to_rfc3339());
+                sensation["source_sensation_ids"] = json!(impression.source_sensation_ids);
+                let mut nodes = vec![sensation];
+                let mut relationships = Vec::new();
+                for source_id in &impression.source_sensation_ids {
+                    nodes.push(source_sensation_ref_node(source_id));
+                    relationships.push(json!({
+                        "from": sensation_id,
+                        "to": source_id,
+                        "type": "DERIVED_FROM",
+                    }));
+                }
                 self.store_once(
                     id.clone(),
                     json!({
                         "op": "merge_graph",
-                        "nodes": [
-                            sensation_node(
-                                &sensation_id,
-                                "impression",
-                                occurred_at.to_rfc3339(),
-                                &impression.summary,
-                            ),
-                            impression_payload_node(impression, &id, occurred_at.to_rfc3339()),
-                        ],
-                        "relationships": [{
-                            "from": sensation_id,
-                            "to": id,
-                            "type": "OBSERVED",
-                        }],
+                        "nodes": nodes,
+                        "relationships": relationships,
                     }),
                 )
                 .await;
@@ -734,21 +740,10 @@ fn impression_sensation_payload_id(impression: &Impression<String>, occurred_at:
     format!("impression-sensation:sha256:{:x}", hasher.finalize())
 }
 
-fn impression_payload_node(
-    impression: &Impression<String>,
-    id: &str,
-    occurred_at: String,
-) -> Value {
+fn source_sensation_ref_node(source_id: &str) -> Value {
     json!({
-        "label": "Impression",
-        "id": id,
-        "summary": impression.summary,
-        "how": first_person_present(&impression.summary),
-        "emoji": impression.emoji,
-        "timestamp": impression.timestamp.to_rfc3339(),
-        "occurred_at": occurred_at,
-        "how_formed_at": impression.timestamp.to_rfc3339(),
-        "source_sensation_ids": impression.source_sensation_ids,
+        "label": "SourceSensationRef",
+        "id": source_id,
     })
 }
 

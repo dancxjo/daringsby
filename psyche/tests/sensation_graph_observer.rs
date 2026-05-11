@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use psyche::{
     AudioClip, BrowserMotion, CombobulationSummary, DeviceOrientation, GeoEmbedding, GeoLoc,
-    GraphStore, Heartbeat, ImageData, MotionVector, ObjectInfo, Sensation, SensationGraphObserver,
-    SensationObserver, audio_clip_id, geoloc_content_id, geoloc_vector, image_content_id,
+    GraphStore, Heartbeat, ImageData, Impression, MotionVector, ObjectInfo, Sensation,
+    SensationGraphObserver, SensationObserver, Stimulus, audio_clip_id, geoloc_content_id,
+    geoloc_vector, image_content_id,
 };
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -224,6 +225,47 @@ async fn stores_combobulation_summary_as_sensation() {
     assert_eq!(stored[0]["relationships"][0]["type"], "OBSERVED");
     assert_eq!(stored[0]["relationships"][1]["type"], "DERIVED_FROM");
     assert_eq!(stored[0]["relationships"][1]["to"], "sensation:audio:1");
+}
+
+#[tokio::test]
+async fn stores_impression_as_sensation_how_not_artifact() {
+    let graph = Arc::new(MockGraph::default());
+    let observer = SensationGraphObserver::new(graph.clone());
+    let occurred_at = Utc::now();
+    let source_at = chrono::DateTime::parse_from_rfc3339("2026-05-05T12:34:56Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let impression = Impression::new(
+        vec![Stimulus::with_source_sensation_ids(
+            "raw prior sensation".to_string(),
+            source_at,
+            ["sensation:audio:1"],
+        )],
+        "I ought to say: hello there",
+        None::<String>,
+    );
+
+    observer
+        .observe_sensation(&Sensation::of_at(impression, occurred_at))
+        .await;
+
+    let stored = graph.0.lock().unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0]["nodes"][0]["label"], "Sensation");
+    assert_eq!(stored[0]["nodes"][0]["kind"], "impression");
+    assert_eq!(stored[0]["nodes"][0]["how"], "I ought to say: hello there.");
+    assert_eq!(
+        stored[0]["nodes"][0]["source_sensation_ids"][0],
+        "sensation:audio:1"
+    );
+    assert_eq!(stored[0]["nodes"][1]["label"], "SourceSensationRef");
+    assert_eq!(stored[0]["nodes"][1]["id"], "sensation:audio:1");
+    assert_eq!(stored[0]["relationships"][0]["type"], "DERIVED_FROM");
+    assert_eq!(
+        stored[0]["relationships"][0]["from"],
+        stored[0]["nodes"][0]["id"]
+    );
+    assert_eq!(stored[0]["relationships"][0]["to"], "sensation:audio:1");
 }
 
 #[tokio::test]

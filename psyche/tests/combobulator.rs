@@ -84,10 +84,8 @@ async fn prompt_frames_inputs_as_real_world_events() {
 
     combo
         .digest(&[Impression::new(
-            vec![Stimulus::new(
-                "SpeechSegment speech: possible thief".to_string(),
-            )],
-            "",
+            vec![Stimulus::new("raw audio waveform".to_string())],
+            "I heard: possible thief.",
             None::<String>,
         )])
         .await
@@ -112,21 +110,29 @@ async fn prompt_frames_inputs_as_real_world_events() {
 }
 
 #[tokio::test]
-async fn prompt_includes_every_stimulus_from_the_current_window() {
+async fn prompt_includes_every_impression_how_from_the_current_window() {
     let doer = CapturingDoer::default();
     let captured = doer.command.clone();
     let combo = Combobulator::new(Arc::new(doer));
 
     combo
-        .digest(&[Impression::new(
-            vec![
-                Stimulus::new("I heard a voice.".to_string()),
-                Stimulus::new("I felt a heartbeat.".to_string()),
-                Stimulus::new("I sensed structured data.".to_string()),
-            ],
-            "",
-            None::<String>,
-        )])
+        .digest(&[
+            Impression::new(
+                vec![Stimulus::new("voice audio".to_string())],
+                "I heard a voice.",
+                None::<String>,
+            ),
+            Impression::new(
+                vec![Stimulus::new("heartbeat pulse".to_string())],
+                "I felt a heartbeat.",
+                None::<String>,
+            ),
+            Impression::new(
+                vec![Stimulus::new("json payload".to_string())],
+                "I sensed structured data.",
+                None::<String>,
+            ),
+        ])
         .await
         .unwrap();
 
@@ -134,6 +140,9 @@ async fn prompt_includes_every_stimulus_from_the_current_window() {
     assert!(prompt.contains("I heard a voice."));
     assert!(prompt.contains("I felt a heartbeat."));
     assert!(prompt.contains("I sensed structured data."));
+    assert!(!prompt.contains("voice audio"));
+    assert!(!prompt.contains("heartbeat pulse"));
+    assert!(!prompt.contains("json payload"));
 }
 
 #[tokio::test]
@@ -154,7 +163,7 @@ async fn bus_backed_digest_loops_summary_back_as_sensation() {
                 source_occurred_at,
                 ["sensation:audio:1"],
             )],
-            "",
+            "I heard a voice nearby.",
             None::<String>,
         )])
         .await
