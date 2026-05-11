@@ -114,7 +114,10 @@ fn model_choice(choice: &str) -> (String, PathBuf) {
         "tiny.en" => "ggml-tiny.en.bin",
         "base.en" => "ggml-base.en.bin",
         "small.en" => "ggml-small.en.bin",
+        "medium.en" => "ggml-medium.en.bin",
         "large-v3" => "ggml-large-v3.bin",
+        "distil-small.en" => "ggml-distil-small.en.bin",
+        "distil-medium.en" => "ggml-distil-medium.en.bin",
         other => other,
     };
     let url = if choice == DEFAULT_FAST_MODEL {

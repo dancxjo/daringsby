@@ -43,6 +43,7 @@
   let logAtBottom = true;
   let wordsAtBottom = true;
   let currentSpeechText = null;
+  let currentSpeechKey = null;
   let resumeSpeechPlayback = null;
 
   function animateDetails(details) {
@@ -189,6 +190,13 @@
           conversationMsgs.push(m.data);
           updateConversation();
           break;
+        case "FullHistory":
+          conversationMsgs.length = 0;
+          conversationMsgs.push({ role: "system", content: m.data.system_prompt, timestamp: "" });
+          conversationMsgs.push(...m.data.history);
+          if (m.data.report) handleThink({ data: m.data.report });
+          updateConversation();
+          break;
       }
     } catch (e) {
       console.error(e);
@@ -196,10 +204,18 @@
   }
 
   function enqueueAudio(item) {
-    audioQueue.push(item);
+    const key = speechQueueKey(item);
+    if (key && (currentSpeechKey === key || audioQueue.some((queued) => queued.key === key))) {
+      return;
+    }
+    audioQueue.push({ ...item, key });
     if (!playing) {
       playNext();
     }
+  }
+
+  function speechQueueKey(item) {
+    return (item.text || "").trim();
   }
 
   function waitForSpeechGesture(resume) {
@@ -222,12 +238,14 @@
     if (!next) {
       playing = false;
       currentSpeechText = null;
+      currentSpeechKey = null;
       face.classList.remove("playing");
       startSpeechRecognition();
       return;
     }
     playing = true;
     currentSpeechText = next.text || null;
+    currentSpeechKey = next.key || null;
     face.classList.add("playing");
     stopSpeechRecognition();
 
@@ -265,6 +283,7 @@
         safeSend(JSON.stringify({ type: "Echo", text: next.text, at: new Date().toISOString() }));
       }
       currentSpeechText = null;
+      currentSpeechKey = null;
       playNext();
     };
     const onStarted = () => {

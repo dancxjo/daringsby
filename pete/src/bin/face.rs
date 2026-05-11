@@ -29,8 +29,8 @@ use dotenvy::dotenv;
 use pete::{CoquiTts, synthesize_speech_audio};
 use pete::{EventBus, MediaEvent, init_logging, parse_data_url};
 use psyche::{
-    AudioClip, ConversationEntry, GraphSensationTimelineItem, ImageData, Impression, Neo4jClient,
-    Sensation, SensationGraphObserver, SensationObserver, Stimulus, WillContext, image_content_id,
+    AudioClip, ImageData, Impression, Neo4jClient, Sensation, SensationGraphObserver,
+    SensationObserver, Stimulus, WillContext, image_content_id,
 };
 use shared::{SpeechPlaybackStatus, WsPayload};
 use tokio::{io::AsyncWriteExt, net::UnixListener, sync::broadcast};
@@ -164,6 +164,7 @@ async fn main() -> anyhow::Result<()> {
     );
     spawn_speech_intention_poller(
         graph_store.clone(),
+        state.graph.clone(),
         state.emotes.clone(),
         state.connections.clone(),
         Duration::from_millis(cli.speech_poll_ms.max(100)),
@@ -241,24 +242,10 @@ async fn handle_socket(mut socket: WebSocket, state: FaceState) {
 
     let latest_context = { state.latest_will_context.lock().unwrap().clone() };
     if let Some(context) = latest_context {
-        let payload = serde_json::to_string(&WsPayload::SystemPrompt(context.system_prompt)).unwrap();
+        let payload = serde_json::to_string(&WsPayload::FullHistory(context)).unwrap();
         if socket.send(WsMessage::Text(payload.into())).await.is_err() {
             state.connections.fetch_sub(1, Ordering::SeqCst);
             return;
-        }
-        for entry in context.history {
-            let payload = serde_json::to_string(&WsPayload::ConversationEntry(entry)).unwrap();
-            if socket.send(WsMessage::Text(payload.into())).await.is_err() {
-                state.connections.fetch_sub(1, Ordering::SeqCst);
-                return;
-            }
-        }
-        if let Some(report) = context.report {
-            let payload = serde_json::to_string(&WsPayload::Think(report)).unwrap();
-            if socket.send(WsMessage::Text(payload.into())).await.is_err() {
-                state.connections.fetch_sub(1, Ordering::SeqCst);
-                return;
-            }
         }
     }
 
@@ -661,6 +648,7 @@ async fn store_face_report_sensation(observer: &SensationGraphObserver, emoji: &
 
 fn spawn_speech_intention_poller(
     graph: Arc<Neo4jClient>,
+    observer: Arc<SensationGraphObserver>,
     tx: broadcast::Sender<WsPayload>,
     connections: Arc<AtomicUsize>,
     poll_interval: Duration,
@@ -686,10 +674,15 @@ fn spawn_speech_intention_poller(
                 Ok(Some(intention)) if last_id.as_deref() != Some(intention.id.as_str()) => {
                     last_id = Some(intention.id);
                     let audio = speech_audio(&intention.text, &tts).await;
-                    let _ = tx.send(WsPayload::Say {
-                        words: intention.text,
-                        audio,
-                    });
+                    if tx
+                        .send(WsPayload::Say {
+                            words: intention.text.clone(),
+                            audio,
+                        })
+                        .is_ok()
+                    {
+                        store_queued_speech_sensation(&observer, &intention.text).await;
+                    }
                 }
                 Ok(_) => {}
                 Err(err) => warn!(%err, "failed polling latest speech intention"),
@@ -697,6 +690,21 @@ fn spawn_speech_intention_poller(
             tokio::time::sleep(poll_interval).await;
         }
     });
+}
+
+async fn store_queued_speech_sensation(observer: &SensationGraphObserver, text: &str) {
+    let occurred_at = Utc::now();
+    let summary = format!("I queue saying: {}", text.trim());
+    let impression = Impression::new(
+        vec![Stimulus::at(
+            format!("speech queued for face playback: {}", text.trim()),
+            occurred_at,
+        )],
+        summary,
+        None::<String>,
+    );
+    let sensation = Sensation::of_at(impression, occurred_at);
+    observer.observe_sensation(&sensation).await;
 }
 
 fn spawn_will_context_poller(
@@ -726,13 +734,7 @@ fn spawn_will_context_poller(
                     if last_id.as_deref() != Some(current_id.as_str()) {
                         last_id = Some(current_id);
                         *latest_will_context.lock().unwrap() = Some(context.clone());
-                        let _ = tx.send(WsPayload::SystemPrompt(context.system_prompt));
-                        for entry in context.history {
-                            let _ = tx.send(WsPayload::ConversationEntry(entry));
-                        }
-                        if let Some(report) = context.report {
-                            let _ = tx.send(WsPayload::Think(report));
-                        }
+                        let _ = tx.send(WsPayload::FullHistory(context));
                     }
                 }
                 Ok(None) => {}
@@ -744,76 +746,23 @@ fn spawn_will_context_poller(
 }
 
 fn spawn_conversation_poller(
-    graph: Arc<Neo4jClient>,
-    tx: broadcast::Sender<WsPayload>,
+    _graph: Arc<Neo4jClient>,
+    _tx: broadcast::Sender<WsPayload>,
     connections: Arc<AtomicUsize>,
     poll_interval: Duration,
 ) {
     tokio::spawn(async move {
-        let mut last_id: Option<String> = None;
         loop {
             if connections.load(Ordering::SeqCst) == 0 {
                 tokio::time::sleep(poll_interval).await;
                 continue;
             }
-            // Poll for the last 5 entries to catch any we missed, but usually we just want new ones.
-            match graph.conversation_timeline(None, Utc::now(), 5).await {
-                Ok(items) => {
-                    let mut new_items = Vec::new();
-                    let mut found_last = last_id.is_none();
-                    for item in items {
-                        if !found_last {
-                            if Some(&item.id) == last_id.as_ref() {
-                                found_last = true;
-                            }
-                            continue;
-                        }
-                        new_items.push(item);
-                    }
-
-                    if !new_items.is_empty() {
-                        last_id = Some(new_items.last().unwrap().id.clone());
-                        for item in new_items {
-                            if let Some(entry) = map_sensation_to_entry(&item) {
-                                let _ = tx.send(WsPayload::ConversationEntry(entry));
-                            }
-                        }
-                    }
-                }
-                Err(err) => warn!(%err, "failed polling conversation timeline"),
-            }
+            // We rely on spawn_will_context_poller for history sync,
+            // but we could also poll conversation_timeline and emit FullHistory if it changes.
+            // For now, let's keep it simple and let Will define the history.
             tokio::time::sleep(poll_interval).await;
         }
     });
-}
-
-fn map_sensation_to_entry(item: &GraphSensationTimelineItem) -> Option<ConversationEntry> {
-    if item.text.starts_with("I heard: ") || item.text == "I hear silence." {
-        let content = if item.text == "I hear silence." {
-            "I hear silence.".into()
-        } else {
-            item.text["I heard: ".len()..].into()
-        };
-        Some(ConversationEntry {
-            role: "user".into(),
-            content,
-            timestamp: item.occurred_at.clone(),
-        })
-    } else if item.text.starts_with("I finish saying: ") {
-        Some(ConversationEntry {
-            role: "assistant".into(),
-            content: item.text["I finish saying: ".len()..].into(),
-            timestamp: item.occurred_at.clone(),
-        })
-    } else if item.text.starts_with("I say: ") {
-        Some(ConversationEntry {
-            role: "assistant".into(),
-            content: item.text["I say: ".len()..].into(),
-            timestamp: item.occurred_at.clone(),
-        })
-    } else {
-        None
-    }
 }
 
 #[cfg(feature = "tts")]
@@ -821,7 +770,7 @@ async fn speech_audio(text: &str, tts: &CoquiTts) -> Option<String> {
     match synthesize_speech_audio(tts, text).await {
         Ok(audio) => audio,
         Err(err) => {
-            warn!(%err, "tts request failed for will speech");
+            warn!(%err, "tts request failed for queued speech");
             None
         }
     }
@@ -838,11 +787,28 @@ async fn store_speech_playback_sensation(
     status: SpeechPlaybackStatus,
     occurred_at: DateTime<Utc>,
 ) {
-    let verb = match status {
-        SpeechPlaybackStatus::Started => "start",
-        SpeechPlaybackStatus::Finished => "finish",
-        SpeechPlaybackStatus::Interrupted => "stop",
-    };
+    match status {
+        SpeechPlaybackStatus::Started => {
+            observer
+                .observe_sensation(&Sensation::StartedSpeaking {
+                    text: text.trim().to_string(),
+                    occurred_at,
+                })
+                .await;
+            return;
+        }
+        SpeechPlaybackStatus::Finished => {
+            observer
+                .observe_sensation(&Sensation::FinishedSpeaking {
+                    text: text.trim().to_string(),
+                    occurred_at,
+                })
+                .await;
+            return;
+        }
+        SpeechPlaybackStatus::Interrupted => {}
+    }
+    let verb = "stop";
     let summary = format!("I {verb} saying: {}", text.trim());
     let impression = Impression::new(
         vec![Stimulus::at(

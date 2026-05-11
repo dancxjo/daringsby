@@ -1,18 +1,18 @@
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use dotenvy::dotenv;
-use lingproc::{Chatter, Message};
+use lingproc::{Doer, LlmInstruction};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
-    GraphLatestCombobulation, GraphSensationTimelineItem, Impression, Neo4jClient, Sensation,
-    SensationGraphObserver, SensationObserver, Stimulus, WillContext, ConversationEntry,
-    WitReport, with_default_system_prompt,
+    ConversationEntry, GraphLatestCombobulation, Impression, Neo4jClient, Sensation,
+    SensationGraphObserver, SensationObserver, Stimulus, WillContext, WitReport,
+    with_default_system_prompt,
 };
-use serde::Deserialize;
-use std::sync::OnceLock;
+use serde::{Deserialize, Serialize};
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{error, info, trace};
 
@@ -23,7 +23,7 @@ fn get_source_bundle() -> &'static std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
         let mut current_file = String::new();
         let mut current_content = String::new();
-        
+
         for line in bundle.lines() {
             if let Some(path) = line.strip_prefix("@@@FILE: ") {
                 if !current_file.is_empty() {
@@ -43,30 +43,42 @@ fn get_source_bundle() -> &'static std::collections::HashMap<String, String> {
     })
 }
 
-fn execute_read_source(file: &str, page: usize) -> String {
+fn execute_read_source_file(file: &str, page: usize) -> String {
     let map = get_source_bundle();
     if let Some(content) = map.get(file) {
         let lines: Vec<&str> = content.lines().collect();
         let chunk_size = 50;
         let start = (page.saturating_sub(1)) * chunk_size;
         if start >= lines.len() {
-            return format!("File {} has only {} lines (page {} is past EOF).", file, lines.len(), page);
+            return format!(
+                "File {} has only {} lines (page {} is past EOF).",
+                file,
+                lines.len(),
+                page
+            );
         }
         let end = (start + chunk_size).min(lines.len());
         let chunk = lines[start..end].join("\n");
-        format!("--- {} (lines {} to {} of {}) ---\n{}\n---", file, start + 1, end, lines.len(), chunk)
+        format!(
+            "--- {} (lines {} to {} of {}) ---\n{}\n---",
+            file,
+            start + 1,
+            end,
+            lines.len(),
+            chunk
+        )
     } else {
         format!("File not found: {}", file)
     }
 }
 
-fn execute_list_source() -> String {
+fn execute_list_files() -> String {
     let map = get_source_bundle();
     let mut files: Vec<&String> = map.keys().collect();
     files.sort();
     let mut response = String::from("Available source files:\n");
-    for f in files {
-        response.push_str(f);
+    for file in files {
+        response.push_str(file);
         response.push('\n');
     }
     response
@@ -76,7 +88,7 @@ fn execute_list_source() -> String {
 #[command(
     author,
     version,
-    about = "Choose Pete's active face expression from the latest combobulation"
+    about = "Choose Pete's next internal work item from the latest combobulation"
 )]
 struct Cli {
     /// Neo4j bolt or HTTP URI.
@@ -116,7 +128,10 @@ async fn main() -> anyhow::Result<()> {
     ));
     let observer = SensationGraphObserver::new(graph.clone());
     let doer = ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?;
-    let processor = WillProcessor { chatter: doer, graph: graph.clone() };
+    let processor = WillProcessor {
+        doer,
+        graph: graph.clone(),
+    };
 
     if cli.once {
         process_latest_combobulation(&graph, &observer, &processor, None).await?;
@@ -167,49 +182,46 @@ async fn process_latest_combobulation(
         .choose_action(&combobulation)
         .await
         .with_context(|| format!("failed to choose action for {}", combobulation.id))?;
-    
-    for func in action.functions.iter() {
-        let summary = if func.name == "list_source" {
-            execute_list_source()
-        } else if func.name == "read_source" {
-            if let Some(f) = &func.file {
-                let p = func.page.unwrap_or(1);
-                execute_read_source(f, p)
-            } else {
-                "read_source failed: missing 'file' attribute".into()
-            }
-        } else {
-            format!("Unknown function: {}", func.name)
-        };
-        store_function_result_sensation(observer, &combobulation, &func.name, &summary).await;
+
+    if !action.thought.trim().is_empty() {
+        store_thought_sensation(observer, &combobulation, &action.thought).await;
     }
 
-    if let Some(thought_text) = action.thought.as_deref() {
-        store_thought_sensation(observer, &combobulation, thought_text).await;
+    for command in action.commands.iter() {
+        match command {
+            JavascriptCommand::Say(text) => {
+                store_speech_intention_sensation(observer, &combobulation, text).await;
+            }
+            JavascriptCommand::ListFiles => {
+                let summary = execute_list_files();
+                store_function_result_sensation(observer, &combobulation, "list_files", &summary)
+                    .await;
+            }
+            JavascriptCommand::ReadSourceFile { file, page } => {
+                let summary = execute_read_source_file(file, *page);
+                store_function_result_sensation(
+                    observer,
+                    &combobulation,
+                    "read_source_file",
+                    &summary,
+                )
+                .await;
+            }
+        }
     }
-    store_active_face_sensation(observer, &combobulation, &action.emoji).await;
-    if let Some(words) = action.say.as_deref() {
-        store_speech_intention_sensation(observer, &combobulation, words).await;
-    }
+
     info!(
         combobulation_id = %combobulation.id,
-        emoji = %action.emoji,
-        say = action.say.as_deref().unwrap_or(""),
-        thought = action.thought.as_deref().unwrap_or(""),
+        thought = %action.thought,
+        javascript = %action.javascript,
         "will chose action"
     );
-    store_will_context_sensation(
-        observer,
-        action.system_prompt,
-        action.history,
-        action.report,
-    )
-    .await;
+    store_will_context_sensation(observer, action.system_prompt, action.report).await;
     Ok(Some(combobulation.id))
 }
 
 struct WillProcessor {
-    chatter: lingproc::OllamaProvider,
+    doer: lingproc::OllamaProvider,
     graph: std::sync::Arc<Neo4jClient>,
 }
 
@@ -219,32 +231,28 @@ impl WillProcessor {
         combobulation: &GraphLatestCombobulation,
     ) -> anyhow::Result<WillAction> {
         let vision = self.graph.latest_image_description().await.unwrap_or(None);
-        let tool_results = self.graph.latest_function_results(3).await.unwrap_or_default();
+        let tool_results = self
+            .graph
+            .latest_function_results(3)
+            .await
+            .unwrap_or_default();
         let tool_context = if tool_results.is_empty() {
             None
         } else {
             Some(tool_results.join("\n"))
         };
-        
-        let system_prompt = will_system_prompt(combobulation, vision, tool_context);
 
-        let history = self
-            .graph
-            .conversation_timeline(None, Utc::now(), 20)
-            .await
-            .unwrap_or_default();
-        let messages = map_conversation_to_messages(history.clone());
-
-        let mut stream = self.chatter.chat(&system_prompt, &messages).await?;
-        let mut raw = String::new();
-        use tokio_stream::StreamExt;
-        while let Some(chunk) = stream.next().await {
-            raw.push_str(&chunk?);
-        }
+        let system_prompt = will_instruction_prompt(combobulation, vision, tool_context);
+        let raw = self
+            .doer
+            .follow(LlmInstruction {
+                command: system_prompt.clone(),
+                images: vec![],
+            })
+            .await?;
 
         let mut action = parse_will_action(raw.trim())?;
         action.system_prompt = system_prompt.clone();
-        action.history = map_conversation_to_entries(history);
         action.report = Some(WitReport {
             name: "Will".into(),
             prompt: system_prompt,
@@ -255,67 +263,7 @@ impl WillProcessor {
     }
 }
 
-fn strip_utterance_content(text: &str) -> Option<(String, bool)> {
-    // Returns (content, is_assistant)
-    if let Some(rest) = text.strip_prefix("I heard: ") {
-        return Some((rest.to_string(), false));
-    }
-    if text == "I hear silence." {
-        return Some(("I hear silence.".to_string(), false));
-    }
-    if let Some(rest) = text.strip_prefix("I hear the user saying \"") {
-        if let Some(end) = rest.rfind("\".") {
-            return Some((rest[..end].to_string(), false));
-        }
-    }
-    if let Some(rest) = text.strip_prefix("I hear myself saying \"") {
-        if let Some(end) = rest.rfind("\".") {
-            return Some((rest[..end].to_string(), true));
-        }
-    }
-    if let Some(rest) = text.strip_prefix("I finish saying \"") {
-        if let Some(end) = rest.rfind("\".") {
-            return Some((rest[..end].to_string(), true));
-        }
-    }
-    if let Some(rest) = text.strip_prefix("I finish saying: ") {
-        return Some((rest.to_string(), true));
-    }
-    if let Some(rest) = text.strip_prefix("I say: ") {
-        return Some((rest.to_string(), true));
-    }
-    None
-}
-
-fn map_conversation_to_entries(items: Vec<GraphSensationTimelineItem>) -> Vec<ConversationEntry> {
-    items
-        .into_iter()
-        .filter_map(|item| {
-            let (content, is_assistant) = strip_utterance_content(&item.text)?;
-            Some(ConversationEntry {
-                role: if is_assistant { "assistant" } else { "user" }.into(),
-                content,
-                timestamp: item.occurred_at,
-            })
-        })
-        .collect()
-}
-
-fn map_conversation_to_messages(items: Vec<GraphSensationTimelineItem>) -> Vec<Message> {
-    items
-        .into_iter()
-        .filter_map(|item| {
-            let (content, is_assistant) = strip_utterance_content(&item.text)?;
-            if is_assistant {
-                Some(Message::assistant(&content))
-            } else {
-                Some(Message::user(&content))
-            }
-        })
-        .collect()
-}
-
-fn will_system_prompt(
+fn will_instruction_prompt(
     combobulation: &GraphLatestCombobulation,
     vision: Option<String>,
     tool_results: Option<String>,
@@ -329,21 +277,24 @@ fn will_system_prompt(
         .map(|v| format!("\nVision (what you see): {v}"))
         .unwrap_or_default();
     let tool_context = tool_results
-        .map(|r| format!("\n\nRecent tool results:\n{r}"))
+        .map(|r| format!("\n\nRecent function results:\n{r}"))
         .unwrap_or_default();
 
     with_default_system_prompt(format!(
         "This is the situation as you understand it:\n\
          {}\n\
          Formed at: {}{}{}{}\n\n\
-         You are in chat mode with the user. Respond directly to the user with what you want to say. \
-         Do not repeat the situation description or your own previous statements. \
-         Include a single emoji in your response to represent your current facial expression. \
-         Use <thought>...</thought> tags to reason before speaking. \
-         You have the autologos ability to read your own source code. \
-         To see all files, output exactly: <function name=\"list_source\"></function>\n\
-         To read a file, output exactly: <function name=\"read_source\" file=\"path/to/file.rs\" page=\"1\"></function>\n\
-         The results will appear in your system prompt on the next tick. Use these functions to satisfy curiosity about your own inner workings or to debug yourself.",
+         You are the Will. Decide what the system should work on next. \
+         You are not the conversation manager; do not answer the user conversationally unless you intentionally queue speech with say(text). \
+         Return only a JSON object with exactly these fields:\n\
+         {{\"thought\":\"one concise sentence about what the system should work on next\",\"javascript\":\"a short program using only the allowed functions\"}}\n\n\
+         The javascript field may call only these functions:\n\
+         say(text) - inserts speech into the queue.\n\
+         list_files() - lists the extant source files.\n\
+         read_source_file(path, page) - reads one source file page; page is optional and defaults to 1.\n\n\
+         Use an empty string for javascript when no action is needed. \
+         Do not call other functions, define functions, import modules, use markdown, or include text outside the JSON object. \
+         Seek to understand the world around you and improve your own system.",
         combobulation.text.trim(),
         combobulation.formed_at,
         prior_emoji,
@@ -352,130 +303,143 @@ fn will_system_prompt(
     ))
 }
 
-#[derive(Deserialize)]
+#[derive(Debug)]
 struct WillAction {
-    emoji: String,
-    #[serde(default)]
-    say: Option<String>,
-    #[serde(default)]
-    thought: Option<String>,
-    #[serde(skip)]
-    functions: Vec<FunctionCall>,
-    #[serde(skip)]
+    thought: String,
+    javascript: String,
+    commands: Vec<JavascriptCommand>,
     system_prompt: String,
-    #[serde(skip)]
-    history: Vec<ConversationEntry>,
-    #[serde(skip)]
     report: Option<WitReport>,
 }
 
+#[derive(Deserialize)]
+struct WillActionPayload {
+    #[serde(default)]
+    thought: String,
+    #[serde(default)]
+    javascript: String,
+}
+
 #[derive(Debug, PartialEq, Eq)]
-struct FunctionCall {
-    name: String,
-    file: Option<String>,
-    page: Option<usize>,
+enum JavascriptCommand {
+    Say(String),
+    ListFiles,
+    ReadSourceFile { file: String, page: usize },
 }
 
-fn extract_functions(text: &mut String) -> Vec<FunctionCall> {
-    let mut functions = Vec::new();
-    while let Some(start) = text.find("<function") {
-        if let Some(tag_end_rel) = text[start..].find('>') {
-            let opening_tag_end = start + tag_end_rel + 1;
-            let tag_content = &text[start..opening_tag_end];
-            
-            if tag_content.ends_with("/>") {
-                let name = extract_attr(tag_content, "name").unwrap_or_default();
-                let file = extract_attr(tag_content, "file");
-                let page = extract_attr(tag_content, "page").and_then(|p| p.parse().ok());
-                if !name.is_empty() {
-                    functions.push(FunctionCall { name, file, page });
-                }
-                text.replace_range(start..opening_tag_end, "");
-                continue;
-            }
-            
-            if let Some(end_tag_start_rel) = text[opening_tag_end..].find("</function>") {
-                let full_end = opening_tag_end + end_tag_start_rel + "</function>".len();
-                let full_tag = &text[start..full_end];
-                
-                let name = extract_attr(full_tag, "name").unwrap_or_default();
-                let file = extract_attr(full_tag, "file");
-                let page = extract_attr(full_tag, "page").and_then(|p| p.parse().ok());
-                if !name.is_empty() {
-                    functions.push(FunctionCall { name, file, page });
-                }
-                text.replace_range(start..full_end, "");
-            } else {
-                // Unclosed tag: remove the opening part to avoid infinite loop
-                text.replace_range(start..opening_tag_end, "");
-            }
-        } else {
-            // Malformed: remove the prefix
-            text.replace_range(start..start + 9, "");
-        }
+fn parse_will_action(raw: &str) -> anyhow::Result<WillAction> {
+    let payload = parse_will_action_payload(raw)?;
+    let commands = execute_javascript_commands(&payload.javascript)?;
+
+    Ok(WillAction {
+        thought: payload.thought.trim().to_string(),
+        javascript: payload.javascript.trim().to_string(),
+        commands,
+        system_prompt: String::new(),
+        report: None,
+    })
+}
+
+fn parse_will_action_payload(raw: &str) -> anyhow::Result<WillActionPayload> {
+    if let Ok(payload) = serde_json::from_str(raw) {
+        return Ok(payload);
     }
-    functions
+    if let Some(json) = extract_first_json_object(raw) {
+        return Ok(serde_json::from_str(json)?);
+    }
+    Ok(WillActionPayload {
+        thought: raw.trim().to_string(),
+        javascript: String::new(),
+    })
 }
 
-fn extract_attr(tag: &str, attr: &str) -> Option<String> {
-    let pattern = format!("{}=\"", attr);
-    if let Some(start) = tag.find(&pattern) {
-        let val_start = start + pattern.len();
-        if let Some(end) = tag[val_start..].find('"') {
-            return Some(tag[val_start..val_start + end].to_string());
+fn extract_first_json_object(raw: &str) -> Option<&str> {
+    let start = raw.find('{')?;
+    let mut in_string = false;
+    let mut escape = false;
+    let mut depth = 0usize;
+    for (offset, ch) in raw[start..].char_indices() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        match ch {
+            '\\' if in_string => escape = true,
+            '"' => in_string = !in_string,
+            '{' if !in_string => depth += 1,
+            '}' if !in_string => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    let end = start + offset + ch.len_utf8();
+                    return Some(&raw[start..end]);
+                }
+            }
+            _ => {}
         }
     }
     None
 }
 
-fn parse_will_action(raw: &str) -> anyhow::Result<WillAction> {
-    let mut rest = raw.to_string();
-    let functions = extract_functions(&mut rest);
-    let mut thoughts = Vec::new();
-
-    while let Some(start) = rest.find("<thought>") {
-        if let Some(end_rel) = rest[start..].find("</thought>") {
-            let full_end = start + end_rel + "</thought>".len();
-            thoughts.push(rest[start + 9..start + end_rel].trim().to_string());
-            rest.replace_range(start..full_end, " ");
-        } else {
-            thoughts.push(rest[start + 9..].trim().to_string());
-            rest.replace_range(start.., "");
-            break;
-        }
-    }
-
-    let thought = if thoughts.is_empty() {
-        None
-    } else {
-        Some(thoughts.join(" "))
-    };
-
-    let emoji = match normalize_emoji(&rest) {
-        Some(e) => e,
-        None => "😐".to_string(),
-    };
-
-    let say_text = rest.replace(&emoji, "").trim().to_string();
-    let say = if say_text.is_empty() { None } else { Some(say_text) };
-
-    Ok(WillAction {
-        emoji,
-        thought,
-        say,
-        functions,
-        system_prompt: String::new(),
-        history: Vec::new(),
-        report: None,
-    })
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum JavascriptCommandPayload {
+    Say { text: String },
+    ListFiles,
+    ReadSourceFile { file: String, page: Option<usize> },
 }
 
-fn normalize_emoji(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return None;
+fn execute_javascript_commands(script: &str) -> anyhow::Result<Vec<JavascriptCommand>> {
+    if script.trim().is_empty() {
+        return Ok(Vec::new());
     }
-    psyche::extract_emojis(trimmed).1.last().cloned()
+
+    let wrapped = format!(
+        r#"
+const __daringsbyCommands = [];
+function __daringsbyString(value) {{
+  return value === undefined || value === null ? "" : String(value);
+}}
+function say(text) {{
+  __daringsbyCommands.push({{kind: "say", text: __daringsbyString(text)}});
+}}
+function list_files() {{
+  __daringsbyCommands.push({{kind: "list_files"}});
+}}
+function read_source_file(path, page) {{
+  const command = {{kind: "read_source_file", file: __daringsbyString(path)}};
+  if (page !== undefined) command.page = Number(page);
+  __daringsbyCommands.push(command);
+}}
+const read_file = read_source_file;
+{script}
+JSON.stringify(__daringsbyCommands);
+"#
+    );
+
+    let value = javascript::evaluate_script(wrapped, None::<&std::path::Path>)
+        .map_err(|err| anyhow::anyhow!("javascript evaluation failed: {err}"))?;
+    let json = match value {
+        javascript::Value::String(units) => String::from_utf16_lossy(&units),
+        other => anyhow::bail!("javascript command program returned non-string value: {other}"),
+    };
+    let payloads: Vec<JavascriptCommandPayload> = serde_json::from_str(&json)?;
+    Ok(payloads
+        .into_iter()
+        .filter_map(|payload| match payload {
+            JavascriptCommandPayload::Say { text } => {
+                let text = text.trim();
+                (!text.is_empty()).then(|| JavascriptCommand::Say(text.to_string()))
+            }
+            JavascriptCommandPayload::ListFiles => Some(JavascriptCommand::ListFiles),
+            JavascriptCommandPayload::ReadSourceFile { file, page } => {
+                let file = file.trim();
+                (!file.is_empty()).then(|| JavascriptCommand::ReadSourceFile {
+                    file: file.to_string(),
+                    page: page.unwrap_or(1).max(1),
+                })
+            }
+        })
+        .collect())
 }
 
 async fn store_thought_sensation(
@@ -492,24 +456,6 @@ async fn store_thought_sensation(
         [combobulation.id.clone()],
     );
     let impression = Impression::new(vec![stimulus], summary, None::<String>);
-    let sensation = Sensation::of_at(impression, occurred_at);
-    observer.observe_sensation(&sensation).await;
-}
-
-async fn store_active_face_sensation(
-    observer: &SensationGraphObserver,
-    combobulation: &GraphLatestCombobulation,
-    emoji: &str,
-) {
-    let occurred_at = Utc::now();
-    let summary = format!("I turn my face into a {emoji}.");
-    let stimulus_at = parse_utc(&combobulation.formed_at).unwrap_or(occurred_at);
-    let stimulus = Stimulus::with_source_sensation_ids(
-        combobulation.text.clone(),
-        stimulus_at,
-        [combobulation.id.clone()],
-    );
-    let impression = Impression::new(vec![stimulus], summary, Some(emoji.to_string()));
     let sensation = Sensation::of_at(impression, occurred_at);
     observer.observe_sensation(&sensation).await;
 }
@@ -532,21 +478,6 @@ async fn store_speech_intention_sensation(
     observer.observe_sensation(&sensation).await;
 }
 
-async fn store_will_context_sensation(
-    observer: &SensationGraphObserver,
-    system_prompt: String,
-    history: Vec<ConversationEntry>,
-    report: Option<WitReport>,
-) {
-    let context = WillContext {
-        system_prompt,
-        history,
-        report,
-    };
-    let sensation = Sensation::of_at(context, Utc::now());
-    observer.observe_sensation(&sensation).await;
-}
-
 async fn store_function_result_sensation(
     observer: &SensationGraphObserver,
     combobulation: &GraphLatestCombobulation,
@@ -563,6 +494,20 @@ async fn store_function_result_sensation(
     );
     let impression = Impression::new(vec![stimulus], summary, None::<String>);
     let sensation = Sensation::of_at(impression, occurred_at);
+    observer.observe_sensation(&sensation).await;
+}
+
+async fn store_will_context_sensation(
+    observer: &SensationGraphObserver,
+    system_prompt: String,
+    report: Option<WitReport>,
+) {
+    let context = WillContext {
+        system_prompt,
+        history: Vec::<ConversationEntry>::new(),
+        report,
+    };
+    let sensation = Sensation::of_at(context, Utc::now());
     observer.observe_sensation(&sensation).await;
 }
 
@@ -586,57 +531,86 @@ mod tests {
     }
 
     #[test]
-    fn will_prompt_uses_latest_combobulation_without_timeline() {
-        let prompt = will_system_prompt(&latest(), None, None);
+    fn will_prompt_uses_instruction_json_without_conversation() {
+        let prompt = will_instruction_prompt(&latest(), None, None);
 
         assert!(prompt.contains("You are PETE"));
-        assert!(prompt.contains("This is the situation as you understand it"));
-        assert!(prompt.contains("I notice someone nearby."));
-        assert!(prompt.contains("<thought>...</thought>"));
-        assert!(!prompt.contains("Timeline:"));
+        assert!(prompt.contains("Return only a JSON object"));
+        assert!(prompt.contains("\"thought\""));
+        assert!(prompt.contains("\"javascript\""));
+        assert!(prompt.contains("list_files()"));
+        assert!(prompt.contains("read_source_file(path, page)"));
+        assert!(!prompt.contains("conversation history"));
+        assert!(!prompt.contains("<thought>"));
+        assert!(!prompt.contains("<function"));
     }
 
     #[test]
-    fn parses_chat_response_with_thought_and_emoji() {
-        let action = parse_will_action("<thought> I should smile </thought> Hello there! 🙂").unwrap();
-        assert_eq!(action.emoji, "🙂");
-        assert_eq!(action.say.as_deref(), Some("Hello there!"));
-        assert_eq!(action.thought.as_deref(), Some("I should smile"));
+    fn parses_structured_action_with_javascript() {
+        let action = parse_will_action(
+            r#"{"thought":"Inspect my source next.","javascript":"const target = 'source'; list_files(); say(`I am checking my ${target}.`);"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(action.thought, "Inspect my source next.");
+        assert_eq!(
+            action.commands,
+            vec![
+                JavascriptCommand::ListFiles,
+                JavascriptCommand::Say("I am checking my source.".into())
+            ]
+        );
     }
 
     #[test]
-    fn parses_chat_response_with_only_emoji() {
-        let action = parse_will_action("😐").unwrap();
-        assert_eq!(action.emoji, "😐");
-        assert_eq!(action.say, None);
-        assert_eq!(action.thought, None);
+    fn parses_json_inside_markdown_fence() {
+        let action = parse_will_action(
+            "```json\n{\"thought\":\"Read a file.\",\"javascript\":\"read_source_file('pete/src/bin/will.rs', 1 + 1);\"}\n```",
+        )
+        .unwrap();
+
+        assert_eq!(action.thought, "Read a file.");
+        assert_eq!(
+            action.commands,
+            vec![JavascriptCommand::ReadSourceFile {
+                file: "pete/src/bin/will.rs".into(),
+                page: 2
+            }]
+        );
     }
 
     #[test]
-    fn parses_chat_response_without_emoji_defaults_to_neutral() {
-        let action = parse_will_action("<thought> thinking </thought> Hi").unwrap();
-        assert_eq!(action.emoji, "😐");
-        assert_eq!(action.say.as_deref(), Some("Hi"));
-        assert_eq!(action.thought.as_deref(), Some("thinking"));
+    fn javascript_errors_are_rejected() {
+        let err = parse_will_action(
+            r#"{"thought":"Try an unsupported call.","javascript":"fetch('http://example.test'); say('hi');"}"#,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("fetch"));
     }
 
     #[test]
-    fn parses_chat_response_with_unclosed_thought() {
-        let action = parse_will_action("Hello! <thought> I forgot to close this").unwrap();
-        assert_eq!(action.emoji, "😐");
-        assert_eq!(action.say.as_deref(), Some("Hello!"));
-        assert_eq!(action.thought.as_deref(), Some("I forgot to close this"));
+    fn read_file_alias_defaults_to_first_page() {
+        let action = parse_will_action(
+            r#"{"thought":"Use the alias.","javascript":"read_file(\"psyche/src/lib.rs\");"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            action.commands,
+            vec![JavascriptCommand::ReadSourceFile {
+                file: "psyche/src/lib.rs".into(),
+                page: 1
+            }]
+        );
     }
+
     #[test]
-    fn parses_multiple_thoughts_and_functions() {
-        let raw = "<thought> T1 </thought> <function name=\"list_source\"></function> Hello! <thought> T2 </thought> <function name=\"read_source\" file=\"a.rs\"></function> 🙂";
-        let action = parse_will_action(raw).unwrap();
-        assert_eq!(action.emoji, "🙂");
-        assert_eq!(action.say.as_deref(), Some("Hello!"));
-        assert_eq!(action.thought.as_deref(), Some("T1 T2"));
-        assert_eq!(action.functions.len(), 2);
-        assert_eq!(action.functions[0].name, "list_source");
-        assert_eq!(action.functions[1].name, "read_source");
-        assert_eq!(action.functions[1].file.as_deref(), Some("a.rs"));
+    fn unstructured_response_becomes_thought_without_commands() {
+        let action = parse_will_action("Think about source navigation.").unwrap();
+
+        assert_eq!(action.thought, "Think about source navigation.");
+        assert!(action.javascript.is_empty());
+        assert!(action.commands.is_empty());
     }
 }

@@ -1,4 +1,4 @@
-pub use psyche::{BrowserMotion, ConversationEntry, GeoLoc, WitReport, WillContext};
+pub use psyche::{BrowserMotion, ConversationEntry, GeoLoc, WillContext, WitReport};
 use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -80,6 +80,8 @@ pub enum WsPayload {
     SystemPrompt(String),
     /// A single entry in the conversation log.
     ConversationEntry(ConversationEntry),
+    /// Batch update of the entire conversation context.
+    FullHistory(WillContext),
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -101,4 +103,3 @@ pub enum SpeechPlaybackStatus {
     Finished,
     Interrupted,
 }
-

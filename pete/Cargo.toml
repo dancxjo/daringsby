@@ -38,6 +38,7 @@ whisper-rs = { version = "0.16", optional = true }
 voxudio = { version = "0.6.2", default-features = false, features = ["model"], optional = true }
 open_clip_inference = { version = "0.4.0", optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"], optional = true }
+javascript = "0.1.13"
 
 [features]
 default = ["tts", "asr-cuda", "voice", "all-sensors", "scene-vec"]
@@ -117,6 +118,10 @@ path = "src/bin/combobulate.rs"
 [[bin]]
 name = "will"
 path = "src/bin/will.rs"
+
+[[bin]]
+name = "conversant"
+path = "src/bin/conversant.rs"
 
 [[bin]]
 name = "timeline"

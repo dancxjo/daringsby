@@ -2715,6 +2715,8 @@ async fn neo4j_client_loads_latest_pending_speech_intention() {
                 .path("/db/neo4j/tx/commit")
                 .body_contains("I ought to say: ")
                 .body_contains("I start saying: ")
+                .body_contains("I queue saying: ")
+                .body_contains(r#"I start saying \\\"\" + words + \"\\\".\""#)
                 .body_contains("RETURN n.id, words, formed_at");
             then.status(200).body(
                 r#"{"results":[{"data":[{"row":["impression:1","Hello there.","2026-05-07T12:00:00Z"]}]}],"errors":[]}"#,

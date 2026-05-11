@@ -229,7 +229,11 @@ impl AsrService {
     ///
     /// Stored clips are expected to be 16-bit little-endian PCM or WAV audio at
     /// the service sample rate. Multi-channel clips are downmixed to mono.
-    pub async fn transcribe_clip(&self, clip: &AudioClip, initial_prompt: Option<&str>) -> Result<ClipTranscription> {
+    pub async fn transcribe_clip(
+        &self,
+        clip: &AudioClip,
+        initial_prompt: Option<&str>,
+    ) -> Result<ClipTranscription> {
         anyhow::ensure!(self.has_whisper_model(), "Whisper model not configured");
         let audio = decode_audio_clip_samples(clip, self.sample_rate)?;
         let segments = self.transcribe(audio, initial_prompt).await?;
@@ -244,7 +248,11 @@ impl AsrService {
     }
 
     /// Transcribe a stored audio clip and return Whisper's joined text.
-    pub async fn transcribe_clip_text(&self, clip: &AudioClip, initial_prompt: Option<&str>) -> Result<String> {
+    pub async fn transcribe_clip_text(
+        &self,
+        clip: &AudioClip,
+        initial_prompt: Option<&str>,
+    ) -> Result<String> {
         Ok(self.transcribe_clip(clip, initial_prompt).await?.text)
     }
 
@@ -327,7 +335,11 @@ impl AsrService {
         (pcm_tx, transcript_rx)
     }
 
-    async fn transcribe(&self, audio: Vec<f32>, initial_prompt: Option<&str>) -> Result<Vec<SegmentInternal>> {
+    async fn transcribe(
+        &self,
+        audio: Vec<f32>,
+        initial_prompt: Option<&str>,
+    ) -> Result<Vec<SegmentInternal>> {
         let Some(ctx) = self.context.clone() else {
             return Ok(Vec::new());
         };
@@ -350,7 +362,13 @@ impl AsrService {
             params.set_single_segment(false);
             params.set_n_threads(std::cmp::max(1, num_cpus::get() as i32 - 1));
             if let Some(p) = prompt.as_deref() {
-                params.set_initial_prompt(p);
+                // Truncate prompt to avoid confusing the model with too much context
+                let truncated = if p.len() > 200 {
+                    &p[p.len() - 200..]
+                } else {
+                    p
+                };
+                params.set_initial_prompt(truncated);
             }
 
             state
@@ -393,6 +411,10 @@ impl AsrService {
                     &mut word_start,
                     word_end.unwrap_or_else(|| seconds_to_ms(end_s)),
                 );
+
+                if is_hallucination(&text) {
+                    continue;
+                }
 
                 segments.push(SegmentInternal {
                     text: text.trim().to_string(),
@@ -1030,7 +1052,10 @@ async fn emit_transcript(
 ) {
     let segments = segments
         .into_iter()
-        .filter(|segment| !segment.text.trim().is_empty())
+        .filter(|segment| {
+            let text = segment.text.trim();
+            !text.is_empty() && !is_hallucination(text)
+        })
         .collect::<Vec<_>>();
     let Some(first) = segments.first() else {
         return;
@@ -1070,6 +1095,46 @@ async fn emit_transcript(
         );
     }
     let _ = out_tx.send(transcript).await;
+}
+
+fn is_hallucination(text: &str) -> bool {
+    let text = text.trim();
+    if text.is_empty() {
+        return true;
+    }
+
+    // Common Whisper hallucinations on silence or background noise
+    let lower = text.to_lowercase();
+    if lower.contains("heart out lab") {
+        return true;
+    }
+    if lower.contains("thank you for watching") {
+        return true;
+    }
+    if lower.contains("subscribe") && lower.contains("channel") {
+        return true;
+    }
+    if lower == "[blank_audio]" || lower == "[blank_audio]." {
+        return true;
+    }
+
+    // Japanese-style brackets often indicate a hallucination in English models
+    // or the model thinking noise is background music/sound effects.
+    // However, we allow parenthetical sound effects like (crunch) if they aren't
+    // known hallucinations.
+    if text.starts_with('『') && text.ends_with('』') {
+        return true;
+    }
+
+    // If it's just emojis or punctuation, it's likely a hallucination
+    if text
+        .chars()
+        .all(|c| c.is_ascii_punctuation() || !c.is_alphanumeric())
+    {
+        return true;
+    }
+
+    false
 }
 
 fn encode_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
@@ -1338,5 +1403,21 @@ mod tests {
         assert_eq!(audio.transcript.as_deref(), Some("hello"));
         assert_eq!(audio.sample_rate, 16_000);
         assert_eq!(audio.channels, 1);
+    }
+    #[test]
+    fn hallucination_filter_detects_common_artifacts() {
+        use super::is_hallucination;
+        assert!(is_hallucination("Heart Out Lab."));
+        assert!(is_hallucination("『Heart Out Lab.』"));
+        assert!(is_hallucination("Thank you for watching."));
+        assert!(is_hallucination("[BLANK_AUDIO]"));
+        assert!(is_hallucination("『Japanese Brackets』"));
+        assert!(is_hallucination("💕"));
+        assert!(is_hallucination("..."));
+
+        // Legitimate sound effects should pass
+        assert!(!is_hallucination("(crunch)"));
+        assert!(!is_hallucination("[Music]"));
+        assert!(!is_hallucination("Hello world"));
     }
 }

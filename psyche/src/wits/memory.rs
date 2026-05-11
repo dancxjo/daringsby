@@ -3004,6 +3004,8 @@ impl Neo4jClient {
                     MATCH (n:GraphNode:Sensation)
                     WHERE n.how STARTS WITH "Result of list_source:"
                        OR n.how STARTS WITH "Result of read_source:"
+                       OR n.how STARTS WITH "Result of list_files:"
+                       OR n.how STARTS WITH "Result of read_source_file:"
                     RETURN n.how
                     ORDER BY datetime(coalesce(n.occurred_at, n.timestamp, "")) DESC
                     LIMIT $limit
@@ -3172,7 +3174,7 @@ impl Neo4jClient {
         Ok(serde_json::from_str(data)?)
     }
 
-    /// Return the newest Will speech intention that has not started playback.
+    /// Return the newest queued speech intention that has not started playback.
     pub async fn latest_pending_speech_intention(&self) -> Result<Option<GraphSpeechIntention>> {
         let endpoint = self.http_endpoint()?;
         let rows = query_neo4j_rows(
@@ -3182,34 +3184,47 @@ impl Neo4jClient {
             &self.pass,
             CypherStatement {
                 statement: r#"
-                    MATCH (n:GraphNode)
-                    WHERE n:Impression
-                       OR (n:Sensation AND n.kind = "impression")
+                    MATCH (n:GraphNode:Sensation)
                     WITH n,
-                        coalesce(n.summary, n.how, "") AS summary,
-                        coalesce(n.timestamp, n.how_formed_at, n.occurred_at, "") AS formed_at
-                    WHERE formed_at <> ""
-                      AND summary STARTS WITH "I ought to say: "
-                    WITH n, summary, formed_at,
-                        substring(summary, size("I ought to say: ")) AS words
-                    WHERE trim(words) <> ""
+                        coalesce(n.how, n.summary, "") AS text,
+                        coalesce(n.occurred_at, n.timestamp, "") AS formed_at
+                    WHERE text STARTS WITH "I ought to say: "
+                      AND formed_at <> ""
+                    WITH n, text, formed_at
+                    ORDER BY datetime(formed_at) DESC
+                    LIMIT 20
+                    WITH n,
+                        substring(text, size("I ought to say: ")) AS words,
+                        formed_at
+                    WITH n, words, formed_at,
+                        CASE
+                            WHEN words ENDS WITH "." THEN substring(words, 0, size(words) - 1)
+                            ELSE words
+                        END AS words_without_period
+                    WHERE trim(words_without_period) <> ""
                       AND NOT EXISTS {
-                        MATCH (later:GraphNode)
-                        WHERE later:Impression
-                           OR (later:Sensation AND later.kind = "impression")
+                        MATCH (later:GraphNode:Sensation)
                         WITH later,
-                            coalesce(later.summary, later.how, "") AS later_summary,
-                            coalesce(later.timestamp, later.how_formed_at, later.occurred_at, "") AS later_formed_at,
+                            coalesce(later.how, later.summary, "") AS later_text,
+                            coalesce(later.occurred_at, later.timestamp, "") AS later_at,
                             words,
+                            words_without_period,
                             formed_at
-                        WHERE later_formed_at <> ""
-                          AND datetime(later_formed_at) >= datetime(formed_at)
+                        WHERE later_at <> ""
+                          AND datetime(later_at) >= datetime(formed_at)
                           AND (
-                            later_summary = "I start saying: " + words
-                            OR later_summary = "I finish saying: " + words
-                            OR later_summary = "I stop saying: " + words
+                            later_text = "I start saying: " + words
+                            OR later_text = "I finish saying: " + words
+                            OR later_text = "I stop saying: " + words
+                            OR later_text = "I queue saying: " + words
+                            OR later_text = "I start saying \"" + words + "\"."
+                            OR later_text = "I finish saying \"" + words + "\"."
+                            OR later_text = "I stop saying \"" + words + "\"."
+                            OR later_text = "I start saying \"" + words_without_period + "\"."
+                            OR later_text = "I finish saying \"" + words_without_period + "\"."
+                            OR later_text = "I stop saying \"" + words_without_period + "\"."
                           )
-                      }
+                    }
                     RETURN n.id, words, formed_at
                     ORDER BY datetime(formed_at) DESC, n.id DESC
                     LIMIT 1
@@ -3497,7 +3512,11 @@ impl Neo4jClient {
             format!("{source_sensation_id}:{transcription_id}").as_bytes(),
         );
         let occurred_at = source_captured_at.unwrap_or(transcribed_at);
-        let mut how = if transcript == "[BLANK_AUDIO]." {
+        let mut how = if transcript.is_empty()
+            || transcript.trim() == "[BLANK_AUDIO]"
+            || transcript.trim() == "[BLANK_AUDIO]."
+            || transcript.trim() == "silence"
+        {
             "I hear silence.".to_string()
         } else {
             format!("I heard: {transcript}")
