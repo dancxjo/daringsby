@@ -63,17 +63,17 @@ pub mod wits {
         BasicMemory, GraphAudioClip, GraphAudioClipWindow, GraphAudioSourceSpan, GraphAwareness,
         GraphClusterItem, GraphClusterTheme, GraphCombobulationEmotion,
         GraphConsolidatedSpeechCandidate, GraphConsolidatedSpeechSource, GraphFaceDetection,
-        GraphFaceIdentity, GraphFaceIdentityLabel, GraphFaceMatch, GraphGeolocation,
-        GraphImageDescription, GraphImageFrame, GraphImpressionTimelineItem,
+        GraphFaceIdentity, GraphFaceIdentityLabel, GraphFaceIdentityTarget, GraphFaceMatch,
+        GraphGeolocation, GraphImageDescription, GraphImageFrame, GraphImpressionTimelineItem,
         GraphLatestCombobulation, GraphMovieImageFrame, GraphMovieSpeechSegment, GraphNodeDetails,
         GraphNodeSnapshot, GraphRelationshipSnapshot, GraphSceneVectorization,
         GraphSensationTimelineItem, GraphSnapshot, GraphSpeechConsolidationReport,
         GraphSpeechIntention, GraphSpeechSegment, GraphSpeechSegmentAudio, GraphStore,
         GraphTimelineItem, GraphTimelineWindow, GraphVoiceClip, GraphVoiceIdentity,
-        GraphVoiceIdentityLabel, GraphVoiceMatch, GraphVoiceRecognition, GraphVoiceSample,
-        GraphVoiceSignature, Memory, Neo4jClient, NoopMemory, QdrantClient, QdrantNearestNeighbor,
-        QdrantVectorPoint, VectorCluster, VectorClusterMember, find_vector_clusters,
-        qdrant_vector_collections,
+        GraphVoiceIdentityLabel, GraphVoiceIdentityTarget, GraphVoiceMatch, GraphVoiceRecognition,
+        GraphVoiceSample, GraphVoiceSignature, Memory, Neo4jClient, NoopMemory, QdrantClient,
+        QdrantNearestNeighbor, QdrantVectorPoint, VectorCluster, VectorClusterMember,
+        find_vector_clusters, qdrant_vector_collections,
     };
     pub use memory_wit::MemoryWit;
     pub use moment_wit::MomentWit;
@@ -129,11 +129,11 @@ pub use prompt::{
 pub use topics::{Topic, TopicBus, TopicMessage};
 pub use trim_mouth::TrimMouth;
 pub use types::{
-    AudioClip, BrowserMotion, CombobulationSummary, Decision, DeviceOrientation, GeoEmbedding,
-    GeoLoc, Heartbeat, ImageData, ImageEmbedding, MotionVector, ObjectInfo, VoiceInfo,
-    audio_captured_at, audio_clip_id, browser_motion_content_id, browser_motion_observed_at,
-    geoloc_content_id, geoloc_observed_at, geoloc_vector, image_captured_at, image_content_id,
-    parse_observed_at, ConversationEntry, WillContext,
+    AudioClip, BrowserMotion, CombobulationSummary, ConversationEntry, Decision, DeviceOrientation,
+    GeoEmbedding, GeoLoc, Heartbeat, ImageData, ImageEmbedding, MotionVector, ObjectInfo,
+    VoiceInfo, WillContext, audio_captured_at, audio_clip_id, browser_motion_content_id,
+    browser_motion_observed_at, geoloc_content_id, geoloc_observed_at, geoloc_vector,
+    image_captured_at, image_content_id, parse_observed_at,
 };
 
 pub use ling::{Feeling, PromptBuilder};
@@ -154,15 +154,15 @@ pub use wits::{
     GraphAudioClipWindow, GraphAudioSourceSpan, GraphAwareness, GraphClusterItem,
     GraphClusterTheme, GraphCombobulationEmotion, GraphConsolidatedSpeechCandidate,
     GraphConsolidatedSpeechSource, GraphFaceDetection, GraphFaceIdentity, GraphFaceIdentityLabel,
-    GraphFaceMatch, GraphGeolocation, GraphImageDescription, GraphImageFrame,
-    GraphImpressionTimelineItem, GraphLatestCombobulation, GraphMovieImageFrame,
+    GraphFaceIdentityTarget, GraphFaceMatch, GraphGeolocation, GraphImageDescription,
+    GraphImageFrame, GraphImpressionTimelineItem, GraphLatestCombobulation, GraphMovieImageFrame,
     GraphMovieSpeechSegment, GraphNodeDetails, GraphNodeSnapshot, GraphRelationshipSnapshot,
     GraphSceneVectorization, GraphSensationTimelineItem, GraphSnapshot,
     GraphSpeechConsolidationReport, GraphSpeechIntention, GraphSpeechSegment,
     GraphSpeechSegmentAudio, GraphStore, GraphTimelineItem, GraphTimelineWindow, GraphVoiceClip,
-    GraphVoiceIdentity, GraphVoiceIdentityLabel, GraphVoiceMatch, GraphVoiceRecognition,
-    GraphVoiceSample, GraphVoiceSignature, HeartWit, IdentityWit, Memory, MemoryWit, Neo4jClient,
-    NoopMemory, QdrantClient, QdrantNearestNeighbor, QdrantVectorPoint, SensationGraphObserver,
-    VectorCluster, VectorClusterMember, VisionWit, VoiceMemoryWit, Will, find_vector_clusters,
-    qdrant_vector_collections,
+    GraphVoiceIdentity, GraphVoiceIdentityLabel, GraphVoiceIdentityTarget, GraphVoiceMatch,
+    GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature, HeartWit, IdentityWit, Memory,
+    MemoryWit, Neo4jClient, NoopMemory, QdrantClient, QdrantNearestNeighbor, QdrantVectorPoint,
+    SensationGraphObserver, VectorCluster, VectorClusterMember, VisionWit, VoiceMemoryWit, Will,
+    find_vector_clusters, qdrant_vector_collections,
 };

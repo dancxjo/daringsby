@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use lingproc::{Chatter, Doer, LlmInstruction, Message, TextStream, Vectorizer};
 use psyche::{
-    Conversation, DEFAULT_SYSTEM_PROMPT, Ear, Impression, Mouth, PromptBuilder, Psyche, Stimulus,
-    with_default_system_prompt,
+    Conversation, DEFAULT_SYSTEM_PROMPT, Ear, Impression, Mouth, PromptBuilder, PromptFragment,
+    Psyche, Stimulus, WillPrompt, with_default_system_prompt,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -66,6 +66,10 @@ fn default_prompt_present() {
         ear,
     );
     assert_eq!(psyche.system_prompt(), DEFAULT_SYSTEM_PROMPT);
+    assert!(
+        DEFAULT_SYSTEM_PROMPT
+            .contains("Pete Daringsby, an artificial intelligence, not simply an LLM")
+    );
 }
 
 #[test]
@@ -73,6 +77,7 @@ fn one_shot_prompt_includes_default_prompt() {
     let prompt = with_default_system_prompt("Summarize what I saw.");
 
     assert!(prompt.contains(DEFAULT_SYSTEM_PROMPT.trim()));
+    assert!(prompt.contains("Pete Daringsby, an artificial intelligence, not simply an LLM"));
     assert!(prompt.contains("Task:\nSummarize what I saw."));
     assert!(prompt.contains("write in the first person"));
     assert!(prompt.contains("multiple frames from the same continuous stream"));
@@ -82,6 +87,16 @@ fn one_shot_prompt_includes_default_prompt() {
     assert!(prompt.contains("Do not infer an emotional tone from sensor volume alone"));
     assert!(prompt.contains("Prefer compact summaries over exhaustive breakdowns"));
     assert!(prompt.contains("Do not enumerate raw ids"));
+}
+
+#[test]
+fn will_prompt_uses_pete_identity() {
+    let prompt = WillPrompt.build_prompt("I heard: hello.");
+
+    assert!(prompt.contains("Pete Daringsby"));
+    assert!(prompt.contains("an artificial intelligence, not simply an LLM"));
+    assert!(!prompt.contains("You are the Will"));
+    assert!(!prompt.contains("You are will"));
 }
 
 #[test]

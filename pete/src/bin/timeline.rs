@@ -65,16 +65,30 @@ async fn main() -> anyhow::Result<()> {
 
 async fn follow_timeline(graph: &Neo4jClient, cli: &Cli) -> anyhow::Result<()> {
     let mut seen = HashSet::new();
+    let mut from = match &cli.from {
+        Some(value) => Some(parse_time(value).context("invalid --from")?),
+        None => Some(Utc::now()),
+    };
+    let fixed_to = cli
+        .to
+        .as_deref()
+        .map(parse_time)
+        .transpose()
+        .context("invalid --to")?;
     let mut ticker = interval(TokioDuration::from_millis(cli.poll_ms.max(100)));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     loop {
         ticker.tick().await;
-        let (from, to) = time_range(cli)?;
+        let to = fixed_to.unwrap_or_else(Utc::now);
+        if let Some(from) = from.as_ref() {
+            anyhow::ensure!(from <= &to, "--from must be earlier than or equal to --to");
+        }
         let items = graph
             .sensation_timeline(from, to, cli.limit)
             .await
             .context("failed to load impression timeline")?;
+        from = latest_item_time(&items).or(from);
         let mut new_items = Vec::new();
         for item in items {
             if seen.insert(item.id.clone()) {
@@ -100,6 +114,13 @@ async fn follow_timeline(graph: &Neo4jClient, cli: &Cli) -> anyhow::Result<()> {
             }
         }
     }
+}
+
+fn latest_item_time(items: &[GraphSensationTimelineItem]) -> Option<DateTime<Utc>> {
+    items
+        .iter()
+        .filter_map(|item| parse_time(&item.occurred_at).ok())
+        .max()
 }
 
 fn time_range(cli: &Cli) -> anyhow::Result<(Option<DateTime<Utc>>, DateTime<Utc>)> {

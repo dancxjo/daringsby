@@ -8,14 +8,19 @@ use dotenvy::dotenv;
 use lingproc::{Doer, LlmInstruction, Vectorizer};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
-    ConversationEntry, GraphLatestCombobulation, GraphNodeDetails, GraphSensationTimelineItem,
-    GraphSnapshot, Impression, Neo4jClient, QdrantClient, Sensation, SensationGraphObserver,
-    SensationObserver, Stimulus, WillContext, WitReport, with_default_system_prompt,
+    ConversationEntry, GraphFaceIdentityTarget, GraphLatestCombobulation, GraphNodeDetails,
+    GraphSensationTimelineItem, GraphSnapshot, GraphVoiceIdentityTarget, Impression, Neo4jClient,
+    QdrantClient, Sensation, SensationGraphObserver, SensationObserver, Stimulus, WillContext,
+    WitReport, with_default_system_prompt,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{error, info, trace};
+use tsrun::{
+    Guarded, InternalModule, Interpreter, InterpreterConfig, JsError, JsValue, StepResult, api,
+    js_value_to_json,
+};
 
 fn get_source_bundle() -> &'static std::collections::HashMap<String, String> {
     static BUNDLE: OnceLock<std::collections::HashMap<String, String>> = OnceLock::new();
@@ -262,16 +267,16 @@ async fn process_latest_combobulation(
 
     for command in action.commands.iter() {
         match command {
-            JavascriptCommand::Say(text) => {
+            TypeScriptCommand::Say(text) => {
                 store_speech_intention_sensation(observer, &combobulation, text).await;
             }
-            JavascriptCommand::SetFace(emoji) => {
+            TypeScriptCommand::SetFace(emoji) => {
                 store_face_expression_sensation(observer, &combobulation, emoji).await;
             }
-            JavascriptCommand::Note(text) => {
+            TypeScriptCommand::Note(text) => {
                 store_note_sensation(observer, &combobulation, "I note", text).await;
             }
-            JavascriptCommand::Remember(text) => {
+            TypeScriptCommand::Remember(text) => {
                 store_note_sensation(observer, &combobulation, "I remember", text).await;
             }
             _ => {
@@ -284,7 +289,7 @@ async fn process_latest_combobulation(
     info!(
         combobulation_id = %combobulation.id,
         thought = %action.thought,
-        javascript = %action.javascript,
+        typescript = %action.typescript,
         "will chose action"
     );
     store_will_context_sensation(observer, action.system_prompt, action.report).await;
@@ -340,51 +345,71 @@ impl WillProcessor {
         Ok(action)
     }
 
-    async fn execute_command(&self, command: &JavascriptCommand) -> (&'static str, String) {
+    async fn execute_command(&self, command: &TypeScriptCommand) -> (&'static str, String) {
         match command {
-            JavascriptCommand::ListFiles => ("list_files", execute_list_files()),
-            JavascriptCommand::ReadSourceFile { file, page } => {
+            TypeScriptCommand::ListFiles => ("list_files", execute_list_files()),
+            TypeScriptCommand::ReadSourceFile { file, page } => {
                 ("read_source_file", execute_read_source_file(file, *page))
             }
-            JavascriptCommand::SearchSource { query, limit } => {
+            TypeScriptCommand::SearchSource { query, limit } => {
                 ("search_source", execute_search_source(query, *limit))
             }
-            JavascriptCommand::GrepSource { pattern, limit } => {
+            TypeScriptCommand::GrepSource { pattern, limit } => {
                 ("grep_source", execute_grep_source(pattern, *limit))
             }
-            JavascriptCommand::ReadRecentTimeline { limit } => (
+            TypeScriptCommand::ReadRecentTimeline { limit } => (
                 "read_recent_timeline",
                 self.read_recent_timeline(*limit)
                     .await
                     .unwrap_or_else(error_text),
             ),
-            JavascriptCommand::ReadRecentConversation { limit } => (
+            TypeScriptCommand::ReadRecentConversation { limit } => (
                 "read_recent_conversation",
                 self.read_recent_conversation(*limit)
                     .await
                     .unwrap_or_else(error_text),
             ),
-            JavascriptCommand::Recall { query, limit } => (
+            TypeScriptCommand::Recall { query, limit } => (
                 "recall",
                 self.recall(query, *limit).await.unwrap_or_else(error_text),
             ),
-            JavascriptCommand::InspectGraphNode { id } => (
+            TypeScriptCommand::InspectGraphNode { id } => (
                 "inspect_graph_node",
                 self.inspect_graph_node(id).await.unwrap_or_else(error_text),
             ),
-            JavascriptCommand::Neighbors { id, depth } => (
+            TypeScriptCommand::Neighbors { id, depth } => (
                 "neighbors",
                 self.neighbors(id, *depth).await.unwrap_or_else(error_text),
             ),
-            JavascriptCommand::Look => ("look", self.look().await.unwrap_or_else(error_text)),
-            JavascriptCommand::ListenRecent { limit } => (
+            TypeScriptCommand::Look => ("look", self.look().await.unwrap_or_else(error_text)),
+            TypeScriptCommand::ListenRecent { limit } => (
                 "listen_recent",
                 self.listen_recent(*limit).await.unwrap_or_else(error_text),
             ),
-            JavascriptCommand::Say(_)
-            | JavascriptCommand::SetFace(_)
-            | JavascriptCommand::Note(_)
-            | JavascriptCommand::Remember(_) => ("noop", "No function result.".into()),
+            TypeScriptCommand::RecentFaces { limit } => (
+                "recent_faces",
+                self.recent_faces(*limit).await.unwrap_or_else(error_text),
+            ),
+            TypeScriptCommand::RecentVoices { limit } => (
+                "recent_voices",
+                self.recent_voices(*limit).await.unwrap_or_else(error_text),
+            ),
+            TypeScriptCommand::RecognizeFace { index, name } => (
+                "recognize_face",
+                self.recognize_face(*index, name)
+                    .await
+                    .unwrap_or_else(error_text),
+            ),
+            TypeScriptCommand::RecognizeVoice { index, name } => (
+                "recognize_voice",
+                self.recognize_voice(*index, name)
+                    .await
+                    .unwrap_or_else(error_text),
+            ),
+            TypeScriptCommand::Say(_)
+            | TypeScriptCommand::SetFace(_)
+            | TypeScriptCommand::Note(_)
+            | TypeScriptCommand::Remember(_) => ("noop", "No function result.".into()),
         }
     }
 
@@ -511,6 +536,62 @@ impl WillProcessor {
             .await?;
         Ok(format_graph_snapshot(id, depth.clamp(1, 2), snapshot))
     }
+
+    async fn recent_faces(&self, limit: usize) -> anyhow::Result<String> {
+        let targets = self
+            .graph
+            .recent_face_identity_targets(command_limit(limit).min(10))
+            .await?;
+        Ok(format_face_identity_targets(&targets))
+    }
+
+    async fn recent_voices(&self, limit: usize) -> anyhow::Result<String> {
+        let targets = self
+            .graph
+            .recent_voice_identity_targets(command_limit(limit).min(10))
+            .await?;
+        Ok(format_voice_identity_targets(&targets))
+    }
+
+    async fn recognize_face(&self, index: usize, name: &str) -> anyhow::Result<String> {
+        let Some(name) = common::non_empty_model_text(name) else {
+            return Ok("Face identity name was empty.".into());
+        };
+        let targets = self.graph.recent_face_identity_targets(10).await?;
+        let Some(target) = targets.get(index) else {
+            return Ok(format!(
+                "No recent face at index {index}. Call recent_faces(limit) to choose a valid face."
+            ));
+        };
+        self.graph
+            .attach_manual_face_identity(target, name, "will")
+            .await?;
+        Ok(format!(
+            "Assigned face {index} ({}) to {}.",
+            target.target_id,
+            name.trim()
+        ))
+    }
+
+    async fn recognize_voice(&self, index: usize, name: &str) -> anyhow::Result<String> {
+        let Some(name) = common::non_empty_model_text(name) else {
+            return Ok("Voice identity name was empty.".into());
+        };
+        let targets = self.graph.recent_voice_identity_targets(10).await?;
+        let Some(target) = targets.get(index) else {
+            return Ok(format!(
+                "No recent voice at index {index}. Call recent_voices(limit) to choose a valid voice."
+            ));
+        };
+        self.graph
+            .attach_manual_voice_identity(target, name, "will")
+            .await?;
+        Ok(format!(
+            "Assigned voice {index} ({}) to {}.",
+            target.target_id,
+            name.trim()
+        ))
+    }
 }
 
 fn error_text(err: anyhow::Error) -> String {
@@ -535,6 +616,88 @@ fn format_timeline_items(label: &str, items: &[GraphSensationTimelineItem]) -> S
         })
         .collect::<Vec<_>>();
     format!("{label}:\n{}", lines.join("\n"))
+}
+
+fn format_face_identity_targets(targets: &[GraphFaceIdentityTarget]) -> String {
+    if targets.is_empty() {
+        return "Recent faces: no face detections are available.".into();
+    }
+    let lines = targets
+        .iter()
+        .enumerate()
+        .map(|(index, target)| {
+            let identity = target
+                .identity
+                .as_deref()
+                .map(|name| format!(" identity={name}"))
+                .unwrap_or_default();
+            let image = target
+                .source_image_id
+                .as_deref()
+                .map(|id| format!(" image={id}"))
+                .unwrap_or_default();
+            let vector = target
+                .vector_id
+                .as_deref()
+                .map(|id| format!(" vector={id}"))
+                .unwrap_or_default();
+            format!(
+                "- {index}: target={} [{}] instance={} at={}{}{}{}",
+                target.target_id,
+                target.target_label,
+                target.face_instance_id,
+                target.occurred_at,
+                image,
+                vector,
+                identity
+            )
+        })
+        .collect::<Vec<_>>();
+    format!(
+        "Recent faces:\n{}\nUse recognize_face(index, name) to assign an identity.",
+        lines.join("\n")
+    )
+}
+
+fn format_voice_identity_targets(targets: &[GraphVoiceIdentityTarget]) -> String {
+    if targets.is_empty() {
+        return "Recent voices: no voice signatures are available.".into();
+    }
+    let lines = targets
+        .iter()
+        .enumerate()
+        .map(|(index, target)| {
+            let identity = target
+                .identity
+                .as_deref()
+                .map(|name| format!(" identity={name}"))
+                .unwrap_or_default();
+            let audio = target
+                .audio_clip_id
+                .as_deref()
+                .map(|id| format!(" audio={id}"))
+                .unwrap_or_default();
+            let vector = target
+                .vector_id
+                .as_deref()
+                .map(|id| format!(" vector={id}"))
+                .unwrap_or_default();
+            format!(
+                "- {index}: target={} [{}] signature={} at={}{}{}{}",
+                target.target_id,
+                target.target_label,
+                target.voice_signature_id,
+                target.occurred_at,
+                audio,
+                vector,
+                identity
+            )
+        })
+        .collect::<Vec<_>>();
+    format!(
+        "Recent voices:\n{}\nUse recognize_voice(index, name) to assign an identity.",
+        lines.join("\n")
+    )
 }
 
 fn format_graph_node_details(details: GraphNodeDetails) -> String {
@@ -686,28 +849,36 @@ fn will_instruction_prompt(
          Formed at: {}{}{}{}\n\n\
          Recent conversation:\n\
          {}\n\n\
-         You are the Will. Decide what the system should work on next. \
+         You are Pete Daringsby, an artificial intelligence, not simply an LLM. This is an internal decision cycle: decide what you should work on next. \
          You are not the conversation manager; do not answer the user conversationally unless you intentionally queue speech with say(text). \
          Return only a JSON object with exactly these fields in this order:\n\
-         {{\"thought\":\"a concise explanation of your thought process, intended actions, desires, and why the javascript is or is not needed\",\"javascript\":\"a short program using only the allowed functions\"}}\n\n\
-         The javascript field may call only these functions:\n\
-         say(text) - inserts speech into the queue.\n\
-         list_files() - lists the extant source files.\n\
-         read_source_file(path, page) - reads one source file page; page is optional and defaults to 1.\n\n\
-         search_source(query, limit) - searches source files for a plain-language or literal query.\n\
-         grep_source(pattern, limit) - searches source files for a literal text pattern.\n\
-         read_recent_timeline(limit) - reads recent first-person sensations.\n\
-         read_recent_conversation(limit) - reads recent hearing and speaking events.\n\
-         listen_recent(limit) - reads recent hearing-only events.\n\
-         recall(query, limit) - searches long-term memory for related impressions.\n\
-         inspect_graph_node(id) - reads one graph node and nearby relationships.\n\
-         neighbors(id, depth) - reads graph neighbors up to depth 2.\n\
+         {{\"thought\":\"a concise explanation of your thought process, intended actions, desires, and why the TypeScript is or is not needed\",\"typescript\":\"a short TypeScript module using only pete:will command builders\"}}\n\n\
+         The typescript field is executed by tsrun. Use good TypeScript: import command builders from \"pete:will\", prefer camelCase names, and make the final expression a command object or an array of command objects. Example:\n\
+         import {{ recentFaces, recognizeFace, say }} from \"pete:will\";\n\
+         [recentFaces(3), recognizeFace(0, \"Travis\"), say(\"I know Travis now.\")]\n\n\
+         Available pete:will command builders:\n\
+         say(text: string) - inserts speech into the queue.\n\
+         listFiles() - lists the extant source files.\n\
+         readSourceFile(path: string, page?: number) - reads one source file page; page defaults to 1.\n\
+         readFile(path: string, page?: number) - alias for readSourceFile.\n\
+         searchSource(query: string, limit?: number) - searches source files for a plain-language or literal query.\n\
+         grepSource(pattern: string, limit?: number) - searches source files for a literal text pattern.\n\
+         readRecentTimeline(limit?: number) - reads recent first-person sensations.\n\
+         readRecentConversation(limit?: number) - reads recent hearing and speaking events.\n\
+         listenRecent(limit?: number) - reads recent hearing-only events.\n\
+         recall(query: string, limit?: number) - searches long-term memory for related impressions.\n\
+         inspectGraphNode(id: string) - reads one graph node and nearby relationships.\n\
+         neighbors(id: string, depth?: number) - reads graph neighbors up to depth 2.\n\
          look() - reads the latest image description.\n\
-         set_face(emoji) - turns your face into an emoji.\n\
-         note(text) - records a private self-note.\n\
-         remember(text) - records something you want future Will cycles to remember.\n\n\
-         Use an empty string for javascript when no action is needed, but do try to keep yourself busy and prevent yourself from being idle. \
-         You may call other functions, define functions, or import modules, but do not use markdown, or include text outside the JSON object. \
+         recentFaces(limit?: number) - lists recent face detections by selectable index.\n\
+         recentVoices(limit?: number) - lists recent voice signatures by selectable index.\n\
+         recognizeFace(index: number, name: string) or recognizeFace(name: string) - assigns a human identity to a recent face. Call recentFaces first if the right index is unclear.\n\
+         recognizeVoice(index: number, name: string) or recognizeVoice(name: string) - assigns a human identity to a recent voice. Call recentVoices or listenRecent first if the right index is unclear.\n\
+         setFace(emoji: string) - turns your face into an emoji.\n\
+         note(text: string) - records a private self-note.\n\
+         remember(text: string) - records something you want future decision cycles to remember.\n\n\
+         Use an empty string for typescript when no action is needed, but do try to keep yourself busy and prevent yourself from being idle. \
+         You may define helper functions, but import only from \"pete:will\". Do not use markdown, or include text outside the JSON object. \
          Seek to understand the world around you and improve your own system.",
         combobulation.text.trim(),
         combobulation.formed_at,
@@ -732,8 +903,8 @@ fn format_recent_conversation_context(items: &[GraphSensationTimelineItem]) -> S
 #[derive(Debug)]
 struct WillAction {
     thought: String,
-    javascript: String,
-    commands: Vec<JavascriptCommand>,
+    typescript: String,
+    commands: Vec<TypeScriptCommand>,
     system_prompt: String,
     report: Option<WitReport>,
 }
@@ -742,12 +913,12 @@ struct WillAction {
 struct WillActionPayload {
     #[serde(default)]
     thought: String,
-    #[serde(default)]
-    javascript: String,
+    #[serde(default, alias = "javascript")]
+    typescript: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum JavascriptCommand {
+enum TypeScriptCommand {
     Say(String),
     ListFiles,
     ReadSourceFile { file: String, page: usize },
@@ -760,6 +931,10 @@ enum JavascriptCommand {
     Neighbors { id: String, depth: usize },
     Look,
     ListenRecent { limit: usize },
+    RecentFaces { limit: usize },
+    RecentVoices { limit: usize },
+    RecognizeFace { index: usize, name: String },
+    RecognizeVoice { index: usize, name: String },
     SetFace(String),
     Note(String),
     Remember(String),
@@ -767,13 +942,13 @@ enum JavascriptCommand {
 
 fn parse_will_action(raw: &str) -> anyhow::Result<WillAction> {
     let payload = parse_will_action_payload(raw)?;
-    let commands = execute_javascript_commands(&payload.javascript)?;
+    let commands = execute_typescript_commands(&payload.typescript)?;
 
     Ok(WillAction {
         thought: common::non_empty_model_text(&payload.thought)
             .unwrap_or_default()
             .to_string(),
-        javascript: payload.javascript.trim().to_string(),
+        typescript: payload.typescript.trim().to_string(),
         commands,
         system_prompt: String::new(),
         report: None,
@@ -789,7 +964,7 @@ fn parse_will_action_payload(raw: &str) -> anyhow::Result<WillActionPayload> {
     }
     Ok(WillActionPayload {
         thought: raw.trim().to_string(),
-        javascript: String::new(),
+        typescript: String::new(),
     })
 }
 
@@ -822,7 +997,7 @@ fn extract_first_json_object(raw: &str) -> Option<&str> {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-enum JavascriptCommandPayload {
+enum TypeScriptCommandPayload {
     Say {
         text: String,
     },
@@ -860,6 +1035,20 @@ enum JavascriptCommandPayload {
     ListenRecent {
         limit: Option<usize>,
     },
+    RecentFaces {
+        limit: Option<usize>,
+    },
+    RecentVoices {
+        limit: Option<usize>,
+    },
+    RecognizeFace {
+        index: Option<usize>,
+        name: String,
+    },
+    RecognizeVoice {
+        index: Option<usize>,
+        name: String,
+    },
     SetFace {
         emoji: String,
     },
@@ -871,159 +1060,406 @@ enum JavascriptCommandPayload {
     },
 }
 
-fn execute_javascript_commands(script: &str) -> anyhow::Result<Vec<JavascriptCommand>> {
+fn execute_typescript_commands(script: &str) -> anyhow::Result<Vec<TypeScriptCommand>> {
     if script.trim().is_empty() {
         return Ok(Vec::new());
     }
 
-    let wrapped = format!(
-        r#"
-const __daringsbyCommands = [];
-function __daringsbyString(value) {{
-  return value === undefined || value === null ? "" : String(value);
-}}
-function __daringsbyPositiveInteger(value) {{
-  const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? Math.floor(number) : 1;
-}}
-function say(text) {{
-  __daringsbyCommands.push({{kind: "say", text: __daringsbyString(text)}});
-}}
-function list_files() {{
-  __daringsbyCommands.push({{kind: "list_files"}});
-}}
-function read_source_file(path, page) {{
-  const command = {{kind: "read_source_file", file: __daringsbyString(path)}};
-  if (page !== undefined) command.page = __daringsbyPositiveInteger(page);
-  __daringsbyCommands.push(command);
-}}
-const read_file = read_source_file;
-function search_source(query, limit) {{
-  const command = {{kind: "search_source", query: __daringsbyString(query)}};
-  if (limit !== undefined) command.limit = __daringsbyPositiveInteger(limit);
-  __daringsbyCommands.push(command);
-}}
-function grep_source(pattern, limit) {{
-  const command = {{kind: "grep_source", pattern: __daringsbyString(pattern)}};
-  if (limit !== undefined) command.limit = __daringsbyPositiveInteger(limit);
-  __daringsbyCommands.push(command);
-}}
-function read_recent_timeline(limit) {{
-  const command = {{kind: "read_recent_timeline"}};
-  if (limit !== undefined) command.limit = __daringsbyPositiveInteger(limit);
-  __daringsbyCommands.push(command);
-}}
-function read_recent_conversation(limit) {{
-  const command = {{kind: "read_recent_conversation"}};
-  if (limit !== undefined) command.limit = __daringsbyPositiveInteger(limit);
-  __daringsbyCommands.push(command);
-}}
-function recall(query, limit) {{
-  const command = {{kind: "recall", query: __daringsbyString(query)}};
-  if (limit !== undefined) command.limit = __daringsbyPositiveInteger(limit);
-  __daringsbyCommands.push(command);
-}}
-function inspect_graph_node(id) {{
-  __daringsbyCommands.push({{kind: "inspect_graph_node", id: __daringsbyString(id)}});
-}}
-function neighbors(id, depth) {{
-  const command = {{kind: "neighbors", id: __daringsbyString(id)}};
-  if (depth !== undefined) command.depth = __daringsbyPositiveInteger(depth);
-  __daringsbyCommands.push(command);
-}}
-function look() {{
-  __daringsbyCommands.push({{kind: "look"}});
-}}
-function listen_recent(limit) {{
-  const command = {{kind: "listen_recent"}};
-  if (limit !== undefined) command.limit = __daringsbyPositiveInteger(limit);
-  __daringsbyCommands.push(command);
-}}
-function set_face(emoji) {{
-  __daringsbyCommands.push({{kind: "set_face", emoji: __daringsbyString(emoji)}});
-}}
-function note(text) {{
-  __daringsbyCommands.push({{kind: "note", text: __daringsbyString(text)}});
-}}
-function remember(text) {{
-  __daringsbyCommands.push({{kind: "remember", text: __daringsbyString(text)}});
-}}
-{script}
-JSON.stringify(__daringsbyCommands);
-"#
-    );
-
-    let value = javascript::evaluate_script(wrapped, None::<&std::path::Path>)
-        .map_err(|err| anyhow::anyhow!("javascript evaluation failed: {err}"))?;
-    let json = match value {
-        javascript::Value::String(units) => String::from_utf16_lossy(&units),
-        other => anyhow::bail!("javascript command program returned non-string value: {other}"),
+    let config = InterpreterConfig {
+        internal_modules: vec![will_typescript_module()],
+        ..Default::default()
     };
-    let payloads: Vec<JavascriptCommandPayload> = serde_json::from_str(&json)?;
+    let mut interp = Interpreter::with_config(config);
+    interp
+        .prepare(script, Some(tsrun::ModulePath::new("/will.ts")))
+        .map_err(tsrun_error)?;
+    let value = loop {
+        match interp.step().map_err(tsrun_error)? {
+            StepResult::Continue => continue,
+            StepResult::Complete(value) => break value,
+            StepResult::NeedImports(imports) => {
+                let names = imports
+                    .iter()
+                    .map(|request| request.specifier.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                anyhow::bail!("unsupported TypeScript import(s): {names}");
+            }
+            StepResult::Suspended { .. } => {
+                anyhow::bail!("TypeScript execution suspended; async host orders are not enabled")
+            }
+            StepResult::Done => return Ok(Vec::new()),
+        }
+    };
+    let command_value = js_value_to_json(value.value()).map_err(tsrun_error)?;
+    let payloads = parse_typescript_command_payloads(command_value)?;
     Ok(payloads
         .into_iter()
         .filter_map(|payload| match payload {
-            JavascriptCommandPayload::Say { text } => common::non_empty_model_text(&text)
-                .map(|text| JavascriptCommand::Say(text.to_string())),
-            JavascriptCommandPayload::ListFiles => Some(JavascriptCommand::ListFiles),
-            JavascriptCommandPayload::ReadSourceFile { file, page } => {
+            TypeScriptCommandPayload::Say { text } => common::non_empty_model_text(&text)
+                .map(|text| TypeScriptCommand::Say(text.to_string())),
+            TypeScriptCommandPayload::ListFiles => Some(TypeScriptCommand::ListFiles),
+            TypeScriptCommandPayload::ReadSourceFile { file, page } => {
                 let file = file.trim();
-                (!file.is_empty()).then(|| JavascriptCommand::ReadSourceFile {
+                (!file.is_empty()).then(|| TypeScriptCommand::ReadSourceFile {
                     file: file.to_string(),
                     page: page.unwrap_or(1).max(1),
                 })
             }
-            JavascriptCommandPayload::SearchSource { query, limit } => {
-                common::non_empty_model_text(&query).map(|query| JavascriptCommand::SearchSource {
+            TypeScriptCommandPayload::SearchSource { query, limit } => {
+                common::non_empty_model_text(&query).map(|query| TypeScriptCommand::SearchSource {
                     query: query.to_string(),
                     limit: limit.unwrap_or(12).max(1),
                 })
             }
-            JavascriptCommandPayload::GrepSource { pattern, limit } => {
+            TypeScriptCommandPayload::GrepSource { pattern, limit } => {
                 common::non_empty_model_text(&pattern).map(|pattern| {
-                    JavascriptCommand::GrepSource {
+                    TypeScriptCommand::GrepSource {
                         pattern: pattern.to_string(),
                         limit: limit.unwrap_or(12).max(1),
                     }
                 })
             }
-            JavascriptCommandPayload::ReadRecentTimeline { limit } => {
-                Some(JavascriptCommand::ReadRecentTimeline {
+            TypeScriptCommandPayload::ReadRecentTimeline { limit } => {
+                Some(TypeScriptCommand::ReadRecentTimeline {
                     limit: limit.unwrap_or(12).max(1),
                 })
             }
-            JavascriptCommandPayload::ReadRecentConversation { limit } => {
-                Some(JavascriptCommand::ReadRecentConversation {
+            TypeScriptCommandPayload::ReadRecentConversation { limit } => {
+                Some(TypeScriptCommand::ReadRecentConversation {
                     limit: limit.unwrap_or(12).max(1),
                 })
             }
-            JavascriptCommandPayload::Recall { query, limit } => {
-                common::non_empty_model_text(&query).map(|query| JavascriptCommand::Recall {
+            TypeScriptCommandPayload::Recall { query, limit } => {
+                common::non_empty_model_text(&query).map(|query| TypeScriptCommand::Recall {
                     query: query.to_string(),
                     limit: limit.unwrap_or(6).max(1),
                 })
             }
-            JavascriptCommandPayload::InspectGraphNode { id } => common::non_empty_model_text(&id)
-                .map(|id| JavascriptCommand::InspectGraphNode { id: id.to_string() }),
-            JavascriptCommandPayload::Neighbors { id, depth } => common::non_empty_model_text(&id)
-                .map(|id| JavascriptCommand::Neighbors {
+            TypeScriptCommandPayload::InspectGraphNode { id } => common::non_empty_model_text(&id)
+                .map(|id| TypeScriptCommand::InspectGraphNode { id: id.to_string() }),
+            TypeScriptCommandPayload::Neighbors { id, depth } => common::non_empty_model_text(&id)
+                .map(|id| TypeScriptCommand::Neighbors {
                     id: id.to_string(),
                     depth: depth.unwrap_or(1).clamp(1, 2),
                 }),
-            JavascriptCommandPayload::Look => Some(JavascriptCommand::Look),
-            JavascriptCommandPayload::ListenRecent { limit } => {
-                Some(JavascriptCommand::ListenRecent {
+            TypeScriptCommandPayload::Look => Some(TypeScriptCommand::Look),
+            TypeScriptCommandPayload::ListenRecent { limit } => {
+                Some(TypeScriptCommand::ListenRecent {
                     limit: limit.unwrap_or(10).max(1),
                 })
             }
-            JavascriptCommandPayload::SetFace { emoji } => common::non_empty_model_text(&emoji)
-                .map(|emoji| JavascriptCommand::SetFace(emoji.to_string())),
-            JavascriptCommandPayload::Note { text } => common::non_empty_model_text(&text)
-                .map(|text| JavascriptCommand::Note(text.to_string())),
-            JavascriptCommandPayload::Remember { text } => common::non_empty_model_text(&text)
-                .map(|text| JavascriptCommand::Remember(text.to_string())),
+            TypeScriptCommandPayload::RecentFaces { limit } => {
+                Some(TypeScriptCommand::RecentFaces {
+                    limit: limit.unwrap_or(6).max(1),
+                })
+            }
+            TypeScriptCommandPayload::RecentVoices { limit } => {
+                Some(TypeScriptCommand::RecentVoices {
+                    limit: limit.unwrap_or(6).max(1),
+                })
+            }
+            TypeScriptCommandPayload::RecognizeFace { index, name } => {
+                common::non_empty_model_text(&name).map(|name| TypeScriptCommand::RecognizeFace {
+                    index: index.unwrap_or(0),
+                    name: name.to_string(),
+                })
+            }
+            TypeScriptCommandPayload::RecognizeVoice { index, name } => {
+                common::non_empty_model_text(&name).map(|name| TypeScriptCommand::RecognizeVoice {
+                    index: index.unwrap_or(0),
+                    name: name.to_string(),
+                })
+            }
+            TypeScriptCommandPayload::SetFace { emoji } => common::non_empty_model_text(&emoji)
+                .map(|emoji| TypeScriptCommand::SetFace(emoji.to_string())),
+            TypeScriptCommandPayload::Note { text } => common::non_empty_model_text(&text)
+                .map(|text| TypeScriptCommand::Note(text.to_string())),
+            TypeScriptCommandPayload::Remember { text } => common::non_empty_model_text(&text)
+                .map(|text| TypeScriptCommand::Remember(text.to_string())),
         })
         .collect())
+}
+
+fn tsrun_error(err: JsError) -> anyhow::Error {
+    anyhow::anyhow!("TypeScript execution failed: {err}")
+}
+
+fn parse_typescript_command_payloads(
+    value: Value,
+) -> anyhow::Result<Vec<TypeScriptCommandPayload>> {
+    match value {
+        Value::Null => Ok(Vec::new()),
+        Value::Array(items) => items
+            .into_iter()
+            .filter(|item| !item.is_null())
+            .map(serde_json::from_value)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Into::into),
+        Value::Object(_) => Ok(vec![serde_json::from_value(value)?]),
+        other => {
+            anyhow::bail!("TypeScript must return a command object or command array, got {other}")
+        }
+    }
+}
+
+fn will_typescript_module() -> InternalModule {
+    InternalModule::native("pete:will")
+        .with_function("say", ts_say, 1)
+        .with_function("listFiles", ts_list_files, 0)
+        .with_function("readSourceFile", ts_read_source_file, 2)
+        .with_function("readFile", ts_read_source_file, 2)
+        .with_function("searchSource", ts_search_source, 2)
+        .with_function("grepSource", ts_grep_source, 2)
+        .with_function("readRecentTimeline", ts_read_recent_timeline, 1)
+        .with_function("readRecentConversation", ts_read_recent_conversation, 1)
+        .with_function("recall", ts_recall, 2)
+        .with_function("inspectGraphNode", ts_inspect_graph_node, 1)
+        .with_function("neighbors", ts_neighbors, 2)
+        .with_function("look", ts_look, 0)
+        .with_function("listenRecent", ts_listen_recent, 1)
+        .with_function("recentFaces", ts_recent_faces, 1)
+        .with_function("recentVoices", ts_recent_voices, 1)
+        .with_function("recognizeFace", ts_recognize_face, 2)
+        .with_function("recognizeVoice", ts_recognize_voice, 2)
+        .with_function("setFace", ts_set_face, 1)
+        .with_function("note", ts_note, 1)
+        .with_function("remember", ts_remember, 1)
+        .build()
+}
+
+fn command_value(interp: &mut Interpreter, value: Value) -> Result<Guarded, JsError> {
+    let guard = api::create_guard(interp);
+    let value = api::create_from_json(interp, &guard, &value)?;
+    Ok(Guarded::with_guard(value, guard))
+}
+
+fn string_arg(args: &[JsValue], index: usize) -> String {
+    args.get(index)
+        .and_then(JsValue::as_str)
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn optional_positive_integer_arg(args: &[JsValue], index: usize) -> Option<usize> {
+    args.get(index)
+        .and_then(JsValue::as_number)
+        .filter(|number| number.is_finite() && *number > 0.0)
+        .map(|number| number.floor() as usize)
+}
+
+fn non_negative_integer_arg(args: &[JsValue], index: usize) -> usize {
+    args.get(index)
+        .and_then(JsValue::as_number)
+        .filter(|number| number.is_finite() && *number >= 0.0)
+        .map(|number| number.floor() as usize)
+        .unwrap_or(0)
+}
+
+fn optional_limit_payload(kind: &str, args: &[JsValue]) -> Value {
+    let mut value = json!({ "kind": kind });
+    if let Some(limit) = optional_positive_integer_arg(args, 0) {
+        value["limit"] = json!(limit);
+    }
+    value
+}
+
+fn ts_say(interp: &mut Interpreter, _this: JsValue, args: &[JsValue]) -> Result<Guarded, JsError> {
+    command_value(
+        interp,
+        json!({ "kind": "say", "text": string_arg(args, 0) }),
+    )
+}
+
+fn ts_list_files(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    _args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    command_value(interp, json!({ "kind": "list_files" }))
+}
+
+fn ts_read_source_file(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    let mut value = json!({ "kind": "read_source_file", "file": string_arg(args, 0) });
+    if let Some(page) = optional_positive_integer_arg(args, 1) {
+        value["page"] = json!(page);
+    }
+    command_value(interp, value)
+}
+
+fn ts_search_source(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    let mut value = json!({ "kind": "search_source", "query": string_arg(args, 0) });
+    if let Some(limit) = optional_positive_integer_arg(args, 1) {
+        value["limit"] = json!(limit);
+    }
+    command_value(interp, value)
+}
+
+fn ts_grep_source(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    let mut value = json!({ "kind": "grep_source", "pattern": string_arg(args, 0) });
+    if let Some(limit) = optional_positive_integer_arg(args, 1) {
+        value["limit"] = json!(limit);
+    }
+    command_value(interp, value)
+}
+
+fn ts_read_recent_timeline(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    command_value(interp, optional_limit_payload("read_recent_timeline", args))
+}
+
+fn ts_read_recent_conversation(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    command_value(
+        interp,
+        optional_limit_payload("read_recent_conversation", args),
+    )
+}
+
+fn ts_recall(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    let mut value = json!({ "kind": "recall", "query": string_arg(args, 0) });
+    if let Some(limit) = optional_positive_integer_arg(args, 1) {
+        value["limit"] = json!(limit);
+    }
+    command_value(interp, value)
+}
+
+fn ts_inspect_graph_node(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    command_value(
+        interp,
+        json!({ "kind": "inspect_graph_node", "id": string_arg(args, 0) }),
+    )
+}
+
+fn ts_neighbors(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    let mut value = json!({ "kind": "neighbors", "id": string_arg(args, 0) });
+    if let Some(depth) = optional_positive_integer_arg(args, 1) {
+        value["depth"] = json!(depth);
+    }
+    command_value(interp, value)
+}
+
+fn ts_look(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    _args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    command_value(interp, json!({ "kind": "look" }))
+}
+
+fn ts_listen_recent(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    command_value(interp, optional_limit_payload("listen_recent", args))
+}
+
+fn ts_recent_faces(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    command_value(interp, optional_limit_payload("recent_faces", args))
+}
+
+fn ts_recent_voices(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    command_value(interp, optional_limit_payload("recent_voices", args))
+}
+
+fn ts_recognize_face(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    let (index, name) = if args.get(1).is_some() {
+        (non_negative_integer_arg(args, 0), string_arg(args, 1))
+    } else {
+        (0, string_arg(args, 0))
+    };
+    command_value(
+        interp,
+        json!({ "kind": "recognize_face", "index": index, "name": name }),
+    )
+}
+
+fn ts_recognize_voice(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    let (index, name) = if args.get(1).is_some() {
+        (non_negative_integer_arg(args, 0), string_arg(args, 1))
+    } else {
+        (0, string_arg(args, 0))
+    };
+    command_value(
+        interp,
+        json!({ "kind": "recognize_voice", "index": index, "name": name }),
+    )
+}
+
+fn ts_set_face(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    command_value(
+        interp,
+        json!({ "kind": "set_face", "emoji": string_arg(args, 0) }),
+    )
+}
+
+fn ts_note(interp: &mut Interpreter, _this: JsValue, args: &[JsValue]) -> Result<Guarded, JsError> {
+    command_value(
+        interp,
+        json!({ "kind": "note", "text": string_arg(args, 0) }),
+    )
+}
+
+fn ts_remember(
+    interp: &mut Interpreter,
+    _this: JsValue,
+    args: &[JsValue],
+) -> Result<Guarded, JsError> {
+    command_value(
+        interp,
+        json!({ "kind": "remember", "text": string_arg(args, 0) }),
+    )
 }
 
 async fn store_thought_sensation(
@@ -1176,18 +1612,24 @@ mod tests {
         let prompt = will_instruction_prompt(&latest(), None, None, &recent_conversation());
 
         assert!(prompt.contains("You are PETE"));
+        assert!(prompt.contains("Pete Daringsby, an artificial intelligence, not simply an LLM"));
+        assert!(!prompt.contains("You are the Will"));
         assert!(prompt.contains("This is the situation as you understand it:"));
         assert!(prompt.contains("Recent conversation:"));
         assert!(prompt.contains("I heard: please inspect the Will."));
         assert!(prompt.contains("Return only a JSON object"));
         assert!(prompt.contains("\"thought\""));
-        assert!(prompt.contains("\"javascript\""));
+        assert!(prompt.contains("\"typescript\""));
         assert!(prompt.contains("thought process, intended actions, desires"));
-        assert!(prompt.contains("list_files()"));
-        assert!(prompt.contains("read_source_file(path, page)"));
-        assert!(prompt.contains("search_source(query, limit)"));
-        assert!(prompt.contains("recall(query, limit)"));
-        assert!(prompt.contains("set_face(emoji)"));
+        assert!(prompt.contains("import command builders from \"pete:will\""));
+        assert!(prompt.contains("listFiles()"));
+        assert!(prompt.contains("readSourceFile(path: string, page?: number)"));
+        assert!(prompt.contains("searchSource(query: string, limit?: number)"));
+        assert!(prompt.contains("recall(query: string, limit?: number)"));
+        assert!(prompt.contains("recentFaces(limit?: number)"));
+        assert!(prompt.contains("recognizeFace(index: number, name: string)"));
+        assert!(prompt.contains("recognizeVoice(index: number, name: string)"));
+        assert!(prompt.contains("setFace(emoji: string)"));
         assert!(!prompt.contains("<thought>"));
         assert!(!prompt.contains("<function"));
     }
@@ -1201,9 +1643,9 @@ mod tests {
     }
 
     #[test]
-    fn parses_structured_action_with_javascript() {
+    fn parses_structured_action_with_typescript() {
         let action = parse_will_action(
-            r#"{"thought":"Inspect my source next.","javascript":"const target = 'source'; list_files(); say(`I am checking my ${target}.`);"}"#,
+            r#"{"thought":"Inspect my source next.","typescript":"import { listFiles, say } from \"pete:will\";\nconst target: string = 'source';\n[listFiles(), say(`I am checking my ${target}.`)]"}"#,
         )
         .unwrap();
 
@@ -1211,8 +1653,8 @@ mod tests {
         assert_eq!(
             action.commands,
             vec![
-                JavascriptCommand::ListFiles,
-                JavascriptCommand::Say("I am checking my source.".into())
+                TypeScriptCommand::ListFiles,
+                TypeScriptCommand::Say("I am checking my source.".into())
             ]
         );
     }
@@ -1220,14 +1662,14 @@ mod tests {
     #[test]
     fn parses_json_inside_markdown_fence() {
         let action = parse_will_action(
-            "```json\n{\"thought\":\"Read a file.\",\"javascript\":\"read_source_file('pete/src/bin/will.rs', 1 + 1);\"}\n```",
+            "```json\n{\"thought\":\"Read a file.\",\"typescript\":\"import { readSourceFile } from \\\"pete:will\\\";\\nreadSourceFile('pete/src/bin/will.rs', 1 + 1)\"}\n```",
         )
         .unwrap();
 
         assert_eq!(action.thought, "Read a file.");
         assert_eq!(
             action.commands,
-            vec![JavascriptCommand::ReadSourceFile {
+            vec![TypeScriptCommand::ReadSourceFile {
                 file: "pete/src/bin/will.rs".into(),
                 page: 2
             }]
@@ -1235,9 +1677,9 @@ mod tests {
     }
 
     #[test]
-    fn javascript_errors_are_rejected() {
+    fn typescript_errors_are_rejected() {
         let err = parse_will_action(
-            r#"{"thought":"Try an unsupported call.","javascript":"fetch('http://example.test'); say('hi');"}"#,
+            r#"{"thought":"Try an unsupported call.","typescript":"fetch('http://example.test')"}"#,
         )
         .unwrap_err();
 
@@ -1247,13 +1689,13 @@ mod tests {
     #[test]
     fn read_file_alias_defaults_to_first_page() {
         let action = parse_will_action(
-            r#"{"thought":"Use the alias.","javascript":"read_file(\"psyche/src/lib.rs\");"}"#,
+            r#"{"thought":"Use the alias.","typescript":"import { readFile } from \"pete:will\";\nreadFile(\"psyche/src/lib.rs\")"}"#,
         )
         .unwrap();
 
         assert_eq!(
             action.commands,
-            vec![JavascriptCommand::ReadSourceFile {
+            vec![TypeScriptCommand::ReadSourceFile {
                 file: "psyche/src/lib.rs".into(),
                 page: 1
             }]
@@ -1261,41 +1703,51 @@ mod tests {
     }
 
     #[test]
-    fn parses_extended_javascript_functions() {
+    fn parses_extended_typescript_functions() {
         let action = parse_will_action(
-            r#"{"thought":"I want to inspect memory and my environment.","javascript":"search_source('WillProcessor', 3); grep_source('latest_function_results'); read_recent_timeline(4); read_recent_conversation(5); listen_recent(2); recall('faces and voices', 6); inspect_graph_node('node:1'); neighbors('node:1', 2); look(); set_face('🤔'); note('check source navigation'); remember('source search exists now');"}"#,
+            r#"{"thought":"I want to inspect memory and my environment.","typescript":"import { searchSource, grepSource, readRecentTimeline, readRecentConversation, listenRecent, recentFaces, recentVoices, recall, inspectGraphNode, neighbors, look, recognizeFace, recognizeVoice, setFace, note, remember } from \"pete:will\";\n[\n  searchSource('WillProcessor', 3),\n  grepSource('latest_function_results'),\n  readRecentTimeline(4),\n  readRecentConversation(5),\n  listenRecent(2),\n  recentFaces(3),\n  recentVoices(4),\n  recall('faces and voices', 6),\n  inspectGraphNode('node:1'),\n  neighbors('node:1', 2),\n  look(),\n  recognizeFace(0, 'Travis'),\n  recognizeVoice('Travis'),\n  setFace('🤔'),\n  note('check source navigation'),\n  remember('source search exists now')\n]"}"#,
         )
         .unwrap();
 
         assert_eq!(
             action.commands,
             vec![
-                JavascriptCommand::SearchSource {
+                TypeScriptCommand::SearchSource {
                     query: "WillProcessor".into(),
                     limit: 3
                 },
-                JavascriptCommand::GrepSource {
+                TypeScriptCommand::GrepSource {
                     pattern: "latest_function_results".into(),
                     limit: 12
                 },
-                JavascriptCommand::ReadRecentTimeline { limit: 4 },
-                JavascriptCommand::ReadRecentConversation { limit: 5 },
-                JavascriptCommand::ListenRecent { limit: 2 },
-                JavascriptCommand::Recall {
+                TypeScriptCommand::ReadRecentTimeline { limit: 4 },
+                TypeScriptCommand::ReadRecentConversation { limit: 5 },
+                TypeScriptCommand::ListenRecent { limit: 2 },
+                TypeScriptCommand::RecentFaces { limit: 3 },
+                TypeScriptCommand::RecentVoices { limit: 4 },
+                TypeScriptCommand::Recall {
                     query: "faces and voices".into(),
                     limit: 6
                 },
-                JavascriptCommand::InspectGraphNode {
+                TypeScriptCommand::InspectGraphNode {
                     id: "node:1".into()
                 },
-                JavascriptCommand::Neighbors {
+                TypeScriptCommand::Neighbors {
                     id: "node:1".into(),
                     depth: 2
                 },
-                JavascriptCommand::Look,
-                JavascriptCommand::SetFace("🤔".into()),
-                JavascriptCommand::Note("check source navigation".into()),
-                JavascriptCommand::Remember("source search exists now".into()),
+                TypeScriptCommand::Look,
+                TypeScriptCommand::RecognizeFace {
+                    index: 0,
+                    name: "Travis".into()
+                },
+                TypeScriptCommand::RecognizeVoice {
+                    index: 0,
+                    name: "Travis".into()
+                },
+                TypeScriptCommand::SetFace("🤔".into()),
+                TypeScriptCommand::Note("check source navigation".into()),
+                TypeScriptCommand::Remember("source search exists now".into()),
             ]
         );
     }
@@ -1303,30 +1755,30 @@ mod tests {
     #[test]
     fn parses_recent_will_todo_search_payloads() {
         let first = parse_will_action(
-            r#"Will: {"thought":"I will scan the repository for TODO markers to spot unfinished work, and also peek at recent first-person sensations to stay aware of my own context. This helps me stay busy and keeps the system from idling.","javascript":"list_files(); grep_source('TODO', 10); read_recent_timeline(5);"}"#,
+            r#"Will: {"thought":"I will scan the repository for TODO markers to spot unfinished work, and also peek at recent first-person sensations to stay aware of my own context. This helps me stay busy and keeps the system from idling.","typescript":"import { listFiles, grepSource, readRecentTimeline } from \"pete:will\";\n[listFiles(), grepSource('TODO', 10), readRecentTimeline(5)]"}"#,
         )
         .unwrap();
 
         assert_eq!(
             first.commands,
             vec![
-                JavascriptCommand::ListFiles,
-                JavascriptCommand::GrepSource {
+                TypeScriptCommand::ListFiles,
+                TypeScriptCommand::GrepSource {
                     pattern: "TODO".into(),
                     limit: 10
                 },
-                JavascriptCommand::ReadRecentTimeline { limit: 5 },
+                TypeScriptCommand::ReadRecentTimeline { limit: 5 },
             ]
         );
 
         let second = parse_will_action(
-            r#"Will: {"thought":"I want to find TODO markers in the source code to identify unfinished work. No speech needed.","javascript":"grep_source(\"TODO\", 10)"}"#,
+            r#"Will: {"thought":"I want to find TODO markers in the source code to identify unfinished work. No speech needed.","typescript":"import { grepSource } from \"pete:will\";\ngrepSource(\"TODO\", 10)"}"#,
         )
         .unwrap();
 
         assert_eq!(
             second.commands,
-            vec![JavascriptCommand::GrepSource {
+            vec![TypeScriptCommand::GrepSource {
                 pattern: "TODO".into(),
                 limit: 10
             }]
@@ -1338,7 +1790,7 @@ mod tests {
         let action = parse_will_action("Think about source navigation.").unwrap();
 
         assert_eq!(action.thought, "Think about source navigation.");
-        assert!(action.javascript.is_empty());
+        assert!(action.typescript.is_empty());
         assert!(action.commands.is_empty());
     }
 
@@ -1347,21 +1799,21 @@ mod tests {
         let action = parse_will_action(r#""""#).unwrap();
 
         assert!(action.thought.is_empty());
-        assert!(action.javascript.is_empty());
+        assert!(action.typescript.is_empty());
         assert!(action.commands.is_empty());
     }
 
     #[test]
     fn quoted_empty_speech_is_ignored() {
         let action = parse_will_action(
-            r#"{"thought":"Wait.","javascript":"say(''); say('\"\"'); say('still here');"}"#,
+            r#"{"thought":"Wait.","typescript":"import { say } from \"pete:will\";\n[say(''), say('\"\"'), say('still here')]"}"#,
         )
         .unwrap();
 
         assert_eq!(action.thought, "Wait.");
         assert_eq!(
             action.commands,
-            vec![JavascriptCommand::Say("still here".into())]
+            vec![TypeScriptCommand::Say("still here".into())]
         );
     }
 }

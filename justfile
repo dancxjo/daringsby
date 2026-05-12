@@ -29,7 +29,7 @@ run:
             bin="forget-silence"
         fi
         # simulate is an ad hoc client utility that requires a subcommand.
-        if [[ "$bin" == "pete" || "$bin" == "conversant" || "$bin" == "simulate" || "$bin" == "raw_retention" || "$bin" == "movie" || "$bin" == "test_will" ]]; then
+        if [[ "$bin" == "pete" || "$bin" == "conversant" || "$bin" == "simulate" || "$bin" == "raw_retention" || "$bin" == "movie" || "$bin" == "test_will" || "$bin" == "timeline" || "$bin" == "conversation" ]]; then
             continue
         fi
         bins+=("$bin")
@@ -77,11 +77,7 @@ run:
     for bin in "${bins[@]}"; do
         log_file="${run_log_dir}/${bin}.log"
         printf 'starting %-18s -> %s\n' "$bin" "$log_file"
-        args=()
-        if [[ "$bin" == "timeline" || "$bin" == "conversation" ]]; then
-            args+=(--follow)
-        fi
-        "./target/debug/$bin" "${args[@]}" >"$log_file" 2>&1 &
+        "./target/debug/$bin" >"$log_file" 2>&1 &
         pids+=("$!")
     done
 

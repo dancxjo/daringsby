@@ -48,7 +48,9 @@ pub struct WillPrompt;
 
 impl PromptFragment for WillPrompt {
     fn build_prompt(&self, input: &str) -> String {
-        format!("In one or two short sentences, what should Pete do or say next?\n{input}")
+        format!(
+            "In one or two short sentences, what should Pete Daringsby do or say next as an artificial intelligence, not simply an LLM?\n{input}"
+        )
     }
 }
 

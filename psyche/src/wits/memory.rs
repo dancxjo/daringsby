@@ -1320,6 +1320,26 @@ pub struct GraphFaceIdentity {
     pub identity: Option<String>,
 }
 
+/// A recent face-like graph node that can receive a manually assigned identity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GraphFaceIdentityTarget {
+    /// Node Pete should label. Usually a matched `Face` cluster, falling back to
+    /// the latest `FaceInstance` when clustering has not happened yet.
+    pub target_id: String,
+    /// Neo4j label to preserve when merging the target node.
+    pub target_label: String,
+    /// Concrete face instance the selection came from.
+    pub face_instance_id: String,
+    /// Source image that contained the face, when known.
+    pub source_image_id: Option<String>,
+    /// Qdrant vector node connected to the face instance, when known.
+    pub vector_id: Option<String>,
+    /// Existing identity already attached to the target, when any.
+    pub identity: Option<String>,
+    /// When this face was observed or processed.
+    pub occurred_at: String,
+}
+
 /// Scene-level image vector ready to be linked into the graph.
 #[derive(Clone, Debug)]
 pub struct GraphSceneVectorization {
@@ -1395,6 +1415,26 @@ pub struct GraphVoiceIdentity {
     pub voice_id: String,
     /// Human identity attached to the voice cluster, when known.
     pub identity: Option<String>,
+}
+
+/// A recent voice-like graph node that can receive a manually assigned identity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GraphVoiceIdentityTarget {
+    /// Node Pete should label. Usually a matched `Voice` cluster, falling back
+    /// to the latest `VoiceSignature` when clustering has not happened yet.
+    pub target_id: String,
+    /// Neo4j label to preserve when merging the target node.
+    pub target_label: String,
+    /// Concrete voice signature the selection came from.
+    pub voice_signature_id: String,
+    /// Source audio clip, when known.
+    pub audio_clip_id: Option<String>,
+    /// Qdrant vector node connected to the voice signature, when known.
+    pub vector_id: Option<String>,
+    /// Existing identity already attached to the target, when any.
+    pub identity: Option<String>,
+    /// When this voice was observed or processed.
+    pub occurred_at: String,
 }
 
 /// Speech segment produced by transcribing an `AudioClip`.
@@ -2029,9 +2069,16 @@ impl Neo4jClient {
             CypherStatement {
                 statement: r#"
                     MATCH (v:GraphNode:Vector {id: $vector_id})
-                    MATCH (v)-[:MEMBER_OF_CLUSTER|HAS_CLUSTER_MEMBER]-(face:GraphNode:Face)
+                    OPTIONAL MATCH (v)-[:MEMBER_OF_CLUSTER|HAS_CLUSTER_MEMBER]-(face_cluster:GraphNode:Face)
+                    OPTIONAL MATCH (v)<-[:HAS_FACE_VECTOR]-(face_instance:GraphNode:FaceInstance)
+                    WITH [candidate IN [
+                        {node: face_cluster, rank: 0},
+                        {node: face_instance, rank: 1}
+                    ] WHERE candidate.node IS NOT NULL] AS candidates
+                    UNWIND candidates AS face_candidate
+                    WITH face_candidate.node AS face, face_candidate.rank AS rank
                     OPTIONAL MATCH (face)--(identity:GraphNode)
-                    WITH face, [candidate IN collect(identity)
+                    WITH face, rank, [candidate IN collect(identity)
                         WHERE candidate:Person
                            OR candidate:Identity
                            OR candidate.kind IN ["person", "identity"] |
@@ -2044,9 +2091,9 @@ impl Neo4jClient {
                             candidate.summary
                         )
                     ] AS identity_names
-                    WITH face, head([name IN identity_names WHERE name IS NOT NULL AND name <> ""]) AS identity_name
+                    WITH face, rank, head([name IN identity_names WHERE name IS NOT NULL AND name <> ""]) AS identity_name
                     RETURN face.id, identity_name
-                    ORDER BY CASE WHEN identity_name IS NULL THEN 1 ELSE 0 END, identity_name
+                    ORDER BY CASE WHEN identity_name IS NULL THEN 1 ELSE 0 END, rank, identity_name
                     LIMIT 1
                 "#
                 .into(),
@@ -2075,9 +2122,16 @@ impl Neo4jClient {
             CypherStatement {
                 statement: r#"
                     MATCH (v:GraphNode:Vector {id: $vector_id})
-                    MATCH (v)-[:MEMBER_OF_CLUSTER|HAS_CLUSTER_MEMBER]-(voice:GraphNode:Voice)
+                    OPTIONAL MATCH (v)-[:MEMBER_OF_CLUSTER|HAS_CLUSTER_MEMBER]-(voice_cluster:GraphNode:Voice)
+                    OPTIONAL MATCH (v)<-[:HAS_VOICE_VECTOR]-(voice_signature:GraphNode:VoiceSignature)
+                    WITH [candidate IN [
+                        {node: voice_cluster, rank: 0},
+                        {node: voice_signature, rank: 1}
+                    ] WHERE candidate.node IS NOT NULL] AS candidates
+                    UNWIND candidates AS voice_candidate
+                    WITH voice_candidate.node AS voice, voice_candidate.rank AS rank
                     OPTIONAL MATCH (voice)--(identity:GraphNode)
-                    WITH voice, [candidate IN collect(identity)
+                    WITH voice, rank, [candidate IN collect(identity)
                         WHERE candidate:Person
                            OR candidate:Identity
                            OR candidate.kind IN ["person", "identity"] |
@@ -2090,9 +2144,9 @@ impl Neo4jClient {
                             candidate.summary
                         )
                     ] AS identity_names
-                    WITH voice, head([name IN identity_names WHERE name IS NOT NULL AND name <> ""]) AS identity_name
+                    WITH voice, rank, head([name IN identity_names WHERE name IS NOT NULL AND name <> ""]) AS identity_name
                     RETURN voice.id, identity_name
-                    ORDER BY CASE WHEN identity_name IS NULL THEN 1 ELSE 0 END, identity_name
+                    ORDER BY CASE WHEN identity_name IS NULL THEN 1 ELSE 0 END, rank, identity_name
                     LIMIT 1
                 "#
                 .into(),
@@ -2104,6 +2158,158 @@ impl Neo4jClient {
         )
         .await?;
         rows.first().map(graph_voice_identity_from_row).transpose()
+    }
+
+    /// Return recent face detections that the Will can manually identify.
+    pub async fn recent_face_identity_targets(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<GraphFaceIdentityTarget>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (face:GraphNode:FaceInstance)
+                    OPTIONAL MATCH (face)-[:DERIVED_FROM]->(image:GraphNode:Image)
+                    OPTIONAL MATCH (face)-[:HAS_FACE_VECTOR]->(vector:GraphNode:Vector)
+                    OPTIONAL MATCH (face)-[:MATCHED_FACE]->(matched:GraphNode:Face)
+                    WITH face, image, vector, matched,
+                         coalesce(face.occurred_at, face.captured_at, face.recognized_at, image.occurred_at, "") AS observed_at
+                    WITH face, image, vector,
+                         CASE WHEN matched IS NULL THEN face ELSE matched END AS target,
+                         CASE WHEN matched IS NULL THEN "FaceInstance" ELSE "Face" END AS target_label,
+                         observed_at
+                    OPTIONAL MATCH (target)--(identity:GraphNode)
+                    WITH face, image, vector, target, target_label, observed_at,
+                         [candidate IN collect(identity)
+                            WHERE candidate:Person
+                               OR candidate:Identity
+                               OR candidate.kind IN ["person", "identity"] |
+                            coalesce(
+                                candidate.name,
+                                candidate.display_name,
+                                candidate.full_name,
+                                candidate.title,
+                                candidate.text,
+                                candidate.summary
+                            )
+                         ] AS identity_names
+                    WITH face, image, vector, target, target_label, observed_at,
+                         head([name IN identity_names WHERE name IS NOT NULL AND name <> ""]) AS identity_name
+                    RETURN target.id, target_label, face.id, image.id, vector.id, identity_name, observed_at
+                    ORDER BY observed_at DESC, face.id DESC
+                    LIMIT $limit
+                "#
+                .into(),
+                parameters: json!({
+                    "limit": limit.max(1) as i64,
+                }),
+            },
+            "finding recent face identity targets",
+        )
+        .await?;
+        rows.iter()
+            .map(graph_face_identity_target_from_row)
+            .collect()
+    }
+
+    /// Return recent voice signatures that the Will can manually identify.
+    pub async fn recent_voice_identity_targets(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<GraphVoiceIdentityTarget>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (signature:GraphNode:VoiceSignature)
+                    OPTIONAL MATCH (signature)-[:DERIVED_FROM]->(clip:GraphNode:AudioClip)
+                    OPTIONAL MATCH (signature)-[:HAS_VOICE_VECTOR]->(vector:GraphNode:Vector)
+                    OPTIONAL MATCH (signature)-[:MATCHED_VOICE]->(matched:GraphNode:Voice)
+                    WITH signature, clip, vector, matched,
+                         coalesce(signature.last_updated, signature.occurred_at, clip.captured_at, clip.occurred_at, "") AS observed_at
+                    WITH signature, clip, vector,
+                         CASE WHEN matched IS NULL THEN signature ELSE matched END AS target,
+                         CASE WHEN matched IS NULL THEN "VoiceSignature" ELSE "Voice" END AS target_label,
+                         observed_at
+                    OPTIONAL MATCH (target)--(identity:GraphNode)
+                    WITH signature, clip, vector, target, target_label, observed_at,
+                         [candidate IN collect(identity)
+                            WHERE candidate:Person
+                               OR candidate:Identity
+                               OR candidate.kind IN ["person", "identity"] |
+                            coalesce(
+                                candidate.name,
+                                candidate.display_name,
+                                candidate.full_name,
+                                candidate.title,
+                                candidate.text,
+                                candidate.summary
+                            )
+                         ] AS identity_names
+                    WITH signature, clip, vector, target, target_label, observed_at,
+                         head([name IN identity_names WHERE name IS NOT NULL AND name <> ""]) AS identity_name
+                    RETURN target.id, target_label, signature.id, clip.id, vector.id, identity_name, observed_at
+                    ORDER BY observed_at DESC, signature.id DESC
+                    LIMIT $limit
+                "#
+                .into(),
+                parameters: json!({
+                    "limit": limit.max(1) as i64,
+                }),
+            },
+            "finding recent voice identity targets",
+        )
+        .await?;
+        rows.iter()
+            .map(graph_voice_identity_target_from_row)
+            .collect()
+    }
+
+    /// Attach a manually supplied identity to a face target.
+    pub async fn attach_manual_face_identity(
+        &self,
+        target: &GraphFaceIdentityTarget,
+        name: &str,
+        source: &str,
+    ) -> Result<()> {
+        attach_manual_identity(
+            self,
+            ManualIdentityKind::Face,
+            &target.target_id,
+            &target.target_label,
+            name,
+            source,
+            target.vector_id.as_deref(),
+        )
+        .await
+    }
+
+    /// Attach a manually supplied identity to a voice target.
+    pub async fn attach_manual_voice_identity(
+        &self,
+        target: &GraphVoiceIdentityTarget,
+        name: &str,
+        source: &str,
+    ) -> Result<()> {
+        attach_manual_identity(
+            self,
+            ManualIdentityKind::Voice,
+            &target.target_id,
+            &target.target_label,
+            name,
+            source,
+            target.vector_id.as_deref(),
+        )
+        .await
     }
 
     /// Return the latest `Image` graph node that has no scene-vectorization run.
@@ -3175,7 +3381,9 @@ impl Neo4jClient {
             "finding latest image description",
         )
         .await?;
-        Ok(rows.first().and_then(|r| r.get(0).and_then(|v| v.as_str()).map(|s| s.to_string())))
+        Ok(rows
+            .first()
+            .and_then(|r| r.get(0).and_then(|v| v.as_str()).map(|s| s.to_string())))
     }
 
     /// Return the newest combobulation summary sensation timestamp.
@@ -5659,6 +5867,127 @@ fn raw_retention_match(suffix: &str) -> String {
     )
 }
 
+#[derive(Clone, Copy)]
+enum ManualIdentityKind {
+    Face,
+    Voice,
+}
+
+impl ManualIdentityKind {
+    fn allowed_target_label(self, label: &str) -> bool {
+        match self {
+            ManualIdentityKind::Face => matches!(label, "Face" | "FaceInstance"),
+            ManualIdentityKind::Voice => matches!(label, "Voice" | "VoiceSignature"),
+        }
+    }
+
+    fn run_label(self) -> &'static str {
+        match self {
+            ManualIdentityKind::Face => "ManualFaceIdentityRun",
+            ManualIdentityKind::Voice => "ManualVoiceIdentityRun",
+        }
+    }
+
+    fn run_prefix(self) -> &'static str {
+        match self {
+            ManualIdentityKind::Face => "manual-face-identity-run",
+            ManualIdentityKind::Voice => "manual-voice-identity-run",
+        }
+    }
+}
+
+async fn attach_manual_identity(
+    graph: &Neo4jClient,
+    kind: ManualIdentityKind,
+    target_id: &str,
+    target_label: &str,
+    name: &str,
+    source: &str,
+    vector_id: Option<&str>,
+) -> Result<()> {
+    anyhow::ensure!(
+        kind.allowed_target_label(target_label),
+        "manual identity target label {target_label} is not valid for this identity kind"
+    );
+    let name = common::non_empty_model_text(name).context("manual identity name was empty")?;
+    let identity_id = format!("identity:person:{}", identity_key(name));
+    let assigned_at = chrono::Utc::now().to_rfc3339();
+    let run_id = stable_bytes_id(
+        kind.run_prefix(),
+        format!("{target_id}:{identity_id}:{source}:{assigned_at}").as_bytes(),
+    );
+    let mut nodes = vec![
+        json!({
+            "label": target_label,
+            "id": target_id,
+        }),
+        json!({
+            "label": kind.run_label(),
+            "id": run_id,
+            "target_id": target_id,
+            "identity_name": name,
+            "source": source,
+            "assigned_at": assigned_at,
+            "vector_id": vector_id,
+        }),
+        json!({
+            "label": "Identity",
+            "labels": ["Person"],
+            "id": identity_id,
+            "kind": "person",
+            "name": name,
+            "summary": name,
+            "created_at": assigned_at,
+        }),
+    ];
+    let mut relationships = vec![
+        json!({
+            "from": target_id,
+            "to": run_id,
+            "type": "HAS_MANUAL_IDENTITY_RUN",
+        }),
+        json!({
+            "from": run_id,
+            "to": identity_id,
+            "type": "PRODUCED",
+        }),
+        json!({
+            "from": run_id,
+            "to": target_id,
+            "type": "USED_CONTEXT",
+        }),
+        json!({
+            "from": target_id,
+            "to": identity_id,
+            "type": "HAS_IDENTITY",
+        }),
+        json!({
+            "from": identity_id,
+            "to": target_id,
+            "type": "IDENTITY_OF",
+        }),
+    ];
+    if let Some(vector_id) = vector_id {
+        nodes.push(json!({
+            "label": "Vector",
+            "id": vector_id,
+        }));
+        relationships.push(json!({
+            "from": run_id,
+            "to": vector_id,
+            "type": "USED_VECTOR",
+        }));
+    }
+
+    graph
+        .store_data(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))
+        .await
+}
+
 fn graph_snapshot_from_row(row: &Value) -> Result<GraphSnapshot> {
     let values = row
         .as_array()
@@ -6138,6 +6467,45 @@ fn graph_voice_identity_from_row(row: &Value) -> Result<GraphVoiceIdentity> {
             }
         }),
     })
+}
+
+fn graph_face_identity_target_from_row(row: &Value) -> Result<GraphFaceIdentityTarget> {
+    let values = row
+        .as_array()
+        .context("Neo4j face identity target row was not an array")?;
+    Ok(GraphFaceIdentityTarget {
+        target_id: row_string(values, 0, "face identity target id")?,
+        target_label: row_string(values, 1, "face identity target label")?,
+        face_instance_id: row_string(values, 2, "face instance id")?,
+        source_image_id: row_optional_string(values, 3),
+        vector_id: row_optional_string(values, 4),
+        identity: row_optional_string(values, 5).and_then(non_empty_identity_name),
+        occurred_at: row_string(values, 6, "face identity target occurred_at")?,
+    })
+}
+
+fn graph_voice_identity_target_from_row(row: &Value) -> Result<GraphVoiceIdentityTarget> {
+    let values = row
+        .as_array()
+        .context("Neo4j voice identity target row was not an array")?;
+    Ok(GraphVoiceIdentityTarget {
+        target_id: row_string(values, 0, "voice identity target id")?,
+        target_label: row_string(values, 1, "voice identity target label")?,
+        voice_signature_id: row_string(values, 2, "voice signature id")?,
+        audio_clip_id: row_optional_string(values, 3),
+        vector_id: row_optional_string(values, 4),
+        identity: row_optional_string(values, 5).and_then(non_empty_identity_name),
+        occurred_at: row_string(values, 6, "voice identity target occurred_at")?,
+    })
+}
+
+fn non_empty_identity_name(value: String) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 fn graph_movie_image_frame_from_row(row: &Value) -> Result<GraphMovieImageFrame> {
@@ -6967,6 +7335,28 @@ fn stable_bytes_id(prefix: &str, bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("{prefix}:sha256:{:x}", hasher.finalize())
+}
+
+fn identity_key(name: &str) -> String {
+    let mut key = String::new();
+    let mut last_dash = false;
+    for ch in name.chars().flat_map(char::to_lowercase) {
+        if ch.is_ascii_alphanumeric() {
+            key.push(ch);
+            last_dash = false;
+        } else if !last_dash && !key.is_empty() {
+            key.push('-');
+            last_dash = true;
+        }
+    }
+    while key.ends_with('-') {
+        key.pop();
+    }
+    if key.is_empty() {
+        "unknown".into()
+    } else {
+        key
+    }
 }
 
 fn face_recognition_how(face_count: usize) -> String {

@@ -1,6 +1,7 @@
 use crate::types::{Chatter, Doer, LlmInstruction, Message, Role, TextStream, Vectorizer};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
+use ollama_rs::models::ModelOptions;
 use ollama_rs::{
     Ollama,
     generation::chat::{ChatMessage, request::ChatMessageRequest},
@@ -13,7 +14,6 @@ use std::time::Duration;
 use tokio::time::timeout;
 use tokio_stream::StreamExt;
 use tracing::{debug, info, trace, warn};
-use ollama_rs::models::ModelOptions;
 
 /// Provider backed by one or more Ollama servers.
 #[derive(Clone)]

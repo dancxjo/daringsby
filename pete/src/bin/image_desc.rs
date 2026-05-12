@@ -174,7 +174,10 @@ impl ImageDescriptionProcessor {
                 "including image payload in Ollama request"
             );
             let command = if let Some(comb) = combobulation {
-                let context = format!("\n\nThe current situation you understand is:\n{}", comb.text.trim());
+                let context = format!(
+                    "\n\nThe current situation you understand is:\n{}",
+                    comb.text.trim()
+                );
                 with_default_system_prompt(format!("{IMAGE_CAPTION_PROMPT}{context}"))
             } else {
                 with_default_system_prompt(IMAGE_CAPTION_PROMPT)
