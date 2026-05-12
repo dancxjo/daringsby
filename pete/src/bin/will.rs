@@ -176,12 +176,22 @@ struct Cli {
     /// URL of the Qdrant vector store.
     #[arg(long, env = "QDRANT_URL", default_value = "http://localhost:6333")]
     qdrant_url: String,
-    /// URL of the wits Ollama server.
-    #[arg(long, env = "WITS_HOST", default_value = "http://localhost:11434")]
-    wits_host: String,
+    /// URL of the Will Ollama server.
+    #[arg(
+        long = "will-host",
+        alias = "wits-host",
+        env = "WILL_HOST",
+        default_value = "http://localhost:11434"
+    )]
+    will_host: String,
     /// Model name to use for the Will.
-    #[arg(long, env = "WITS_MODEL", default_value = "gpt-oss")]
-    wits_model: String,
+    #[arg(
+        long = "will-model",
+        alias = "wits-model",
+        env = "WILL_MODEL",
+        default_value = "gpt-oss"
+    )]
+    will_model: String,
     /// Delay between graph polling attempts.
     #[arg(long, env = "WILL_POLL_MS", default_value_t = 1000)]
     poll_ms: u64,
@@ -204,7 +214,7 @@ async fn main() -> anyhow::Result<()> {
     ));
     let qdrant = std::sync::Arc::new(QdrantClient::new(cli.qdrant_url.clone()));
     let observer = SensationGraphObserver::new(graph.clone());
-    let doer = ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?;
+    let doer = ollama_provider_from_args(&cli.will_host, &cli.will_model)?;
     let processor = WillProcessor {
         doer,
         graph: graph.clone(),

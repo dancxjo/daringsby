@@ -34,12 +34,22 @@ struct Cli {
     /// Qdrant HTTP endpoint.
     #[arg(long, env = "QDRANT_URL", default_value = "http://localhost:6333")]
     qdrant_url: String,
-    /// URL of the wits Ollama server.
-    #[arg(long, env = "WITS_HOST", default_value = "http://localhost:11434")]
-    wits_host: String,
+    /// URL of the combobulator Ollama server.
+    #[arg(
+        long = "combobulator-host",
+        alias = "wits-host",
+        env = "COMBOBULATOR_HOST",
+        default_value = "http://localhost:11434"
+    )]
+    combobulator_host: String,
     /// Model name to use for combobulation.
-    #[arg(long, env = "WITS_MODEL", default_value = "gpt-oss")]
-    wits_model: String,
+    #[arg(
+        long = "combobulator-model",
+        alias = "wits-model",
+        env = "COMBOBULATOR_MODEL",
+        default_value = "gpt-oss"
+    )]
+    combobulator_model: String,
     /// URL of the embeddings Ollama server.
     #[arg(
         long,
@@ -78,12 +88,12 @@ async fn main() -> anyhow::Result<()> {
     ));
     let observer = SensationGraphObserver::new(graph.clone());
     let qdrant = QdrantClient::new(cli.qdrant_url);
-    let doer = ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?;
+    let doer = ollama_provider_from_args(&cli.combobulator_host, &cli.combobulator_model)?;
     let vectorizer = ollama_provider_from_args(&cli.embeddings_host, &cli.embeddings_model)?;
     let processor = CombobulationProcessor {
         doer,
         vectorizer,
-        llm_model: cli.wits_model,
+        llm_model: cli.combobulator_model,
         embedding_model: cli.embeddings_model,
     };
 
