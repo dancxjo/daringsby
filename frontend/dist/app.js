@@ -134,6 +134,9 @@
       if (m.data.output !== undefined) {
         outputPre.textContent = JSON.stringify(m.data.output, null, 2);
       }
+      if (m.data.name === "Will") {
+        applyWillTypescript(typescriptFromWillReport(m.data));
+      }
       time.textContent = new Date().toLocaleTimeString();
       details.classList.add("updated");
       setTimeout(() => details.classList.remove("updated"), 300);

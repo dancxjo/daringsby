@@ -64,4 +64,17 @@ assert.match(source.textContent, /import \{ look \}/);
 assert.strictEqual(source.dataset.highlighted, "yes");
 assert.match(results.textContent, /look: Latest vision: desk/);
 
+ws.onmessage({
+  data: JSON.stringify({
+    type: "Think",
+    data: {
+      name: "Will",
+      prompt: "prompt",
+      output: '{"thought":"scan","typescript":"import { searchSource } from \\"pete:will\\";\\nsearchSource(\\"system failure\\", 5)"}',
+    },
+  }),
+});
+
+assert.match(source.textContent, /searchSource\("system failure", 5\)/);
+
 console.log("typescript-report ok");
