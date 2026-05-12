@@ -349,6 +349,19 @@ button:hover {
   margin-bottom: 0.25rem;
 }
 
+.code-well pre {
+  margin: 0;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+#typescript-source-code {
+  display: block;
+  background: transparent;
+  padding: 0;
+  font-size: 0.8125rem;
+}
+
 @keyframes flash {
   from { background-color: #444; }
   to { background-color: #222; }

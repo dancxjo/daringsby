@@ -212,6 +212,29 @@ pub struct ConversationEntry {
     pub timestamp: String,
 }
 
+/// Result produced by one command returned from Will's TypeScript.
+#[cfg_attr(feature = "ts", derive(TS))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WillTypeScriptResult {
+    /// Command builder or host function name.
+    pub command: String,
+    /// Human-readable command result.
+    pub output: String,
+}
+
+/// The latest TypeScript module Will chose to run, plus its host-command output.
+#[cfg_attr(feature = "ts", derive(TS))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WillTypeScriptExecution {
+    /// TypeScript source passed to tsrun.
+    pub source: String,
+    /// RFC3339 timestamp when the run was recorded.
+    pub timestamp: String,
+    /// Results from commands emitted by the TypeScript module.
+    #[cfg_attr(feature = "ts", ts(inline))]
+    pub results: Vec<WillTypeScriptResult>,
+}
+
 /// The full context seen by the Will agent during a decision cycle.
 #[cfg_attr(feature = "ts", derive(TS))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -219,7 +242,13 @@ pub struct WillContext {
     /// The system prompt used for the LLM request.
     pub system_prompt: String,
     /// Recent message history used as context.
+    #[cfg_attr(feature = "ts", ts(inline))]
     pub history: Vec<ConversationEntry>,
     /// Optional debug report for the LLM interaction.
+    #[cfg_attr(feature = "ts", ts(inline))]
     pub report: Option<crate::WitReport>,
+    /// Optional TypeScript module and command results selected by Will.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(inline))]
+    pub typescript: Option<WillTypeScriptExecution>,
 }

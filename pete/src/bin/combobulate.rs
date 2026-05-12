@@ -318,6 +318,7 @@ async fn store_combobulator_context_sensation(
         system_prompt: report.prompt.clone(),
         history: Vec::<ConversationEntry>::new(),
         report: Some(report),
+        typescript: None,
     };
     let sensation = Sensation::of_at(context, Utc::now());
     observer.observe_sensation(&sensation).await;

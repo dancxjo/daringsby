@@ -372,6 +372,7 @@ async fn store_conversant_context_sensation(
         system_prompt,
         history,
         report,
+        typescript: None,
     };
     let sensation = Sensation::of_at(context, Utc::now());
     observer.observe_sensation(&sensation).await;

@@ -34,6 +34,8 @@
   const face = document.getElementById("face");
   const audioQueue = [];
   const conversationLog = document.getElementById("conversation-log");
+  const typescriptSourceCode = document.getElementById("typescript-source-code");
+  const typescriptResults = document.getElementById("typescript-results");
   const conversationMsgs = [];
   const witOutputs = {};
   const thoughtElems = {};
@@ -192,6 +194,7 @@
         case "FullHistory":
           applyFullHistory(m.data);
           if (m.data.report) handleThink({ data: m.data.report });
+          applyWillTypescript(m.data?.typescript || typescriptFromWillReport(m.data?.report));
           updateConversation();
           break;
       }
@@ -920,6 +923,53 @@
     if (history.length || !hasVisibleConversation()) {
       conversationMsgs.length = 1;
       conversationMsgs.push(...history);
+    }
+  }
+
+  function applyWillTypescript(execution) {
+    if (!typescriptSourceCode || !typescriptResults || !execution) return;
+    const source = execution.source || "";
+    typescriptSourceCode.textContent = source || "// no TypeScript selected";
+    if (window.hljs?.highlightElement) {
+      delete typescriptSourceCode.dataset.highlighted;
+      window.hljs.highlightElement(typescriptSourceCode);
+    }
+
+    const results = Array.isArray(execution.results) ? execution.results : [];
+    const timestamp = execution.timestamp ? new Date(execution.timestamp).toLocaleTimeString() : "";
+    typescriptResults.textContent = [
+      timestamp ? `at ${timestamp}` : "",
+      ...results.map((result) => {
+        const command = result?.command || "command";
+        const output = result?.output || "";
+        return `${command}: ${output}`;
+      }),
+    ].filter(Boolean).join("\n\n") || "waiting...";
+  }
+
+  function typescriptFromWillReport(report) {
+    if (!report || report.name !== "Will" || typeof report.output !== "string") return null;
+    const payload = parseWillReportJson(report.output);
+    if (!payload || typeof payload.typescript !== "string") return null;
+    return {
+      source: payload.typescript,
+      timestamp: new Date().toISOString(),
+      results: [],
+    };
+  }
+
+  function parseWillReportJson(raw) {
+    try {
+      return JSON.parse(raw);
+    } catch (_) {
+      const start = raw.indexOf("{");
+      const end = raw.lastIndexOf("}");
+      if (start === -1 || end <= start) return null;
+      try {
+        return JSON.parse(raw.slice(start, end + 1));
+      } catch (_) {
+        return null;
+      }
     }
   }
 

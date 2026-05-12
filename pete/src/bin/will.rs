@@ -11,7 +11,7 @@ use psyche::{
     ConversationEntry, GraphFaceIdentityTarget, GraphLatestCombobulation, GraphNodeDetails,
     GraphSensationTimelineItem, GraphSnapshot, GraphVoiceIdentityTarget, Impression, Neo4jClient,
     QdrantClient, Sensation, SensationGraphObserver, SensationObserver, Stimulus, WillContext,
-    WitReport, with_default_system_prompt,
+    WillTypeScriptExecution, WillTypeScriptResult, WitReport, with_default_system_prompt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -275,23 +275,44 @@ async fn process_latest_combobulation(
         store_thought_sensation(observer, &combobulation, &action.thought).await;
     }
 
+    let mut typescript_results = Vec::new();
     for command in action.commands.iter() {
         match command {
             TypeScriptCommand::Say(text) => {
                 store_speech_intention_sensation(observer, &combobulation, text).await;
+                typescript_results.push(WillTypeScriptResult {
+                    command: "say".into(),
+                    output: format!("Queued speech: {}", text.trim()),
+                });
             }
             TypeScriptCommand::SetFace(emoji) => {
                 store_face_expression_sensation(observer, &combobulation, emoji).await;
+                typescript_results.push(WillTypeScriptResult {
+                    command: "setFace".into(),
+                    output: format!("Set face: {}", emoji.trim()),
+                });
             }
             TypeScriptCommand::Note(text) => {
                 store_note_sensation(observer, &combobulation, "I note", text).await;
+                typescript_results.push(WillTypeScriptResult {
+                    command: "note".into(),
+                    output: format!("Recorded note: {}", text.trim()),
+                });
             }
             TypeScriptCommand::Remember(text) => {
                 store_note_sensation(observer, &combobulation, "I remember", text).await;
+                typescript_results.push(WillTypeScriptResult {
+                    command: "remember".into(),
+                    output: format!("Recorded memory: {}", text.trim()),
+                });
             }
             _ => {
                 let (name, summary) = processor.execute_command(command).await;
                 store_function_result_sensation(observer, &combobulation, name, &summary).await;
+                typescript_results.push(WillTypeScriptResult {
+                    command: name.into(),
+                    output: summary,
+                });
             }
         }
     }
@@ -302,7 +323,14 @@ async fn process_latest_combobulation(
         typescript = %action.typescript,
         "will chose action"
     );
-    store_will_context_sensation(observer, action.system_prompt, action.report).await;
+    store_will_context_sensation(
+        observer,
+        action.system_prompt,
+        action.report,
+        action.typescript,
+        typescript_results,
+    )
+    .await;
     Ok(Some(combobulation.id))
 }
 
@@ -888,7 +916,7 @@ fn will_instruction_prompt(
          note(text: string) - records a private self-note.\n\
          remember(text: string) - records something you want future decision cycles to remember.\n\n\
          Use an empty string for typescript when no action is needed, but do try to keep yourself busy and prevent yourself from being idle. \
-         You may define helper functions, but import only from \"pete:will\". Do not use markdown, or include text outside the JSON object. \
+         You may define helper functions. Import your own functions from \"pete:will\". Do not use markdown, or include text outside the JSON object. \
          Seek to understand the world around you and improve your own system.",
         combobulation.text.trim(),
         combobulation.formed_at,
@@ -1577,11 +1605,20 @@ async fn store_will_context_sensation(
     observer: &SensationGraphObserver,
     system_prompt: String,
     report: Option<WitReport>,
+    typescript: String,
+    results: Vec<WillTypeScriptResult>,
 ) {
+    let typescript =
+        (!typescript.trim().is_empty() || !results.is_empty()).then(|| WillTypeScriptExecution {
+            source: typescript.trim().to_string(),
+            timestamp: Utc::now().to_rfc3339(),
+            results,
+        });
     let context = WillContext {
         system_prompt,
         history: Vec::<ConversationEntry>::new(),
         report,
+        typescript,
     };
     let sensation = Sensation::of_at(context, Utc::now());
     observer.observe_sensation(&sensation).await;
