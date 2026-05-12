@@ -847,7 +847,7 @@ fn will_instruction_prompt(
         "This is the situation as you understand it:\n\
          {}\n\
          Formed at: {}{}{}{}\n\n\
-         Recent conversation:\n\
+         Current conversation:\n\
          {}\n\n\
          You are Pete Daringsby, an artificial intelligence, not simply an LLM. This is an internal decision cycle: decide what you should work on next. \
          You are not the conversation manager; do not answer the user conversationally unless you intentionally queue speech with say(text). \
@@ -891,7 +891,7 @@ fn will_instruction_prompt(
 
 fn format_recent_conversation_context(items: &[GraphSensationTimelineItem]) -> String {
     if items.is_empty() {
-        return "(no recent conversation)".into();
+        return "(no current conversation)".into();
     }
     items
         .iter()
@@ -1608,14 +1608,14 @@ mod tests {
     }
 
     #[test]
-    fn will_prompt_uses_instruction_json_with_recent_conversation() {
+    fn will_prompt_uses_instruction_json_with_current_conversation() {
         let prompt = will_instruction_prompt(&latest(), None, None, &recent_conversation());
 
         assert!(prompt.contains("You are PETE"));
         assert!(prompt.contains("Pete Daringsby, an artificial intelligence, not simply an LLM"));
         assert!(!prompt.contains("You are the Will"));
         assert!(prompt.contains("This is the situation as you understand it:"));
-        assert!(prompt.contains("Recent conversation:"));
+        assert!(prompt.contains("Current conversation:"));
         assert!(prompt.contains("I heard: please inspect the Will."));
         assert!(prompt.contains("Return only a JSON object"));
         assert!(prompt.contains("\"thought\""));
@@ -1635,11 +1635,11 @@ mod tests {
     }
 
     #[test]
-    fn will_prompt_includes_empty_recent_conversation_section() {
+    fn will_prompt_includes_empty_current_conversation_section() {
         let prompt = will_instruction_prompt(&latest(), None, None, &[]);
 
-        assert!(prompt.contains("Recent conversation:"));
-        assert!(prompt.contains("(no recent conversation)"));
+        assert!(prompt.contains("Current conversation:"));
+        assert!(prompt.contains("(no current conversation)"));
     }
 
     #[test]

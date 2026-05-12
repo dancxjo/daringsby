@@ -8,9 +8,9 @@ use dotenvy::dotenv;
 use lingproc::{Doer, LlmInstruction, Vectorizer};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
-    ConversationEntry, GraphAwareness, GraphTimelineWindow, Neo4jClient, QdrantClient,
-    SENSOR_GROUNDING_RULES, Sensation, SensationGraphObserver, SensationObserver, WillContext,
-    WitReport, with_default_system_prompt,
+    ConversationEntry, GraphAwareness, GraphSensationTimelineItem, GraphTimelineWindow,
+    Neo4jClient, QdrantClient, SENSOR_GROUNDING_RULES, Sensation, SensationGraphObserver,
+    SensationObserver, WillContext, WitReport, with_default_system_prompt,
 };
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{debug, error, info, trace};
@@ -180,12 +180,17 @@ async fn process_window(
         source_count = window.items.len(),
         "combobulating timeline window"
     );
+    let conversation = graph
+        .conversation_timeline(None, Utc::now(), 12)
+        .await
+        .unwrap_or_default();
     let result = processor
         .combobulate(
             &window,
             qdrant,
             window_seconds,
             latest_combobulation_sensation_at.as_deref(),
+            &conversation,
         )
         .await
         .with_context(|| format!("failed to combobulate timeline {}", window.anchor_id))?;
@@ -234,9 +239,14 @@ impl CombobulationProcessor {
         qdrant: &QdrantClient,
         window_seconds: u64,
         latest_combobulation_sensation_at: Option<&str>,
+        conversation: &[GraphSensationTimelineItem],
     ) -> anyhow::Result<CombobulationResult> {
-        let prompt =
-            combobulation_prompt(window, window_seconds, latest_combobulation_sensation_at);
+        let prompt = combobulation_prompt(
+            window,
+            window_seconds,
+            latest_combobulation_sensation_at,
+            conversation,
+        );
         let raw_text = self
             .doer
             .follow(LlmInstruction {
@@ -307,8 +317,10 @@ fn combobulation_prompt(
     window: &GraphTimelineWindow,
     window_seconds: u64,
     latest_combobulation_sensation_at: Option<&str>,
+    conversation: &[GraphSensationTimelineItem],
 ) -> String {
     let timeline = timeline_prompt(window);
+    let conversation_context = current_conversation_prompt(conversation);
     let latest_combobulation_note = match latest_combobulation_sensation_at {
         Some(occurred_at) => {
             format!("The last recorded combobulation sensation occurred at {occurred_at}.")
@@ -321,8 +333,20 @@ fn combobulation_prompt(
          {latest_combobulation_note}\n\
          Treat these sensations as fragmentary, possibly contradictory, fleeting evidence about the actual situation, not as the topic to describe. Try to infer what is going on in the real world from those fragments. Some entries may be your own prior combobulation summaries looping back in as sensations; treat those as provisional, possibly stale self-context, not as fresh external evidence.\n\
          {SENSOR_GROUNDING_RULES} What is going on right now? Summarize your current awareness in one or two grounded first-person sentences, then end with exactly one emoji that reflects the tone of the moment. Keep it compact: compress repeated low-level records into the real-world gist. Do not say that you are observing a timeline, sensations, recordings, entries, a previous summary, or a shift in conversation. Do not mention graph ids, hashes, timestamps, edges, or per-detection details unless they are directly relevant.\n\n\
+         Current conversation:\n{conversation_context}\n\n\
          Timeline:\n{timeline}"
     ))
+}
+
+fn current_conversation_prompt(items: &[GraphSensationTimelineItem]) -> String {
+    if items.is_empty() {
+        return "(no current conversation)".into();
+    }
+    items
+        .iter()
+        .map(|item| format!("- {} [{}]: {}", item.occurred_at, item.kind, item.text))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn timeline_timestamp(value: &str) -> String {
@@ -396,6 +420,17 @@ mod tests {
     use super::*;
     use psyche::GraphTimelineItem;
 
+    fn current_conversation() -> Vec<GraphSensationTimelineItem> {
+        vec![GraphSensationTimelineItem {
+            id: "sensation:heard:1".into(),
+            labels: vec!["GraphNode".into(), "Sensation".into()],
+            kind: "text".into(),
+            text: "I heard: are you awake?".into(),
+            occurred_at: "2026-05-05T12:35:00Z".into(),
+            formed_at: Some("2026-05-05T12:35:01Z".into()),
+        }]
+    }
+
     #[test]
     fn timeline_prompt_groups_entries_by_timestamp() {
         let window = GraphTimelineWindow {
@@ -443,7 +478,12 @@ mod tests {
             }],
         };
 
-        let prompt = combobulation_prompt(&window, 600, Some("2026-05-05T12:30:00Z"));
+        let prompt = combobulation_prompt(
+            &window,
+            600,
+            Some("2026-05-05T12:30:00Z"),
+            &current_conversation(),
+        );
 
         assert!(prompt.contains("You are PETE"));
         assert!(prompt.contains("next uncombobulated sensations"));
@@ -464,11 +504,33 @@ mod tests {
         assert!(prompt.contains("end with exactly one emoji"));
         assert!(prompt.contains("Keep it compact"));
         assert!(prompt.contains("per-detection details"));
+        assert!(prompt.contains("Current conversation:"));
+        assert!(prompt.contains("I heard: are you awake?"));
         assert!(prompt.contains("Timeline:"));
         let ts = timeline_timestamp("2026-05-05T12:34:56Z");
         assert!(prompt.contains(&format!(
             "Sensation timeline {ts} to {ts}\n[{ts}] audio sensation; transcript: hello"
         )));
+    }
+
+    #[test]
+    fn combobulation_prompt_includes_empty_current_conversation_section() {
+        let window = GraphTimelineWindow {
+            anchor_id: "speech:1".into(),
+            anchor_at: "2026-05-05T12:34:56Z".into(),
+            items: vec![GraphTimelineItem {
+                id: "sensation:audio:1".into(),
+                event_id: "audio:1".into(),
+                labels: vec!["Sensation".into()],
+                text: "audio sensation; transcript: hello".into(),
+                occurred_at: "2026-05-05T12:34:56Z".into(),
+            }],
+        };
+
+        let prompt = combobulation_prompt(&window, 600, None, &[]);
+
+        assert!(prompt.contains("Current conversation:"));
+        assert!(prompt.contains("(no current conversation)"));
     }
 
     #[test]
