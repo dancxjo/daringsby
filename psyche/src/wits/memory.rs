@@ -3569,6 +3569,101 @@ impl Neo4jClient {
             .transpose()
     }
 
+    /// Return the newest remembering-loop sensation processing timestamp.
+    pub async fn latest_remembrance_sensation_at(&self) -> Result<Option<String>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (n:GraphNode:Sensation)
+                    WITH n,
+                        coalesce(n.how, "") AS text,
+                        coalesce(n.created_at, n.how_formed_at, n.timestamp, n.occurred_at, "") AS formed_at
+                    WHERE formed_at <> ""
+                      AND (n.kind = "remembered_memory" OR text STARTS WITH "I remember:")
+                    RETURN formed_at
+                    ORDER BY datetime(formed_at) DESC, n.id DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest remembrance sensation timestamp",
+        )
+        .await?;
+        rows.first()
+            .map(|row| {
+                row.as_array()
+                    .context("Neo4j latest remembrance sensation row was not an array")
+                    .and_then(|values| {
+                        row_string(values, 0, "latest remembrance sensation timestamp")
+                    })
+            })
+            .transpose()
+    }
+
+    /// Return the latest sensation `how` text that the remembering loop has not processed.
+    pub async fn latest_sensations_for_remembering(
+        &self,
+        after_formed_at: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<GraphSensationTimelineItem>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (n:GraphNode:Sensation)
+                    WITH n,
+                        coalesce(n.how, "") AS text,
+                        coalesce(n.source_ended_at, n.source_started_at, n.source_captured_at, n.observed_at, n.captured_at, n.occurred_at, n.timestamp, "") AS occurred_at,
+                        coalesce(n.how_formed_at, n.timestamp, n.created_at, n.occurred_at, "") AS formed_at
+                    WHERE text <> ""
+                      AND formed_at <> ""
+                      AND ($after_formed_at IS NULL OR datetime(formed_at) > datetime($after_formed_at))
+                      AND coalesce(n.kind, "") <> "remembered_memory"
+                      AND NOT text STARTS WITH "I remember:"
+                    WITH n, labels(n) AS labels, text, occurred_at, formed_at
+                    ORDER BY datetime(formed_at) DESC, n.id DESC
+                    LIMIT $limit
+                    WITH collect({
+                        id: n.id,
+                        labels: labels,
+                        kind: coalesce(n.kind, head([label IN labels WHERE label <> "GraphNode"]), "sensation"),
+                        text: text,
+                        occurred_at: occurred_at,
+                        formed_at: formed_at
+                    }) AS rows
+                    UNWIND CASE rows WHEN [] THEN [] ELSE range(0, size(rows) - 1) END AS idx
+                    WITH rows[size(rows) - 1 - idx] AS row, idx
+                    RETURN row.id, row.labels, row.kind, row.text, row.occurred_at, row.formed_at
+                    ORDER BY idx
+                "#
+                .into(),
+                parameters: json!({
+                    "after_formed_at": after_formed_at,
+                    "limit": if limit == 0 {
+                        i64::MAX
+                    } else {
+                        i64::try_from(limit).unwrap_or(i64::MAX)
+                    },
+                }),
+            },
+            "loading sensations for remembering",
+        )
+        .await?;
+        rows.iter()
+            .map(graph_sensation_timeline_item_from_row)
+            .collect()
+    }
+
     /// Return sensation graph nodes with first-person `how` text in chronological order.
     pub async fn sensation_timeline(
         &self,
@@ -5004,6 +5099,157 @@ impl Neo4jClient {
                 "type": "DERIVED_FROM",
                 "source_index": index,
                 "occurred_at": item.occurred_at,
+            }));
+        }
+
+        self.store_data(&json!({
+            "op": "merge_graph",
+            "nodes": nodes,
+            "relationships": relationships,
+        }))
+        .await
+    }
+
+    /// Store an LLM-generated remembrance as a derived sensation.
+    pub async fn attach_remembrance(
+        &self,
+        sources: &[GraphSensationTimelineItem],
+        related_memories: &[GraphClusterItem],
+        llm_model: &str,
+        how: &str,
+    ) -> Result<()> {
+        anyhow::ensure!(!sources.is_empty(), "remembrance has no source sensations");
+        let how = common::non_empty_model_text(how).context("remembrance text was empty")?;
+        let processed_at = chrono::Utc::now().to_rfc3339();
+        let source_ids = sources
+            .iter()
+            .map(|item| item.id.clone())
+            .collect::<Vec<_>>();
+        let source_texts = sources
+            .iter()
+            .map(|item| item.text.clone())
+            .collect::<Vec<_>>();
+        let related_node_ids = related_memories
+            .iter()
+            .map(|item| item.node_id.clone())
+            .collect::<Vec<_>>();
+        let related_vector_ids = related_memories
+            .iter()
+            .map(|item| item.vector_id.clone())
+            .collect::<Vec<_>>();
+        let related_texts = related_memories
+            .iter()
+            .map(|item| item.text.clone())
+            .collect::<Vec<_>>();
+        let source_started_at = sources.first().map(|item| item.occurred_at.clone());
+        let source_ended_at = sources.last().map(|item| item.occurred_at.clone());
+        let run_id = stable_bytes_id(
+            "remembering",
+            format!(
+                "{}:{processed_at}",
+                source_ids.first().map(String::as_str).unwrap_or("unknown")
+            )
+            .as_bytes(),
+        );
+        let sensation_id = stable_bytes_id(
+            "sensation:remembered_memory",
+            format!("{run_id}:{how}").as_bytes(),
+        );
+        let mut nodes = vec![
+            json!({
+                "label": "RememberingRun",
+                "id": run_id,
+                "model": llm_model,
+                "processed_at": processed_at,
+                "source_count": sources.len(),
+                "source_ids": source_ids,
+                "source_texts": source_texts,
+                "source_started_at": source_started_at,
+                "source_ended_at": source_ended_at,
+                "related_node_ids": related_node_ids,
+                "related_vector_ids": related_vector_ids,
+                "related_texts": related_texts,
+            }),
+            json!({
+                "label": "Sensation",
+                "id": sensation_id,
+                "kind": "remembered_memory",
+                "derived": true,
+                "occurred_at": processed_at,
+                "how": how,
+                "how_formed_at": processed_at,
+                "created_at": processed_at,
+                "remembering_run_id": run_id,
+                "source_started_at": source_started_at,
+                "source_ended_at": source_ended_at,
+                "source_sensation_ids": source_ids,
+            }),
+        ];
+        let mut relationships = vec![
+            json!({
+                "from": run_id,
+                "to": sensation_id,
+                "type": "PRODUCED",
+            }),
+            json!({
+                "from": sensation_id,
+                "to": run_id,
+                "type": "DERIVED_FROM",
+            }),
+        ];
+
+        for (index, item) in sources.iter().enumerate() {
+            nodes.push(source_sensation_ref_node(&item.id));
+            relationships.push(json!({
+                "from": item.id,
+                "to": run_id,
+                "type": "INCLUDED_IN_REMEMBERING",
+                "source_index": index,
+                "occurred_at": item.occurred_at,
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": item.id,
+                "type": "DERIVED_FROM",
+                "source_index": index,
+                "occurred_at": item.occurred_at,
+            }));
+        }
+
+        for (index, item) in related_memories.iter().enumerate() {
+            let primary_label = item
+                .labels
+                .iter()
+                .find(|label| label.as_str() != "GraphNode")
+                .map(String::as_str)
+                .unwrap_or("GraphNode");
+            nodes.push(json!({
+                "label": primary_label,
+                "id": item.node_id,
+            }));
+            nodes.push(json!({
+                "label": "Vector",
+                "id": item.vector_id,
+            }));
+            relationships.push(json!({
+                "from": run_id,
+                "to": item.node_id,
+                "type": "USED_MEMORY",
+                "source_index": index,
+                "vector_id": item.vector_id,
+            }));
+            relationships.push(json!({
+                "from": run_id,
+                "to": item.vector_id,
+                "type": "USED_VECTOR",
+                "source_index": index,
+            }));
+            relationships.push(json!({
+                "from": sensation_id,
+                "to": item.node_id,
+                "type": "REMEMBERS",
+                "source_index": index,
+                "vector_id": item.vector_id,
             }));
         }
 

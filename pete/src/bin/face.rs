@@ -30,8 +30,9 @@ use pete::{CoquiTts, synthesize_speech_audio};
 use pete::{EventBus, MediaEvent, init_logging, parse_data_url};
 use psyche::{
     AudioClip, ImageData, Impression, Neo4jClient, Sensation, SensationGraphObserver,
-    SensationObserver, Stimulus, WillContext, image_content_id,
+    SensationObserver, Stimulus, WillContext, WillTypeScriptExecution, image_content_id,
 };
+use serde::Deserialize;
 use shared::{SpeechPlaybackStatus, WsPayload};
 use tokio::{io::AsyncWriteExt, net::UnixListener, sync::broadcast};
 use tower_http::services::ServeDir;
@@ -723,6 +724,7 @@ fn spawn_will_context_poller(
             }
             match graph.latest_will_context().await {
                 Ok(Some(context)) => {
+                    let context = enrich_will_context(context);
                     // We use a context hash as an ID to detect changes.
                     use sha2::Digest;
                     let current_id = format!(
@@ -770,6 +772,50 @@ fn spawn_conversation_poller(
             tokio::time::sleep(poll_interval).await;
         }
     });
+}
+
+#[derive(Deserialize)]
+struct WillReportPayload {
+    #[serde(default)]
+    typescript: String,
+}
+
+fn enrich_will_context(mut context: WillContext) -> WillContext {
+    if context.typescript.is_none() {
+        context.typescript = context
+            .report
+            .as_ref()
+            .and_then(will_typescript_execution_from_report);
+    }
+    context
+}
+
+fn will_typescript_execution_from_report(
+    report: &psyche::WitReport,
+) -> Option<WillTypeScriptExecution> {
+    if report.name != "Will" {
+        return None;
+    }
+    let payload = parse_will_report_payload(&report.output)?;
+    let source = payload.typescript.trim();
+    if source.is_empty() {
+        return None;
+    }
+    Some(WillTypeScriptExecution {
+        source: source.to_string(),
+        timestamp: Utc::now().to_rfc3339(),
+        results: Vec::new(),
+    })
+}
+
+fn parse_will_report_payload(raw: &str) -> Option<WillReportPayload> {
+    serde_json::from_str(raw).ok().or_else(|| {
+        let start = raw.find('{')?;
+        let end = raw.rfind('}')?;
+        (end > start)
+            .then(|| serde_json::from_str(&raw[start..=end]).ok())
+            .flatten()
+    })
 }
 
 #[cfg(feature = "tts")]
@@ -939,4 +985,28 @@ fn parse_flat_ws_request(text: &str) -> Option<WsPayload> {
 
 fn parse_ws_at(at: Option<&str>) -> Option<DateTime<Utc>> {
     at.and_then(psyche::parse_observed_at)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enriches_will_context_from_raw_report_typescript() {
+        let context = WillContext {
+            system_prompt: "prompt".into(),
+            history: Vec::new(),
+            report: Some(psyche::WitReport {
+                name: "Will".into(),
+                prompt: "prompt".into(),
+                output: r#"{"thought":"scan","typescript":"import { searchSource } from \"pete:will\";\nsearchSource(\"system failure\", 5)"}"#.into(),
+            }),
+            typescript: None,
+        };
+
+        let context = enrich_will_context(context);
+        let execution = context.typescript.expect("typescript execution");
+        assert!(execution.source.contains("searchSource"));
+        assert!(execution.results.is_empty());
+    }
 }

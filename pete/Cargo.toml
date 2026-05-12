@@ -121,6 +121,10 @@ name = "will"
 path = "src/bin/will.rs"
 
 [[bin]]
+name = "remember"
+path = "src/bin/remember.rs"
+
+[[bin]]
 name = "conversant"
 path = "src/bin/conversant.rs"
 

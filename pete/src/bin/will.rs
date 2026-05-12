@@ -8,15 +8,16 @@ use dotenvy::dotenv;
 use lingproc::{Doer, LlmInstruction, Vectorizer};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
-    ConversationEntry, GraphFaceIdentityTarget, GraphLatestCombobulation, GraphNodeDetails,
-    GraphSensationTimelineItem, GraphSnapshot, GraphVoiceIdentityTarget, Impression, Neo4jClient,
-    QdrantClient, Sensation, SensationGraphObserver, SensationObserver, Stimulus, WillContext,
-    WillTypeScriptExecution, WillTypeScriptResult, WitReport, with_default_system_prompt,
+    BasicMemory, ConversationEntry, GraphFaceIdentityTarget, GraphLatestCombobulation,
+    GraphNodeDetails, GraphSensationTimelineItem, GraphSnapshot, GraphVoiceIdentityTarget,
+    Impression, Memory, Neo4jClient, QdrantClient, Sensation, SensationGraphObserver,
+    SensationObserver, Stimulus, WillContext, WillTypeScriptExecution, WillTypeScriptResult,
+    WitReport, with_default_system_prompt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use tokio::time::{MissedTickBehavior, interval};
-use tracing::{error, info, trace};
+use tracing::{error, info, trace, warn};
 use tsrun::{
     Guarded, InternalModule, Interpreter, InterpreterConfig, JsError, JsValue, StepResult, api,
     js_value_to_json,
@@ -176,6 +177,16 @@ struct Cli {
     /// URL of the Qdrant vector store.
     #[arg(long, env = "QDRANT_URL", default_value = "http://localhost:6333")]
     qdrant_url: String,
+    /// URL of the embeddings Ollama server.
+    #[arg(
+        long,
+        env = "EMBEDDINGS_HOST",
+        default_value = "http://localhost:11434"
+    )]
+    embeddings_host: String,
+    /// Embedding model name used for memory vectors.
+    #[arg(long, env = "EMBEDDINGS_MODEL", default_value = "embeddinggemma")]
+    embeddings_model: String,
     /// URL of the Will Ollama server.
     #[arg(
         long = "will-host",
@@ -212,13 +223,21 @@ async fn main() -> anyhow::Result<()> {
         cli.neo4j_user.clone(),
         cli.neo4j_pass.clone(),
     ));
-    let qdrant = std::sync::Arc::new(QdrantClient::new(cli.qdrant_url.clone()));
+    let qdrant = QdrantClient::new(cli.qdrant_url.clone());
     let observer = SensationGraphObserver::new(graph.clone());
     let doer = ollama_provider_from_args(&cli.will_host, &cli.will_model)?;
+    let vectorizer = ollama_provider_from_args(&cli.embeddings_host, &cli.embeddings_model)?;
+    let memory: std::sync::Arc<dyn Memory> = std::sync::Arc::new(BasicMemory {
+        vectorizer: std::sync::Arc::new(vectorizer.clone()),
+        qdrant: qdrant.clone(),
+        neo4j: graph.clone(),
+    });
     let processor = WillProcessor {
         doer,
+        vectorizer,
         graph: graph.clone(),
-        qdrant,
+        qdrant: std::sync::Arc::new(qdrant),
+        memory,
     };
 
     if cli.once {
@@ -272,7 +291,13 @@ async fn process_latest_combobulation(
         .with_context(|| format!("failed to choose action for {}", combobulation.id))?;
 
     if !action.thought.trim().is_empty() {
-        store_thought_sensation(observer, &combobulation, &action.thought).await;
+        store_thought_sensation(
+            observer,
+            processor.memory.as_ref(),
+            &combobulation,
+            &action.thought,
+        )
+        .await;
     }
 
     let mut typescript_results = Vec::new();
@@ -293,14 +318,28 @@ async fn process_latest_combobulation(
                 });
             }
             TypeScriptCommand::Note(text) => {
-                store_note_sensation(observer, &combobulation, "I note", text).await;
+                store_note_sensation(
+                    observer,
+                    processor.memory.as_ref(),
+                    &combobulation,
+                    "I note",
+                    text,
+                )
+                .await;
                 typescript_results.push(WillTypeScriptResult {
                     command: "note".into(),
                     output: format!("Recorded note: {}", text.trim()),
                 });
             }
             TypeScriptCommand::Remember(text) => {
-                store_note_sensation(observer, &combobulation, "I remember", text).await;
+                store_note_sensation(
+                    observer,
+                    processor.memory.as_ref(),
+                    &combobulation,
+                    "I remember",
+                    text,
+                )
+                .await;
                 typescript_results.push(WillTypeScriptResult {
                     command: "remember".into(),
                     output: format!("Recorded memory: {}", text.trim()),
@@ -336,8 +375,10 @@ async fn process_latest_combobulation(
 
 struct WillProcessor {
     doer: lingproc::OllamaProvider,
+    vectorizer: lingproc::OllamaProvider,
     graph: std::sync::Arc<Neo4jClient>,
     qdrant: std::sync::Arc<QdrantClient>,
+    memory: std::sync::Arc<dyn Memory>,
 }
 
 impl WillProcessor {
@@ -493,7 +534,7 @@ impl WillProcessor {
         if query.is_empty() {
             return Ok("Recall query was empty.".into());
         }
-        let vector = self.doer.vectorize(query).await?;
+        let vector = self.vectorizer.vectorize(query).await?;
         if vector.is_empty() {
             return Ok("Recall query produced no embedding.".into());
         }
@@ -1502,6 +1543,7 @@ fn ts_remember(
 
 async fn store_thought_sensation(
     observer: &SensationGraphObserver,
+    memory: &dyn Memory,
     combobulation: &GraphLatestCombobulation,
     thought: &str,
 ) {
@@ -1514,8 +1556,7 @@ async fn store_thought_sensation(
         [combobulation.id.clone()],
     );
     let impression = Impression::new(vec![stimulus], summary, None::<String>);
-    let sensation = Sensation::of_at(impression, occurred_at);
-    observer.observe_sensation(&sensation).await;
+    store_will_memory_sensation(observer, memory, impression, occurred_at).await;
 }
 
 async fn store_speech_intention_sensation(
@@ -1562,6 +1603,7 @@ async fn store_face_expression_sensation(
 
 async fn store_note_sensation(
     observer: &SensationGraphObserver,
+    memory: &dyn Memory,
     combobulation: &GraphLatestCombobulation,
     prefix: &str,
     text: &str,
@@ -1578,8 +1620,49 @@ async fn store_note_sensation(
         [combobulation.id.clone()],
     );
     let impression = Impression::new(vec![stimulus], summary, None::<String>);
-    let sensation = Sensation::of_at(impression, occurred_at);
+    store_will_memory_sensation(observer, memory, impression, occurred_at).await;
+}
+
+async fn store_will_memory_sensation(
+    observer: &SensationGraphObserver,
+    memory: &dyn Memory,
+    impression: Impression<String>,
+    occurred_at: DateTime<Utc>,
+) {
+    let sensation = Sensation::of_at(impression.clone(), occurred_at);
     observer.observe_sensation(&sensation).await;
+    if let Err(err) = store_serializable_will_impression(memory, &impression).await {
+        warn!(
+            error = %format!("{err:#}"),
+            summary = %impression.summary,
+            "will memory store failed"
+        );
+    }
+}
+
+async fn store_serializable_will_impression(
+    memory: &dyn Memory,
+    impression: &Impression<String>,
+) -> anyhow::Result<()> {
+    let stimuli = impression
+        .stimuli
+        .iter()
+        .map(|stimulus| {
+            Ok(Stimulus {
+                what: serde_json::to_value(&stimulus.what)?,
+                timestamp: stimulus.timestamp,
+                source_sensation_ids: stimulus.source_sensation_ids.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>, serde_json::Error>>()?;
+    let erased = Impression {
+        stimuli,
+        source_sensation_ids: impression.source_sensation_ids.clone(),
+        summary: impression.summary.clone(),
+        emoji: impression.emoji.clone(),
+        timestamp: impression.timestamp,
+    };
+    memory.store(&erased).await
 }
 
 async fn store_function_result_sensation(
@@ -1633,6 +1716,36 @@ fn parse_utc(value: &str) -> Option<DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use psyche::GraphStore;
+    use serde_json::Value;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct MockGraph {
+        records: Mutex<Vec<Value>>,
+    }
+
+    #[async_trait]
+    impl GraphStore for MockGraph {
+        async fn store_data(&self, data: &Value) -> anyhow::Result<()> {
+            self.records.lock().unwrap().push(data.clone());
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct MockMemory {
+        impressions: Mutex<Vec<Impression<Value>>>,
+    }
+
+    #[async_trait]
+    impl Memory for MockMemory {
+        async fn store(&self, impression: &Impression<Value>) -> anyhow::Result<()> {
+            self.impressions.lock().unwrap().push(impression.clone());
+            Ok(())
+        }
+    }
 
     fn latest() -> GraphLatestCombobulation {
         GraphLatestCombobulation {
@@ -1652,6 +1765,52 @@ mod tests {
             occurred_at: "2026-05-07T12:01:00Z".into(),
             formed_at: Some("2026-05-07T12:01:01Z".into()),
         }]
+    }
+
+    #[tokio::test]
+    async fn will_thoughts_notes_and_memories_are_sent_to_graph_and_memory() {
+        let graph = Arc::new(MockGraph::default());
+        let observer = SensationGraphObserver::new(graph.clone());
+        let memory = MockMemory::default();
+        let latest = latest();
+
+        store_thought_sensation(&observer, &memory, &latest, "inspect the room").await;
+        store_note_sensation(&observer, &memory, &latest, "I note", "the lights changed").await;
+        store_note_sensation(
+            &observer,
+            &memory,
+            &latest,
+            "I remember",
+            "the door was open",
+        )
+        .await;
+
+        let graph_records = graph.records.lock().unwrap();
+        assert_eq!(graph_records.len(), 3);
+        assert!(
+            graph_records
+                .iter()
+                .all(|record| { record.get("op").and_then(Value::as_str) == Some("merge_graph") })
+        );
+
+        let impressions = memory.impressions.lock().unwrap();
+        let summaries = impressions
+            .iter()
+            .map(|impression| impression.summary.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            summaries,
+            vec![
+                "I think: inspect the room",
+                "I note: the lights changed",
+                "I remember: the door was open"
+            ]
+        );
+        let expected_sources = vec!["awareness:1".to_string()];
+        assert!(impressions.iter().all(|impression| {
+            impression.source_sensation_ids == expected_sources
+                && impression.stimuli[0].source_sensation_ids == expected_sources
+        }));
     }
 
     #[test]
