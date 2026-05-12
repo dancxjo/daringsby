@@ -729,8 +729,11 @@ fn spawn_will_context_poller(
                         "{:x}",
                         sha2::Sha256::digest(
                             format!(
-                                "{}{:?}{:?}",
-                                context.system_prompt, context.history, context.report
+                                "{}{:?}{:?}{:?}",
+                                context.system_prompt,
+                                context.history,
+                                context.report,
+                                context.typescript
                             )
                             .as_bytes()
                         )
