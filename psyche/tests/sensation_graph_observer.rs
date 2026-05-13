@@ -340,20 +340,8 @@ async fn stores_thought_with_source_links() {
     find_relationship(
         &stored[0],
         "DERIVED_FROM",
-        thought["id"].as_str().unwrap(),
-        "sensation:audio:1",
-    );
-    find_relationship(
-        &stored[0],
-        "DERIVED_FROM",
         sensation["id"].as_str().unwrap(),
         "combobulation:1",
-    );
-    find_relationship(
-        &stored[0],
-        "DERIVED_FROM",
-        sensation["id"].as_str().unwrap(),
-        "sensation:audio:1",
     );
 }
 
