@@ -574,17 +574,17 @@ mod tests {
     fn cluster_prompt_item_omits_graphnode_label_and_includes_stimuli() {
         let item = GraphClusterItem {
             vector_id: "qdrant:memories:point-1".into(),
-            node_id: "impression:1".into(),
-            labels: vec!["GraphNode".into(), "Impression".into()],
-            text: "impression: someone is talking about coffee".into(),
+            node_id: "sensation:1".into(),
+            labels: vec!["GraphNode".into(), "Sensation".into()],
+            text: "sensation: someone is talking about coffee".into(),
             stimuli: vec!["text: coffee is ready".into()],
-            edges: vec!["-[:HAS_STIMULUS]-> stimulus:1".into()],
+            edges: vec!["-[:OBSERVED]-> text:1".into()],
             neighbors: vec!["TextObservation text: coffee is ready".into()],
         };
 
         assert_eq!(
             cluster_prompt_item(&item),
-            "- Impression impression: someone is talking about coffee (stimuli: text: coffee is ready) (edges: -[:HAS_STIMULUS]-> stimulus:1) (neighbors: TextObservation text: coffee is ready)"
+            "- Sensation sensation: someone is talking about coffee (stimuli: text: coffee is ready) (edges: -[:OBSERVED]-> text:1) (neighbors: TextObservation text: coffee is ready)"
         );
     }
 

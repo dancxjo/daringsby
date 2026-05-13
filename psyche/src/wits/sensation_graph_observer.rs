@@ -359,11 +359,11 @@ impl SensationObserver for SensationGraphObserver {
                 )
                 .await;
             } else if let Some(impression) = payload.downcast_ref::<Impression<String>>() {
-                let id = impression_sensation_payload_id(impression, occurred_at.to_rfc3339());
-                let sensation_id = sensation_id("impression", &id, occurred_at.to_rfc3339());
+                let id = cognitive_sensation_payload_id(impression, occurred_at.to_rfc3339());
+                let sensation_id = sensation_id("cognitive", &id, occurred_at.to_rfc3339());
                 let mut sensation = sensation_node(
                     &sensation_id,
-                    "impression",
+                    "cognitive",
                     occurred_at.to_rfc3339(),
                     &impression.summary,
                 );
@@ -730,14 +730,14 @@ fn combobulation_summary_id(summary: &CombobulationSummary, occurred_at: String)
     format!("combobulation-summary:sha256:{:x}", hasher.finalize())
 }
 
-fn impression_sensation_payload_id(impression: &Impression<String>, occurred_at: String) -> String {
+fn cognitive_sensation_payload_id(impression: &Impression<String>, occurred_at: String) -> String {
     let mut hasher = Sha256::new();
     hasher.update(impression.summary.as_bytes());
     hasher.update([0]);
     hasher.update(impression.timestamp.to_rfc3339().as_bytes());
     hasher.update([0]);
     hasher.update(occurred_at.as_bytes());
-    format!("impression-sensation:sha256:{:x}", hasher.finalize())
+    format!("cognitive-sensation:sha256:{:x}", hasher.finalize())
 }
 
 fn source_sensation_ref_node(source_id: &str) -> Value {

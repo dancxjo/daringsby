@@ -58,8 +58,12 @@ async fn memory_logs_cypher() {
     let logs = store.0.lock().unwrap().clone();
     assert_eq!(logs.len(), 1);
     assert!(logs[0].contains("\"op\":\"merge_graph\""));
-    assert!(logs[0].contains("\"label\":\"Impression\""));
-    assert!(logs[0].contains("\"label\":\"Stimulus\""));
+    assert!(logs[0].contains("\"label\":\"Sensation\""));
+    assert!(logs[0].contains("\"kind\":\"cognitive\""));
+    assert!(logs[0].contains("\"how\":\"hello\""));
+    assert!(!logs[0].contains("\"label\":\"Impression\""));
+    assert!(!logs[0].contains("\"label\":\"Stimulus\""));
+    assert!(!logs[0].contains("\"type\":\"HAS_STIMULUS\""));
     assert!(logs[0].contains("\\\"x\\\":1"));
 }
 
@@ -94,7 +98,7 @@ async fn memory_graph_stores_reconstructable_image_payload() {
 }
 
 #[tokio::test]
-async fn memory_graph_links_impression_and_stimulus_to_source_sensation() {
+async fn memory_graph_links_cognitive_sensation_to_source_sensation() {
     let store = Arc::new(MockNeo4j::default());
     let mem = BasicMemory {
         vectorizer: Arc::new(FailingVec),
@@ -122,4 +126,7 @@ async fn memory_graph_links_impression_and_stimulus_to_source_sensation() {
     assert!(logs[0].contains("\"source_sensation_ids\":[\"sensation:utterance:1\"]"));
     assert!(logs[0].contains("\"label\":\"SourceSensationRef\",\"id\":\"sensation:utterance:1\""));
     assert!(logs[0].contains("\"type\":\"DERIVED_FROM\""));
+    assert!(!logs[0].contains("\"label\":\"Impression\""));
+    assert!(!logs[0].contains("\"label\":\"Stimulus\""));
+    assert!(!logs[0].contains("\"type\":\"HAS_STIMULUS\""));
 }

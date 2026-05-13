@@ -228,7 +228,7 @@ async fn stores_combobulation_summary_as_sensation() {
 }
 
 #[tokio::test]
-async fn stores_impression_as_sensation_how_not_artifact() {
+async fn stores_cognitive_output_as_sensation_how_not_artifact() {
     let graph = Arc::new(MockGraph::default());
     let observer = SensationGraphObserver::new(graph.clone());
     let occurred_at = Utc::now();
@@ -252,7 +252,7 @@ async fn stores_impression_as_sensation_how_not_artifact() {
     let stored = graph.0.lock().unwrap();
     assert_eq!(stored.len(), 1);
     assert_eq!(stored[0]["nodes"][0]["label"], "Sensation");
-    assert_eq!(stored[0]["nodes"][0]["kind"], "impression");
+    assert_eq!(stored[0]["nodes"][0]["kind"], "cognitive");
     assert_eq!(stored[0]["nodes"][0]["how"], "I ought to say: hello there.");
     assert_eq!(
         stored[0]["nodes"][0]["source_sensation_ids"][0],

@@ -87,6 +87,8 @@ fn one_shot_prompt_includes_default_prompt() {
     assert!(prompt.contains("Do not infer an emotional tone from sensor volume alone"));
     assert!(prompt.contains("Prefer compact summaries over exhaustive breakdowns"));
     assert!(prompt.contains("Do not enumerate raw ids"));
+    assert!(prompt.contains("role or field is `user` may contain multiple human voices"));
+    assert!(prompt.contains("Do not assume there is only one person speaking"));
 }
 
 #[test]

@@ -1912,11 +1912,11 @@ async fn neo4j_client_loads_vector_cluster_items() {
                     "data": [{
                         "row": [
                             "qdrant:memories:point-1",
-                            "impression:1",
-                            ["GraphNode", "Impression"],
-                            "impression: coffee is brewing",
+                            "sensation:1",
+                            ["GraphNode", "Sensation"],
+                            "sensation: coffee is brewing",
                             ["text: coffee beans"],
-                            ["-[:HAS_STIMULUS]-> stimulus:1"],
+                            ["-[:OBSERVED]-> text:1"],
                             ["TextObservation text: coffee beans"]
                         ]
                     }]
@@ -1935,11 +1935,11 @@ async fn neo4j_client_loads_vector_cluster_items() {
         items,
         vec![GraphClusterItem {
             vector_id: "qdrant:memories:point-1".into(),
-            node_id: "impression:1".into(),
-            labels: vec!["GraphNode".into(), "Impression".into()],
-            text: "impression: coffee is brewing".into(),
+            node_id: "sensation:1".into(),
+            labels: vec!["GraphNode".into(), "Sensation".into()],
+            text: "sensation: coffee is brewing".into(),
             stimuli: vec!["text: coffee beans".into()],
-            edges: vec!["-[:HAS_STIMULUS]-> stimulus:1".into()],
+            edges: vec!["-[:OBSERVED]-> text:1".into()],
             neighbors: vec!["TextObservation text: coffee beans".into()],
         }]
     );
@@ -2649,9 +2649,9 @@ async fn neo4j_client_loads_conversation_timeline_with_user_and_conversant_words
                             "2026-05-05T12:34:56Z"
                         ]},
                         {"row": [
-                            "sensation:impression:1",
+                            "sensation:cognitive:1",
                             ["GraphNode", "Sensation"],
-                            "impression",
+                            "cognitive",
                             "I ought to say: Hello there.",
                             "2026-05-05T12:34:57Z",
                             "2026-05-05T12:34:57Z"

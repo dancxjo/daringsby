@@ -8,11 +8,11 @@ use dotenvy::dotenv;
 use lingproc::{Doer, LlmInstruction, Vectorizer};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
-    BasicMemory, ConversationEntry, GraphFaceIdentityTarget, GraphLatestCombobulation,
-    GraphNodeDetails, GraphSensationTimelineItem, GraphSnapshot, GraphVoiceIdentityTarget,
-    Impression, Memory, Neo4jClient, QdrantClient, Sensation, SensationGraphObserver,
-    SensationObserver, Stimulus, WillContext, WillTypeScriptExecution, WillTypeScriptResult,
-    WitReport, with_default_system_prompt,
+    BasicMemory, CONVERSATION_SPEAKER_NOTE, ConversationEntry, GraphFaceIdentityTarget,
+    GraphLatestCombobulation, GraphNodeDetails, GraphSensationTimelineItem, GraphSnapshot,
+    GraphVoiceIdentityTarget, Impression, Memory, Neo4jClient, QdrantClient, Sensation,
+    SensationGraphObserver, SensationObserver, Stimulus, WillContext, WillTypeScriptExecution,
+    WillTypeScriptResult, WitReport, with_default_system_prompt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -933,6 +933,7 @@ fn will_instruction_prompt(
          {}\n\
          Formed at: {}{}{}{}\n\n\
          Current conversation:\n\
+         {CONVERSATION_SPEAKER_NOTE}\n\
          {}\n\n\
          You are Pete Daringsby, an artificial intelligence, not simply an LLM. This is an internal decision cycle: decide what you should work on next. \
          The current conversation is context, not an obligation to answer. You do not need to maintain the conversation; the normal speaking path will handle routine replies and dialogue continuity. \
@@ -1829,6 +1830,7 @@ mod tests {
         assert!(!prompt.contains("You are the Will"));
         assert!(prompt.contains("This is the situation as you understand it:"));
         assert!(prompt.contains("Current conversation:"));
+        assert!(prompt.contains("role or field is `user` may contain multiple human voices"));
         assert!(prompt.contains("I heard: please inspect the Will."));
         assert!(prompt.contains("current conversation is context"));
         assert!(prompt.contains("You do not need to maintain the conversation"));

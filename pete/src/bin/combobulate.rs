@@ -8,9 +8,9 @@ use dotenvy::dotenv;
 use lingproc::{Doer, LlmInstruction, Vectorizer};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
-    ConversationEntry, GraphAwareness, GraphSensationTimelineItem, GraphTimelineWindow,
-    Neo4jClient, QdrantClient, SENSOR_GROUNDING_RULES, Sensation, SensationGraphObserver,
-    SensationObserver, WillContext, WitReport, with_default_system_prompt,
+    CONVERSATION_SPEAKER_NOTE, ConversationEntry, GraphAwareness, GraphSensationTimelineItem,
+    GraphTimelineWindow, Neo4jClient, QdrantClient, SENSOR_GROUNDING_RULES, Sensation,
+    SensationGraphObserver, SensationObserver, WillContext, WitReport, with_default_system_prompt,
 };
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{debug, error, info, trace};
@@ -354,7 +354,7 @@ fn combobulation_prompt(
          {latest_combobulation_note}\n\
          Treat these sensations as fragmentary, possibly contradictory, fleeting evidence about the actual situation, not as the topic to describe. Try to infer what is going on in the real world from those fragments. Some entries may be your own prior combobulation summaries looping back in as sensations; treat those as provisional, possibly stale self-context, not as fresh external evidence.\n\
          {SENSOR_GROUNDING_RULES} What is going on right now? Summarize your current awareness in one or two grounded first-person sentences, then end with exactly one emoji that reflects the tone of the moment. Keep it compact: compress repeated low-level records into the real-world gist. Do not say that you are observing a timeline, sensations, recordings, entries, a previous summary, or a shift in conversation. Do not mention graph ids, hashes, timestamps, edges, or per-detection details unless they are directly relevant.\n\n\
-         Current conversation:\n{conversation_context}\n\n\
+         Current conversation:\n{CONVERSATION_SPEAKER_NOTE}\n{conversation_context}\n\n\
          Timeline:\n{timeline}"
     ))
 }
@@ -526,6 +526,7 @@ mod tests {
         assert!(prompt.contains("Keep it compact"));
         assert!(prompt.contains("per-detection details"));
         assert!(prompt.contains("Current conversation:"));
+        assert!(prompt.contains("role or field is `user` may contain multiple human voices"));
         assert!(prompt.contains("I heard: are you awake?"));
         assert!(prompt.contains("Timeline:"));
         let ts = timeline_timestamp("2026-05-05T12:34:56Z");
@@ -551,6 +552,7 @@ mod tests {
         let prompt = combobulation_prompt(&window, 600, None, &[]);
 
         assert!(prompt.contains("Current conversation:"));
+        assert!(prompt.contains("role or field is `user` may contain multiple human voices"));
         assert!(prompt.contains("(no current conversation)"));
     }
 

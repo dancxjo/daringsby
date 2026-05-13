@@ -7,9 +7,9 @@ use dotenvy::dotenv;
 use lingproc::{Chatter, Message};
 use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
-    ConversationEntry, GraphLatestCombobulation, GraphSensationTimelineItem, Impression,
-    Neo4jClient, Sensation, SensationGraphObserver, SensationObserver, Stimulus, WillContext,
-    WitReport, with_default_system_prompt,
+    CONVERSATION_SPEAKER_NOTE, ConversationEntry, GraphLatestCombobulation,
+    GraphSensationTimelineItem, Impression, Neo4jClient, Sensation, SensationGraphObserver,
+    SensationObserver, Stimulus, WillContext, WitReport, with_default_system_prompt,
 };
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{error, info, trace};
@@ -278,6 +278,7 @@ fn conversant_system_prompt(
          {}\n\
          Formed at: {}{}{}\n\n\
          You manage the conversation with the user. Respond directly to the user with what you want to say. \
+         {CONVERSATION_SPEAKER_NOTE} \
          Keep the response to no more than two sentences. \
          Do not repeat the situation description or your own previous statements. \
          Include a single emoji in your response to represent your current facial expression. \
@@ -499,9 +500,9 @@ mod tests {
     #[test]
     fn maps_conversant_intention_to_assistant_conversation() {
         let item = GraphSensationTimelineItem {
-            id: "sensation:impression:1".into(),
+            id: "sensation:cognitive:1".into(),
             labels: vec!["GraphNode".into(), "Sensation".into()],
-            kind: "impression".into(),
+            kind: "cognitive".into(),
             text: "I ought to say: Hello there.".into(),
             occurred_at: "2026-05-07T12:00:01Z".into(),
             formed_at: Some("2026-05-07T12:00:01Z".into()),

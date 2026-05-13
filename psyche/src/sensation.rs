@@ -218,8 +218,8 @@ impl Sensation {
                         payload.downcast_ref::<crate::Impression<String>>()
                     {
                         sensation_id(
-                            "impression",
-                            &impression_sensation_id(impression, occurred_at),
+                            "cognitive",
+                            &cognitive_sensation_id(impression, occurred_at),
                             occurred_at,
                         )
                     } else {
@@ -297,7 +297,7 @@ fn combobulation_summary_id(
     format!("combobulation-summary:sha256:{:x}", hasher.finalize())
 }
 
-fn impression_sensation_id(
+fn cognitive_sensation_id(
     impression: &crate::Impression<String>,
     occurred_at: &DateTime<Utc>,
 ) -> String {
@@ -307,5 +307,5 @@ fn impression_sensation_id(
     hasher.update(impression.timestamp.to_rfc3339().as_bytes());
     hasher.update([0]);
     hasher.update(occurred_at.to_rfc3339().as_bytes());
-    format!("impression-sensation:sha256:{:x}", hasher.finalize())
+    format!("cognitive-sensation:sha256:{:x}", hasher.finalize())
 }

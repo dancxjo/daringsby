@@ -80,7 +80,7 @@ fn vector_cluster_labeling(collection: &str) -> VectorClusterLabeling {
         MEMORY_COLLECTION => VectorClusterLabeling {
             label: "MemoryCluster",
             kind: "memory_cluster",
-            member_label: "Impression",
+            member_label: "Sensation",
         },
         _ => VectorClusterLabeling {
             label: "Cluster",
@@ -2575,11 +2575,8 @@ impl Neo4jClient {
                 statement: r#"
                     MATCH (n:GraphNode)
                     WHERE EXISTS { MATCH (n)--(:GraphNode) }
-                    OPTIONAL MATCH (n)-[:HAS_STIMULUS]->(stimulus:GraphNode:Stimulus)
-                    WITH n, max(stimulus.timestamp) AS stimulus_occurred_at
                     WITH n,
                         CASE
-                            WHEN n:Impression THEN coalesce(stimulus_occurred_at, n.occurred_at, n.timestamp, "")
                             WHEN n:Transcription THEN coalesce(n.source_started_at, n.source_captured_at, n.occurred_at, n.source_ended_at, n.captured_at, n.timestamp, "")
                             WHEN n:Sensation THEN coalesce(n.source_ended_at, n.source_started_at, n.source_captured_at, n.observed_at, n.captured_at, n.occurred_at, n.timestamp, "")
                             ELSE coalesce(n.occurred_at, n.observed_at, n.captured_at, n.timestamp, n.source_started_at, n.source_captured_at, n.source_ended_at, "")
@@ -2593,11 +2590,8 @@ impl Neo4jClient {
                     WITH anchors + [neighbor IN neighbors WHERE NOT neighbor IN anchors] AS candidate_nodes
                     WITH candidate_nodes[..$limit] AS nodes
                     UNWIND nodes AS n
-                    OPTIONAL MATCH (n)-[:HAS_STIMULUS]->(stimulus:GraphNode:Stimulus)
-                    WITH nodes, n, max(stimulus.timestamp) AS stimulus_occurred_at
                     WITH nodes, n,
                         CASE
-                            WHEN n:Impression THEN coalesce(stimulus_occurred_at, n.occurred_at, n.timestamp, "")
                             WHEN n:Transcription THEN coalesce(n.source_started_at, n.source_captured_at, n.occurred_at, n.source_ended_at, n.captured_at, n.timestamp, "")
                             WHEN n:Sensation THEN coalesce(n.source_ended_at, n.source_started_at, n.source_captured_at, n.observed_at, n.captured_at, n.occurred_at, n.timestamp, "")
                             ELSE coalesce(n.occurred_at, n.observed_at, n.captured_at, n.timestamp, n.source_started_at, n.source_captured_at, n.source_ended_at, "")
@@ -2648,11 +2642,8 @@ impl Neo4jClient {
             CypherStatement {
                 statement: r#"
                     MATCH (n:GraphNode {id: $id})
-                    OPTIONAL MATCH (n)-[:HAS_STIMULUS]->(stimulus:GraphNode:Stimulus)
-                    WITH n, max(stimulus.timestamp) AS stimulus_occurred_at
                     WITH n,
                         CASE
-                            WHEN n:Impression THEN coalesce(stimulus_occurred_at, n.occurred_at, n.timestamp, "")
                             WHEN n:Transcription THEN coalesce(n.source_started_at, n.source_captured_at, n.occurred_at, n.source_ended_at, n.captured_at, n.timestamp, "")
                             WHEN n:Sensation THEN coalesce(n.source_ended_at, n.source_started_at, n.source_captured_at, n.observed_at, n.captured_at, n.occurred_at, n.timestamp, "")
                             ELSE coalesce(n.occurred_at, n.observed_at, n.captured_at, n.timestamp, n.source_started_at, n.source_captured_at, n.source_ended_at, "")
@@ -2738,11 +2729,8 @@ impl Neo4jClient {
                 UNWIND relationships(rel_path) AS r
                 WITH nodes, collect(DISTINCT r) AS relationships
                 UNWIND nodes AS n
-                OPTIONAL MATCH (n)-[:HAS_STIMULUS]->(stimulus:GraphNode:Stimulus)
-                WITH nodes, relationships, n, max(stimulus.timestamp) AS stimulus_occurred_at
                 WITH nodes, relationships, n,
                     CASE
-                        WHEN n:Impression THEN coalesce(stimulus_occurred_at, n.occurred_at, n.timestamp, "")
                         WHEN n:Transcription THEN coalesce(n.source_started_at, n.source_captured_at, n.occurred_at, n.source_ended_at, n.captured_at, n.timestamp, "")
                         WHEN n:Sensation THEN coalesce(n.source_ended_at, n.source_started_at, n.source_captured_at, n.observed_at, n.captured_at, n.occurred_at, n.timestamp, "")
                         ELSE coalesce(n.occurred_at, n.observed_at, n.captured_at, n.timestamp, n.source_started_at, n.source_captured_at, n.source_ended_at, "")
@@ -2911,13 +2899,13 @@ impl Neo4jClient {
                     ]
                     WITH vector_id, v, collect(DISTINCT owner) AS direct_owners
                     UNWIND CASE WHEN size(direct_owners) = 0 THEN [v] ELSE direct_owners END AS owner
-                    OPTIONAL MATCH (owner)-[:HAS_STIMULUS]->(:GraphNode:Stimulus)-[:REFERS_TO]->(stimulus:GraphNode)
+                    OPTIONAL MATCH (owner)-[:OBSERVED]->(stimulus:GraphNode)
                     WITH vector_id, owner, collect(DISTINCT stimulus) AS stimuli,
                     CASE
                         WHEN owner:SpeechSegment THEN "speech: " + coalesce(owner.text, "")
                         WHEN owner:Transcription THEN "transcription: " + coalesce(owner.text, owner.transcript, "")
                         WHEN owner:ImageDescription THEN "vision: " + coalesce(owner.text, "")
-                        WHEN owner:Impression THEN "impression: " + coalesce(owner.summary, "")
+                        WHEN owner:Sensation THEN "sensation: " + coalesce(owner.how, owner.text, owner.summary, "")
                         WHEN owner:Awareness THEN "awareness: " + coalesce(owner.text, owner.summary, "")
                         WHEN owner:TextObservation THEN "text: " + coalesce(owner.text, "")
                         WHEN owner:Geolocation THEN "geolocation: " + toString(owner.latitude) + ", " + toString(owner.longitude)
@@ -2970,7 +2958,7 @@ impl Neo4jClient {
                                 WHEN neighbor:SpeechSegment THEN "speech: " + coalesce(neighbor.text, "")
                                 WHEN neighbor:Transcription THEN "transcription: " + coalesce(neighbor.text, neighbor.transcript, "")
                                 WHEN neighbor:ImageDescription THEN "vision: " + coalesce(neighbor.text, "")
-                                WHEN neighbor:Impression THEN "impression: " + coalesce(neighbor.summary, "")
+                                WHEN neighbor:Sensation THEN "sensation: " + coalesce(neighbor.how, neighbor.text, neighbor.summary, "")
                                 WHEN neighbor:Awareness THEN "awareness: " + coalesce(neighbor.text, neighbor.summary, "")
                                 WHEN neighbor:TextObservation THEN "text: " + coalesce(neighbor.text, "")
                                 WHEN neighbor:Geolocation THEN "geolocation: " + toString(neighbor.latitude) + ", " + toString(neighbor.longitude)
@@ -3300,6 +3288,7 @@ impl Neo4jClient {
                     WHERE n:Awareness
                        OR n:CombobulationSummary
                        OR (n:Sensation AND n.kind = "combobulation_summary")
+                       OR (n:Sensation AND n.kind = "cognitive")
                     WITH n,
                         coalesce(n.emoji, "") AS emoji,
                         coalesce(n.text, n.summary, n.how, "") AS text,
@@ -3442,7 +3431,6 @@ impl Neo4jClient {
                     WHERE n:Awareness
                        OR n:CombobulationSummary
                        OR (n:Sensation AND n.kind = "combobulation_summary")
-                       OR n:Impression
                     WITH n,
                         coalesce(n.emoji, "") AS emoji,
                         coalesce(n.text, n.summary, n.how, "") AS text,
@@ -7181,11 +7169,9 @@ fn validate_graph_name(name: &str, kind: &str) -> Result<()> {
     Ok(())
 }
 
-struct GraphStimulusTarget {
-    stimulus_id: String,
+struct GraphSensationTarget {
     target_id: String,
     nodes: Vec<Value>,
-    relationships: Vec<Value>,
 }
 
 struct GraphEmbeddingFields {
@@ -7198,55 +7184,52 @@ struct GraphEmbeddingFields {
 
 fn impression_graph_record(
     impression: &Impression<Value>,
-    stimulus_targets: &[GraphStimulusTarget],
+    sensation_targets: &[GraphSensationTarget],
     embedding: Option<&GraphEmbeddingFields>,
 ) -> Result<Value> {
-    let impression_id = impression_id(impression)?;
+    let sensation_id = impression_sensation_id(impression)?;
     let occurred_at = impression_occurred_at(impression).to_rfc3339();
     let formed_at = impression.timestamp.to_rfc3339();
-    let mut impression_node = json!({
-        "label": "Impression",
-        "id": impression_id,
-        "summary": impression.summary,
+    let source_sensation_ids = impression_source_sensation_ids(impression);
+    let mut sensation_node = json!({
+        "label": "Sensation",
+        "id": sensation_id,
+        "kind": "cognitive",
         "how": impression.summary,
         "emoji": impression.emoji,
-        "timestamp": formed_at,
+        "timestamp": occurred_at,
+        "when": occurred_at,
         "occurred_at": occurred_at,
         "how_formed_at": formed_at,
-        "source_sensation_ids": impression.source_sensation_ids.clone(),
+        "source_sensation_ids": source_sensation_ids,
+        "raw_json": impression_what_raw_json(impression)?,
     });
     if let Some(embedding) = embedding {
-        impression_node["embedding"] = json!(embedding.vector);
-        impression_node["embedding_len"] = json!(embedding.vector.len());
-        impression_node["embedding_collection"] = json!(embedding.collection);
-        impression_node["embedding_point_id"] = json!(embedding.point_id);
-        impression_node["embedding_kind"] = json!(embedding.kind);
-        impression_node["embedding_model"] = json!(embedding.model);
+        sensation_node["embedding"] = json!(embedding.vector);
+        sensation_node["embedding_len"] = json!(embedding.vector.len());
+        sensation_node["embedding_collection"] = json!(embedding.collection);
+        sensation_node["embedding_point_id"] = json!(embedding.point_id);
+        sensation_node["embedding_kind"] = json!(embedding.kind);
+        sensation_node["embedding_model"] = json!(embedding.model);
     }
-    let mut nodes = vec![impression_node];
+    let mut nodes = vec![sensation_node];
     let mut relationships = Vec::new();
 
-    for source_id in &impression.source_sensation_ids {
+    for source_id in impression_source_sensation_ids(impression) {
         nodes.push(source_sensation_ref_node(source_id));
         relationships.push(json!({
-            "from": impression_id,
+            "from": sensation_id,
             "to": source_id,
             "type": "DERIVED_FROM",
         }));
     }
 
-    for target in stimulus_targets {
+    for target in sensation_targets {
         nodes.extend(target.nodes.clone());
-        relationships.extend(target.relationships.clone());
         relationships.push(json!({
-            "from": impression_id,
-            "to": target.stimulus_id,
-            "type": "HAS_STIMULUS",
-        }));
-        relationships.push(json!({
-            "from": impression_id,
+            "from": sensation_id,
             "to": target.target_id,
-            "type": "INTERPRETS",
+            "type": "OBSERVED",
         }));
     }
 
@@ -7266,44 +7249,11 @@ fn impression_occurred_at<T>(impression: &Impression<T>) -> chrono::DateTime<chr
         .unwrap_or(impression.timestamp)
 }
 
-fn stimulus_target(stimulus: &Stimulus<Value>) -> Result<GraphStimulusTarget> {
-    let stimulus_id = stable_json_id(
-        "stimulus",
-        &json!({
-            "timestamp": stimulus.timestamp.to_rfc3339(),
-            "what": stimulus.what,
-        }),
-    );
-    let raw_json = serde_json::to_string(&stored_payload_json(&stimulus.what))?;
-    let mut nodes = vec![json!({
-        "label": "Stimulus",
-        "id": stimulus_id,
-        "timestamp": stimulus.timestamp.to_rfc3339(),
-        "source_sensation_ids": stimulus.source_sensation_ids.clone(),
-        "raw_json": raw_json,
-    })];
-
+fn sensation_target(stimulus: &Stimulus<Value>) -> Result<GraphSensationTarget> {
     let (target_id, target_node) = payload_target_node(&stimulus.what, stimulus.timestamp)?;
-    nodes.push(target_node);
-    let mut relationships = vec![json!({
-        "from": stimulus_id,
-        "to": target_id,
-        "type": "REFERS_TO",
-    })];
-    for source_id in &stimulus.source_sensation_ids {
-        nodes.push(source_sensation_ref_node(source_id));
-        relationships.push(json!({
-            "from": stimulus_id,
-            "to": source_id,
-            "type": "DERIVED_FROM",
-        }));
-    }
-
-    Ok(GraphStimulusTarget {
-        stimulus_id,
+    Ok(GraphSensationTarget {
         target_id,
-        nodes,
-        relationships,
+        nodes: vec![target_node],
     })
 }
 
@@ -7389,14 +7339,14 @@ fn source_sensation_ref_node(source_id: &str) -> Value {
     })
 }
 
-fn impression_id(impression: &Impression<Value>) -> Result<String> {
+fn impression_sensation_id(impression: &Impression<Value>) -> Result<String> {
     Ok(stable_json_id(
-        "impression",
+        "sensation",
         &json!({
-            "summary": impression.summary,
+            "how": impression.summary,
             "emoji": impression.emoji,
             "timestamp": impression.timestamp.to_rfc3339(),
-            "source_sensation_ids": impression.source_sensation_ids.clone(),
+            "source_sensation_ids": impression_source_sensation_ids(impression),
             "stimuli": impression.stimuli.iter().map(|stimulus| {
                 json!({
                     "timestamp": stimulus.timestamp.to_rfc3339(),
@@ -7406,6 +7356,36 @@ fn impression_id(impression: &Impression<Value>) -> Result<String> {
             }).collect::<Vec<_>>(),
         }),
     ))
+}
+
+fn impression_source_sensation_ids(impression: &Impression<Value>) -> Vec<&str> {
+    let mut ids = Vec::new();
+    for id in &impression.source_sensation_ids {
+        if !ids.contains(&id.as_str()) {
+            ids.push(id.as_str());
+        }
+    }
+    for stimulus in &impression.stimuli {
+        for id in &stimulus.source_sensation_ids {
+            if !ids.contains(&id.as_str()) {
+                ids.push(id.as_str());
+            }
+        }
+    }
+    ids
+}
+
+fn impression_what_raw_json(impression: &Impression<Value>) -> Result<String> {
+    let what = match impression.stimuli.as_slice() {
+        [stimulus] => stored_payload_json(&stimulus.what),
+        stimuli => Value::Array(
+            stimuli
+                .iter()
+                .map(|stimulus| stored_payload_json(&stimulus.what))
+                .collect(),
+        ),
+    };
+    serde_json::to_string(&what).context("failed to serialize sensation payload")
 }
 
 pub(crate) fn qdrant_vector_node_id(collection: &str, point_id: &str) -> String {
@@ -7702,12 +7682,12 @@ pub struct BasicMemory {
 impl Memory for BasicMemory {
     async fn store(&self, impression: &Impression<Value>) -> Result<()> {
         trace!(summary = %impression.summary, "memory store");
-        let stimulus_targets = impression
+        let sensation_targets = impression
             .stimuli
             .iter()
-            .map(stimulus_target)
+            .map(sensation_target)
             .collect::<Result<Vec<_>>>()?;
-        let impression_node_id = impression_id(impression)?;
+        let sensation_node_id = impression_sensation_id(impression)?;
         let vector = match tokio::time::timeout(
             Duration::from_secs(5),
             self.vectorizer.vectorize(&impression.summary),
@@ -7738,7 +7718,7 @@ impl Memory for BasicMemory {
                         &image_id,
                         &impression.summary,
                         &image_id,
-                        &[&impression_node_id],
+                        &[&sensation_node_id],
                         &v,
                     )
                     .await
@@ -7749,7 +7729,7 @@ impl Memory for BasicMemory {
             }
             let qdrant_point_id = match self
                 .qdrant
-                .store_vector_for_node(&impression.summary, Some(&impression_node_id), &v)
+                .store_vector_for_node(&impression.summary, Some(&sensation_node_id), &v)
                 .await
             {
                 Ok(id) => Some(id.to_string()),
@@ -7766,7 +7746,7 @@ impl Memory for BasicMemory {
                 model: None,
             });
         }
-        let graph = impression_graph_record(impression, &stimulus_targets, embedding.as_ref())?;
+        let graph = impression_graph_record(impression, &sensation_targets, embedding.as_ref())?;
         self.neo4j.store_data(&graph).await?;
         Ok(())
     }
@@ -7804,7 +7784,7 @@ mod tests {
     }
 
     #[test]
-    fn impression_graph_record_uses_source_occurrence_time() {
+    fn impression_graph_record_stores_sensation_with_source_occurrence_time() {
         let impression = Impression {
             stimuli: vec![
                 Stimulus::at(json!("first"), utc("2026-05-07T12:00:00Z")),
@@ -7819,8 +7799,12 @@ mod tests {
         let graph = impression_graph_record(&impression, &[], None).unwrap();
         let node = &graph["nodes"][0];
 
+        assert_eq!(node["label"], "Sensation");
+        assert_eq!(node["kind"], "cognitive");
+        assert_eq!(node["how"], "Something happened.");
         assert_eq!(node["occurred_at"], "2026-05-07T12:00:03+00:00");
-        assert_eq!(node["timestamp"], "2026-05-07T12:00:10+00:00");
+        assert_eq!(node["timestamp"], "2026-05-07T12:00:03+00:00");
+        assert_eq!(node["when"], "2026-05-07T12:00:03+00:00");
         assert_eq!(node["how_formed_at"], "2026-05-07T12:00:10+00:00");
     }
 }
