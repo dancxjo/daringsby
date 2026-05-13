@@ -255,12 +255,7 @@ impl RememberProcessor {
             cli.graph_context_limit,
         )
         .await;
-        let prompt = remembrance_prompt(
-            sources,
-            &related_memories,
-            &score_by_vector,
-            &graph_contexts,
-        );
+        let prompt = remembrance_prompt(sources, &related_memories, &graph_contexts);
         let raw_text = self
             .doer
             .follow(LlmInstruction {
@@ -303,17 +298,19 @@ async fn related_graph_contexts(
 fn remembrance_prompt(
     sources: &[GraphSensationTimelineItem],
     related_memories: &[GraphClusterItem],
-    score_by_vector: &HashMap<String, f32>,
     graph_contexts: &[(String, GraphSnapshot)],
 ) -> String {
     with_default_system_prompt(format!(
-        "Your recent sensations have stirred related memories. Use the retrieved memories and their graph neighborhoods as private context.\n\
-         Write exactly two concise first-person sentences of remembered content. Do not mention vectors, embeddings, nearest neighbors, graph nodes, labels, ids, timestamps, scores, prompts, or databases. Do not make commands. Do not add emoji. Return only the remembered content; the caller will add the \"I remember:\" prefix.\n\n\
-         Latest sensations:\n{}\n\n\
-         Related memories:\n{}\n\n\
-         Two-hop graph context around related memories:\n{}",
+        "Internal remembering task: the current sensations below are retrieval cues, and the memory fragments are accumulated remembered material. Compose the text for a new sensation's how field.\n\
+         The result must stand alone after the prefix \"I remember:\". It should sound like a compact remembered impression from Pete, not like a report about data processing.\n\
+         Use concrete remembered people, places, conversations, actions, or situations from the fragments. If the fragments are mixed, synthesize the most coherent remembered gist. If the memory is uncertain, say what is uncertain in first person.\n\
+         Do not mention logs, snippets, graph context, clusters, nodes, vectors, embeddings, retrieval rankings, databases, prompts, labels, ids, timestamps, or the fact that this is an internal task. Do not answer yes/no. Do not produce markdown, headings, bullets, commands, tool output, or emoji.\n\
+         Return exactly one or two concise first-person sentences, without the \"I remember:\" prefix.\n\n\
+         Current retrieval cues:\n{}\n\n\
+         Core memory fragments:\n{}\n\n\
+         Nearby remembered details from two graph hops:\n{}",
         format_sources(sources),
-        format_related_memories(related_memories, score_by_vector),
+        format_related_memories(related_memories),
         format_graph_contexts(graph_contexts)
     ))
 }
@@ -326,37 +323,16 @@ fn format_sources(sources: &[GraphSensationTimelineItem]) -> String {
         .join("\n")
 }
 
-fn format_related_memories(
-    related_memories: &[GraphClusterItem],
-    score_by_vector: &HashMap<String, f32>,
-) -> String {
+fn format_related_memories(related_memories: &[GraphClusterItem]) -> String {
     related_memories
         .iter()
-        .map(|item| {
-            let score = score_by_vector
-                .get(&item.vector_id)
-                .map(|score| format!(" score {:.3}", score))
-                .unwrap_or_default();
-            let stimuli = if item.stimuli.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    "\n  stimuli: {}",
-                    item.stimuli
-                        .iter()
-                        .map(|value| truncate_for_prompt(value, 220))
-                        .collect::<Vec<_>>()
-                        .join(" | ")
-                )
-            };
-            format!(
-                "-{} {}: {}{}",
-                score,
-                item.labels.join(","),
-                truncate_for_prompt(&item.text, 500),
-                stimuli
-            )
+        .flat_map(|item| {
+            std::iter::once(clean_memory_text(&item.text))
+                .chain(item.stimuli.iter().map(|value| clean_memory_text(value)))
         })
+        .filter(|text| usable_memory_text(text))
+        .take(16)
+        .map(|text| format!("- {}", truncate_for_prompt(&text, 420)))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -365,56 +341,29 @@ fn format_graph_contexts(graph_contexts: &[(String, GraphSnapshot)]) -> String {
     if graph_contexts.is_empty() {
         return "(no graph neighborhoods loaded)".into();
     }
-    graph_contexts
+    let mut details = Vec::new();
+    for (_, snapshot) in graph_contexts {
+        for node in &snapshot.nodes {
+            let text = clean_memory_text(&node_text(&node.properties));
+            if usable_memory_text(&text) && !details.contains(&text) {
+                details.push(text);
+            }
+            if details.len() >= 24 {
+                break;
+            }
+        }
+        if details.len() >= 24 {
+            break;
+        }
+    }
+    if details.is_empty() {
+        return "(no usable nearby remembered details)".into();
+    }
+    details
         .iter()
-        .map(|(anchor_id, snapshot)| {
-            format!(
-                "Around {}:\n{}\n{}",
-                anchor_id,
-                format_snapshot_nodes(snapshot),
-                format_snapshot_relationships(snapshot)
-            )
-        })
+        .map(|text| format!("- {}", truncate_for_prompt(text, 360)))
         .collect::<Vec<_>>()
-        .join("\n\n")
-}
-
-fn format_snapshot_nodes(snapshot: &GraphSnapshot) -> String {
-    if snapshot.nodes.is_empty() {
-        return "nodes: none".into();
-    }
-    let lines = snapshot
-        .nodes
-        .iter()
-        .take(24)
-        .map(|node| {
-            format!(
-                "- {} [{}]: {}",
-                node.id,
-                node.labels.join(","),
-                node_text(&node.properties)
-            )
-        })
-        .collect::<Vec<_>>();
-    format!("nodes:\n{}", lines.join("\n"))
-}
-
-fn format_snapshot_relationships(snapshot: &GraphSnapshot) -> String {
-    if snapshot.relationships.is_empty() {
-        return "relationships: none".into();
-    }
-    let lines = snapshot
-        .relationships
-        .iter()
-        .take(36)
-        .map(|rel| {
-            format!(
-                "- {} -{}-> {}",
-                rel.source, rel.relationship_type, rel.target
-            )
-        })
-        .collect::<Vec<_>>();
-    format!("relationships:\n{}", lines.join("\n"))
+        .join("\n")
 }
 
 fn node_text(properties: &serde_json::Value) -> String {
@@ -435,6 +384,51 @@ fn node_text(properties: &serde_json::Value) -> String {
     "(no compact text)".into()
 }
 
+fn clean_memory_text(value: &str) -> String {
+    let mut text = value.trim();
+    for prefix in [
+        "awareness:",
+        "impression:",
+        "speech:",
+        "transcription:",
+        "vision:",
+        "audio:",
+        "text:",
+        "object:",
+        "voice signature:",
+        "voice sample:",
+    ] {
+        if let Some(rest) = text.strip_prefix(prefix) {
+            text = rest.trim();
+            break;
+        }
+    }
+    text.lines().next().unwrap_or_default().trim().to_string()
+}
+
+fn usable_memory_text(value: &str) -> bool {
+    let text = value.trim();
+    if text.is_empty() || text == "(no compact text)" {
+        return false;
+    }
+    let lower = text.to_lowercase();
+    ![
+        "qdrant:",
+        "sha256:",
+        "graphnode",
+        "provided log",
+        "provided context",
+        "structured breakdown",
+        "cluster membership",
+        "vector",
+        "embedding",
+        "database",
+        "prompt",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
 fn remember_how(raw_text: &str) -> anyhow::Result<String> {
     let trimmed = raw_text
         .trim()
@@ -450,6 +444,10 @@ fn remember_how(raw_text: &str) -> anyhow::Result<String> {
     let content = first_two_sentences(content);
     let content =
         common::non_empty_model_text(&content).context("remembering model returned empty text")?;
+    anyhow::ensure!(
+        usable_memory_text(content) && !content.to_lowercase().starts_with("yes,"),
+        "remembering model returned implementation text instead of a remembered impression: {content}"
+    );
     debug!(raw = %raw_text.trim(), content = %content, "cleaned remembrance text");
     Ok(format!("I remember: {content}"))
 }
@@ -488,5 +486,35 @@ mod tests {
     fn remember_how_adds_prefix_and_limits_to_two_sentences() {
         let how = remember_how("I remember: first. second. third.").unwrap();
         assert_eq!(how, "I remember: first. second.");
+    }
+
+    #[test]
+    fn remember_how_rejects_implementation_text() {
+        let err = remember_how("Yes, the cluster membership for the user has been updated.")
+            .expect_err("implementation text should be rejected");
+        assert!(
+            err.to_string()
+                .contains("instead of a remembered impression")
+        );
+    }
+
+    #[test]
+    fn related_memory_prompt_hides_graph_mechanics() {
+        let item = GraphClusterItem {
+            vector_id: "qdrant:memories:point-1".into(),
+            node_id: "awareness:sha256:abc".into(),
+            labels: vec!["GraphNode".into(), "Awareness".into()],
+            text: "awareness: I hear Travis talking about memory storage.".into(),
+            stimuli: vec!["text: Travis says he is my creator.".into()],
+            edges: Vec::new(),
+            neighbors: Vec::new(),
+        };
+        let prompt = remembrance_prompt(&[], &[item], &[]);
+        assert!(prompt.contains("I hear Travis talking about memory storage."));
+        assert!(prompt.contains("Travis says he is my creator."));
+        assert!(!prompt.contains("qdrant:"));
+        assert!(!prompt.contains("sha256:"));
+        assert!(!prompt.contains("score"));
+        assert!(!prompt.contains("GraphNode"));
     }
 }

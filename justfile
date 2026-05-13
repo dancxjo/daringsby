@@ -15,6 +15,10 @@ run:
         export PATH="/usr/local/cuda/bin:$PATH"
         export CUDACXX="/usr/local/cuda/bin/nvcc"
     fi
+    has_nvidia_gpu=false
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+        has_nvidia_gpu=true
+    fi
 
     timestamp="$(date +%Y%m%d-%H%M%S)"
     log_root="${PETE_RUN_LOG_DIR:-logs/run}"
@@ -29,7 +33,11 @@ run:
             bin="forget-silence"
         fi
         # simulate is an ad hoc client utility that requires a subcommand.
-        if [[ "$bin" == "pete" || "$bin" == "conversant" || "$bin" == "simulate" || "$bin" == "raw_retention" || "$bin" == "movie" || "$bin" == "test_will" || "$bin" == "timeline" || "$bin" == "conversation" ]]; then
+        if [[ "$bin" == "pete" || "$bin" == "simulate" || "$bin" == "raw_retention" || "$bin" == "movie" || "$bin" == "test_will" || "$bin" == "timeline" || "$bin" == "conversation" ]]; then
+            continue
+        fi
+        if [[ "$bin" == "transcription" && "$has_nvidia_gpu" != true ]]; then
+            printf 'skipping %-18s -> no NVIDIA GPU available\n' "$bin"
             continue
         fi
         bins+=("$bin")

@@ -3767,9 +3767,11 @@ impl Neo4jClient {
                       AND (
                           text = "I hear silence." OR
                           text STARTS WITH "I heard: " OR
+                          text STARTS WITH "I hear someone on my web interface type: " OR
                           text STARTS WITH "I start saying: " OR
                           text STARTS WITH "I finish saying: " OR
                           text STARTS WITH "I stop saying: " OR
+                          text STARTS WITH "I ought to say: " OR
                           text STARTS WITH "I say: "
                       )
                     WITH n, labels(n) AS labels, text, occurred_at, formed_at,

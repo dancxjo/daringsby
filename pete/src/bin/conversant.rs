@@ -108,7 +108,7 @@ async fn process_latest_combobulation(
         return Ok(None);
     }
 
-    let action = processor
+    let mut action = processor
         .choose_response(&combobulation)
         .await
         .with_context(|| {
@@ -121,6 +121,11 @@ async fn process_latest_combobulation(
     store_active_face_sensation(observer, &combobulation, &action.emoji).await;
     if let Some(words) = action.say.as_deref() {
         store_speech_intention_sensation(observer, &combobulation, words).await;
+        action.history.push(ConversationEntry {
+            role: "assistant".into(),
+            content: words.trim().to_string(),
+            timestamp: Utc::now().to_rfc3339(),
+        });
     }
     info!(
         combobulation_id = %combobulation.id,
@@ -185,6 +190,9 @@ fn strip_utterance_content(text: &str) -> Option<(String, bool)> {
     if text == "I hear silence." {
         return Some(("I hear silence.".to_string(), false));
     }
+    if let Some(rest) = text.strip_prefix("I hear someone on my web interface type: ") {
+        return Some((rest.to_string(), false));
+    }
     if let Some(rest) = text.strip_prefix("I hear the user saying \"") {
         if let Some(end) = rest.rfind("\".") {
             return Some((rest[..end].to_string(), false));
@@ -201,6 +209,9 @@ fn strip_utterance_content(text: &str) -> Option<(String, bool)> {
         }
     }
     if let Some(rest) = text.strip_prefix("I finish saying: ") {
+        return Some((rest.to_string(), true));
+    }
+    if let Some(rest) = text.strip_prefix("I ought to say: ") {
         return Some((rest.to_string(), true));
     }
     if let Some(rest) = text.strip_prefix("I say: ") {
@@ -423,5 +434,41 @@ mod tests {
 
         assert_eq!(action.emoji, "🙂");
         assert_eq!(action.say.as_deref(), Some("Hello there!"));
+    }
+
+    #[test]
+    fn maps_web_interface_words_to_user_conversation() {
+        let item = GraphSensationTimelineItem {
+            id: "sensation:web:1".into(),
+            labels: vec!["GraphNode".into(), "Sensation".into()],
+            kind: "web_interface_text".into(),
+            text: "I hear someone on my web interface type: hello pete.".into(),
+            occurred_at: "2026-05-07T12:00:00Z".into(),
+            formed_at: Some("2026-05-07T12:00:00Z".into()),
+        };
+
+        let entries = map_conversation_to_entries(vec![item]);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].role, "user");
+        assert_eq!(entries[0].content, "hello pete.");
+    }
+
+    #[test]
+    fn maps_conversant_intention_to_assistant_conversation() {
+        let item = GraphSensationTimelineItem {
+            id: "sensation:impression:1".into(),
+            labels: vec!["GraphNode".into(), "Sensation".into()],
+            kind: "impression".into(),
+            text: "I ought to say: Hello there.".into(),
+            occurred_at: "2026-05-07T12:00:01Z".into(),
+            formed_at: Some("2026-05-07T12:00:01Z".into()),
+        };
+
+        let messages = map_conversation_to_messages(vec![item]);
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, lingproc::Role::Assistant);
+        assert_eq!(messages[0].content, "Hello there.");
     }
 }

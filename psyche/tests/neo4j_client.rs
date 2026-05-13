@@ -2625,6 +2625,62 @@ async fn neo4j_client_loads_sensation_timeline_with_sensation_order() {
 }
 
 #[tokio::test]
+async fn neo4j_client_loads_conversation_timeline_with_user_and_conversant_words() {
+    let server = MockServer::start_async().await;
+    let query = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/db/neo4j/tx/commit")
+                .body_contains("MATCH (n:GraphNode:Sensation)")
+                .body_contains("I hear someone on my web interface type: ")
+                .body_contains("I ought to say: ")
+                .body_contains("RETURN row.id, row.labels, row.kind, row.text, row.occurred_at, row.formed_at")
+                .body_contains("\"limit\":20");
+            then.status(200).json_body(json!({
+                "results": [{
+                    "columns": ["row.id", "row.labels", "row.kind", "row.text", "row.occurred_at", "row.formed_at"],
+                    "data": [
+                        {"row": [
+                            "sensation:web:1",
+                            ["GraphNode", "Sensation"],
+                            "web_interface_text",
+                            "I hear someone on my web interface type: hello pete.",
+                            "2026-05-05T12:34:56Z",
+                            "2026-05-05T12:34:56Z"
+                        ]},
+                        {"row": [
+                            "sensation:impression:1",
+                            ["GraphNode", "Sensation"],
+                            "impression",
+                            "I ought to say: Hello there.",
+                            "2026-05-05T12:34:57Z",
+                            "2026-05-05T12:34:57Z"
+                        ]}
+                    ]
+                }],
+                "errors": []
+            }));
+        })
+        .await;
+
+    let end = chrono::DateTime::parse_from_rfc3339("2026-05-05T12:35:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let items = Neo4jClient::new(server.base_url(), "neo4j".into(), "password".into())
+        .conversation_timeline(None, end, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(items.len(), 2);
+    assert_eq!(
+        items[0].text,
+        "I hear someone on my web interface type: hello pete."
+    );
+    assert_eq!(items[1].text, "I ought to say: Hello there.");
+    query.assert_async().await;
+}
+
+#[tokio::test]
 async fn neo4j_client_loads_revisitable_timeline_window_for_combobulation() {
     let server = MockServer::start_async().await;
     let query = server

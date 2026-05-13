@@ -929,14 +929,15 @@ fn will_instruction_prompt(
          Current conversation:\n\
          {}\n\n\
          You are Pete Daringsby, an artificial intelligence, not simply an LLM. This is an internal decision cycle: decide what you should work on next. \
-         You are not the conversation manager; do not answer the user conversationally unless you intentionally queue speech with say(text). \
+         The current conversation is context, not an obligation to answer. You do not need to maintain the conversation; the normal speaking path will handle routine replies and dialogue continuity. \
+         Keep say(text) for emergencies, safety issues, or urgent clarifications only. \
          Return only a JSON object with exactly these fields in this order:\n\
          {{\"thought\":\"a concise explanation of your thought process, intended actions, desires, and why the TypeScript is or is not needed\",\"typescript\":\"a short TypeScript module using only pete:will command builders\"}}\n\n\
          The typescript field is executed by tsrun. Use good TypeScript: import command builders from \"pete:will\", prefer camelCase names, and make the final expression a command object or an array of command objects. Example:\n\
-         import {{ recentFaces, recognizeFace, say }} from \"pete:will\";\n\
-         [recentFaces(3), recognizeFace(0, \"Travis\"), say(\"I know Travis now.\")]\n\n\
+         import {{ recentFaces, recognizeFace, setFace }} from \"pete:will\";\n\
+         [recentFaces(3), recognizeFace(0, \"Travis\"), setFace(\"🙂\")]\n\n\
          Available pete:will command builders:\n\
-         say(text: string) - inserts speech into the queue.\n\
+         say(text: string) - emergency speech; inserts urgent words into the queue.\n\
          listFiles() - lists the extant source files.\n\
          readSourceFile(path: string, page?: number) - reads one source file page; page defaults to 1.\n\
          readFile(path: string, page?: number) - alias for readSourceFile.\n\
@@ -1823,6 +1824,9 @@ mod tests {
         assert!(prompt.contains("This is the situation as you understand it:"));
         assert!(prompt.contains("Current conversation:"));
         assert!(prompt.contains("I heard: please inspect the Will."));
+        assert!(prompt.contains("current conversation is context"));
+        assert!(prompt.contains("You do not need to maintain the conversation"));
+        assert!(prompt.contains("Keep say(text) for emergencies"));
         assert!(prompt.contains("Return only a JSON object"));
         assert!(prompt.contains("\"thought\""));
         assert!(prompt.contains("\"typescript\""));
@@ -1836,6 +1840,7 @@ mod tests {
         assert!(prompt.contains("recognizeFace(index: number, name: string)"));
         assert!(prompt.contains("recognizeVoice(index: number, name: string)"));
         assert!(prompt.contains("setFace(emoji: string)"));
+        assert!(prompt.contains("say(text: string) - emergency speech"));
         assert!(!prompt.contains("<thought>"));
         assert!(!prompt.contains("<function"));
     }
