@@ -1,6 +1,6 @@
 use crate::{
     AudioClip, BrowserMotion, GeoLoc, Heartbeat, ImageData, Impression, ObjectInfo, Stimulus,
-    WillContext, audio_clip_id, browser_motion_content_id, geoloc_content_id, image_content_id,
+    Thought, audio_clip_id, browser_motion_content_id, geoloc_content_id, image_content_id,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
@@ -2673,7 +2673,7 @@ impl Neo4jClient {
                             labels: labels(n),
                             properties: CASE
                                 WHEN size(face_instances) = 0 THEN detail_properties
-                                ELSE detail_properties + {
+                                ELSE detail_properties {.*,
                                     face_images: [face_instance IN face_instances | {
                                         id: face_instance.id,
                                         source_image_id: face_instance.source_image_id,
@@ -3456,8 +3456,8 @@ impl Neo4jClient {
         Ok(rows.first().and_then(graph_combobulation_emotion_from_row))
     }
 
-    /// Return the newest Will prompt context stored in the graph.
-    pub async fn latest_will_context(&self) -> Result<Option<WillContext>> {
+    /// Return the newest thought stored in the graph.
+    pub async fn latest_thought(&self) -> Result<Option<Thought>> {
         let endpoint = self.http_endpoint()?;
         let rows = query_neo4j_rows(
             &reqwest::Client::new(),
@@ -3466,7 +3466,7 @@ impl Neo4jClient {
             &self.pass,
             CypherStatement {
                 statement: r#"
-                    MATCH (n:WillContext)
+                    MATCH (n:Thought)
                     RETURN n
                     ORDER BY datetime(n.occurred_at) DESC
                     LIMIT 1
@@ -3474,7 +3474,7 @@ impl Neo4jClient {
                 .into(),
                 parameters: json!({}),
             },
-            "finding latest will context",
+            "finding latest thought",
         )
         .await?;
 
@@ -7592,7 +7592,12 @@ fn face_recognition_how(face_count: usize) -> String {
 }
 
 fn face_identity_how(recognition: Option<&GraphFaceMatch>) -> String {
-    crate::prompt::face_familiarity_sensation_text(recognition.is_some()).into()
+    match recognition {
+        Some(matched) => {
+            crate::prompt::face_identity_sensation_text(matched.identity.as_deref(), true)
+        }
+        None => crate::prompt::face_identity_sensation_text(None, false),
+    }
 }
 
 fn face_match_key(recognition: Option<&GraphFaceMatch>) -> String {

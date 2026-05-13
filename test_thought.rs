@@ -5,7 +5,7 @@ async fn main() {
         "neo4j".into(),
         "password".into(),
     );
-    match graph.latest_will_context().await {
+    match graph.latest_thought().await {
         Ok(Some(ctx)) => println!("GOT: {:?}", ctx.system_prompt.len()),
         Ok(None) => println!("GOT: None"),
         Err(e) => println!("ERR: {:?}", e),

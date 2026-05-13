@@ -94,7 +94,7 @@
   };
 
   const fullGraph = { nodes: [], relationships: [] };
-  const graph = { nodes: [], relationships: [] };
+  const graph = { nodes: [], relationships: [], layoutRelationships: [] };
   const graphStore = {
     nodes: new Map(),
     relationships: new Map(),
@@ -110,7 +110,6 @@
   const graphCacheDbName = "psychic.graph.cache.v1";
   const graphCacheDbVersion = 1;
   const maxEmbeddingLinksPerCluster = 80;
-  const temporalMarginRatio = 0.12;
   const timelineDetailLoadLimit = 36;
   const timelineMinClipMs = 850;
   const timelineDefaultClipMs = 3000;
@@ -157,7 +156,6 @@
   let mediaObjectUrl = "";
   let viewMode = pageView;
   let timelineFullExtent = null;
-  let temporalExtent = null;
   let timelineExtent = null;
   let timelineZoomSpan = null;
   let timelineCursor = null;
@@ -202,7 +200,6 @@
         .force("center", d3.forceCenter())
         .force("theme-x", d3.forceX().strength(themeCenterStrength))
         .force("theme-y", d3.forceY().strength(themeCenterStrength))
-        .force("time-x", d3.forceX(temporalX).strength(temporalXStrength))
         .force("collision", d3.forceCollide().radius((node) => nodeRadius(node) + 9))
         .on("tick", ticked)
     : null;
@@ -251,7 +248,6 @@
     const topologyChanged = topologySignature !== lastTopologySignature;
     lastTopologySignature = topologySignature;
     const temporalSignature = signatureForTemporalLayout(fullGraph);
-    const temporalChanged = temporalSignature !== lastTemporalSignature;
     lastTemporalSignature = temporalSignature;
 
     if (!changed && previousTopologySignature === topologySignature && previousTemporalSignature === temporalSignature) {
@@ -259,7 +255,7 @@
       return;
     }
     syncFilterControls();
-    applyGraphFilters(topologyChanged || temporalChanged);
+    applyGraphFilters(topologyChanged);
   }
 
   loadStoredFilters();
@@ -383,7 +379,6 @@
     lastTemporalSignature = "";
     lastFilterOptionsSignature = "";
     timelineFullExtent = null;
-    temporalExtent = null;
     timelineExtent = null;
     timelineZoomSpan = null;
     timelineCursor = null;
@@ -395,6 +390,7 @@
     fullGraph.relationships = [];
     graph.nodes = [];
     graph.relationships = [];
+    graph.layoutRelationships = [];
     graphStore.nodes.clear();
     graphStore.relationships.clear();
     nodeState.clear();
@@ -525,6 +521,9 @@
       ...(semanticSimilarity.some((rel) => rel.type === "SIMILAR_VOICE_SIGNATURE")
         ? ["SIMILAR_VOICE_SIGNATURE"]
         : []),
+      ...(semanticSimilarity.some((rel) => rel.type === "SIMILAR_VECTOR_CONTEXT")
+        ? ["SIMILAR_VECTOR_CONTEXT"]
+        : []),
     ]);
 
     labels.forEach((label) => ensureFilterOption(filters.labels, label));
@@ -580,13 +579,15 @@
       const target = relationshipEndpoint(rel.target);
       return visibleNodeIds.has(source) && visibleNodeIds.has(target) && predicateAllowed(rel.type);
     });
-    const syntheticRelationships = svg
+    const vectorGravityRelationships = svg
       ? [
           ...embeddingNeighborRelationships(graph.nodes, fullGraph.relationships),
           ...semanticSimilarityRelationships(graph.nodes, fullGraph.relationships, fullGraph.nodes),
-        ].filter((rel) => predicateAllowed(rel.type))
+        ]
       : [];
+    const syntheticRelationships = vectorGravityRelationships.filter((rel) => predicateAllowed(rel.type));
     graph.relationships = [...realRelationships, ...syntheticRelationships];
+    graph.layoutRelationships = [...realRelationships, ...vectorGravityRelationships];
     nodeCountEl.textContent = graph.nodes.length.toString();
     relationshipCountEl.textContent = graph.relationships.length.toString();
 
@@ -622,7 +623,6 @@
 
   function render(reheat = false) {
     if (!svg || !linkLayer || !labelLayer || !nodeLayer || !simulation) return;
-    updateTemporalExtent();
     const links = linkLayer
       .selectAll("line")
       .data(graph.relationships, (rel) => rel.id || `${rel.source}:${rel.type}:${rel.target}`);
@@ -699,8 +699,7 @@
       );
 
     simulation.nodes(graph.nodes);
-    simulation.force("link").links(graph.relationships.map((rel) => ({ ...rel })));
-    simulation.force("time-x").x(temporalX);
+    simulation.force("link").links(graph.layoutRelationships.map((rel) => ({ ...rel })));
     if (reheat) {
       simulation.alpha(Math.max(simulation.alpha(), 0.72)).restart();
     }
@@ -2234,6 +2233,12 @@
         targetsForVector: (vectorId) => (ownersByVector.voiceSignature.get(vectorId) || [])
           .filter((ownerId) => visibleNodeIds.has(ownerId)),
       }),
+      ...similarityRelationshipsForVectorClusters(contextNodes, relationships, {
+        type: "SIMILAR_VECTOR_CONTEXT",
+        idPrefix: "synthetic:vector-context-similarity",
+        targetsForVector: (vectorId) => (ownersByVector.context.get(vectorId) || [])
+          .filter((ownerId) => visibleNodeIds.has(ownerId)),
+      }),
     ];
   }
 
@@ -2283,6 +2288,7 @@
           const source = members[left];
           const target = members[right];
           if (source.id === target.id) continue;
+          if (source.vectorId === target.vectorId) continue;
           const strength = clamp01((source.strength + target.strength + cluster.strength) / 3);
           pairs.push({
             source: source.id,
@@ -2329,10 +2335,11 @@
     const owners = {
       face: new Map(),
       voiceSignature: new Map(),
+      context: new Map(),
     };
 
     relationships.forEach((rel) => {
-      if (rel.type !== "HAS_FACE_VECTOR" && rel.type !== "HAS_VOICE_VECTOR") return;
+      if (!vectorOwnerRelationship(rel.type)) return;
       const source = relationshipEndpoint(rel.source);
       const target = relationshipEndpoint(rel.target);
       const sourceNode = nodesById.get(source);
@@ -2346,10 +2353,23 @@
         addVectorOwner(owners.face, vectorId, ownerId);
       } else if (rel.type === "HAS_VOICE_VECTOR" && nodeKind(ownerNode) === "VoiceSignature") {
         addVectorOwner(owners.voiceSignature, vectorId, ownerId);
+      } else if (rel.type !== "HAS_FACE_VECTOR" && rel.type !== "HAS_VOICE_VECTOR" && vectorContextOwnerNode(ownerNode)) {
+        addVectorOwner(owners.context, vectorId, ownerId);
       }
     });
 
     return owners;
+  }
+
+  function vectorOwnerRelationship(type) {
+    return /^HAS_.*_VECTOR$/.test(String(type || ""));
+  }
+
+  function vectorContextOwnerNode(node) {
+    return !!node
+      && !isEmbeddingNode(node)
+      && !isClusterNode(node)
+      && !nodeKind(node).endsWith("Run");
   }
 
   function addVectorOwner(owners, vectorId, ownerId) {
@@ -2697,7 +2717,7 @@
   }
 
   function linkStrength(link) {
-    if (link.synthetic) return 0.25 + similarityStrength(link) * 1.15;
+    if (link.synthetic) return 0.9 + similarityStrength(link) * 1.45;
     return isThemeEndpoint(link) ? 0.95 : 0.45;
   }
 
@@ -2709,38 +2729,9 @@
     return nodeKind(node) === "Theme" ? 0.18 : 0.015;
   }
 
-  function temporalXStrength(node) {
-    return nodeTimestamp(node) === null ? 0.01 : 0.12;
-  }
-
-  function updateTemporalExtent() {
-    const timestamps = graph.nodes
-      .map(nodeTimestamp)
-      .filter((value) => value !== null)
-      .sort((left, right) => left - right);
-    temporalExtent = timestamps.length > 1
-      ? { min: timestamps[0], max: timestamps[timestamps.length - 1] }
-      : null;
-  }
-
-  function temporalX(node) {
-    if (!svg) return 0;
-    const rect = svg.node().getBoundingClientRect();
-    const center = rect.width / 2;
-    const timestamp = nodeTimestamp(node);
-    if (timestamp === null || !temporalExtent || temporalExtent.max === temporalExtent.min) {
-      return center;
-    }
-    const margin = Math.max(48, rect.width * temporalMarginRatio);
-    const left = margin;
-    const right = Math.max(left, rect.width - margin);
-    const ratio = (timestamp - temporalExtent.min) / (temporalExtent.max - temporalExtent.min);
-    return left + clamp01(ratio) * (right - left);
-  }
-
   function nodeTimestamp(node) {
     const props = node.properties || {};
-    for (const key of temporalLayoutKeys(node)) {
+    for (const key of temporalLayoutPropertyKeys) {
       const value = props[key];
       if (value === null || value === undefined || value === "") continue;
       if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -2748,10 +2739,6 @@
       if (Number.isFinite(timestamp)) return timestamp;
     }
     return null;
-  }
-
-  function temporalLayoutKeys(node) {
-    return temporalLayoutPropertyKeys;
   }
 
   function isThemeEndpoint(link) {
@@ -2841,12 +2828,13 @@
     if (!rel.synthetic) return "link";
     if (rel.type === "SIMILAR_FACE") return "link semantic-similarity-link face-similarity-link";
     if (rel.type === "SIMILAR_VOICE_SIGNATURE") return "link semantic-similarity-link voice-signature-similarity-link";
+    if (rel.type === "SIMILAR_VECTOR_CONTEXT") return "link semantic-similarity-link vector-context-similarity-link";
     return "link embedding-link";
   }
 
   function linkDistance(link) {
     if (link.synthetic) {
-      return 32 + (1 - similarityStrength(link)) * 118;
+      return 18 + (1 - similarityStrength(link)) * 142;
     }
     return 90 + Math.min(link.type.length * 2, 70);
   }
@@ -3350,7 +3338,6 @@
       simulation.force("center", d3.forceCenter(rect.width / 2, rect.height / 2));
       simulation.force("theme-x").x(rect.width / 2);
       simulation.force("theme-y").y(rect.height / 2);
-      simulation.force("time-x").x(temporalX);
       simulation.alpha(0.3).restart();
     }
     updateTimelineContentWidth();

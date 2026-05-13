@@ -34,6 +34,18 @@ pub fn face_familiarity_sensation_text(seen_before: bool) -> &'static str {
     }
 }
 
+pub fn face_identity_sensation_text(identity: Option<&str>, seen_before: bool) -> String {
+    let identity = identity.and_then(|name| {
+        let name = name.trim();
+        (!name.is_empty()).then_some(name)
+    });
+    match (seen_before, identity) {
+        (true, Some(name)) => format!("I recognize this face as {name}."),
+        (true, None) => "I've seen this face before, but I don't know who it is.".into(),
+        (false, _) => face_familiarity_sensation_text(false).into(),
+    }
+}
+
 /// Prompt builder for the `Voice` subagent.
 #[derive(Clone, Default)]
 pub struct VoicePrompt;

@@ -124,14 +124,14 @@ pub use plain_mouth::PlainMouth;
 pub use prompt::{
     CONVERSATION_SPEAKER_NOTE, CombobulatorPrompt, ContextualPrompt, IMAGE_CAPTION_PROMPT,
     IMAGE_SENSATION_TEXT, PromptFragment, SENSOR_GROUNDING_RULES, VoicePrompt, WillPrompt,
-    face_count_sensation_text, face_familiarity_sensation_text,
+    face_count_sensation_text, face_familiarity_sensation_text, face_identity_sensation_text,
 };
 pub use topics::{Topic, TopicBus, TopicMessage};
 pub use trim_mouth::TrimMouth;
 pub use types::{
     AudioClip, BrowserMotion, CombobulationSummary, ConversationEntry, Decision, DeviceOrientation,
     GeoEmbedding, GeoLoc, Heartbeat, ImageData, ImageEmbedding, MotionVector, ObjectInfo,
-    VoiceInfo, WillContext, WillTypeScriptExecution, WillTypeScriptResult, audio_captured_at,
+    VoiceInfo, Thought, WillTypeScriptExecution, WillTypeScriptResult, audio_captured_at,
     audio_clip_id, browser_motion_content_id, browser_motion_observed_at, geoloc_content_id,
     geoloc_observed_at, geoloc_vector, image_captured_at, image_content_id, parse_observed_at,
 };

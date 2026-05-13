@@ -64,6 +64,8 @@ struct AudioCandidate {
     sample_rate: Option<u32>,
     channels: Option<u16>,
     transcript: Option<String>,
+    #[serde(default)]
+    transcriptions: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -72,6 +74,7 @@ struct AudioStats {
     rms: f32,
     peak: f32,
     silent: bool,
+    blank_audio_only: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,6 +135,7 @@ async fn sweep_once(graph: &Neo4jHttp, cli: &Cli) -> Result<()> {
                     rms = stats.rms,
                     peak = stats.peak,
                     transcript = candidate.transcript.as_deref().unwrap_or(""),
+                    blank_audio_only = stats.blank_audio_only,
                     silent = stats.silent,
                     "checked audio clip for silence"
                 );
@@ -186,6 +190,31 @@ fn classify_candidate(
     threshold: f32,
     window_ms: u64,
 ) -> Result<AudioStats> {
+    let blank_audio_only = has_only_blank_audio_transcription(candidate);
+    let stats = match classify_audio_content(candidate, threshold, window_ms) {
+        Ok(mut stats) => {
+            stats.blank_audio_only = blank_audio_only;
+            stats.silent = stats.silent || blank_audio_only;
+            stats
+        }
+        Err(_) if blank_audio_only => AudioStats {
+            duration_ms: 0,
+            rms: 0.0,
+            peak: 0.0,
+            silent: true,
+            blank_audio_only,
+        },
+        Err(err) => return Err(err),
+    };
+
+    Ok(stats)
+}
+
+fn classify_audio_content(
+    candidate: &AudioCandidate,
+    threshold: f32,
+    window_ms: u64,
+) -> Result<AudioStats> {
     let decoded = BASE64_STANDARD
         .decode(candidate.base64.as_bytes())
         .with_context(|| format!("failed to decode base64 for {}", candidate.id))?;
@@ -226,7 +255,37 @@ fn classify_candidate(
         rms,
         peak,
         silent,
+        blank_audio_only: false,
     })
+}
+
+fn has_only_blank_audio_transcription(candidate: &AudioCandidate) -> bool {
+    let attached = candidate
+        .transcriptions
+        .iter()
+        .map(|text| text.trim())
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>();
+    let transcripts = if attached.is_empty() {
+        candidate
+            .transcript
+            .as_deref()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .into_iter()
+            .collect::<Vec<_>>()
+    } else {
+        attached
+    };
+
+    transcripts.len() == 1 && is_blank_audio_transcription(transcripts[0])
+}
+
+fn is_blank_audio_transcription(text: &str) -> bool {
+    matches!(
+        text.trim().to_ascii_lowercase().as_str(),
+        "[blank_audio]" | "[blank_audio]."
+    )
 }
 
 fn decode_pcm_s16(bytes: &[u8], sample_rate: u32, channels: u16) -> (Vec<f32>, u32, u16) {
@@ -321,15 +380,38 @@ impl Neo4jHttp {
                 r#"
                     MATCH (a:GraphNode:AudioClip)
                     WHERE a.base64 IS NOT NULL
-                      AND a.silence_checked_at IS NULL
-                      AND a.silence_check_error IS NULL
+                    OPTIONAL MATCH (a)-[:HAS_TRANSCRIPTION|HAS_BIG_TRANSCRIPTION]->(t:GraphNode:Transcription)
+                    WITH a, collect(DISTINCT t) AS transcription_nodes
+                    WITH a, [
+                        t IN transcription_nodes
+                        WHERE t IS NOT NULL
+                        | coalesce(t.text, t.transcript, "")
+                    ] AS transcriptions
+                    WITH a, transcriptions,
+                         CASE
+                             WHEN size([text IN transcriptions WHERE trim(text) <> ""]) = 0
+                             THEN CASE
+                                      WHEN a.transcript IS NULL OR trim(a.transcript) = ""
+                                      THEN []
+                                      ELSE [a.transcript]
+                                  END
+                             ELSE [text IN transcriptions WHERE trim(text) <> ""]
+                         END AS candidate_transcriptions
+                    WHERE (
+                          (a.silence_checked_at IS NULL AND a.silence_check_error IS NULL)
+                          OR (
+                              size(candidate_transcriptions) = 1
+                              AND toLower(trim(candidate_transcriptions[0])) IN ["[blank_audio]", "[blank_audio]."]
+                          )
+                      )
                     RETURN {
                         id: a.id,
                         mime: a.mime,
                         base64: a.base64,
                         sample_rate: a.sample_rate,
                         channels: a.channels,
-                        transcript: a.transcript
+                        transcript: a.transcript,
+                        transcriptions: transcriptions
                     } AS audio
                     ORDER BY coalesce(a.captured_at, a.occurred_at, a.id)
                     LIMIT $limit
@@ -549,7 +631,13 @@ fn convert_neo4j_url(source: &Url, scheme: &str, default_port: u16) -> Result<Ur
 
 #[cfg(test)]
 mod tests {
-    use super::{contains_audio_above_threshold, rms};
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+
+    use super::{
+        AudioCandidate, classify_candidate, contains_audio_above_threshold,
+        has_only_blank_audio_transcription, rms,
+    };
 
     #[test]
     fn short_quiet_clip_is_silence() {
@@ -573,5 +661,43 @@ mod tests {
     #[test]
     fn rms_handles_empty_audio() {
         assert_eq!(rms(&[]), 0.0);
+    }
+
+    #[test]
+    fn only_blank_audio_transcription_is_silence_even_when_audio_is_loud() {
+        let mut bytes = Vec::new();
+        for _ in 0..640 {
+            bytes.extend_from_slice(&i16::MAX.to_le_bytes());
+        }
+        let candidate = AudioCandidate {
+            id: "audio:blank".into(),
+            mime: None,
+            base64: BASE64_STANDARD.encode(bytes),
+            sample_rate: Some(16_000),
+            channels: Some(1),
+            transcript: Some("[BLANK_AUDIO]".into()),
+            transcriptions: vec!["[BLANK_AUDIO]".into()],
+        };
+
+        let stats = classify_candidate(&candidate, 0.015, 20).expect("clip should classify");
+
+        assert!(stats.blank_audio_only);
+        assert!(stats.silent);
+        assert!(stats.rms > 0.9);
+    }
+
+    #[test]
+    fn blank_audio_transcription_is_not_silence_when_there_are_other_transcripts() {
+        let candidate = AudioCandidate {
+            id: "audio:mixed".into(),
+            mime: None,
+            base64: String::new(),
+            sample_rate: Some(16_000),
+            channels: Some(1),
+            transcript: Some("[BLANK_AUDIO]".into()),
+            transcriptions: vec!["[BLANK_AUDIO]".into(), "hello".into()],
+        };
+
+        assert!(!has_only_blank_audio_transcription(&candidate));
     }
 }

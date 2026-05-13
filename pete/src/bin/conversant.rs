@@ -9,7 +9,7 @@ use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
     CONVERSATION_SPEAKER_NOTE, ConversationEntry, GraphLatestCombobulation,
     GraphSensationTimelineItem, Impression, Neo4jClient, Sensation, SensationGraphObserver,
-    SensationObserver, Stimulus, WillContext, WitReport, with_default_system_prompt,
+    SensationObserver, Stimulus, Thought, WitReport, with_default_system_prompt,
 };
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{error, info, trace};
@@ -147,6 +147,7 @@ async fn process_latest_combobulation(
     );
     store_conversant_context_sensation(
         observer,
+        &combobulation,
         action.system_prompt,
         action.history,
         action.report,
@@ -388,15 +389,17 @@ async fn store_speech_intention_sensation(
 
 async fn store_conversant_context_sensation(
     observer: &SensationGraphObserver,
+    combobulation: &GraphLatestCombobulation,
     system_prompt: String,
     history: Vec<ConversationEntry>,
     report: Option<WitReport>,
 ) {
-    let context = WillContext {
+    let context = Thought {
         system_prompt,
         history,
         report,
         typescript: None,
+        source_sensation_ids: vec![combobulation.id.clone()],
     };
     let sensation = Sensation::of_at(context, Utc::now());
     observer.observe_sensation(&sensation).await;
@@ -427,6 +430,7 @@ mod tests {
 
         assert!(prompt.contains("You are PETE"));
         assert!(prompt.contains("no more than two sentences"));
+        assert!(prompt.contains("role or field is `user` may contain multiple human voices"));
         assert!(prompt.contains("Do not include hidden reasoning"));
         assert!(!prompt.contains("<thought>"));
         assert!(!prompt.contains("list_files"));

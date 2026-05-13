@@ -229,14 +229,10 @@ impl AsrService {
     ///
     /// Stored clips are expected to be 16-bit little-endian PCM or WAV audio at
     /// the service sample rate. Multi-channel clips are downmixed to mono.
-    pub async fn transcribe_clip(
-        &self,
-        clip: &AudioClip,
-        initial_prompt: Option<&str>,
-    ) -> Result<ClipTranscription> {
+    pub async fn transcribe_clip(&self, clip: &AudioClip) -> Result<ClipTranscription> {
         anyhow::ensure!(self.has_whisper_model(), "Whisper model not configured");
         let audio = decode_audio_clip_samples(clip, self.sample_rate)?;
-        let segments = self.transcribe(audio, initial_prompt).await?;
+        let segments = self.transcribe(audio).await?;
         let text = join_segments(&segments);
         Ok(ClipTranscription {
             text,
@@ -248,12 +244,8 @@ impl AsrService {
     }
 
     /// Transcribe a stored audio clip and return Whisper's joined text.
-    pub async fn transcribe_clip_text(
-        &self,
-        clip: &AudioClip,
-        initial_prompt: Option<&str>,
-    ) -> Result<String> {
-        Ok(self.transcribe_clip(clip, initial_prompt).await?.text)
+    pub async fn transcribe_clip_text(&self, clip: &AudioClip) -> Result<String> {
+        Ok(self.transcribe_clip(clip).await?.text)
     }
 
     /// Transcribe several stored clips as one continuous audio buffer.
@@ -282,7 +274,7 @@ impl AsrService {
         }
 
         anyhow::ensure!(!audio.is_empty(), "audio clips contained no samples");
-        let segments = self.transcribe(audio, None).await?;
+        let segments = self.transcribe(audio).await?;
         let text = join_segments(&segments);
         Ok(MultiClipTranscription {
             text,
@@ -335,15 +327,10 @@ impl AsrService {
         (pcm_tx, transcript_rx)
     }
 
-    async fn transcribe(
-        &self,
-        audio: Vec<f32>,
-        initial_prompt: Option<&str>,
-    ) -> Result<Vec<SegmentInternal>> {
+    async fn transcribe(&self, audio: Vec<f32>) -> Result<Vec<SegmentInternal>> {
         let Some(ctx) = self.context.clone() else {
             return Ok(Vec::new());
         };
-        let prompt = initial_prompt.map(|s| s.to_string());
         Ok(tokio::task::spawn_blocking(move || {
             let guard = ctx
                 .lock()
@@ -361,15 +348,6 @@ impl AsrService {
             params.set_no_context(true);
             params.set_single_segment(false);
             params.set_n_threads(std::cmp::max(1, num_cpus::get() as i32 - 1));
-            if let Some(p) = prompt.as_deref() {
-                // Truncate prompt to avoid confusing the model with too much context
-                let truncated = if p.len() > 200 {
-                    &p[p.len() - 200..]
-                } else {
-                    p
-                };
-                params.set_initial_prompt(truncated);
-            }
 
             state
                 .full(params, &audio)
@@ -783,7 +761,7 @@ async fn process_utterance(
         return;
     }
 
-    match service.transcribe(trimmed_audio, None).await {
+    match service.transcribe(trimmed_audio).await {
         Ok(segments) => {
             emit_transcript(
                 segments,

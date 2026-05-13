@@ -4,7 +4,7 @@ use crate::traits::observer::SensationObserver;
 use crate::wits::memory::GraphStore;
 use crate::{
     AudioClip, BrowserMotion, CombobulationSummary, GeoEmbedding, GeoLoc, Heartbeat, ImageData,
-    ImageEmbedding, Impression, ObjectInfo, Sensation, Topic, TopicBus, VoiceInfo, WillContext,
+    ImageEmbedding, Impression, ObjectInfo, Sensation, Topic, TopicBus, VoiceInfo, Thought,
     audio_clip_id, browser_motion_content_id, geoloc_content_id, image_content_id,
 };
 use async_trait::async_trait;
@@ -388,32 +388,50 @@ impl SensationObserver for SensationGraphObserver {
                     }),
                 )
                 .await;
-            } else if let Some(context) = payload.downcast_ref::<WillContext>() {
+            } else if let Some(thought) = payload.downcast_ref::<Thought>() {
                 let occurred_at_str = occurred_at.to_rfc3339();
-                let sensation_id = sensation_id("will_context", "current", occurred_at_str.clone());
+                let thought_id = format!("thought:{}", occurred_at_str);
+                let source_sensation_ids = thought.source_sensation_ids.clone();
+                let sensation_id = sensation_id("thought", "current", occurred_at_str.clone());
+                let mut sensation = sensation_node(
+                    &sensation_id,
+                    "thought",
+                    occurred_at_str.clone(),
+                    "I gather a thought from my current prompt and chosen action.",
+                );
+                sensation["source_sensation_ids"] = json!(source_sensation_ids);
+                let thought_node = json!({
+                    "label": "Thought",
+                    "id": thought_id,
+                    "data": serde_json::to_string(thought).unwrap_or_default(),
+                    "occurred_at": occurred_at_str,
+                    "source_sensation_ids": source_sensation_ids,
+                });
+                let mut nodes = vec![sensation, thought_node];
+                let mut relationships = vec![json!({
+                    "from": sensation_id,
+                    "to": thought_id,
+                    "type": "OBSERVED",
+                })];
+                for source_id in &source_sensation_ids {
+                    nodes.push(source_sensation_ref_node(source_id));
+                    relationships.push(json!({
+                        "from": thought_id,
+                        "to": source_id,
+                        "type": "DERIVED_FROM",
+                    }));
+                    relationships.push(json!({
+                        "from": sensation_id,
+                        "to": source_id,
+                        "type": "DERIVED_FROM",
+                    }));
+                }
                 self.store_once(
-                    format!("will_context:{}", occurred_at_str),
+                    thought_id,
                     json!({
                         "op": "merge_graph",
-                        "nodes": [
-                            sensation_node(
-                                &sensation_id,
-                                "will_context",
-                                occurred_at_str.clone(),
-                                "I reflect on my current context and system prompt.",
-                            ),
-                            {
-                                "label": "WillContext",
-                                "id": format!("will_context:{}", occurred_at_str),
-                                "data": serde_json::to_string(context).unwrap_or_default(),
-                                "occurred_at": occurred_at_str,
-                            }
-                        ],
-                        "relationships": [{
-                            "from": sensation_id,
-                            "to": format!("will_context:{}", occurred_at_str),
-                            "type": "OBSERVED",
-                        }],
+                        "nodes": nodes,
+                        "relationships": relationships,
                     }),
                 )
                 .await;

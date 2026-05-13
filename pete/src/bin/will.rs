@@ -11,7 +11,7 @@ use psyche::{
     BasicMemory, CONVERSATION_SPEAKER_NOTE, ConversationEntry, GraphFaceIdentityTarget,
     GraphLatestCombobulation, GraphNodeDetails, GraphSensationTimelineItem, GraphSnapshot,
     GraphVoiceIdentityTarget, Impression, Memory, Neo4jClient, QdrantClient, Sensation,
-    SensationGraphObserver, SensationObserver, Stimulus, WillContext, WillTypeScriptExecution,
+    SensationGraphObserver, SensationObserver, Stimulus, Thought, WillTypeScriptExecution,
     WillTypeScriptResult, WitReport, with_default_system_prompt,
 };
 use serde::{Deserialize, Serialize};
@@ -368,8 +368,9 @@ async fn process_latest_combobulation(
         typescript = %action.typescript,
         "will chose action"
     );
-    store_will_context_sensation(
+    store_thought_record_sensation(
         observer,
+        &combobulation,
         action.system_prompt,
         action.report,
         action.typescript,
@@ -1692,8 +1693,9 @@ async fn store_function_result_sensation(
     observer.observe_sensation(&sensation).await;
 }
 
-async fn store_will_context_sensation(
+async fn store_thought_record_sensation(
     observer: &SensationGraphObserver,
+    combobulation: &GraphLatestCombobulation,
     system_prompt: String,
     report: Option<WitReport>,
     typescript: String,
@@ -1705,13 +1707,14 @@ async fn store_will_context_sensation(
             timestamp: Utc::now().to_rfc3339(),
             results,
         });
-    let context = WillContext {
+    let thought = Thought {
         system_prompt,
         history: Vec::<ConversationEntry>::new(),
         report,
         typescript,
+        source_sensation_ids: vec![combobulation.id.clone()],
     };
-    let sensation = Sensation::of_at(context, Utc::now());
+    let sensation = Sensation::of_at(thought, Utc::now());
     observer.observe_sensation(&sensation).await;
 }
 

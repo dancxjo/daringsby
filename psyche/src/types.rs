@@ -235,10 +235,10 @@ pub struct WillTypeScriptExecution {
     pub results: Vec<WillTypeScriptResult>,
 }
 
-/// The full context seen by the Will agent during a decision cycle.
+/// A thought captured during a decision cycle.
 #[cfg_attr(feature = "ts", derive(TS))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct WillContext {
+pub struct Thought {
     /// The system prompt used for the LLM request.
     pub system_prompt: String,
     /// Recent message history used as context.
@@ -251,4 +251,7 @@ pub struct WillContext {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(inline))]
     pub typescript: Option<WillTypeScriptExecution>,
+    /// Graph node ids that produced this thought.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_sensation_ids: Vec<String>,
 }

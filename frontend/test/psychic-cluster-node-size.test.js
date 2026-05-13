@@ -15,4 +15,5 @@ assert(styles.includes('.embedding-node .node-icon'));
 assert(script.includes('.strength(linkStrength)'));
 assert(script.includes('function themeCenterStrength(node)'));
 assert(script.includes('return nodeKind(node) === "Theme" ? 0.18 : 0.015;'));
+assert(script.includes('if (link.synthetic) return 0.9 + similarityStrength(link) * 1.45;'));
 console.log('psychic-cluster-node-size ok');

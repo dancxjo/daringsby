@@ -30,7 +30,7 @@ use pete::{CoquiTts, synthesize_speech_audio};
 use pete::{EventBus, MediaEvent, init_logging, parse_data_url};
 use psyche::{
     AudioClip, ImageData, Impression, Neo4jClient, Sensation, SensationGraphObserver,
-    SensationObserver, Stimulus, WillContext, WillTypeScriptExecution, image_content_id,
+    SensationObserver, Stimulus, Thought, WillTypeScriptExecution, image_content_id,
 };
 use serde::Deserialize;
 use shared::{SpeechPlaybackStatus, WsPayload};
@@ -109,7 +109,7 @@ struct FaceState {
     ipc: broadcast::Sender<MediaEvent>,
     emotes: broadcast::Sender<WsPayload>,
     latest_emote: Arc<Mutex<Option<String>>>,
-    latest_will_context: Arc<Mutex<Option<WillContext>>>,
+    latest_thought: Arc<Mutex<Option<Thought>>>,
     image_sequence: Arc<AtomicU64>,
     audio_line_sequence: Arc<AtomicU64>,
     audio_config: AudioLineConfig,
@@ -138,13 +138,13 @@ async fn main() -> anyhow::Result<()> {
     ));
     let emotes = broadcast::channel(64).0;
     let latest_emote = Arc::new(Mutex::new(None));
-    let latest_will_context = Arc::new(Mutex::new(None));
+    let latest_thought = Arc::new(Mutex::new(None));
     let state = FaceState {
         graph: Arc::new(SensationGraphObserver::new(graph_store.clone())),
         ipc: broadcast::channel(1024).0,
         emotes,
         latest_emote,
-        latest_will_context,
+        latest_thought,
         image_sequence: Arc::new(AtomicU64::new(0)),
         audio_line_sequence: Arc::new(AtomicU64::new(0)),
         audio_config: AudioLineConfig {
@@ -173,11 +173,11 @@ async fn main() -> anyhow::Result<()> {
         Some(cli.tts_speaker_id),
         Some(cli.tts_language_id),
     );
-    spawn_will_context_poller(
+    spawn_thought_poller(
         graph_store.clone(),
         state.emotes.clone(),
         state.connections.clone(),
-        state.latest_will_context.clone(),
+        state.latest_thought.clone(),
         Duration::from_millis(cli.speech_poll_ms.max(250)),
     );
     spawn_conversation_poller(
@@ -241,9 +241,9 @@ async fn handle_socket(mut socket: WebSocket, state: FaceState) {
         }
     }
 
-    let latest_context = { state.latest_will_context.lock().unwrap().clone() };
-    if let Some(context) = latest_context {
-        let payload = serde_json::to_string(&WsPayload::FullHistory(context)).unwrap();
+    let latest_thought = { state.latest_thought.lock().unwrap().clone() };
+    if let Some(thought) = latest_thought {
+        let payload = serde_json::to_string(&WsPayload::FullHistory(thought)).unwrap();
         if socket.send(WsMessage::Text(payload.into())).await.is_err() {
             state.connections.fetch_sub(1, Ordering::SeqCst);
             return;
@@ -708,11 +708,11 @@ async fn store_queued_speech_sensation(observer: &SensationGraphObserver, text: 
     observer.observe_sensation(&sensation).await;
 }
 
-fn spawn_will_context_poller(
+fn spawn_thought_poller(
     graph: Arc<Neo4jClient>,
     tx: broadcast::Sender<WsPayload>,
     connections: Arc<AtomicUsize>,
-    latest_will_context: Arc<Mutex<Option<WillContext>>>,
+    latest_thought: Arc<Mutex<Option<Thought>>>,
     poll_interval: Duration,
 ) {
     tokio::spawn(async move {
@@ -722,32 +722,32 @@ fn spawn_will_context_poller(
                 tokio::time::sleep(poll_interval).await;
                 continue;
             }
-            match graph.latest_will_context().await {
-                Ok(Some(context)) => {
-                    let context = enrich_will_context(context);
-                    // We use a context hash as an ID to detect changes.
+            match graph.latest_thought().await {
+                Ok(Some(thought)) => {
+                    let thought = enrich_thought(thought);
+                    // We use a thought hash as an ID to detect changes.
                     use sha2::Digest;
                     let current_id = format!(
                         "{:x}",
                         sha2::Sha256::digest(
                             format!(
                                 "{}{:?}{:?}{:?}",
-                                context.system_prompt,
-                                context.history,
-                                context.report,
-                                context.typescript
+                                thought.system_prompt,
+                                thought.history,
+                                thought.report,
+                                thought.typescript
                             )
                             .as_bytes()
                         )
                     );
                     if last_id.as_deref() != Some(current_id.as_str()) {
                         last_id = Some(current_id);
-                        *latest_will_context.lock().unwrap() = Some(context.clone());
-                        let _ = tx.send(WsPayload::FullHistory(context));
+                        *latest_thought.lock().unwrap() = Some(thought.clone());
+                        let _ = tx.send(WsPayload::FullHistory(thought));
                     }
                 }
                 Ok(None) => {}
-                Err(err) => warn!(%err, "failed polling latest will context"),
+                Err(err) => warn!(%err, "failed polling latest thought"),
             }
             tokio::time::sleep(poll_interval).await;
         }
@@ -766,7 +766,7 @@ fn spawn_conversation_poller(
                 tokio::time::sleep(poll_interval).await;
                 continue;
             }
-            // We rely on spawn_will_context_poller for history sync,
+            // We rely on spawn_thought_poller for history sync,
             // but we could also poll conversation_timeline and emit FullHistory if it changes.
             // For now, let's keep it simple and let Will define the history.
             tokio::time::sleep(poll_interval).await;
@@ -780,14 +780,14 @@ struct WillReportPayload {
     typescript: String,
 }
 
-fn enrich_will_context(mut context: WillContext) -> WillContext {
-    if context.typescript.is_none() {
-        context.typescript = context
+fn enrich_thought(mut thought: Thought) -> Thought {
+    if thought.typescript.is_none() {
+        thought.typescript = thought
             .report
             .as_ref()
             .and_then(will_typescript_execution_from_report);
     }
-    context
+    thought
 }
 
 fn will_typescript_execution_from_report(
@@ -992,8 +992,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn enriches_will_context_from_raw_report_typescript() {
-        let context = WillContext {
+    fn enriches_thought_from_raw_report_typescript() {
+        let thought = Thought {
             system_prompt: "prompt".into(),
             history: Vec::new(),
             report: Some(psyche::WitReport {
@@ -1002,10 +1002,11 @@ mod tests {
                 output: r#"{"thought":"scan","typescript":"import { searchSource } from \"pete:will\";\nsearchSource(\"system failure\", 5)"}"#.into(),
             }),
             typescript: None,
+            source_sensation_ids: vec!["combobulation:1".into()],
         };
 
-        let context = enrich_will_context(context);
-        let execution = context.typescript.expect("typescript execution");
+        let thought = enrich_thought(thought);
+        let execution = thought.typescript.expect("typescript execution");
         assert!(execution.source.contains("searchSource"));
         assert!(execution.results.is_empty());
     }

@@ -3,7 +3,7 @@ use chrono::Utc;
 use psyche::{
     AudioClip, BrowserMotion, CombobulationSummary, DeviceOrientation, GeoEmbedding, GeoLoc,
     GraphStore, Heartbeat, ImageData, Impression, MotionVector, ObjectInfo, Sensation,
-    SensationGraphObserver, SensationObserver, Stimulus, audio_clip_id, geoloc_content_id,
+    SensationGraphObserver, SensationObserver, Stimulus, Thought, audio_clip_id, geoloc_content_id,
     geoloc_vector, image_content_id,
 };
 use serde_json::{Value, json};
@@ -266,6 +266,44 @@ async fn stores_cognitive_output_as_sensation_how_not_artifact() {
         stored[0]["nodes"][0]["id"]
     );
     assert_eq!(stored[0]["relationships"][0]["to"], "sensation:audio:1");
+}
+
+#[tokio::test]
+async fn stores_thought_with_source_links() {
+    let graph = Arc::new(MockGraph::default());
+    let observer = SensationGraphObserver::new(graph.clone());
+    let occurred_at = Utc::now();
+
+    observer
+        .observe_sensation(&Sensation::of_at(
+            Thought {
+                system_prompt: "prompt".into(),
+                history: Vec::new(),
+                report: None,
+                typescript: None,
+                source_sensation_ids: vec!["combobulation:1".into(), "sensation:audio:1".into()],
+            },
+            occurred_at,
+        ))
+        .await;
+
+    let stored = graph.0.lock().unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0]["nodes"][0]["kind"], "thought");
+    assert_eq!(stored[0]["nodes"][1]["label"], "Thought");
+    assert_eq!(
+        stored[0]["nodes"][1]["source_sensation_ids"][0],
+        "combobulation:1"
+    );
+    assert_eq!(stored[0]["nodes"][2]["label"], "SourceSensationRef");
+    assert_eq!(stored[0]["nodes"][3]["id"], "sensation:audio:1");
+    assert_eq!(stored[0]["relationships"][0]["type"], "OBSERVED");
+    assert_eq!(stored[0]["relationships"][1]["from"], stored[0]["nodes"][1]["id"]);
+    assert_eq!(stored[0]["relationships"][1]["to"], "combobulation:1");
+    assert_eq!(stored[0]["relationships"][1]["type"], "DERIVED_FROM");
+    assert_eq!(stored[0]["relationships"][2]["from"], stored[0]["nodes"][0]["id"]);
+    assert_eq!(stored[0]["relationships"][2]["to"], "combobulation:1");
+    assert_eq!(stored[0]["relationships"][2]["type"], "DERIVED_FROM");
 }
 
 #[tokio::test]

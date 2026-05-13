@@ -50,11 +50,12 @@ export interface WillTypeScriptExecution {
   results: WillTypeScriptResult[];
 }
 
-export interface WillContext {
+export interface Thought {
   system_prompt: string;
   history: ConversationEntry[];
   report?: WitReport | null;
   typescript?: WillTypeScriptExecution | null;
+  source_sensation_ids?: string[];
 }
 
 export interface ConversationEntry {
@@ -76,4 +77,4 @@ export type WsMessage =
   | { type: "Sense"; data: Record<string, any> }
   | { type: "SystemPrompt"; data: string }
   | { type: "ConversationEntry"; data: ConversationEntry }
-  | { type: "FullHistory"; data: WillContext };
+  | { type: "FullHistory"; data: Thought };

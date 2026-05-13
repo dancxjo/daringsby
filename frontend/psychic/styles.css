@@ -200,6 +200,10 @@ h1 {
   stroke: #7dd3fc;
 }
 
+.vector-context-similarity-link {
+  stroke: #8ee6a8;
+}
+
 .link-label {
   fill: #c9d4de;
   font-size: 0.68rem;

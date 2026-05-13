@@ -967,6 +967,7 @@ async fn neo4j_client_loads_face_node_details_with_linked_face_images() {
             when.method(POST)
                 .path("/db/neo4j/tx/commit")
                 .body_contains("face_images")
+                .body_contains("detail_properties {.*,")
                 .body_contains("HAS_FACE_VECTOR")
                 .body_contains("MATCHED_FACE")
                 .body_contains("\"id\":\"face:known\"");
@@ -1601,7 +1602,11 @@ async fn neo4j_client_attaches_per_face_identity_sensation() {
                 .body_contains("\"kind\":\"face_identity\"")
                 .body_contains(format!(
                     "\"how\":\"{}\"",
-                    psyche::face_familiarity_sensation_text(true)
+                    psyche::face_identity_sensation_text(Some("Anna"), true)
+                ))
+                .body_contains(format!(
+                    "\"how\":\"{}\"",
+                    psyche::face_identity_sensation_text(None, true)
                 ))
                 .body_contains("\"matched_face_id\":\"cluster:face:1\"")
                 .body_contains("\"identity_name\":\"Anna\"")

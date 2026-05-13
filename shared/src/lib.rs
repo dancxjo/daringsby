@@ -1,5 +1,5 @@
 pub use psyche::{
-    BrowserMotion, ConversationEntry, GeoLoc, WillContext, WillTypeScriptExecution,
+    BrowserMotion, ConversationEntry, GeoLoc, Thought, WillTypeScriptExecution,
     WillTypeScriptResult, WitReport,
 };
 use serde::{Deserialize, Serialize};
@@ -79,7 +79,7 @@ pub enum WsPayload {
     /// A single entry in the conversation log.
     ConversationEntry(ConversationEntry),
     /// Batch update of the entire conversation context.
-    FullHistory(WillContext),
+    FullHistory(Thought),
 }
 
 #[cfg(feature = "ts")]
@@ -152,11 +152,12 @@ interface ConversationEntry {{
   timestamp: string;
 }}
 
-interface WillContext {{
+interface Thought {{
   system_prompt: string;
   history: ConversationEntry[];
   report?: WitReport | null;
   typescript?: WillTypeScriptExecution | null;
+  source_sensation_ids?: string[];
 }}
 
 type {} = {};"#,
@@ -181,7 +182,7 @@ type {} = {};"#,
   | { type: "Chunk"; data: string }
   | { type: "SystemPrompt"; data: string }
   | { type: "ConversationEntry"; data: ConversationEntry }
-  | { type: "FullHistory"; data: WillContext }"#
+  | { type: "FullHistory"; data: Thought }"#
             .into()
     }
 

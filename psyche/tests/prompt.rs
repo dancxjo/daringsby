@@ -118,6 +118,14 @@ fn sensory_prompt_phrases_match_graph_sensation_text() {
         psyche::face_familiarity_sensation_text(false),
         "I don't think I recognize this face."
     );
+    assert_eq!(
+        psyche::face_identity_sensation_text(Some("Anna"), true),
+        "I recognize this face as Anna."
+    );
+    assert_eq!(
+        psyche::face_identity_sensation_text(Some("  "), true),
+        "I've seen this face before, but I don't know who it is."
+    );
 }
 
 #[test]

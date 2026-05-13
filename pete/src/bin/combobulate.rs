@@ -10,7 +10,7 @@ use pete::{EventBus, init_logging, ollama_provider_from_args};
 use psyche::{
     CONVERSATION_SPEAKER_NOTE, ConversationEntry, GraphAwareness, GraphSensationTimelineItem,
     GraphTimelineWindow, Neo4jClient, QdrantClient, SENSOR_GROUNDING_RULES, Sensation,
-    SensationGraphObserver, SensationObserver, WillContext, WitReport, with_default_system_prompt,
+    SensationGraphObserver, SensationObserver, Thought, WitReport, with_default_system_prompt,
 };
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{debug, error, info, trace};
@@ -219,7 +219,7 @@ async fn process_window(
                 window.anchor_id
             )
         })?;
-    store_combobulator_context_sensation(observer, result.report).await;
+    store_combobulator_context_sensation(observer, &window, &conversation, result.report).await;
     info!(
         target: "thought_stream",
         "aware: {}{}",
@@ -322,13 +322,27 @@ impl CombobulationProcessor {
 
 async fn store_combobulator_context_sensation(
     observer: &SensationGraphObserver,
+    window: &GraphTimelineWindow,
+    conversation: &[GraphSensationTimelineItem],
     report: WitReport,
 ) {
-    let context = WillContext {
+    let mut source_sensation_ids = Vec::new();
+    for id in window
+        .items
+        .iter()
+        .map(|item| item.id.as_str())
+        .chain(conversation.iter().map(|item| item.id.as_str()))
+    {
+        if !source_sensation_ids.iter().any(|existing| existing == id) {
+            source_sensation_ids.push(id.to_string());
+        }
+    }
+    let context = Thought {
         system_prompt: report.prompt.clone(),
         history: Vec::<ConversationEntry>::new(),
         report: Some(report),
         typescript: None,
+        source_sensation_ids,
     };
     let sensation = Sensation::of_at(context, Utc::now());
     observer.observe_sensation(&sensation).await;
