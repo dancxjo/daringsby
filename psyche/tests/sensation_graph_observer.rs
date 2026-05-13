@@ -12,6 +12,33 @@ use std::sync::{Arc, Mutex};
 #[derive(Default)]
 struct MockGraph(Mutex<Vec<Value>>);
 
+fn find_node_by_label<'a>(record: &'a Value, label: &str) -> &'a Value {
+    record["nodes"]
+        .as_array()
+        .and_then(|nodes| nodes.iter().find(|node| node["label"] == label))
+        .unwrap()
+}
+
+fn find_node_by_id<'a>(record: &'a Value, id: &str) -> &'a Value {
+    record["nodes"]
+        .as_array()
+        .and_then(|nodes| nodes.iter().find(|node| node["id"] == id))
+        .unwrap()
+}
+
+fn find_relationship<'a>(record: &'a Value, rel_type: &str, from: &str, to: &str) -> &'a Value {
+    record["relationships"]
+        .as_array()
+        .and_then(|relationships| {
+            relationships.iter().find(|relationship| {
+                relationship["type"] == rel_type
+                    && relationship["from"] == from
+                    && relationship["to"] == to
+            })
+        })
+        .unwrap()
+}
+
 #[async_trait]
 impl GraphStore for MockGraph {
     async fn store_data(&self, data: &Value) -> anyhow::Result<()> {
@@ -212,19 +239,23 @@ async fn stores_combobulation_summary_as_sensation() {
 
     let stored = graph.0.lock().unwrap();
     assert_eq!(stored.len(), 1);
-    assert_eq!(stored[0]["nodes"][0]["kind"], "combobulation_summary");
-    assert_eq!(
-        stored[0]["nodes"][0]["how"],
-        "I may be hearing someone nearby."
+    let sensation = find_node_by_label(&stored[0], "Sensation");
+    let summary = find_node_by_label(&stored[0], "CombobulationSummary");
+    assert_eq!(sensation["kind"], "combobulation_summary");
+    assert_eq!(sensation["how"], "I may be hearing someone nearby.");
+    assert_eq!(summary["text"], "I may be hearing someone nearby.");
+    find_relationship(
+        &stored[0],
+        "OBSERVED",
+        sensation["id"].as_str().unwrap(),
+        summary["id"].as_str().unwrap(),
     );
-    assert_eq!(stored[0]["nodes"][1]["label"], "CombobulationSummary");
-    assert_eq!(
-        stored[0]["nodes"][1]["text"],
-        "I may be hearing someone nearby."
+    find_relationship(
+        &stored[0],
+        "DERIVED_FROM",
+        summary["id"].as_str().unwrap(),
+        "sensation:audio:1",
     );
-    assert_eq!(stored[0]["relationships"][0]["type"], "OBSERVED");
-    assert_eq!(stored[0]["relationships"][1]["type"], "DERIVED_FROM");
-    assert_eq!(stored[0]["relationships"][1]["to"], "sensation:audio:1");
 }
 
 #[tokio::test]
@@ -251,21 +282,18 @@ async fn stores_cognitive_output_as_sensation_how_not_artifact() {
 
     let stored = graph.0.lock().unwrap();
     assert_eq!(stored.len(), 1);
-    assert_eq!(stored[0]["nodes"][0]["label"], "Sensation");
-    assert_eq!(stored[0]["nodes"][0]["kind"], "cognitive");
-    assert_eq!(stored[0]["nodes"][0]["how"], "I ought to say: hello there.");
-    assert_eq!(
-        stored[0]["nodes"][0]["source_sensation_ids"][0],
-        "sensation:audio:1"
+    let sensation = find_node_by_label(&stored[0], "Sensation");
+    let source = find_node_by_id(&stored[0], "sensation:audio:1");
+    assert_eq!(sensation["kind"], "cognitive");
+    assert_eq!(sensation["how"], "I ought to say: hello there.");
+    assert_eq!(sensation["source_sensation_ids"][0], "sensation:audio:1");
+    assert_eq!(source["label"], "SourceSensationRef");
+    find_relationship(
+        &stored[0],
+        "DERIVED_FROM",
+        sensation["id"].as_str().unwrap(),
+        "sensation:audio:1",
     );
-    assert_eq!(stored[0]["nodes"][1]["label"], "SourceSensationRef");
-    assert_eq!(stored[0]["nodes"][1]["id"], "sensation:audio:1");
-    assert_eq!(stored[0]["relationships"][0]["type"], "DERIVED_FROM");
-    assert_eq!(
-        stored[0]["relationships"][0]["from"],
-        stored[0]["nodes"][0]["id"]
-    );
-    assert_eq!(stored[0]["relationships"][0]["to"], "sensation:audio:1");
 }
 
 #[tokio::test]
@@ -289,27 +317,44 @@ async fn stores_thought_with_source_links() {
 
     let stored = graph.0.lock().unwrap();
     assert_eq!(stored.len(), 1);
-    assert_eq!(stored[0]["nodes"][0]["kind"], "thought");
-    assert_eq!(stored[0]["nodes"][1]["label"], "Thought");
-    assert_eq!(
-        stored[0]["nodes"][1]["source_sensation_ids"][0],
-        "combobulation:1"
+    let sensation = find_node_by_label(&stored[0], "Sensation");
+    let thought = find_node_by_label(&stored[0], "Thought");
+    let combobulation_source = find_node_by_id(&stored[0], "combobulation:1");
+    let audio_source = find_node_by_id(&stored[0], "sensation:audio:1");
+    assert_eq!(sensation["kind"], "thought");
+    assert_eq!(thought["source_sensation_ids"][0], "combobulation:1");
+    assert_eq!(combobulation_source["label"], "SourceSensationRef");
+    assert_eq!(audio_source["label"], "SourceSensationRef");
+    find_relationship(
+        &stored[0],
+        "OBSERVED",
+        sensation["id"].as_str().unwrap(),
+        thought["id"].as_str().unwrap(),
     );
-    assert_eq!(stored[0]["nodes"][2]["label"], "SourceSensationRef");
-    assert_eq!(stored[0]["nodes"][3]["id"], "sensation:audio:1");
-    assert_eq!(stored[0]["relationships"][0]["type"], "OBSERVED");
-    assert_eq!(
-        stored[0]["relationships"][1]["from"],
-        stored[0]["nodes"][1]["id"]
+    find_relationship(
+        &stored[0],
+        "DERIVED_FROM",
+        thought["id"].as_str().unwrap(),
+        "combobulation:1",
     );
-    assert_eq!(stored[0]["relationships"][1]["to"], "combobulation:1");
-    assert_eq!(stored[0]["relationships"][1]["type"], "DERIVED_FROM");
-    assert_eq!(
-        stored[0]["relationships"][2]["from"],
-        stored[0]["nodes"][0]["id"]
+    find_relationship(
+        &stored[0],
+        "DERIVED_FROM",
+        thought["id"].as_str().unwrap(),
+        "sensation:audio:1",
     );
-    assert_eq!(stored[0]["relationships"][2]["to"], "combobulation:1");
-    assert_eq!(stored[0]["relationships"][2]["type"], "DERIVED_FROM");
+    find_relationship(
+        &stored[0],
+        "DERIVED_FROM",
+        sensation["id"].as_str().unwrap(),
+        "combobulation:1",
+    );
+    find_relationship(
+        &stored[0],
+        "DERIVED_FROM",
+        sensation["id"].as_str().unwrap(),
+        "sensation:audio:1",
+    );
 }
 
 #[tokio::test]
