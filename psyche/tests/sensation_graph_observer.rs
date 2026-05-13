@@ -16,14 +16,14 @@ fn find_node_by_label<'a>(record: &'a Value, label: &str) -> &'a Value {
     record["nodes"]
         .as_array()
         .and_then(|nodes| nodes.iter().find(|node| node["label"] == label))
-        .unwrap()
+        .unwrap_or_else(|| panic!("node with label {label:?} not found"))
 }
 
 fn find_node_by_id<'a>(record: &'a Value, id: &str) -> &'a Value {
     record["nodes"]
         .as_array()
         .and_then(|nodes| nodes.iter().find(|node| node["id"] == id))
-        .unwrap()
+        .unwrap_or_else(|| panic!("node with id {id:?} not found"))
 }
 
 fn find_relationship<'a>(record: &'a Value, rel_type: &str, from: &str, to: &str) -> &'a Value {
@@ -36,7 +36,7 @@ fn find_relationship<'a>(record: &'a Value, rel_type: &str, from: &str, to: &str
                     && relationship["to"] == to
             })
         })
-        .unwrap()
+        .unwrap_or_else(|| panic!("relationship {rel_type:?} from {from:?} to {to:?} not found"))
 }
 
 #[async_trait]
