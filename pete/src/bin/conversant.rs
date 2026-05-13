@@ -30,12 +30,22 @@ struct Cli {
     /// Neo4j password.
     #[arg(long, env = "NEO4J_PASS", default_value = "password")]
     neo4j_pass: String,
-    /// URL of the wits Ollama server.
-    #[arg(long, env = "WITS_HOST", default_value = "http://localhost:11434")]
-    wits_host: String,
+    /// URL of the chatter Ollama server.
+    #[arg(
+        long = "chatter-host",
+        alias = "wits-host",
+        env = "CHATTER_HOST",
+        default_value = "http://localhost:11434"
+    )]
+    chatter_host: String,
     /// Model name to use for conversation.
-    #[arg(long, env = "WITS_MODEL", default_value = "gpt-oss")]
-    wits_model: String,
+    #[arg(
+        long = "chatter-model",
+        alias = "wits-model",
+        env = "CHATTER_MODEL",
+        default_value = "gpt-oss"
+    )]
+    chatter_model: String,
     /// Delay between graph polling attempts.
     #[arg(long, env = "CONVERSANT_POLL_MS", default_value_t = 1000)]
     poll_ms: u64,
@@ -57,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
         cli.neo4j_pass.clone(),
     ));
     let observer = SensationGraphObserver::new(graph.clone());
-    let chatter = ollama_provider_from_args(&cli.wits_host, &cli.wits_model)?;
+    let chatter = ollama_provider_from_args(&cli.chatter_host, &cli.chatter_model)?;
     let processor = ConversantProcessor {
         chatter,
         graph: graph.clone(),
@@ -434,6 +444,36 @@ mod tests {
 
         assert_eq!(action.emoji, "🙂");
         assert_eq!(action.say.as_deref(), Some("Hello there!"));
+    }
+
+    #[test]
+    fn cli_accepts_chatter_provider_options() {
+        let cli = Cli::try_parse_from([
+            "conversant",
+            "--chatter-host",
+            "http://chatter.local:11434",
+            "--chatter-model",
+            "chat-model",
+        ])
+        .unwrap();
+
+        assert_eq!(cli.chatter_host, "http://chatter.local:11434");
+        assert_eq!(cli.chatter_model, "chat-model");
+    }
+
+    #[test]
+    fn cli_keeps_wits_provider_options_as_aliases() {
+        let cli = Cli::try_parse_from([
+            "conversant",
+            "--wits-host",
+            "http://old.local:11434",
+            "--wits-model",
+            "old-model",
+        ])
+        .unwrap();
+
+        assert_eq!(cli.chatter_host, "http://old.local:11434");
+        assert_eq!(cli.chatter_model, "old-model");
     }
 
     #[test]
