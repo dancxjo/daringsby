@@ -4,11 +4,13 @@
     return;
   }
 
-  const svg = d3.select("#graph");
-  const root = svg.append("g");
-  const linkLayer = root.append("g").attr("class", "links");
-  const labelLayer = root.append("g").attr("class", "link-labels");
-  const nodeLayer = root.append("g").attr("class", "nodes");
+  const pageView = document.body?.dataset.psychicView === "timeline" ? "timeline" : "graph";
+  const graphSvgEl = document.getElementById("graph");
+  const svg = graphSvgEl ? d3.select(graphSvgEl) : null;
+  const root = svg ? svg.append("g") : null;
+  const linkLayer = root ? root.append("g").attr("class", "links") : null;
+  const labelLayer = root ? root.append("g").attr("class", "link-labels") : null;
+  const nodeLayer = root ? root.append("g").attr("class", "nodes") : null;
   const graphShell = document.querySelector(".graph-shell");
   const timelineShell = document.getElementById("timeline-shell");
   const statusEl = document.getElementById("status");
@@ -109,7 +111,6 @@
   const graphCacheDbVersion = 1;
   const maxEmbeddingLinksPerCluster = 80;
   const temporalMarginRatio = 0.12;
-  const timelineModeStorageKey = "psychic.view.mode.v1";
   const timelineDetailLoadLimit = 36;
   const timelineMinClipMs = 850;
   const timelineDefaultClipMs = 3000;
@@ -154,7 +155,7 @@
   let lastFilterOptionsSignature = "";
   let detailRequestId = 0;
   let mediaObjectUrl = "";
-  let viewMode = storedViewMode();
+  let viewMode = pageView;
   let timelineFullExtent = null;
   let temporalExtent = null;
   let timelineExtent = null;
@@ -177,30 +178,34 @@
   let graphCacheDbPromise = null;
   let graphCacheSaveTimer = 0;
 
-  const zoom = d3
-    .zoom()
-    .scaleExtent([0.15, 4])
-    .on("zoom", (event) => root.attr("transform", event.transform));
+  const zoom = svg
+    ? d3
+        .zoom()
+        .scaleExtent([0.15, 4])
+        .on("zoom", (event) => root.attr("transform", event.transform))
+    : null;
 
-  svg.call(zoom);
+  if (svg && zoom) svg.call(zoom);
 
-  const simulation = d3
-    .forceSimulation()
-    .force(
-      "link",
-      d3
-        .forceLink()
-        .id((node) => node.id)
-        .distance(linkDistance)
-        .strength(linkStrength),
-    )
-    .force("charge", d3.forceManyBody().strength(chargeStrength))
-    .force("center", d3.forceCenter())
-    .force("theme-x", d3.forceX().strength(themeCenterStrength))
-    .force("theme-y", d3.forceY().strength(themeCenterStrength))
-    .force("time-x", d3.forceX(temporalX).strength(temporalXStrength))
-    .force("collision", d3.forceCollide().radius((node) => nodeRadius(node) + 9))
-    .on("tick", ticked);
+  const simulation = svg
+    ? d3
+        .forceSimulation()
+        .force(
+          "link",
+          d3
+            .forceLink()
+            .id((node) => node.id)
+            .distance(linkDistance)
+            .strength(linkStrength),
+        )
+        .force("charge", d3.forceManyBody().strength(chargeStrength))
+        .force("center", d3.forceCenter())
+        .force("theme-x", d3.forceX().strength(themeCenterStrength))
+        .force("theme-y", d3.forceY().strength(themeCenterStrength))
+        .force("time-x", d3.forceX(temporalX).strength(temporalXStrength))
+        .force("collision", d3.forceCollide().radius((node) => nodeRadius(node) + 9))
+        .on("tick", ticked)
+    : null;
 
   function connect() {
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
@@ -258,7 +263,7 @@
   }
 
   loadStoredFilters();
-  setViewMode(viewMode, { persist: false });
+  setViewMode(pageView, { persist: false });
   restoreGraphCache().catch(() => {
     statusEl.textContent = "Connecting";
   }).finally(connect);
@@ -360,7 +365,6 @@
     }
     try {
       window.localStorage.removeItem(filterStorageKey);
-      window.localStorage.removeItem(timelineModeStorageKey);
     } catch (_err) {
       // Clearing local preferences is best-effort.
     }
@@ -502,16 +506,19 @@
     const labels = sortedUnique(
       fullGraph.nodes.flatMap((node) => node.labels || []),
     );
-    const semanticSimilarity = semanticSimilarityRelationships(
-      fullGraph.nodes,
-      fullGraph.relationships,
-      fullGraph.nodes,
-    );
+    const embeddingNeighbors = svg
+      ? embeddingNeighborRelationships(fullGraph.nodes, fullGraph.relationships)
+      : [];
+    const semanticSimilarity = svg
+      ? semanticSimilarityRelationships(
+          fullGraph.nodes,
+          fullGraph.relationships,
+          fullGraph.nodes,
+        )
+      : [];
     const predicates = sortedUnique([
       ...fullGraph.relationships.map((rel) => rel.type).filter(Boolean),
-      ...(embeddingNeighborRelationships(fullGraph.nodes, fullGraph.relationships).length
-        ? ["SIMILAR_EMBEDDING"]
-        : []),
+      ...(embeddingNeighbors.length ? ["SIMILAR_EMBEDDING"] : []),
       ...(semanticSimilarity.some((rel) => rel.type === "SIMILAR_FACE")
         ? ["SIMILAR_FACE"]
         : []),
@@ -573,10 +580,12 @@
       const target = relationshipEndpoint(rel.target);
       return visibleNodeIds.has(source) && visibleNodeIds.has(target) && predicateAllowed(rel.type);
     });
-    const syntheticRelationships = [
-      ...embeddingNeighborRelationships(graph.nodes, fullGraph.relationships),
-      ...semanticSimilarityRelationships(graph.nodes, fullGraph.relationships, fullGraph.nodes),
-    ].filter((rel) => predicateAllowed(rel.type));
+    const syntheticRelationships = svg
+      ? [
+          ...embeddingNeighborRelationships(graph.nodes, fullGraph.relationships),
+          ...semanticSimilarityRelationships(graph.nodes, fullGraph.relationships, fullGraph.nodes),
+        ].filter((rel) => predicateAllowed(rel.type))
+      : [];
     graph.relationships = [...realRelationships, ...syntheticRelationships];
     nodeCountEl.textContent = graph.nodes.length.toString();
     relationshipCountEl.textContent = graph.relationships.length.toString();
@@ -612,6 +621,7 @@
   }
 
   function render(reheat = false) {
+    if (!svg || !linkLayer || !labelLayer || !nodeLayer || !simulation) return;
     updateTemporalExtent();
     const links = linkLayer
       .selectAll("line")
@@ -696,30 +706,15 @@
     }
   }
 
-  function storedViewMode() {
-    try {
-      return window.localStorage.getItem(timelineModeStorageKey) === "timeline" ? "timeline" : "graph";
-    } catch (_err) {
-      return "graph";
-    }
-  }
-
   function setViewMode(mode, options = {}) {
     viewMode = mode === "timeline" ? "timeline" : "graph";
-    graphShell.hidden = viewMode !== "graph";
-    timelineShell.hidden = viewMode !== "timeline";
-    graphModeEl.classList.toggle("active", viewMode === "graph");
-    timelineModeEl.classList.toggle("active", viewMode === "timeline");
-    graphModeEl.setAttribute("aria-pressed", viewMode === "graph" ? "true" : "false");
-    timelineModeEl.setAttribute("aria-pressed", viewMode === "timeline" ? "true" : "false");
-    presentPanelEl.hidden = viewMode !== "timeline";
-    if (options.persist !== false) {
-      try {
-        window.localStorage.setItem(timelineModeStorageKey, viewMode);
-      } catch (_err) {
-        // View preference is optional.
-      }
-    }
+    if (graphShell) graphShell.hidden = viewMode !== "graph";
+    if (timelineShell) timelineShell.hidden = viewMode !== "timeline";
+    graphModeEl?.classList.toggle("active", viewMode === "graph");
+    timelineModeEl?.classList.toggle("active", viewMode === "timeline");
+    graphModeEl?.setAttribute("aria-current", viewMode === "graph" ? "page" : "false");
+    timelineModeEl?.setAttribute("aria-current", viewMode === "timeline" ? "page" : "false");
+    if (presentPanelEl) presentPanelEl.hidden = viewMode !== "timeline";
     if (viewMode === "timeline") {
       loadMovieIndex({ refresh: true }).then(renderPresentInstant);
       renderTimeline();
@@ -1316,6 +1311,7 @@
   }
 
   function updateTimelineRangeLabel() {
+    if (!timelineRangeEl) return;
     timelineRangeEl.textContent = timelineExtent
       ? `${formatTimelineInstant(timelineExtent.min)} to ${formatTimelineInstant(timelineExtent.max)}`
       : "No timed media";
@@ -1348,6 +1344,7 @@
   }
 
   function renderTimelineRuler() {
+    if (!timelineRulerEl) return;
     timelineRulerEl.replaceChildren();
     if (!timelineExtent) {
       updateTimelinePlayhead();
@@ -1381,6 +1378,7 @@
   }
 
   function syncTimelineScrubber() {
+    if (!timelineScrubEl) return;
     timelineScrubEl.disabled = !timelineExtent;
     timelineScrubEl.value = timelineExtent ? String(Math.round(timelinePercent(timelineCursor) * 10)) : "0";
     updateTimelinePlayhead();
@@ -1389,6 +1387,7 @@
   }
 
   function updateTimelinePlayhead() {
+    if (!timelinePlayheadEl) return;
     if (!timelineExtent || timelineCursor === null) {
       timelinePlayheadEl.hidden = true;
       return;
@@ -1538,6 +1537,7 @@
   }
 
   function syncTimelinePlaybackControls() {
+    if (!timelinePlayEl || !timelineStepBackEl || !timelineStepForwardEl || !timelinePauseEl) return;
     const canPlay = !!timelineExtent;
     const frameTimestamps = visibleTimelineFrameTimestamps();
     const cursor = timelineCursor ?? timelineExtent?.min ?? null;
@@ -1569,6 +1569,7 @@
   }
 
   function syncTimelineZoomControls() {
+    if (!timelineZoomInEl || !timelineZoomOutEl || !timelineZoomResetEl) return;
     const hasTimeline = !!timelineExtent && !!timelineFullExtent;
     const fullSpan = hasTimeline ? timelineFullExtent.max - timelineFullExtent.min : 0;
     const zoomSpan = hasTimeline ? timelineZoomSpan ?? fullSpan : 0;
@@ -1830,11 +1831,13 @@
   }
 
   function pausePresentMovie() {
+    if (!presentMediaEl) return;
     const video = presentMediaEl.querySelector(".present-movie-frame video");
     if (video) video.pause();
   }
 
   function stopPresentMovieFetch() {
+    if (!presentMediaEl) return;
     if (!activeMovieSrc) return;
     const video = presentMediaEl.querySelector(".present-movie-frame video");
     if (video) {
@@ -2097,6 +2100,7 @@
   }
 
   function ticked() {
+    if (!linkLayer || !labelLayer || !nodeLayer) return;
     linkLayer
       .selectAll("line")
       .attr("x1", (rel) => endpoint(rel.source).x)
@@ -2720,6 +2724,7 @@
   }
 
   function temporalX(node) {
+    if (!svg) return 0;
     const rect = svg.node().getBoundingClientRect();
     const center = rect.width / 2;
     const timestamp = nodeTimestamp(node);
@@ -3302,6 +3307,7 @@
   }
 
   function snapPointsIntoView(points, maxScale) {
+    if (!svg || !zoom) return;
     const rect = svg.node().getBoundingClientRect();
     if (!points.length || rect.width === 0 || rect.height === 0) return;
     const xs = points.map((point) => point.x ?? rect.width / 2);
@@ -3319,6 +3325,7 @@
   }
 
   function dragStarted(event, node) {
+    if (!simulation) return;
     if (!event.active) simulation.alphaTarget(0.3).restart();
     node.fx = node.x;
     node.fy = node.y;
@@ -3330,6 +3337,7 @@
   }
 
   function dragEnded(event, node) {
+    if (!simulation) return;
     if (!event.active) simulation.alphaTarget(0);
     node.fx = event.x;
     node.fy = event.y;
@@ -3337,12 +3345,14 @@
   }
 
   function resize() {
-    const rect = svg.node().getBoundingClientRect();
-    simulation.force("center", d3.forceCenter(rect.width / 2, rect.height / 2));
-    simulation.force("theme-x").x(rect.width / 2);
-    simulation.force("theme-y").y(rect.height / 2);
-    simulation.force("time-x").x(temporalX);
-    simulation.alpha(0.3).restart();
+    if (svg && simulation) {
+      const rect = svg.node().getBoundingClientRect();
+      simulation.force("center", d3.forceCenter(rect.width / 2, rect.height / 2));
+      simulation.force("theme-x").x(rect.width / 2);
+      simulation.force("theme-y").y(rect.height / 2);
+      simulation.force("time-x").x(temporalX);
+      simulation.alpha(0.3).restart();
+    }
     updateTimelineContentWidth();
     updateTimelineViewportFromScroll();
     updateTimelinePlayhead();
@@ -3362,10 +3372,12 @@
   }
 
   function zoomBy(factor) {
+    if (!svg || !zoom) return;
     svg.transition().duration(160).call(zoom.scaleBy, factor);
   }
 
   function fitGraph() {
+    if (!svg || !zoom) return;
     const rect = svg.node().getBoundingClientRect();
     if (!graph.nodes.length || rect.width === 0 || rect.height === 0) return;
     const xs = graph.nodes.map((node) => node.x || rect.width / 2);
@@ -3382,37 +3394,35 @@
     svg.transition().duration(220).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
   }
 
-  svg.on("click", clearSelection);
+  svg?.on("click", clearSelection);
 
-  graphModeEl.addEventListener("click", () => setViewMode("graph"));
-  timelineModeEl.addEventListener("click", () => setViewMode("timeline"));
   clearCacheEl?.addEventListener("click", () => {
     clearLocalCache().catch(() => {
       statusEl.textContent = "Cache clear failed";
       clearCacheEl.disabled = false;
     });
   });
-  timelineScrubEl.addEventListener("input", () => {
+  timelineScrubEl?.addEventListener("input", () => {
     if (!timelineExtent) return;
     const ratio = clamp01(Number(timelineScrubEl.value) / Number(timelineScrubEl.max || 1000));
     timelineCursor = timelineExtent.min + ratio * (timelineExtent.max - timelineExtent.min);
     syncTimelineScrubber();
   });
-  timelineStepBackEl.addEventListener("click", () => stepTimelineFrame(-1));
-  timelinePlayEl.addEventListener("click", playTimeline);
-  timelineStepForwardEl.addEventListener("click", () => stepTimelineFrame(1));
-  timelinePauseEl.addEventListener("click", pauseTimeline);
-  timelineZoomInEl.addEventListener("click", () => zoomTimelineBy(0.5));
-  timelineZoomOutEl.addEventListener("click", () => zoomTimelineBy(2));
-  timelineZoomResetEl.addEventListener("click", resetTimelineZoom);
-  timelineBoardEl.addEventListener("pointerdown", startTimelineSelection);
-  timelineBoardEl.addEventListener("pointermove", moveTimelineSelection);
-  timelineBoardEl.addEventListener("pointerup", finishTimelineSelection);
-  timelineBoardEl.addEventListener("pointercancel", cancelTimelineSelection);
-  timelineBoardEl.addEventListener("scroll", handleTimelineScroll);
-  document.getElementById("zoom-in").addEventListener("click", () => zoomBy(1.25));
-  document.getElementById("zoom-out").addEventListener("click", () => zoomBy(0.8));
-  document.getElementById("zoom-fit").addEventListener("click", fitGraph);
+  timelineStepBackEl?.addEventListener("click", () => stepTimelineFrame(-1));
+  timelinePlayEl?.addEventListener("click", playTimeline);
+  timelineStepForwardEl?.addEventListener("click", () => stepTimelineFrame(1));
+  timelinePauseEl?.addEventListener("click", pauseTimeline);
+  timelineZoomInEl?.addEventListener("click", () => zoomTimelineBy(0.5));
+  timelineZoomOutEl?.addEventListener("click", () => zoomTimelineBy(2));
+  timelineZoomResetEl?.addEventListener("click", resetTimelineZoom);
+  timelineBoardEl?.addEventListener("pointerdown", startTimelineSelection);
+  timelineBoardEl?.addEventListener("pointermove", moveTimelineSelection);
+  timelineBoardEl?.addEventListener("pointerup", finishTimelineSelection);
+  timelineBoardEl?.addEventListener("pointercancel", cancelTimelineSelection);
+  timelineBoardEl?.addEventListener("scroll", handleTimelineScroll);
+  document.getElementById("zoom-in")?.addEventListener("click", () => zoomBy(1.25));
+  document.getElementById("zoom-out")?.addEventListener("click", () => zoomBy(0.8));
+  document.getElementById("zoom-fit")?.addEventListener("click", fitGraph);
   allLabelFilterEls.forEach((control) => {
     control.addEventListener("change", () => setFilterGroup("labels", control.checked));
   });

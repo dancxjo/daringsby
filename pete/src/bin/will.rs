@@ -298,6 +298,7 @@ async fn process_latest_combobulation(
             &action.thought,
         )
         .await;
+        info!(target: "thought_stream", "think: {}", action.thought.trim());
     }
 
     let mut typescript_results = Vec::new();
@@ -305,6 +306,7 @@ async fn process_latest_combobulation(
         match command {
             TypeScriptCommand::Say(text) => {
                 store_speech_intention_sensation(observer, &combobulation, text).await;
+                info!(target: "thought_stream", "say: {}", text.trim());
                 typescript_results.push(WillTypeScriptResult {
                     command: "say".into(),
                     output: format!("Queued speech: {}", text.trim()),
@@ -312,6 +314,7 @@ async fn process_latest_combobulation(
             }
             TypeScriptCommand::SetFace(emoji) => {
                 store_face_expression_sensation(observer, &combobulation, emoji).await;
+                info!(target: "thought_stream", "face: {}", emoji.trim());
                 typescript_results.push(WillTypeScriptResult {
                     command: "setFace".into(),
                     output: format!("Set face: {}", emoji.trim()),
@@ -326,6 +329,7 @@ async fn process_latest_combobulation(
                     text,
                 )
                 .await;
+                info!(target: "thought_stream", "note: {}", text.trim());
                 typescript_results.push(WillTypeScriptResult {
                     command: "note".into(),
                     output: format!("Recorded note: {}", text.trim()),
@@ -340,6 +344,7 @@ async fn process_latest_combobulation(
                     text,
                 )
                 .await;
+                info!(target: "thought_stream", "remember: {}", text.trim());
                 typescript_results.push(WillTypeScriptResult {
                     command: "remember".into(),
                     output: format!("Recorded memory: {}", text.trim()),
@@ -348,6 +353,7 @@ async fn process_latest_combobulation(
             _ => {
                 let (name, summary) = processor.execute_command(command).await;
                 store_function_result_sensation(observer, &combobulation, name, &summary).await;
+                info!(target: "thought_stream", "do: {}", name);
                 typescript_results.push(WillTypeScriptResult {
                     command: name.into(),
                     output: summary,

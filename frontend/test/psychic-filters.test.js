@@ -1,22 +1,25 @@
 const assert = require('assert');
 const fs = require('fs');
 
-const html = fs.readFileSync('frontend/psychic/index.html', 'utf8');
+const graphHtml = fs.readFileSync('frontend/psychic/index.html', 'utf8');
+const timelineHtml = fs.readFileSync('frontend/psychic/timeline.html', 'utf8');
 const script = fs.readFileSync('frontend/psychic/psychic.js', 'utf8');
 const styles = fs.readFileSync('frontend/psychic/styles.css', 'utf8');
 
-assert(html.includes('id="graph-filters"'));
-assert(html.includes('id="all-label-filters"'));
-assert(html.includes('id="all-predicate-filters"'));
-assert(html.includes('id="timeline-filters"'));
-assert(html.includes('id="timeline-all-label-filters"'));
-assert(html.includes('id="timeline-all-predicate-filters"'));
-assert(html.includes('Select all nodes'));
-assert(html.includes('Select all edges'));
-assert(html.includes('id="label-filters"'));
-assert(html.includes('id="predicate-filters"'));
-assert(html.includes('id="timeline-label-filters"'));
-assert(html.includes('id="timeline-predicate-filters"'));
+assert(graphHtml.includes('id="graph-filters"'));
+assert(graphHtml.includes('id="all-label-filters"'));
+assert(graphHtml.includes('id="all-predicate-filters"'));
+assert(graphHtml.includes('Select all nodes'));
+assert(graphHtml.includes('Select all edges'));
+assert(graphHtml.includes('id="label-filters"'));
+assert(graphHtml.includes('id="predicate-filters"'));
+assert(timelineHtml.includes('id="timeline-filters"'));
+assert(timelineHtml.includes('id="timeline-all-label-filters"'));
+assert(timelineHtml.includes('id="timeline-all-predicate-filters"'));
+assert(timelineHtml.includes('Select all nodes'));
+assert(timelineHtml.includes('Select all edges'));
+assert(timelineHtml.includes('id="timeline-label-filters"'));
+assert(timelineHtml.includes('id="timeline-predicate-filters"'));
 assert(script.includes('const filters = {'));
 assert(script.includes('labels: new Map()'));
 assert(script.includes('predicates: new Map()'));

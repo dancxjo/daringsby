@@ -98,19 +98,24 @@ h1 {
   background: rgba(21, 26, 31, 0.72);
 }
 
-.view-toggle button {
+.view-toggle a {
   width: auto;
   min-width: 5rem;
   height: 2rem;
+  display: inline-grid;
+  place-items: center;
   padding: 0 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 7px;
   border-color: transparent;
   background: transparent;
   color: var(--muted);
   font-size: 0.84rem;
   font-weight: 700;
+  text-decoration: none;
 }
 
-.view-toggle button.active {
+.view-toggle a.active {
   border-color: rgba(99, 210, 255, 0.5);
   background: rgba(99, 210, 255, 0.12);
   color: var(--text);
@@ -135,6 +140,10 @@ h1 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
   min-width: 0;
+}
+
+.timeline-workspace {
+  grid-template-columns: minmax(0, 1fr) 400px;
 }
 
 .graph-shell {
@@ -989,7 +998,7 @@ button.active {
     width: 100%;
   }
 
-  .view-toggle button {
+  .view-toggle a {
     flex: 1;
   }
 

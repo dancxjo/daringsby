@@ -5,7 +5,7 @@ const script = fs.readFileSync('frontend/psychic/psychic.js', 'utf8');
 const styles = fs.readFileSync('frontend/psychic/styles.css', 'utf8');
 
 assert(script.includes('const maxEmbeddingLinksPerCluster = 80;'));
-assert(script.includes('const syntheticRelationships = ['));
+assert(script.includes('const syntheticRelationships = svg'));
 assert(script.includes('...embeddingNeighborRelationships(graph.nodes, fullGraph.relationships)'));
 assert(script.includes('...semanticSimilarityRelationships(graph.nodes, fullGraph.relationships, fullGraph.nodes)'));
 assert(script.includes('function embeddingNeighborRelationships(nodes, relationships)'));

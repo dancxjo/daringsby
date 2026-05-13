@@ -129,8 +129,10 @@ async fn process_latest_combobulation(
         })?;
 
     store_active_face_sensation(observer, &combobulation, &action.emoji).await;
+    info!(target: "thought_stream", "face: {}", action.emoji.trim());
     if let Some(words) = action.say.as_deref() {
         store_speech_intention_sensation(observer, &combobulation, words).await;
+        info!(target: "thought_stream", "say: {}", words.trim());
         action.history.push(ConversationEntry {
             role: "assistant".into(),
             content: words.trim().to_string(),

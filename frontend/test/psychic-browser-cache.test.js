@@ -27,7 +27,6 @@ assert(script.includes('function deleteGraphCacheDb()'));
 assert(script.includes('window.indexedDB.deleteDatabase(graphCacheDbName)'));
 assert(script.includes('function clearLocalCache()'));
 assert(script.includes('window.localStorage.removeItem(filterStorageKey);'));
-assert(script.includes('window.localStorage.removeItem(timelineModeStorageKey);'));
 assert(script.includes('function resetLocalGraphState()'));
 assert(script.includes('graphStore.nodes.clear();'));
 assert(script.includes('timelineImagePreloadCache.clear();'));

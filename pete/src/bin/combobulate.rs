@@ -221,6 +221,16 @@ async fn process_window(
         })?;
     store_combobulator_context_sensation(observer, result.report).await;
     info!(
+        target: "thought_stream",
+        "aware: {}{}",
+        awareness.text,
+        awareness
+            .emoji
+            .as_deref()
+            .map(|emoji| format!(" {emoji}"))
+            .unwrap_or_default()
+    );
+    info!(
         anchor_id = %window.anchor_id,
         awareness_id = %awareness.awareness_id,
         vector_id = %awareness.vector_id,

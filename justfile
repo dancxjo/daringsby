@@ -24,6 +24,7 @@ run:
     log_root="${PETE_RUN_LOG_DIR:-logs/run}"
     run_log_dir="${log_root}/${timestamp}"
     mkdir -p "$run_log_dir"
+    export RUST_LOG="${RUST_LOG:-${PETE_RUN_RUST_LOG:-info}}"
     printf 'writing program logs to %s\n' "$run_log_dir"
 
     for path in pete/src/bin/*.rs; do

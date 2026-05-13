@@ -127,6 +127,7 @@ async fn main() -> anyhow::Result<()> {
 fn app(state: PsychicState) -> Router {
     Router::new()
         .route("/", get(index))
+        .route("/timeline", get(timeline))
         .route("/graph", get(graph_snapshot))
         .route("/movie-index", get(movie_index))
         .route("/movie", post(request_movie))
@@ -151,6 +152,10 @@ fn app(state: PsychicState) -> Router {
 
 async fn index() -> Html<&'static str> {
     Html(include_str!("../../../frontend/psychic/index.html"))
+}
+
+async fn timeline() -> Html<&'static str> {
+    Html(include_str!("../../../frontend/psychic/timeline.html"))
 }
 
 async fn graph_snapshot(State(state): State<PsychicState>) -> impl IntoResponse {

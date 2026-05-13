@@ -11,16 +11,16 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 
-<body>
+<body data-psychic-view="graph">
   <header class="topbar">
     <div>
       <h1>Psychic</h1>
       <p id="status">Connecting</p>
     </div>
-    <div class="view-toggle" aria-label="View mode">
-      <button id="graph-mode" type="button" class="active" aria-pressed="true">Graph</button>
-      <button id="timeline-mode" type="button" aria-pressed="false">Timeline</button>
-    </div>
+    <nav class="view-toggle" aria-label="Psychic views">
+      <a id="graph-mode" class="active" href="/" aria-current="page">Graph</a>
+      <a id="timeline-mode" href="/timeline">Timeline</a>
+    </nav>
     <div class="utility-actions">
       <button id="clear-cache" type="button" class="cache-clear" title="Clear local cache">Clear Cache</button>
     </div>
@@ -58,72 +58,7 @@
       </div>
     </section>
 
-    <section class="timeline-shell" id="timeline-shell" aria-label="Timeline browser" hidden>
-      <div class="timeline-toolbar">
-        <div>
-          <h2>Timeline</h2>
-          <p id="timeline-range">No timed media</p>
-        </div>
-        <div class="timeline-playback" aria-label="Timeline playback controls">
-          <button id="timeline-step-back" type="button" title="Step back one frame"
-            aria-label="Step back one frame">|⁠◀</button>
-          <button id="timeline-play" type="button" title="Play timeline" aria-label="Play timeline">▶</button>
-          <button id="timeline-step-forward" type="button" title="Step forward one frame"
-            aria-label="Step forward one frame">▶⁠|</button>
-          <button id="timeline-pause" type="button" title="Pause timeline" aria-label="Pause timeline"
-            disabled>Ⅱ</button>
-        </div>
-        <div class="timeline-zoom" aria-label="Timeline zoom controls">
-          <button id="timeline-zoom-in" type="button" title="Zoom in on playhead"
-            aria-label="Zoom in on playhead">+</button>
-          <button id="timeline-zoom-out" type="button" title="Zoom out from playhead"
-            aria-label="Zoom out from playhead">-</button>
-          <button id="timeline-zoom-reset" type="button" title="Show full timeline"
-            aria-label="Show full timeline">⛶</button>
-        </div>
-        <div class="timeline-scrubber">
-          <label for="timeline-scrub">Scrub</label>
-          <input id="timeline-scrub" type="range" min="0" max="1000" value="0" step="1" />
-        </div>
-      </div>
-      <div class="filter-panel timeline-filter-panel" id="timeline-filters" aria-label="Timeline filters">
-        <details open>
-          <summary>Nodes</summary>
-          <label class="filter-option filter-all">
-            <input id="timeline-all-label-filters" type="checkbox" />
-            <span>Select all nodes</span>
-          </label>
-          <div class="filter-list" id="timeline-label-filters" aria-label="Timeline node label filters"></div>
-        </details>
-        <details open>
-          <summary>Edges</summary>
-          <label class="filter-option filter-all">
-            <input id="timeline-all-predicate-filters" type="checkbox" />
-            <span>Select all edges</span>
-          </label>
-          <div class="filter-list" id="timeline-predicate-filters" aria-label="Timeline relationship predicate filters"></div>
-        </details>
-      </div>
-      <div class="timeline-board" id="timeline-board">
-        <div class="timeline-ruler" id="timeline-ruler" aria-hidden="true"></div>
-        <div class="timeline-selection" id="timeline-selection" aria-hidden="true" hidden></div>
-        <div class="timeline-playhead" id="timeline-playhead" aria-hidden="true">
-          <div class="timeline-head"></div>
-        </div>
-        <div class="timeline-rows" id="timeline-rows"></div>
-      </div>
-    </section>
-
     <aside class="inspector" aria-label="Selection inspector">
-      <section class="present-panel" id="present-panel" aria-label="Timeline head instant" hidden>
-        <div class="present-head">
-          <h2>Head</h2>
-          <p id="present-time">No instant</p>
-        </div>
-        <div class="present-media" id="present-media">
-          <span>No image at head</span>
-        </div>
-      </section>
       <div class="inspector-empty" id="inspector-empty">Select a node or relationship</div>
       <div class="inspector-content" id="inspector-content" hidden>
         <div class="inspector-head">
