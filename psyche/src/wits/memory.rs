@@ -4976,9 +4976,7 @@ impl Neo4jClient {
             .collect::<Vec<_>>();
         let source_started_at = window.items.first().map(|item| item.occurred_at.clone());
         let source_ended_at = window.items.last().map(|item| item.occurred_at.clone());
-        let sensation_occurred_at = source_started_at
-            .clone()
-            .unwrap_or_else(|| processed_at.clone());
+        let sensation_occurred_at = processed_at.clone();
         let vector_id = qdrant_vector_node_id(MEMORY_COLLECTION, &awareness.vector_id);
         let sensation_id = stable_bytes_id(
             "sensation:combobulation_summary",

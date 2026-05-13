@@ -4,7 +4,7 @@ use crate::traits::observer::SensationObserver;
 use crate::wits::memory::GraphStore;
 use crate::{
     AudioClip, BrowserMotion, CombobulationSummary, GeoEmbedding, GeoLoc, Heartbeat, ImageData,
-    ImageEmbedding, Impression, ObjectInfo, Sensation, Topic, TopicBus, VoiceInfo, Thought,
+    ImageEmbedding, Impression, ObjectInfo, Sensation, Thought, Topic, TopicBus, VoiceInfo,
     audio_clip_id, browser_motion_content_id, geoloc_content_id, image_content_id,
 };
 use async_trait::async_trait;

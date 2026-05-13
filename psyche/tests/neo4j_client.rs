@@ -9,7 +9,7 @@ use psyche::{
     GraphVoiceIdentityTarget, GraphVoiceRecognition, GraphVoiceSample, GraphVoiceSignature,
     ImageData, Neo4jClient, VectorCluster, VectorClusterMember,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 #[tokio::test]
 async fn neo4j_client_converts_bolt_uri_to_http_commit_endpoint() {
@@ -2766,7 +2766,6 @@ async fn neo4j_client_attaches_combobulation() {
                 .body_contains("qdrant:memories:point-1")
                 .body_contains("\"kind\":\"combobulation_summary\"")
                 .body_contains("\"derived\":true")
-                .body_contains("\"occurred_at\":\"2026-05-05T12:34:56Z\"")
                 .body_contains("\"how\":\"I hear someone greeting me.\"")
                 .body_contains("\"combobulation_run_id\"")
                 .body_contains("\"awareness_id\":\"awareness:speech:2\"")
@@ -2776,7 +2775,35 @@ async fn neo4j_client_attaches_combobulation() {
                 .body_contains("\"source_event_ids\":[\"audio:1\",\"audio:1\"]")
                 .body_contains("\"source_started_at\":\"2026-05-05T12:34:56Z\"")
                 .body_contains("\"source_ended_at\":\"2026-05-05T12:35:00Z\"")
-                .body_contains("\"source_texts\":[\"speech: hello\",\"speech: there\"]");
+                .body_contains("\"source_texts\":[\"speech: hello\",\"speech: there\"]")
+                .matches(|req| {
+                    let Some(body) = req
+                        .body
+                        .as_deref()
+                        .and_then(|body| std::str::from_utf8(body).ok())
+                    else {
+                        return false;
+                    };
+                    let Ok(body) = serde_json::from_str::<Value>(body) else {
+                        return false;
+                    };
+                    body["statements"]
+                        .as_array()
+                        .and_then(|statements| {
+                            statements.iter().find_map(|statement| {
+                                let props = &statement["parameters"]["props"];
+                                (props["kind"].as_str() == Some("combobulation_summary"))
+                                    .then_some(props)
+                            })
+                        })
+                        .is_some_and(|props| {
+                            let occurred_at = props["occurred_at"].as_str();
+                            occurred_at == props["created_at"].as_str()
+                                && occurred_at == props["how_formed_at"].as_str()
+                                && occurred_at != Some("2026-05-05T12:34:56Z")
+                                && occurred_at != props["source_started_at"].as_str()
+                        })
+                });
             then.status(200).body(r#"{"results":[{}],"errors":[]}"#);
         })
         .await;

@@ -298,10 +298,16 @@ async fn stores_thought_with_source_links() {
     assert_eq!(stored[0]["nodes"][2]["label"], "SourceSensationRef");
     assert_eq!(stored[0]["nodes"][3]["id"], "sensation:audio:1");
     assert_eq!(stored[0]["relationships"][0]["type"], "OBSERVED");
-    assert_eq!(stored[0]["relationships"][1]["from"], stored[0]["nodes"][1]["id"]);
+    assert_eq!(
+        stored[0]["relationships"][1]["from"],
+        stored[0]["nodes"][1]["id"]
+    );
     assert_eq!(stored[0]["relationships"][1]["to"], "combobulation:1");
     assert_eq!(stored[0]["relationships"][1]["type"], "DERIVED_FROM");
-    assert_eq!(stored[0]["relationships"][2]["from"], stored[0]["nodes"][0]["id"]);
+    assert_eq!(
+        stored[0]["relationships"][2]["from"],
+        stored[0]["nodes"][0]["id"]
+    );
     assert_eq!(stored[0]["relationships"][2]["to"], "combobulation:1");
     assert_eq!(stored[0]["relationships"][2]["type"], "DERIVED_FROM");
 }
