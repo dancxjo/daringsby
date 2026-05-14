@@ -34,7 +34,8 @@ run:
             bin="forget-silence"
         fi
         # simulate is an ad hoc client utility that requires a subcommand.
-        if [[ "$bin" == "pete" || "$bin" == "simulate" || "$bin" == "raw_retention" || "$bin" == "movie" || "$bin" == "test_will" || "$bin" == "timeline" || "$bin" == "conversation" ]]; then
+        # cluster is a maintenance loop and should be started manually.
+        if [[ "$bin" == "pete" || "$bin" == "simulate" || "$bin" == "raw_retention" || "$bin" == "movie" || "$bin" == "test_will" || "$bin" == "timeline" || "$bin" == "conversation" || "$bin" == "cluster" ]]; then
             continue
         fi
         if [[ "$bin" == "transcription" && "$has_nvidia_gpu" != true ]]; then
@@ -96,6 +97,68 @@ run:
     set -e
     printf 'a program exited with status %s; logs are in %s\n' "$status" "$run_log_dir"
     exit "$status"
+
+# Build Docker images and stopped containers for Pete's run components.
+build skip="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bins=()
+    skip="{{ skip }}"
+    skipped=false
+
+    has_nvidia_gpu=false
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+        has_nvidia_gpu=true
+    fi
+
+    for path in pete/src/bin/*.rs; do
+        bin="${path##*/}"
+        bin="${bin%.rs}"
+        if [[ "$bin" == "forget_silence" ]]; then
+            bin="forget-silence"
+        fi
+        # Keep this list aligned with `just run`.
+        if [[ "$bin" == "pete" || "$bin" == "simulate" || "$bin" == "raw_retention" || "$bin" == "movie" || "$bin" == "test_will" || "$bin" == "timeline" || "$bin" == "conversation" || "$bin" == "cluster" ]]; then
+            continue
+        fi
+        if [[ -n "$skip" && "$bin" == "$skip" ]]; then
+            printf 'skipping %-18s -> requested\n' "$bin"
+            skipped=true
+            continue
+        fi
+        if [[ "$bin" == "transcription" && "$has_nvidia_gpu" != true ]]; then
+            printf 'skipping %-18s -> no NVIDIA GPU available\n' "$bin"
+            continue
+        fi
+        bins+=("$bin")
+    done
+
+    if [[ -n "$skip" && "$skipped" != true ]]; then
+        printf 'unknown run component: %s\n' "$skip" >&2
+        exit 1
+    fi
+
+    if ((${#bins[@]} == 0)); then
+        printf 'no run components selected\n' >&2
+        exit 1
+    fi
+
+    if [[ -n "$skip" ]]; then
+        if docker compose ps --status running --services | grep -Fxq "$skip"; then
+            printf 'leaving running %-18s container alone\n' "$skip"
+        else
+            docker compose rm -f "$skip" >/dev/null 2>&1 || true
+        fi
+    fi
+
+    printf 'building Pete component images: %s\n' "${bins[*]}"
+    docker compose build "${bins[@]}"
+    printf 'creating stopped Pete component containers: %s\n' "${bins[*]}"
+    docker compose create "${bins[@]}"
+
+# Run vector clustering manually.
+cluster *args:
+    cargo run -p pete --bin cluster -- {{ args }}
 
 # Forget derived graph/vector data while retaining raw sensations and media.
 forget *args:

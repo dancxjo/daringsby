@@ -1,3 +1,27 @@
+x-pete-build: &pete-build
+  context: .
+  dockerfile: docker/pete/Dockerfile
+
+x-pete-env: &pete-env
+  RUST_LOG: ${RUST_LOG:-info}
+
+x-pete-volumes: &pete-volumes
+  - ./models:/app/models:ro
+  - ./movies:/app/movies
+  - /tmp:/tmp
+  - /etc/timezone:/etc/timezone:ro
+
+x-pete-component: &pete-component
+  profiles: ["pete"]
+  network_mode: host
+  init: true
+  env_file:
+    - path: ./.env
+      required: false
+  environment:
+    <<: *pete-env
+  volumes: *pete-volumes
+
 services:
   nginx:
     build:
@@ -51,6 +75,124 @@ services:
       - NEO4J_AUTH=neo4j/password
     volumes:
       - ./neo4j_data:/data
+
+  face:
+    <<: *pete-component
+    image: daringsby/pete-face:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: face
+
+  psychic:
+    <<: *pete-component
+    image: daringsby/pete-psychic:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: psychic
+
+  transcription:
+    <<: *pete-component
+    image: daringsby/pete-transcription:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: transcription
+    environment:
+      <<: *pete-env
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    gpus: all
+
+  frecog:
+    <<: *pete-component
+    image: daringsby/pete-frecog:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: frecog
+
+  vrecog:
+    <<: *pete-component
+    image: daringsby/pete-vrecog:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: vrecog
+
+  locate:
+    <<: *pete-component
+    image: daringsby/pete-locate:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: locate
+
+  scene_vec:
+    <<: *pete-component
+    image: daringsby/pete-scene-vec:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: scene_vec
+
+  image_desc:
+    <<: *pete-component
+    image: daringsby/pete-image-desc:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: image_desc
+
+  combobulate:
+    <<: *pete-component
+    image: daringsby/pete-combobulate:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: combobulate
+
+  will:
+    <<: *pete-component
+    image: daringsby/pete-will:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: will
+
+  remember:
+    <<: *pete-component
+    image: daringsby/pete-remember:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: remember
+
+  conversant:
+    <<: *pete-component
+    image: daringsby/pete-conversant:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: conversant
+
+  cluster:
+    <<: *pete-component
+    profiles: ["cluster"]
+    image: daringsby/pete-cluster:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: cluster
+
+  forget-silence:
+    <<: *pete-component
+    image: daringsby/pete-forget-silence:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: forget-silence
 
 volumes:
   nginx_certs:

@@ -1,0 +1,15 @@
+target/
+node_modules/
+.git/
+
+models/
+logs/
+movies/
+neo4j_data/
+qdrant_data/
+tts/
+
+*.log
+.env
+.env.*
+!.env.example

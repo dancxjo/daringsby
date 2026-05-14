@@ -103,6 +103,43 @@ The repo `justfile` loads `.env` automatically before running commands.
 just run
 ```
 
+To build Docker images and stopped Compose containers for the same component
+binaries that `just run` starts:
+
+```sh
+just build
+```
+
+Pass one component name to leave it out so you can run that binary locally:
+
+```sh
+just build will
+```
+
+The Pete component services live behind the Compose `pete` profile. Existing
+infrastructure services such as `nginx`, `qdrant`, `neo4j`, and `tts` still work
+without that profile.
+
+The vector cluster loop is not part of the default run set. Start it explicitly
+when you want a clustering pass or background clustering:
+
+```sh
+just cluster --once
+just cluster
+```
+
+Start the created component containers with:
+
+```sh
+docker compose --profile pete start
+```
+
+For Docker, the cluster service is behind a separate profile:
+
+```sh
+docker compose --profile cluster up cluster
+```
+
 Pete uses separate Ollama models for text generation, vision, and embeddings.
 Pull all three before running with the default configuration:
 
