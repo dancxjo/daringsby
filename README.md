@@ -1,5 +1,7 @@
 # Daringsby Workspace
 
+Daringsby is the first clear success in [Project PETE](https://dancxjo.github.io/project-pete.html): the Pseudoconscious Experiment in Thought and Emotions. It demonstrates that a relatively modest chatbot-like architecture can produce coherent, spontaneous emotional behavior when wrapped in continuity, memory, perception, and expression. Its major flaw is latency, which the later Listenbury line is meant to address.
+
 This repository implements Pete Daringsby: a Rust-based artificial agent with real-time perception, emotional awareness, and expressive behavior. It is organized as a workspace with three crates:
 
 * **`psyche`** – core cognition (the mind of Pete)
