@@ -139,6 +139,7 @@ services:
 
   image_desc:
     <<: *pete-component
+    profiles: ["legacy-cognition"]
     image: daringsby/pete-image-desc:latest
     build:
       <<: *pete-build
@@ -147,6 +148,7 @@ services:
 
   combobulate:
     <<: *pete-component
+    profiles: ["legacy-cognition"]
     image: daringsby/pete-combobulate:latest
     build:
       <<: *pete-build
@@ -155,6 +157,7 @@ services:
 
   will:
     <<: *pete-component
+    profiles: ["legacy-cognition"]
     image: daringsby/pete-will:latest
     build:
       <<: *pete-build
@@ -171,11 +174,20 @@ services:
 
   conversant:
     <<: *pete-component
+    profiles: ["legacy-cognition"]
     image: daringsby/pete-conversant:latest
     build:
       <<: *pete-build
       args:
         PETE_BIN: conversant
+
+  single_shot:
+    <<: *pete-component
+    image: daringsby/pete-single-shot:latest
+    build:
+      <<: *pete-build
+      args:
+        PETE_BIN: single_shot
 
   cluster:
     <<: *pete-component

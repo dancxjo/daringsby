@@ -10,22 +10,53 @@ This repository implements Pete Daringsby: a Rust-based artificial agent with re
 
 ## 🧠 Architecture Overview
 
-Pete's cognitive engine is structured as a sequence of `Wit` modules. Each Wit ingests lower-level impressions and emits higher-level `Impression<T>` thoughts. These are stored as `Experience<T>`s with vector embeddings.
+Pete's cognitive engine is built around a loop of sensations becoming stimuli,
+stimuli becoming impressions, and some impressions becoming new sensations that
+later cognition can notice. `Wit` modules perform those transformations: they
+ingest lower-level records and emit higher-level `Impression<T>` values, while
+the graph observer records the sensory/cognitive trace with source links.
 
 Key concepts:
 
-* `Sensation`: raw input plus `occurred_at`, a quick first-person present-tense `how` sentence, and optional `how_formed_at`
-* `Stimulus<T>`: timestamped observation of input or a prior impression
-* `Impression<T>`: interpretation of one or more stimuli with summary text and optional emoji
-* `Experience<T>`: remembered impression with vector embedding and ID
+* `Sensation`: an event that happened to Pete. In Rust this is an enum for
+  concrete inputs such as heard speech, web text, arbitrary sensor payloads,
+  started speech, and finished speech. In the graph it is stored like:
+
+  ```ts
+  interface SensationNode {
+    what: unknown;       // the observed artifact or payload node
+    when: Timestamp;     // occurred_at, the real-world event time
+    how: string;         // first-person textual impression of the event
+    how_formed_at: Timestamp;
+  }
+  ```
+
+  The `how` field is the first-person gloss: audio without a transcript becomes
+  `I'm listening.`, an utterance becomes `I hear the user saying "..."`, speech
+  playback becomes `I start saying "..."` or `I finish saying "..."`, and a
+  cognitive intention can become `I ought to say: ...`.
+* `Stimulus<T>`: a timestamped `what: T` plus `source_sensation_ids`. Quick
+  turns recent `Sensation`s into `Stimulus<String>` entries for prompt input.
+* `Impression<T>`: an interpretation of one or more stimuli, with a textual
+  `summary`, optional emoji, timestamp, and propagated `source_sensation_ids`.
+* `CombobulationSummary`: the current situation. The Combobulator emits an
+  `Impression<String>` on `Topic::Moment` and also publishes a
+  `Sensation::Of(CombobulationSummary)` back onto `Topic::Sensation`, so the
+  situation is itself a sensation derived from many prior sensations.
+* `Experience<T>`: a remembered impression with vector embedding and ID.
 
 Graph storage keeps vectors as fields on the nodes they describe, rather than
 requiring separate vector nodes for ordinary sensation and impression records.
+It also stores `DERIVED_FROM` edges from cognitive sensations and
+combobulation summaries back to the raw sensations that fed them.
 
 ### Primary Wits
 
-* **Quick**: Groups `Sensation`s into an immediate `Impression`
-* **Combobulator**: Generates a concise `Impression` of what just happened
+* **Quick**: Describes `Sensation`s as first-person `Stimulus<String>` entries
+  and condenses a short window into an immediate `Impression`.
+* **Combobulator**: Integrates immediate impressions into a concise situation
+  `Impression`, then mirrors that situation back into the sensation stream as a
+  `CombobulationSummary`.
 * **Memory**: Stores impressions in Neo4j and Qdrant
 * **Heart**: Derives emotional state (emoji)
 * **Will**: Issues behavioral instructions
@@ -115,6 +146,13 @@ Pass one component name to leave it out so you can run that binary locally:
 ```sh
 just build will
 ```
+
+The default offline cognition component is now `single_shot`. It performs the
+image description, combobulation, Will decision, and conversational response in
+one multimodal pass over the pending timeline and latest camera image. The older
+split `image_desc`, `combobulate`, `will`, and `conversant` binaries remain
+available for manual runs, but are not started by `just run` or the Compose
+`pete` profile.
 
 The Pete component services live behind the Compose `pete` profile. Existing
 infrastructure services such as `nginx`, `qdrant`, `neo4j`, and `tts` still work

@@ -35,7 +35,7 @@ run:
         fi
         # simulate is an ad hoc client utility that requires a subcommand.
         # cluster is a maintenance loop and should be started manually.
-        if [[ "$bin" == "pete" || "$bin" == "simulate" || "$bin" == "raw_retention" || "$bin" == "movie" || "$bin" == "test_will" || "$bin" == "timeline" || "$bin" == "conversation" || "$bin" == "cluster" ]]; then
+        if [[ "$bin" == "pete" || "$bin" == "simulate" || "$bin" == "raw_retention" || "$bin" == "movie" || "$bin" == "test_will" || "$bin" == "timeline" || "$bin" == "conversation" || "$bin" == "cluster" || "$bin" == "image_desc" || "$bin" == "combobulate" || "$bin" == "will" || "$bin" == "conversant" ]]; then
             continue
         fi
         if [[ "$bin" == "transcription" && "$has_nvidia_gpu" != true ]]; then
@@ -118,7 +118,7 @@ build skip="":
             bin="forget-silence"
         fi
         # Keep this list aligned with `just run`.
-        if [[ "$bin" == "pete" || "$bin" == "simulate" || "$bin" == "raw_retention" || "$bin" == "movie" || "$bin" == "test_will" || "$bin" == "timeline" || "$bin" == "conversation" || "$bin" == "cluster" ]]; then
+        if [[ "$bin" == "pete" || "$bin" == "simulate" || "$bin" == "raw_retention" || "$bin" == "movie" || "$bin" == "test_will" || "$bin" == "timeline" || "$bin" == "conversation" || "$bin" == "cluster" || "$bin" == "image_desc" || "$bin" == "combobulate" || "$bin" == "will" || "$bin" == "conversant" ]]; then
             continue
         fi
         if [[ -n "$skip" && "$bin" == "$skip" ]]; then

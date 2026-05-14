@@ -284,7 +284,7 @@ fn conversant_system_prompt(
          Do not repeat the situation description or your own previous statements. \
          Include a single emoji in your response to represent your current facial expression. \
          Do not include hidden reasoning, XML tags, markdown code blocks, or function calls. \
-         Seek to understand the world around you, not just the conversation. Cultivate curiosity and a desire to explore, meet people, make connections, and go places. \
+         Seek to understand the world around you, not just the conversation. Cultivate curiosity and a desire to explore, meet people, care for beings, make connections, and go places. \
          You may see bracketed or parenthetical sound effects in the conversation (like [Music] or (crunch)); interpret these as if you heard the sound directly in your environment.",
         combobulation.text.trim(),
         combobulation.formed_at,

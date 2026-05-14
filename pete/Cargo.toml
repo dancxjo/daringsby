@@ -129,6 +129,10 @@ name = "conversant"
 path = "src/bin/conversant.rs"
 
 [[bin]]
+name = "single_shot"
+path = "src/bin/single_shot.rs"
+
+[[bin]]
 name = "timeline"
 path = "src/bin/timeline.rs"
 

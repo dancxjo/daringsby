@@ -2372,6 +2372,34 @@ impl Neo4jClient {
         rows.first().map(graph_image_frame_from_row).transpose()
     }
 
+    /// Return the latest `Image` graph node, whether or not it has already
+    /// been processed by derived vision pipelines.
+    pub async fn latest_image_frame(&self) -> Result<Option<GraphImageFrame>> {
+        let endpoint = self.http_endpoint()?;
+        let rows = query_neo4j_rows(
+            &reqwest::Client::new(),
+            &endpoint,
+            &self.user,
+            &self.pass,
+            CypherStatement {
+                statement: r#"
+                    MATCH (i:GraphNode:Image)
+                    WHERE i.base64 IS NOT NULL
+                    OPTIONAL MATCH (s:GraphNode:Sensation)-[:OBSERVED]->(i)
+                    WITH i, s, coalesce(i.captured_at, i.occurred_at, s.occurred_at, "") AS observed_at
+                    RETURN i.id, i.mime, i.base64, i.captured_at, i.occurred_at, s.id
+                    ORDER BY observed_at DESC
+                    LIMIT 1
+                "#
+                .into(),
+                parameters: json!({}),
+            },
+            "finding latest image frame",
+        )
+        .await?;
+        rows.first().map(graph_image_frame_from_row).transpose()
+    }
+
     /// Return the latest `Geolocation` graph node that has no geolocation vector.
     pub async fn latest_unprocessed_geolocation_for_vectorization(
         &self,
