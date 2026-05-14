@@ -147,12 +147,6 @@ Pass one component name to leave it out so you can run that binary locally:
 just build will
 ```
 
-The default offline cognition component is now `single_shot`. It performs the
-image description, combobulation, Will decision, and conversational response in
-one multimodal pass over the pending timeline and latest camera image. The older
-split `image_desc`, `combobulate`, `will`, and `conversant` binaries remain
-available for manual runs, but are not started by `just run` or the Compose
-`pete` profile.
 
 The Pete component services live behind the Compose `pete` profile. Existing
 infrastructure services such as `nginx`, `qdrant`, `neo4j`, and `tts` still work

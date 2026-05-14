@@ -12,54 +12,51 @@ x-pete-volumes: &pete-volumes
   - /etc/timezone:/etc/timezone:ro
 
 x-pete-component: &pete-component
-  profiles: ["pete"]
+  profiles: [ "pete" ]
   network_mode: host
   init: true
   env_file:
     - path: ./.env
-      required: false
-  environment:
-    <<: *pete-env
-  volumes: *pete-volumes
 
-services:
-  nginx:
-    build:
-      context: ./docker/nginx
-    network_mode: host
-    environment:
-      PETE_TLS_PORT_3000: ${PETE_TLS_PORT_3000:-3443}
-      PETE_TLS_PORT_3001: ${PETE_TLS_PORT_3001:-3444}
-      PETE_UPSTREAM_3000: ${PETE_UPSTREAM_3000:-127.0.0.1:3000}
-      PETE_UPSTREAM_3001: ${PETE_UPSTREAM_3001:-127.0.0.1:3001}
-      PETE_TLS_CERT: /etc/nginx/self-signed/localhost.crt
-      PETE_TLS_KEY: /etc/nginx/self-signed/localhost.key
-      PETE_TLS_COMMON_NAME: ${PETE_TLS_COMMON_NAME:-localhost}
-    volumes:
-      - nginx_certs:/etc/nginx/self-signed
-    healthcheck:
-      test: ["CMD-SHELL", "nginx -t"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+      image_desc:
+        <<: *pete-component
+        image: daringsby/pete-image-desc:latest
+        build:
+          <<: *pete-build
+          args:
+            PETE_BIN: image_desc
 
-  tts:
-    image: ghcr.io/coqui-ai/tts
-    ports:
-      - "5002:5002"
-    entrypoint: python3
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - COQUI_TOS_AGREED=1
-      - TTS_MODEL="tts_models/en/ljspeech/tacotron2-DDC"
-      - VOCODER_MODEL="vocoder_models/en/ljspeech/hifigan_v1"
-    command: [ "TTS/server/server.py", "--model_name", "tts_models/en/vctk/vits" ]
-    volumes:
-      - ./tts:/root/.local/share
-      - /etc/timezone:/etc/timezone:ro
+      combobulate:
+        <<: *pete-component
+        image: daringsby/pete-combobulate:latest
+        build:
+          <<: *pete-build
+          args:
+            PETE_BIN: combobulate
 
-  qdrant:
-    image: qdrant/qdrant:latest
+      will:
+        <<: *pete-component
+        image: daringsby/pete-will:latest
+        build:
+          <<: *pete-build
+          args:
+            PETE_BIN: will
+
+      remember:
+        <<: *pete-component
+        image: daringsby/pete-remember:latest
+        build:
+          <<: *pete-build
+          args:
+            PETE_BIN: remember
+
+      conversant:
+        <<: *pete-component
+        image: daringsby/pete-conversant:latest
+        build:
+          <<: *pete-build
+          args:
+            PETE_BIN: conversant
     ports:
       - "6333:6333"
       - "6334:6334"
@@ -139,7 +136,7 @@ services:
 
   image_desc:
     <<: *pete-component
-    profiles: ["legacy-cognition"]
+    profiles: [ "legacy-cognition" ]
     image: daringsby/pete-image-desc:latest
     build:
       <<: *pete-build
@@ -148,7 +145,7 @@ services:
 
   combobulate:
     <<: *pete-component
-    profiles: ["legacy-cognition"]
+    profiles: [ "legacy-cognition" ]
     image: daringsby/pete-combobulate:latest
     build:
       <<: *pete-build
@@ -157,7 +154,7 @@ services:
 
   will:
     <<: *pete-component
-    profiles: ["legacy-cognition"]
+    profiles: [ "legacy-cognition" ]
     image: daringsby/pete-will:latest
     build:
       <<: *pete-build
@@ -174,24 +171,16 @@ services:
 
   conversant:
     <<: *pete-component
-    profiles: ["legacy-cognition"]
+    profiles: [ "legacy-cognition" ]
     image: daringsby/pete-conversant:latest
     build:
       <<: *pete-build
       args:
         PETE_BIN: conversant
 
-  single_shot:
-    <<: *pete-component
-    image: daringsby/pete-single-shot:latest
-    build:
-      <<: *pete-build
-      args:
-        PETE_BIN: single_shot
-
   cluster:
     <<: *pete-component
-    profiles: ["cluster"]
+    profiles: [ "cluster" ]
     image: daringsby/pete-cluster:latest
     build:
       <<: *pete-build
